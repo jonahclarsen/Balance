@@ -21,6 +21,8 @@
   import RecentPage from './lib/RecentPage.svelte'
   import { createRecentPages } from './lib/recentPages'
   import GoalHistoryPanel from './lib/GoalHistoryPanel.svelte'
+  import ProgressBar from './lib/ProgressBar.svelte'
+  import { dismissOnBackdropClick } from './lib/backdropDismiss'
   import GoalRecentHistory from './lib/GoalRecentHistory.svelte'
   import PlanItemEditor from './lib/PlanItemEditor.svelte'
   import RecentDayPlans from './lib/RecentDayPlans.svelte'
@@ -185,7 +187,7 @@
     focusCelebrationId: CompletionCelebrationId
   }
 
-  const GOAL_RHYTHM_AUTO_SHOW_MS = 60_000
+  const GOAL_RHYTHM_HIDE_MS = 6 * 60 * 60 * 1000
   const GOAL_HISTORY_UPDATE_DEBOUNCE_MS = 1_000
   const GOAL_HISTORY_EDIT_UPDATE_DEBOUNCE_MS = 5_000
   const DEFAULT_KEYBOARD_SCROLL_SPEED = 950
@@ -306,6 +308,7 @@
 
   const defaultIridescentGradient = createDefaultIridescentGradient()
   const GOAL_HISTORY_HEIGHT_KEY = 'balance:goalHistoryHeight'
+  const GOAL_RHYTHM_HIDDEN_UNTIL_KEY = 'balance:goalRhythmHiddenUntil'
   const DISMISSED_UPDATE_VERSION_KEY = 'balance:dismissedUpdateVersion'
   const DATABASE_LOADING_MESSAGE_INTERVAL_MS = 10_000
   const WORD_CAP_UNLOCK_MS = 10_000
@@ -2284,6 +2287,7 @@ return rows`
     if (Number.isFinite(storedGoalHistoryHeight) && storedGoalHistoryHeight > 0) {
       goalHistoryHeight = clampGoalHistoryHeight(storedGoalHistoryHeight)
     }
+    restoreGoalRhythmHide()
 
     async function initialize() {
       if (isTauri()) {
@@ -2475,6 +2479,7 @@ return rows`
 
   function refreshCurrentDay() {
     applyIridescentHueShift()
+    restoreGoalRhythmHide()
     const nextDay = todayISO()
     if (nextDay !== currentDay) {
       currentDay = nextDay
@@ -2879,6 +2884,7 @@ return rows`
     if (!maximizedView) return
     maximizedView = null
     goalRhythmVisible = goalRhythmVisibleBeforeMaximize
+    if (!goalRhythmVisible) restoreGoalRhythmHide()
   }
 
   function viewSupportsImax(targetView: View) {
@@ -2925,19 +2931,47 @@ return rows`
 
   function showGoalRhythm() {
     clearGoalRhythmAutoShowTimer()
+    try {
+      localStorage.removeItem(GOAL_RHYTHM_HIDDEN_UNTIL_KEY)
+    } catch {}
     leaveViewMaximized()
     goalRhythmVisible = true
   }
 
-  function toggleGoalRhythm() {
-    if (!goalRhythmVisible) {
+  function hideGoalRhythm() {
+    const hiddenUntil = Date.now() + GOAL_RHYTHM_HIDE_MS
+    try {
+      localStorage.setItem(GOAL_RHYTHM_HIDDEN_UNTIL_KEY, String(hiddenUntil))
+    } catch {}
+    goalRhythmVisible = false
+    scheduleGoalRhythmAutoShow(hiddenUntil)
+  }
+
+  // The hide survives reloads. Focus also re-checks it, since a sleeping
+  // machine can hold the timer past its deadline.
+  function restoreGoalRhythmHide() {
+    if (maximizedView) return
+    let hiddenUntil = 0
+    try {
+      hiddenUntil = Number(localStorage.getItem(GOAL_RHYTHM_HIDDEN_UNTIL_KEY)) || 0
+    } catch {}
+    if (!hiddenUntil) return
+    if (hiddenUntil <= Date.now()) {
       showGoalRhythm()
       return
     }
-
     goalRhythmVisible = false
+    scheduleGoalRhythmAutoShow(hiddenUntil)
+  }
+
+  function scheduleGoalRhythmAutoShow(hiddenUntil: number) {
     clearGoalRhythmAutoShowTimer()
-    goalRhythmAutoShowTimer = window.setTimeout(showGoalRhythm, GOAL_RHYTHM_AUTO_SHOW_MS)
+    goalRhythmAutoShowTimer = window.setTimeout(showGoalRhythm, Math.max(0, hiddenUntil - Date.now()))
+  }
+
+  function toggleGoalRhythm() {
+    if (goalRhythmVisible) hideGoalRhythm()
+    else showGoalRhythm()
   }
 
   function focusGoalInRhythm(goalId: string) {
@@ -8301,6 +8335,8 @@ return rows`
         onOpenGoals={openGoals}
         onOpenDate={openDateInToday}
         onResizeStart={startGoalHistoryResize}
+        onHide={hideGoalRhythm}
+        hideShortcutLabel={isMobile ? null : altShortcutLabel('A')}
         scrollRequest={goalRhythmScrollRequest}
       />
     </RecentPage>
@@ -8310,20 +8346,9 @@ return rows`
       {@const instance = listOverlayInstance}
       {@const template = listTemplates.find((candidate) => candidate.id === instance.listTemplateId)}
       {@const completion = planItemCompletion(instance.items)}
-      {@const completionPercent = completion.total === 0 ? 0 : Math.round((completion.done / completion.total) * 100)}
       <OverlayModal active={listOverlayVisible} title={template?.name ?? 'List'} z={60} onClose={() => (listOverlay = null)}>
         <div slot="header-middle" class="list-overlay-status">
-          <div
-            class="list-progress"
-            style={`--list-progress: ${completionPercent}%`}
-            role="progressbar"
-            aria-label="List completion"
-            aria-valuemin="0"
-            aria-valuemax={completion.total}
-            aria-valuenow={completion.done}
-          >
-            <span class="list-progress-fill"></span>
-          </div>
+          <ProgressBar done={completion.done} total={completion.total} label="List completion" />
           {#if template?.idealMinutes}
             <ListTimeClock items={instance.items} createdAt={instance.createdAt} idealMinutes={template.idealMinutes} />
           {/if}
@@ -8472,7 +8497,7 @@ return rows`
 <GoalBurst bind:this={goalBurst} />
 
 {#if pasteReview}
-  <div class="paste-review-backdrop" style={appShellStyle}>
+  <div class="paste-review-backdrop" style={appShellStyle} use:dismissOnBackdropClick={cancelPasteReview}>
     <div class="paste-review" role="dialog" aria-modal="true" aria-labelledby="paste-review-title">
       <div class="paste-review-head">
         <div>
@@ -8563,7 +8588,7 @@ return rows`
 {/if}
 
 {#if templateReview}
-  <div class="paste-review-backdrop" style={appShellStyle}>
+  <div class="paste-review-backdrop" style={appShellStyle} use:dismissOnBackdropClick={cancelTemplateReview}>
     <div class="paste-review template-review" role="dialog" aria-modal="true" aria-labelledby="template-review-title">
       <div class="paste-review-head">
         <div>
@@ -8624,7 +8649,7 @@ return rows`
 
 {#if quickAddOpen}
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-  <div class="modal-backdrop quick-add-backdrop" style={appShellStyle} role="presentation" on:click|self={closeQuickAdd}>
+  <div class="modal-backdrop quick-add-backdrop" style={appShellStyle} role="presentation" use:dismissOnBackdropClick={closeQuickAdd}>
     <div class="quick-add-viewport" use:fitVisualViewport>
       <!-- Shares the Today row markup so task formatting changes carry over. -->
       <form class="list-panel quick-add-dialog" aria-label="Add idea" on:submit|preventDefault={saveQuickAdd}>
@@ -8721,7 +8746,7 @@ return rows`
 {/if}
 
 {#if recoveryPanelOpen}
-  <div class="modal-backdrop">
+  <div class="modal-backdrop" role="presentation" use:dismissOnBackdropClick={closeRecoveryPanel}>
     <div class="recovery-panel" role="dialog" aria-modal="true" aria-labelledby="recovery-panel-title">
       <div class="recovery-panel-head">
         <div>

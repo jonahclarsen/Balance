@@ -627,7 +627,7 @@ test('goal rhythm marks past days with unchecked tasks with a red X', async ({ p
   await expect(head(unfinished)).not.toHaveClass(/incomplete/)
 })
 
-test('Alt+A toggles goal rhythm without typing and hidden rhythm returns after 60 seconds', async ({ page }) => {
+test('Alt+A and the close button hide goal rhythm for 6 hours', async ({ page }) => {
   await page.clock.install()
   const goalRhythm = page.getByRole('region', { name: 'Goal history' })
   const goalSearch = page.getByRole('searchbox', { name: 'Search goals' })
@@ -648,9 +648,18 @@ test('Alt+A toggles goal rhythm without typing and hidden rhythm returns after 6
   ).toBe(0)
   await expect(goalRhythm).toHaveCount(0)
 
-  await page.clock.fastForward(59_000)
+  await page.clock.fastForward('05:59:00')
   expect(await goalRhythm.count()).toBe(0)
-  await page.clock.fastForward(1_000)
+  await page.clock.fastForward('01:00')
+  await expect(goalRhythm).toBeVisible()
+
+  // The close button is the same hide, and it survives a reload.
+  await goalRhythm.getByRole('button', { name: 'Hide goal rhythm for 6 hours' }).click()
+  await expect(goalRhythm).toHaveCount(0)
+  await page.reload()
+  await expect(page.getByRole('region', { name: 'Daily plan' })).toBeVisible()
+  expect(await goalRhythm.count()).toBe(0)
+  await page.keyboard.press('Alt+a')
   await expect(goalRhythm).toBeVisible()
 
   const altLeftAllowed = await goalSearch.evaluate((element) =>

@@ -8,6 +8,7 @@
 
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
+  import { dismissOnBackdropClick } from './backdropDismiss'
 
   export let active = true
   export let onClose: () => void
@@ -70,7 +71,7 @@
   inert={!active}
   role="presentation"
   style={`z-index: ${z}; --mobile-overlay-top: ${mobileViewportTop}px; --overlay-max-width: ${maxWidth}px; --overlay-height: ${height === null ? 'auto' : `${height}px`}; --overlay-body-overflow: ${bodyOverflow}`}
-  on:click|self={onClose}
+  use:dismissOnBackdropClick={onClose}
   on:keydown={handleEscape}
 >
   <div

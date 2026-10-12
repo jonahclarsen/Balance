@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onDestroy, tick } from 'svelte'
+  import ProgressBar from './ProgressBar.svelte'
   import TaskCheckbox from './TaskCheckbox.svelte'
+  import { dismissOnBackdropClick } from './backdropDismiss'
   import { bucketUnlockDelay, findIdea, ideaBucketMeta, IDEA_SORT_QUESTION } from './ideaBuckets'
   import { renderItemDisplayHTML } from './planner'
   import type { Id, IdeaBucket, IdeaBucketKind, IdeaItem } from './types'
@@ -25,7 +27,6 @@
   let editing = false
   let editDraft = ''
   let editInput: HTMLTextAreaElement | null = null
-  let list: HTMLDivElement | null = null
   let decisions: Record<Id, IdeaBucketKind> = {}
   // Commitment buttons unlock on a delay measured from when the card appeared.
   let shownAt = Date.now()
@@ -34,9 +35,8 @@
   let shaking: IdeaBucketKind | null = null
   let shakeTimer: number | null = null
 
-  $: ids = queue.map((item) => item.id)
-  $: live = ids.map((id) => findIdea(buckets, id)?.item ?? queue.find((item) => item.id === id)!)
-  $: current = live[index]
+  $: queued = queue[index]
+  $: current = queued ? findIdea(buckets, queued.id)?.item ?? queued : undefined
   $: from = current ? findIdea(buckets, current.id)?.bucket.kind ?? null : null
   $: options = step === 'yes' ? (['possible', 'genuine'] as const) : step === 'no' ? (['trash', 'afterlife'] as const) : []
   $: resetCard(index)
@@ -46,7 +46,6 @@
     editing = false
     shownAt = Date.now()
     scheduleUnlocks()
-    void scrollCurrentIntoView()
   }
 
   function scheduleUnlocks() {
@@ -62,16 +61,6 @@
 
   function locked(kind: IdeaBucketKind, _tick: number): boolean {
     return Date.now() < shownAt + bucketUnlockDelay(from, kind)
-  }
-
-  async function scrollCurrentIntoView() {
-    await tick()
-    const row = list?.querySelector<HTMLElement>('[aria-current="true"]')
-    if (!list || !row) return
-    const listRect = list.getBoundingClientRect()
-    const rowRect = row.getBoundingClientRect()
-    const top = list.scrollTop + (rowRect.top - listRect.top - listRect.height * 0.3)
-    list.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
   }
 
   function shake(kind: IdeaBucketKind) {
@@ -160,11 +149,7 @@
     }
   }
 
-  function tagFor(item: IdeaItem): string | null {
-    const kind = decisions[item.id]
-    if (!kind) return null
-    return ideaBucketMeta(kind).label
-  }
+  $: tag = current && decisions[current.id] ? ideaBucketMeta(decisions[current.id]!).label : null
 
   onDestroy(() => {
     for (const timer of unlockTimers) window.clearTimeout(timer)
@@ -175,59 +160,55 @@
 <svelte:window on:keydown={handleKeydown} />
 
 <!-- Shares the paste-review layout so card sorting looks the same everywhere. -->
-<div class="paste-review-backdrop idea-sort-backdrop">
+<div class="paste-review-backdrop idea-sort-backdrop" use:dismissOnBackdropClick={() => onFinish(false)}>
   <div class="paste-review idea-sort" role="dialog" aria-modal="true" aria-labelledby="idea-sort-title">
     <div class="paste-review-head">
-      <div>
-        <p class="eyebrow">{title}</p>
-        <h2 id="idea-sort-title">Idea {Math.min(index + 1, queue.length)} of {queue.length}</h2>
+      <div class="idea-sort-head-main">
+        <h2 class="eyebrow" id="idea-sort-title">{title}</h2>
+        <ProgressBar done={index} total={queue.length} label="Ideas sorted" />
       </div>
       <button class="ghost" type="button" title="Close (Esc)" aria-label="Close" on:click={() => onFinish(false)}>✕</button>
     </div>
 
-    <div class="paste-review-list" aria-label="Ideas being sorted" bind:this={list}>
-      {#each live as item, itemIndex (item.id)}
-        {@const isCurrent = itemIndex === index}
-        {@const tag = tagFor(item)}
-        <div
-          class="paste-review-card paste-review-item idea-sort-card"
-          class:current={isCurrent}
-          class:kept={!isCurrent && Boolean(tag)}
-          class:done={item.done}
-          aria-current={isCurrent ? 'true' : undefined}
-          data-idea-id={item.id}
-        >
-          {#if isCurrent && editing}
-            <textarea
-              class="paste-review-edit"
-              rows="1"
-              bind:value={editDraft}
-              bind:this={editInput}
-              placeholder="Idea text"
-              aria-label="Edit idea"
-            ></textarea>
-          {:else}
-            <div class="paste-review-line">
-              <TaskCheckbox
-                checked={item.done}
-                disabled={!isCurrent}
-                onChange={(event) => onToggleDone(item.id, event.currentTarget.checked)}
-              />
-              <div
-                class="paste-review-text item-text item-text-display"
-                class:done={item.done}
-                class:empty={!item.text?.trim()}
-              >{@html item.text?.trim() ? renderItemDisplayHTML(item.html, item.text, []) : '(empty idea)'}</div>
-              {#if tag}<span class="idea-sort-tag">{tag}</span>{/if}
-            </div>
-            {#if item.children.length > 0}
-              <ul class="idea-sort-children">
-                {#each item.children as child (child.id)}<li>{child.text}</li>{/each}
-              </ul>
+    <div class="paste-review-list" aria-label="Idea being sorted">
+      {#if current}
+        {#key current.id}
+          <div
+            class="paste-review-card paste-review-item idea-sort-card current"
+            class:done={current.done}
+            data-idea-id={current.id}
+          >
+            {#if editing}
+              <textarea
+                class="paste-review-edit"
+                rows="1"
+                bind:value={editDraft}
+                bind:this={editInput}
+                placeholder="Idea text"
+                aria-label="Edit idea"
+              ></textarea>
+            {:else}
+              <div class="paste-review-line">
+                <TaskCheckbox
+                  checked={current.done}
+                  onChange={(event) => onToggleDone(current.id, event.currentTarget.checked)}
+                />
+                <div
+                  class="paste-review-text item-text item-text-display"
+                  class:done={current.done}
+                  class:empty={!current.text?.trim()}
+                >{@html current.text?.trim() ? renderItemDisplayHTML(current.html, current.text, []) : '(empty idea)'}</div>
+                {#if tag}<span class="idea-sort-tag">{tag}</span>{/if}
+              </div>
+              {#if current.children.length > 0}
+                <ul class="idea-sort-children">
+                  {#each current.children as child (child.id)}<li>{child.text}</li>{/each}
+                </ul>
+              {/if}
             {/if}
-          {/if}
-        </div>
-      {/each}
+          </div>
+        {/key}
+      {/if}
     </div>
 
     <p class="idea-sort-question">{IDEA_SORT_QUESTION}</p>

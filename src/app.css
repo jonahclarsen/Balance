@@ -4610,6 +4610,26 @@ body.mobile-checkbox-dragging {
   padding-block: 5px;
 }
 
+.goal-history-hide {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.goal-history-summary + .goal-history-hide {
+  margin-left: 0;
+}
+
+.goal-history-hide-button {
+  width: 30px;
+  background: transparent;
+  padding: 3px 0 5px;
+  font-size: 18px;
+  line-height: 1;
+}
+
 .goal-history-filters {
   display: flex;
   flex: 0 1 312px;
@@ -7386,6 +7406,14 @@ textarea.note-title {
 
 .idea-sort .paste-review-list {
   max-height: 46dvh;
+}
+
+.idea-sort-head-main {
+  display: grid;
+  flex: 1 1 auto;
+  gap: 10px;
+  min-width: 0;
+  padding-top: 4px;
 }
 
 .idea-sort-question {

@@ -51,7 +51,7 @@
         { keys: ['esc'], label: 'Close backup browser (workspace shortcuts pause while browsing)' },
         { keys: ['mod', 'shift', 'G'], label: 'Generate selected day' },
         { keys: ['mod', 'N'], label: 'Create note (while in Notes)' },
-        { keys: ['alt', 'A'], label: 'Toggle goal rhythm' },
+        { keys: ['alt', 'A'], label: 'Hide goal rhythm for 6 hours, or show it again' },
         { keys: ['alt', 'K'], label: 'Add an idea to Proposition Party' },
         { keys: ['alt', 'I'], label: 'Toggle IMAX mode' },
         { keys: ['?'], label: 'Show this shortcuts reference' },

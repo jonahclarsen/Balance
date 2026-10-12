@@ -24,6 +24,8 @@
   export let onOpenGoals: (goalId?: string) => void
   export let onOpenDate: (date: string) => void
   export let onResizeStart: ((event: PointerEvent) => void) | undefined = undefined
+  export let onHide: (() => void) | undefined = undefined
+  export let hideShortcutLabel: string | null = null
   // A click on a plan item's goal badge sets this to scroll the goal into view.
   export let scrollRequest: { goalId: string; nonce: number } | null = null
 
@@ -321,6 +323,19 @@
       </div>
     </div>
     <span class="goal-history-summary">{goalDeadlineSummary.overdue} overdue, {goalDeadlineSummary.upcoming} upcoming in the next 3 days</span>
+    {#if onHide}
+      <div class="goal-history-hide">
+        {#if hideShortcutLabel}<kbd class="nav-shortcut" aria-hidden="true">{hideShortcutLabel}</kbd>{/if}
+        <button
+          class="goal-history-hide-button"
+          type="button"
+          aria-label="Hide goal rhythm for 6 hours"
+          aria-keyshortcuts={hideShortcutLabel ? 'Alt+A' : undefined}
+          title={`Hide goal rhythm for 6 hours${hideShortcutLabel ? ` (${hideShortcutLabel})` : ''}`}
+          on:click={onHide}
+        >×</button>
+      </div>
+    {/if}
   </header>
 
   <div class="goal-history-body goal-history-scroll" bind:this={scrollEl}>
