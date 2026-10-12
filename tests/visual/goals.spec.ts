@@ -2329,9 +2329,13 @@ test('goal rhythm uses dark segment and open-circle colors in dark mode', async 
   await expect(activeCell.locator('.goal-cell-mark.open')).toHaveCSS('border-color', 'rgba(58, 136, 116, 0.7)')
 })
 
-test('goal cards show their saved completion count without frozen-history text', async ({ page }) => {
+test('goal cards show their saved completion count and due date without frozen-history text', async ({ page }) => {
   await createGoal(page, 'Exercise', 3, 'lift, swim')
-  await expect(goalCard(page, 'Exercise').locator('.goal-card-meta')).toHaveText('0 saved completions')
+  const meta = goalCard(page, 'Exercise').locator('.goal-card-meta')
+  await expect(meta).toHaveText(['0 saved completions', 'Due in 2 days'])
+  await page.getByLabel('Cadence days for Exercise').fill('1')
+  await page.getByLabel('Cadence days for Exercise').press('Enter')
+  await expect(meta.last()).toHaveText('Due today')
   await expect(page.getByLabel('Matching terms for Exercise')).toHaveCSS('cursor', 'text')
   await expect(page.getByText(/history before .* is frozen/i)).toHaveCount(0)
 })

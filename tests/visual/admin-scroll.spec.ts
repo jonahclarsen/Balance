@@ -70,6 +70,35 @@ test('Escape leaves task editing; held W/S accelerates linearly and stops immedi
   await page.keyboard.up('s')
 })
 
+test('held arrow keys scroll other pages unless a control claims them', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Keyboard scrolling is a desktop keyboard feature')
+  await openView(page, 'Settings')
+  const workspace = page.locator('.workspace')
+  await page.locator('body').click({ position: { x: 1, y: 1 } })
+  const initial = await workspace.evaluate(el => el.scrollTop)
+  await page.keyboard.down('ArrowDown')
+  await expect.poll(() => workspace.evaluate(el => el.scrollTop)).toBeGreaterThan(initial + 100)
+  await page.keyboard.up('ArrowDown')
+  const afterArrow = await workspace.evaluate(el => el.scrollTop)
+  await page.keyboard.down('w')
+  await expect.poll(() => workspace.evaluate(el => el.scrollTop)).toBeLessThan(afterArrow - 100)
+  await page.keyboard.up('w')
+
+  // A focused celebration grid uses the arrows to move between options.
+  await page.locator('[aria-controls="celebration-gallery"]').click()
+  const option = page.locator('[data-celebration-option]').first()
+  await option.focus()
+  const beforeGrid = await workspace.evaluate(el => el.scrollTop)
+  await page.keyboard.press('ArrowRight')
+  await page.keyboard.down('ArrowDown')
+  await page.waitForTimeout(500)
+  await page.keyboard.up('ArrowDown')
+  await expect(page.locator('[data-celebration-option]').first()).not.toBeFocused()
+  // Revealing the newly focused row may nudge the page; a held scroll would
+  // cover more than 450 px in this time.
+  expect(Math.abs(await workspace.evaluate(el => el.scrollTop) - beforeGrid)).toBeLessThan(250)
+})
+
 test('admin settings show defaults, persist scroll tuning and reset it; studio moved out of Settings', async ({ page }, testInfo) => {
   await openView(page, 'Settings')
   await expect(page.getByLabel('Iridescent background controls')).toHaveCount(0)

@@ -4315,15 +4315,20 @@ body.mobile-checkbox-dragging {
 }
 
 .goal-card-footer {
-  display: grid;
+  display: flex;
   grid-area: footer;
-  align-items: center;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
 }
 
-.goal-card-footer > .goal-card-meta {
-  align-self: end;
-  justify-self: start;
-  text-align: left;
+.goal-card-footer > .goal-card-due {
+  margin-left: auto;
+  text-align: right;
+}
+
+.goal-card-due.overdue {
+  color: var(--danger);
 }
 
 .goal-recent-history-header,

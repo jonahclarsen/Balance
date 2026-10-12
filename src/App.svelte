@@ -68,6 +68,7 @@
   import { randomIridescentSelectionAnimationDelay, restartElementAnimations } from './lib/iridescentSelectionAnimation'
   import {
     filterGoalsByPhrase,
+    goalDaysUntilLapse,
     goalLightnessShift,
     goalNameMatchesAnyTerm,
     goalsMatchingItemText,
@@ -201,6 +202,7 @@
   let keyboardScrollStartTime = 0
   let keyboardScrollTime = 0
   let keyboardScrollPosition = 0
+  let pendingKeyboardScrollEvent: KeyboardEvent | null = null
 
   function readKeyboardScrollSpeed() {
     if (import.meta.env.DEV) {
@@ -262,8 +264,13 @@
     return keyboardScrollSpeed * (elapsed + rampBonusMs + fullSpeedBonusMs) / 1000
   }
 
+  function isKeyboardScrollKey(event: KeyboardEvent) {
+    return !event.altKey && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.isComposing &&
+      (event.code === 'KeyW' || event.code === 'KeyS' || event.code === 'ArrowUp' || event.code === 'ArrowDown')
+  }
+
   function canKeyboardScroll() {
-    return view === 'today' && selectedItemIds.length === 0 &&
+    return selectedItemIds.length === 0 &&
       !isFormFieldActive() && !isRichTextActive() &&
       !document.activeElement?.closest('[contenteditable="true"]') &&
       !searchOpen && !documentFindOpen && !shortcutsHelpOpen && !mobileDrawerOpen &&
@@ -283,7 +290,8 @@
       stopKeyboardScroll()
       return
     }
-    const direction = Number(heldScrollKeys.has('KeyS')) - Number(heldScrollKeys.has('KeyW'))
+    const direction = Number(heldScrollKeys.has('KeyS') || heldScrollKeys.has('ArrowDown')) -
+      Number(heldScrollKeys.has('KeyW') || heldScrollKeys.has('ArrowUp'))
     const scroller = usesWindowScroll() ? document.scrollingElement : workspaceEl
     if (scroller) {
       const distance = keyboardScrollDistanceAt(time - keyboardScrollStartTime) -
@@ -4084,18 +4092,12 @@ return rows`
       return
     }
 
-    if (!event.altKey && !primaryModifier && !event.shiftKey && !event.isComposing &&
-      (event.code === 'KeyW' || event.code === 'KeyS') && canKeyboardScroll()) {
-      event.preventDefault()
-      if (!event.repeat) {
-        heldScrollKeys.add(event.code)
-        if (keyboardScrollFrame === null) {
-          keyboardScrollPosition = currentWorkspaceScrollTop()
-          keyboardScrollStartTime = performance.now()
-          keyboardScrollTime = keyboardScrollStartTime
-          keyboardScrollFrame = requestAnimationFrame(advanceKeyboardScroll)
-        }
-      }
+    if (isKeyboardScrollKey(event) && canKeyboardScroll()) {
+      // Pages and widgets handle these keys in their own listeners, which run
+      // after this capture listener. A listener added to the window now runs
+      // last in this event's bubble phase, so scroll only if none claimed it.
+      pendingKeyboardScrollEvent = event
+      window.addEventListener('keydown', startKeyboardScrollIfUnclaimed, { once: true })
       return
     }
 
@@ -4326,6 +4328,26 @@ return rows`
       event.preventDefault()
       void redoAndOpenDestination()
     }
+  }
+
+  function goalDueLabel(days: number) {
+    if (days < 0) return `Overdue by ${-days} day${days === -1 ? '' : 's'}`
+    if (days === 0) return 'Due today'
+    return `Due in ${days} day${days === 1 ? '' : 's'}`
+  }
+
+  function startKeyboardScrollIfUnclaimed(event: KeyboardEvent) {
+    if (event !== pendingKeyboardScrollEvent) return
+    pendingKeyboardScrollEvent = null
+    if (event.defaultPrevented || !canKeyboardScroll()) return
+    event.preventDefault()
+    if (event.repeat) return
+    heldScrollKeys.add(event.code)
+    if (keyboardScrollFrame !== null) return
+    keyboardScrollPosition = currentWorkspaceScrollTop()
+    keyboardScrollStartTime = performance.now()
+    keyboardScrollTime = keyboardScrollStartTime
+    keyboardScrollFrame = requestAnimationFrame(advanceKeyboardScroll)
   }
 
   function isGoalDraftFormEditing() {
@@ -7730,6 +7752,7 @@ return rows`
           {@const active = isGoalActiveOnDate(goal, currentDay)}
           {@const goalCompletionHistory = goalCompletions.filter((completion) => completion.goalId === goal.id)}
           {@const completionCount = goalCompletionHistory.length}
+          {@const daysUntilDue = goalDaysUntilLapse(goal, goalCompletionHistory, currentDay)}
           {@const firstPeriod = goal.activityPeriods[0]}
           {#if !active && goal.id === archivedFilteredGoals[0]?.id}
             <h3 class="goal-archive-title">Archive</h3>
@@ -7836,6 +7859,9 @@ return rows`
               <p class="goal-card-meta">
                 {completionCount} saved completion{completionCount === 1 ? '' : 's'}
               </p>
+              {#if daysUntilDue !== null}
+                <p class="goal-card-meta goal-card-due" class:overdue={daysUntilDue < 0}>{goalDueLabel(daysUntilDue)}</p>
+              {/if}
             </div>
           </article>
         {:else}
@@ -7857,7 +7883,7 @@ return rows`
       <div class="settings-panel">
         <p>Development only. Tune values here, then use what works as the defaults you ship.</p>
         <section class="settings-section">
-          <div><h3>Keyboard scrolling</h3><p>Hold W or S on Today with no task selected or editor focused. Speed rises linearly, then remains constant.</p></div>
+          <div><h3>Keyboard scrolling</h3><p>Hold W/S or the up/down arrows with no task selected or text field focused. Speed rises linearly, then remains constant.</p></div>
           <label class="field">
             <span>Scroll speed (px/s)</span>
             <input type="number" min="50" max="3000" step="50" value={keyboardScrollSpeed}
