@@ -33,14 +33,18 @@
   ].filter(Boolean)
   $: warningTitle = warningReasons.length > 0 ? `This time ${warningReasons.join(' and ')}` : null
 
+  type DragModifiers = { altKey: boolean; shiftKey: boolean }
+
   let dragState:
     | {
         mode: 'start' | 'end'
-        adjustStartOnly: boolean
         originY: number
         originStart: number
         originEnd: number
         shiftTargets: TimeShiftTarget[] | null
+        shiftingTargets: boolean
+        clientY: number
+        modifiers: DragModifiers
         lastSteps: number
       }
     | null = null
@@ -48,28 +52,49 @@
   function beginDrag(mode: 'start' | 'end', event: PointerEvent) {
     event.preventDefault()
     ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
-    const adjustStartOnly = mode === 'start' && event.altKey
     dragState = {
       mode,
-      adjustStartOnly,
       originY: event.clientY,
       originStart: startMinutes,
       originEnd: endMinutes,
-      shiftTargets: adjustStartOnly ? null : getShiftTargets?.() ?? null,
+      shiftTargets: getShiftTargets?.() ?? null,
+      shiftingTargets: false,
+      clientY: event.clientY,
+      modifiers: { altKey: event.altKey, shiftKey: event.shiftKey },
       lastSteps: 0,
     }
+    // Modifiers are read live, so pressing or releasing Alt or Shift
+    // mid-drag takes effect immediately, even without moving the pointer.
+    window.addEventListener('keydown', updateDragModifiers, true)
+    window.addEventListener('keyup', updateDragModifiers, true)
     beginHapticDrag()
     vibrateSteps()
   }
 
   function continueDrag(event: PointerEvent) {
     if (!dragState) return
+    dragState.clientY = event.clientY
+    dragState.modifiers = { altKey: event.altKey, shiftKey: event.shiftKey }
+    applyDrag()
+  }
 
-    const steps = Math.round((dragState.originY - event.clientY) / dragPixelsPerStep)
-    const stepMinutes = event.shiftKey ? 5 : 15
+  function updateDragModifiers(event: KeyboardEvent) {
+    if (!dragState) return
+    const modifiers = { altKey: event.altKey, shiftKey: event.shiftKey }
+    if (modifiers.altKey === dragState.modifiers.altKey && modifiers.shiftKey === dragState.modifiers.shiftKey) return
+    dragState.modifiers = modifiers
+    applyDrag()
+  }
+
+  function applyDrag() {
+    if (!dragState) return
+
+    const steps = Math.round((dragState.originY - dragState.clientY) / dragPixelsPerStep)
+    const stepMinutes = dragState.modifiers.shiftKey ? 5 : 15
     const origin = dragState.mode === 'start' ? dragState.originStart : dragState.originEnd
     const snappedMinutes = Math.round(origin / stepMinutes + steps) * stepMinutes
     const delta = snappedMinutes - origin
+    const adjustStartOnly = dragState.mode === 'start' && dragState.modifiers.altKey
 
     if (steps !== dragState.lastSteps) {
       const crossedSteps = Math.abs(steps - dragState.lastSteps)
@@ -77,13 +102,21 @@
       vibrateSteps(crossedSteps)
     }
 
-    if (dragState.shiftTargets) {
+    if (dragState.shiftTargets && !adjustStartOnly) {
+      dragState.shiftingTargets = true
       onShift?.(dragState.shiftTargets, delta)
       return
     }
 
+    // Alt pressed mid-drag on a multi-selection: put the other selected
+    // items back where they started before adjusting only this start.
+    if (dragState.shiftingTargets && dragState.shiftTargets) {
+      dragState.shiftingTargets = false
+      onShift?.(dragState.shiftTargets, 0)
+    }
+
     if (dragState.mode === 'start') {
-      if (dragState.adjustStartOnly) {
+      if (adjustStartOnly) {
         const latestStart = Math.floor((dragState.originEnd - stepMinutes) / stepMinutes) * stepMinutes
         const nextStart = clampMinutes(Math.min(dragState.originStart + delta, latestStart))
         onChange(nextStart, dragState.originEnd)
@@ -112,6 +145,8 @@
   function endDrag() {
     if (!dragState) return
     dragState = null
+    window.removeEventListener('keydown', updateDragModifiers, true)
+    window.removeEventListener('keyup', updateDragModifiers, true)
     endHapticDrag()
   }
 

@@ -2505,6 +2505,65 @@ for (const shift of [false, true]) {
   }
 }
 
+test('modifiers pressed mid-drag apply without restarting the drag', async ({ page, isMobile }) => {
+  test.skip(isMobile, 'Mobile uses a time editor rather than desktop time dragging')
+  await page.goto('/')
+  await page.evaluate((date) => {
+    localStorage.clear()
+    localStorage.setItem('balance.appState.v1', JSON.stringify({
+      schemaVersion: 1, deviceId: 'test-device', localSequence: 0, historyRevision: 0,
+      activePlanDate: date, templates: [],
+      plans: [{ id: 'plan_live_modifiers', date, dailyReminder: '', items: [
+        { id: 'live-task', text: 'Live task', html: 'Live task', done: false,
+          startMinutes: 540, endMinutes: 600, children: [] },
+        { id: 'other-live-task', text: 'Other live task', html: 'Other live task', done: false,
+          startMinutes: 660, endMinutes: 720, children: [] },
+      ] }],
+      goals: [], goalCompletions: [], operations: [],
+    }))
+  }, todayISO())
+  await page.reload()
+
+  const row = page.getByRole('listitem', { name: /^Plan item: Live task/ })
+  await row.getByRole('button', { name: 'Select item' }).click()
+  await page.keyboard.down('Shift')
+  await page.getByRole('listitem', { name: /^Plan item: Other live task/ })
+    .getByRole('button', { name: 'Select item' }).click()
+  await page.keyboard.up('Shift')
+
+  const box = await row.locator('.time-start-side .time-part').boundingBox()
+  if (!box) throw new Error('Missing drag geometry')
+  const x = box.x + box.width / 2
+  const y = box.y + box.height / 2
+  try {
+    await page.mouse.move(x, y)
+    await page.mouse.down()
+    await page.mouse.move(x, y - 20)
+    await expect.poll(() => planItemTimeRange(page, 'Live task')).toEqual([570, 630])
+    await expect.poll(() => planItemTimeRange(page, 'Other live task')).toEqual([690, 750])
+
+    // Alt without moving: only this start changes, and the rest of the
+    // selection returns to where the drag began.
+    await page.keyboard.down('Alt')
+    await expect.poll(() => planItemTimeRange(page, 'Live task')).toEqual([570, 600])
+    await expect.poll(() => planItemTimeRange(page, 'Other live task')).toEqual([660, 720])
+
+    // Shift without moving switches to the 5-minute grid.
+    await page.keyboard.down('Shift')
+    await expect.poll(() => planItemTimeRange(page, 'Live task')).toEqual([550, 600])
+
+    await page.keyboard.up('Shift')
+    await page.keyboard.up('Alt')
+    await expect.poll(() => planItemTimeRange(page, 'Live task')).toEqual([570, 630])
+    await expect.poll(() => planItemTimeRange(page, 'Other live task')).toEqual([690, 750])
+    await page.mouse.up()
+  } finally {
+    await page.mouse.up()
+    await page.keyboard.up('Shift')
+    await page.keyboard.up('Alt')
+  }
+})
+
 test('alt-dragging a plan start time changes only the start time', async ({ page, isMobile }) => {
   test.skip(isMobile, 'Mobile uses a time editor rather than desktop time dragging')
   await page.goto('/')
