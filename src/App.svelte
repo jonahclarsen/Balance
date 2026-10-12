@@ -13,6 +13,7 @@
   import { onDestroy, onMount, tick } from 'svelte'
   import { startListStorageMaintenance } from './lib/listStorageMaintenance'
   import { startFreezeDiagnostics } from './lib/freezeDiagnostics'
+  import { fitVisualViewport } from './lib/fitVisualViewport'
   import { installMobileKeyboardScroll } from './lib/mobileKeyboardScroll'
   import GoalColorPicker from './lib/GoalColorPicker.svelte'
   import GoalCopyButton from './lib/GoalCopyButton.svelte'
@@ -8606,34 +8607,36 @@ return rows`
 {#if quickAddOpen}
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
   <div class="modal-backdrop quick-add-backdrop" style={appShellStyle} role="presentation" on:click|self={closeQuickAdd}>
-    <!-- Shares the Today row markup so task formatting changes carry over. -->
-    <form class="list-panel quick-add-dialog" aria-label="Add idea" on:submit|preventDefault={saveQuickAdd}>
-      <div class="item-shell">
-        <div class="plan-row">
-          <div class="plan-item-main">
-            <RichTextEditor
-              className="item-text"
-              kind="idea"
-              inputId="quick-add"
-              html={quickAddHTML}
-              text={quickAddText}
-              placeholder="New idea"
-              ariaLabel="New idea"
-              onChange={(html, text) => {
-                quickAddHTML = html
-                quickAddText = text
-              }}
-              onKeyDown={handleQuickAddKeydown}
-              onBeforeInput={handleQuickAddBeforeInput}
-            />
+    <div class="quick-add-viewport" use:fitVisualViewport>
+      <!-- Shares the Today row markup so task formatting changes carry over. -->
+      <form class="list-panel quick-add-dialog" aria-label="Add idea" on:submit|preventDefault={saveQuickAdd}>
+        <div class="item-shell">
+          <div class="plan-row">
+            <div class="plan-item-main">
+              <RichTextEditor
+                className="item-text"
+                kind="idea"
+                inputId="quick-add"
+                html={quickAddHTML}
+                text={quickAddText}
+                placeholder="New idea"
+                ariaLabel="New idea"
+                onChange={(html, text) => {
+                  quickAddHTML = html
+                  quickAddText = text
+                }}
+                onKeyDown={handleQuickAddKeydown}
+                onBeforeInput={handleQuickAddBeforeInput}
+              />
+            </div>
           </div>
         </div>
-      </div>
-      <div class="quick-add-actions">
-        <button class="primary" type="submit" disabled={!quickAddText.trim()}>Save</button>
-        <button type="button" on:click={closeQuickAdd}>Cancel</button>
-      </div>
-    </form>
+        <div class="quick-add-actions">
+          <button type="button" on:click={closeQuickAdd}>Cancel</button>
+          <button class="primary" type="submit" disabled={!quickAddText.trim()}>Save</button>
+        </div>
+      </form>
+    </div>
   </div>
 {/if}
 
