@@ -38,7 +38,7 @@ across blocks retains the prefix and suffix. An empty note always offers a way
 to start writing.
 
 Tab/Shift+Tab indent and outdent nested blocks. A top-level list can become a
-paragraph. Alt+Arrow moves blocks. Arrow and Shift+Arrow navigation use the
+paragraph. Alt+Arrow or Cmd+Ctrl+Arrow moves blocks within their level. Arrow and Shift+Arrow navigation use the
 single native selection across paragraphs, including wrapped lines and images.
 Title Enter focuses the end of the body, Tab its beginning, and Shift+Tab at the
 first body block returns to the title.
@@ -47,7 +47,9 @@ Bold, italic, and underline are toggles through shortcuts and the toolbar.
 Typing a quote around selected text preserves its formatting and selection,
 and forms its own undo step. Markdown prefixes and the slash menu change block kinds. Checklist toggles
 cascade to descendants and reconcile ancestors. Selected checklist blocks can
-be toggled together. External URLs and Balance app links retain their navigation
+be toggled together, by clicking a checkbox in the selection or with Mod+D or
+Mod+Enter, which toggle every checklist block the caret or selection touches
+(a mixed selection is checked first). External URLs and Balance app links retain their navigation
 behavior. Search and document find include the note body.
 
 ## Clipboard and images

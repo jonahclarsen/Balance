@@ -8,6 +8,7 @@
   --note-body-size: 15px;
   --note-body-line: 1.7;
   --note-marker-column: 24px;
+  --note-check-size: 18px;
   --note-child-indent: 24px;
   --note-thread: color-mix(in srgb, var(--line) 70%, transparent);
   position: relative;
@@ -54,6 +55,7 @@
   display: flow-root;
   min-width: 0;
   min-height: 1.7em;
+  padding: 3px 2px;
   white-space: pre-wrap;
   font-family: var(--font-content);
   font-synthesis: style;
@@ -160,14 +162,16 @@
   color: var(--muted);
 }
 
-/* Checklists */
+/* Checklists: the box is centred in the gutter before the text (block and
+   text padding plus the marker column and gap) and on the first line, half a
+   pixel high so it meets the glyphs rather than the taller line box. */
 .lexical-note-editor .note-check {
   position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 18px;
-  height: 18px;
-  margin: calc((var(--note-body-size) * var(--note-body-line) - 18px) / 2) 3px 0 2px;
+  top: calc(5px + (var(--note-body-size) * var(--note-body-line) - var(--note-check-size)) / 2 - 0.5px);
+  left: calc((var(--note-marker-column) + 12px - var(--note-check-size)) / 2);
+  width: var(--note-check-size);
+  height: var(--note-check-size);
+  margin: 0;
   border-radius: 5px;
   transition: border-color 140ms ease, background-color 140ms ease, box-shadow 140ms ease, transform 120ms ease;
   user-select: none;
@@ -214,6 +218,11 @@
   border-radius: 1px;
   background: var(--note-thread);
   pointer-events: none;
+}
+
+/* A checklist's thread drops from the centre of its checkbox. */
+.lexical-note-editor .note-checklist > .note-children::before {
+  left: calc((var(--note-marker-column) + 12px) / 2 - var(--note-child-indent));
 }
 
 .lexical-note-editor .note-item:focus-within > .note-children::before,
@@ -387,9 +396,7 @@
   }
 
   .lexical-note-editor .note-check {
-    width: 20px;
-    height: 20px;
-    margin-top: calc((var(--note-body-size) * var(--note-body-line) - 20px) / 2);
+    --note-check-size: 20px;
   }
 
   .lexical-note-editor .note-list-item > .note-block {

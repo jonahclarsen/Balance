@@ -617,10 +617,20 @@ class LexicalNoteEditorView implements NoteEditorView {
   }
 
   toggleChecked(): void {
-    this.runCommand(() => {
-      const block = this.$targetBlock()
-      if (block && block.getKind() === 'checklist') block.setDone(!block.getDone())
-    })
+    this.runCommand(() => this.$toggleSelectedChecks())
+  }
+
+  // Mod+D / Mod+Enter: toggle every checklist row the selection touches. A
+  // mixed selection is checked first, like the Today list.
+  private $toggleSelectedChecks() {
+    const selection = $currentRange()
+    const edges = selection ? $selectionEdges(selection) : null
+    const target = this.$targetBlock()
+    const touched = edges ? $blocksBetween(edges.start.block, edges.end.block) : target ? [target] : []
+    const checks = touched.filter((block) => block.getKind() === 'checklist')
+    if (checks.length === 0) return
+    const done = checks.some((block) => !block.getDone())
+    for (const block of checks) if (block.getDone() !== done) block.setDone(done)
   }
 
   indent(): void {
@@ -1194,6 +1204,15 @@ class LexicalNoteEditorView implements NoteEditorView {
         this.pendingSource = 'command'
         this.selectAllMarker = null
         this.$indentOrOutdent(event.shiftKey)
+      })
+      return true
+    }
+
+    if (mod && !event.altKey && !event.shiftKey && (event.key.toLowerCase() === 'd' || event.key === 'Enter') && !event.isComposing) {
+      event.preventDefault()
+      editor.update(() => {
+        this.pendingSource = 'command'
+        this.$toggleSelectedChecks()
       })
       return true
     }

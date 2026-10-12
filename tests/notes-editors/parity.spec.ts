@@ -345,6 +345,28 @@ test.describe('P-26/27 indent, outdent, move', () => {
       await harness.waitForNote(note.id, (stored) => stored.items[1].id === second.id && stored.items[0].id === note.items[0].id)
     })
   }
+
+  test('Meta+Control+Up / Down move bullet, numbered, nested and checklist rows', async ({ harness }) => {
+    await harness.boot({ select: 'Nested lists' })
+    const lists = harness.noteByTitle('Nested lists')
+    await harness.placeCaret(lists.items[1].id, 2)
+    await harness.page.keyboard.press('Meta+Control+ArrowUp')
+    await harness.waitForNote(lists.id, (stored) => stored.items[0].id === lists.items[1].id && stored.items[1].children.length === 2)
+    const rye = lists.items[0].children[1].children[1]
+    await harness.placeCaret(rye.id, 1)
+    await harness.page.keyboard.press('Meta+Control+ArrowUp')
+    await harness.waitForNote(lists.id, (stored) => stored.items[1].children[1].children[0].id === rye.id)
+    await harness.placeCaret(lists.items[3].id, 1)
+    await harness.page.keyboard.press('Meta+Control+ArrowDown')
+    await harness.waitForNote(lists.id, (stored) => stored.items[3].id === lists.items[4].id && stored.items[4].id === lists.items[3].id)
+
+    await harness.selectNote('Checklist')
+    const checklist = harness.noteByTitle('Checklist')
+    await harness.placeCaret(checklist.items[1].id, 2)
+    await harness.page.keyboard.press('Meta+Control+ArrowUp')
+    await harness.waitForNote(checklist.id, (stored) => stored.items[0].id === checklist.items[1].id)
+    expect(await harness.caretItemId()).toBe(checklist.items[1].id)
+  })
 })
 
 test.describe('P-28 arrow navigation', () => {
@@ -561,11 +583,27 @@ test.describe('P-17 checklist toggling', () => {
     await harness.waitForNote(note.id, (stored) => stored.items[1].done)
     // Done items are not reordered.
     expect((await harness.storedNote(note.id))!.items.map((item) => item.id)).toEqual(note.items.map((item) => item.id))
-    // Mod+D does nothing in Notes.
-    await harness.placeCaret(note.items[1].id, 0)
+  })
+
+  test('Mod+D and Mod+Enter toggle the caret checklist row and every row a selection touches', async ({ harness }) => {
+    await harness.boot({ select: 'Checklist' })
+    const note = harness.noteByTitle('Checklist')
+    await harness.placeCaret(note.items[1].id, 2)
     await harness.page.keyboard.press(`${mod}+d`)
-    await harness.page.waitForTimeout(200)
-    expect((await harness.storedNote(note.id))!.items[1].done).toBe(true)
+    await harness.waitForNote(note.id, (stored) => stored.items[1].done)
+    expect(await harness.caretItemId()).toBe(note.items[1].id)
+    await harness.page.keyboard.press(`${mod}+Enter`)
+    await harness.waitForNote(note.id, (stored) => !stored.items[1].done)
+    expect((await harness.storedNote(note.id))!.items.length).toBe(note.items.length)
+
+    // Done item, Open item: a mixed selection checks both, then unchecks both.
+    await harness.placeCaret(note.items[0].id, 1)
+    await harness.page.keyboard.press('Shift+ArrowDown')
+    await harness.page.keyboard.press(`${mod}+d`)
+    await harness.waitForNote(note.id, (stored) => stored.items[0].done && stored.items[1].done)
+    await harness.page.keyboard.press(`${mod}+Enter`)
+    await harness.waitForNote(note.id, (stored) => !stored.items[0].done && !stored.items[1].done)
+    expect((await harness.storedNote(note.id))!.items.map((item) => item.text)).toEqual(note.items.map((item) => item.text))
   })
 })
 
