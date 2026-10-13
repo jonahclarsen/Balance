@@ -11,12 +11,29 @@
   // A nested question is moot once any question above it answered "none".
   $: visibleSteps = steps.filter((step) => step.questionAncestorIds.every((id) => answers[id] !== null))
   $: step = visibleSteps[index]
-  $: yesNo = step?.options.length === 1
+  $: typed = step?.typedAnswerPrefix != null
+  $: yesNo = !typed && step?.options.length === 1
 
-  function answer(optionId: Id | null) {
+  function answer(value: TemplateQuizAnswers[Id]) {
     if (!step) return
-    answers = { ...answers, [step.itemId]: optionId }
+    answers = { ...answers, [step.itemId]: value }
     advance()
+  }
+
+  // A blank typed answer means none.
+  function answerTyped(value: string) {
+    if (!step?.typedAnswerPrefix) return
+    const typedText = value.trim()
+    answer(typedText === '' ? null : { text: step.typedAnswerPrefix + typedText })
+  }
+
+  function typedValue(current: TemplateQuizAnswers[Id] | undefined, prefix: string): string {
+    return current && typeof current === 'object' ? current.text.slice(prefix.length) : ''
+  }
+
+  function focusInput(node: HTMLInputElement) {
+    node.focus()
+    node.select()
   }
 
   // Skipping leaves the row to its usual probability roll.
@@ -42,7 +59,7 @@
   }
 
   function handleKeydown(event: KeyboardEvent) {
-    if (!step || event.altKey || event.ctrlKey || event.metaKey || event.repeat) return
+    if (!step || event.target instanceof HTMLInputElement || event.altKey || event.ctrlKey || event.metaKey || event.repeat) return
     const key = event.key.toLowerCase()
     let handled = true
     if (key === 'b') goBack()
@@ -63,10 +80,20 @@
     <p class="day-quiz-progress">Question {index + 1} of {visibleSteps.length}</p>
     <p class="day-quiz-prompt">{step.question}</p>
 
-    {#if yesNo}
+    {#if step.typedAnswerPrefix != null}
+      {@const prefix = step.typedAnswerPrefix}
+      <p class="day-quiz-detail">Adds “{prefix}…”. Leave blank for none.</p>
+      {#key step.itemId}
+        <form class="day-quiz-typed" on:submit|preventDefault={(event) => answerTyped(new FormData(event.currentTarget).get('answer')?.toString() ?? '')}>
+          <input name="answer" type="text" aria-label={step.question} value={typedValue(current, prefix)} autocomplete="off" use:focusInput />
+          <button type="submit">Next <kbd>↵</kbd></button>
+        </form>
+      {/key}
+    {:else if yesNo}
       <p class="day-quiz-detail">Yes adds “{step.options[0].text.trim() || 'this row'}”.</p>
     {/if}
 
+    {#if !typed}
     <div class="day-quiz-answers" class:yes-no={yesNo}>
       {#if yesNo}
         <button type="button" class:chosen={current === step.options[0].id} on:click={() => answer(step.options[0].id)}>
@@ -84,10 +111,11 @@
         {yesNo ? 'No' : 'None'} <kbd>N</kbd>
       </button>
     </div>
+    {/if}
 
     <div class="day-quiz-nav">
-      <button type="button" on:click={goBack} disabled={index === 0}>← Back <kbd>B</kbd></button>
-      <button type="button" title="Leave this row to its usual odds" on:click={skip}>Skip <kbd>S</kbd> →</button>
+      <button type="button" on:click={goBack} disabled={index === 0}>← Back{#if !typed} <kbd>B</kbd>{/if}</button>
+      <button type="button" title="Leave this row to its usual odds" on:click={skip}>Skip{#if !typed} <kbd>S</kbd>{/if} →</button>
     </div>
   {/if}
 </div>
@@ -118,6 +146,18 @@
   .day-quiz-detail {
     margin-top: -8px !important;
     color: var(--muted);
+  }
+
+  .day-quiz-typed {
+    display: flex;
+    gap: 8px;
+  }
+
+  .day-quiz-typed input {
+    flex: 1;
+    min-width: 0;
+    padding: 12px 14px;
+    font-size: 16px;
   }
 
   .day-quiz-answers {
