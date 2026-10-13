@@ -191,6 +191,37 @@ test('the sorter stays with its page and cuts ideas to the clipboard', async ({ 
   expect(await buckets(page)).toMatchObject({ proposition: ['Synthetic stay'] })
 })
 
+test('a day generation sort can add ideas to the new day', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
+  await open(page)
+  await storeCall(page, `
+    plannerStore.addIdea('Synthetic for today')
+    plannerStore.addIdea('Synthetic later')
+  `)
+
+  // Sorts outside generation have no day to add to.
+  await openView(page, 'Buckets')
+  await card(page, 'proposition').getByRole('button', { name: 'Sort', exact: true }).click()
+  await page.keyboard.press('y')
+  await expect(sorter(page).getByRole('button', { name: 'Cut (X)' })).toBeVisible()
+  await expect(sorter(page).getByRole('button', { name: 'Add to day (D)' })).toHaveCount(0)
+  await page.keyboard.press('Escape')
+
+  await generateDay(page)
+  await expectIdea(page, 1, 2)
+  await page.keyboard.press('y')
+  await page.keyboard.press('d')
+  await expectIdea(page, 1, 1)
+  await expect(sorter(page).locator('.idea-sort-card')).toContainText('Synthetic later')
+  await page.keyboard.press('n')
+  await page.keyboard.press('t')
+  await expect(sorter(page)).toBeHidden()
+
+  const plan = page.getByRole('region', { name: 'Daily plan' })
+  await expect(plan.locator('[data-plan-text-input]').filter({ hasText: 'Synthetic for today' })).toHaveCount(1)
+  expect(await buckets(page)).toMatchObject({ proposition: [], trash: ['Synthetic later'] })
+})
+
 test('pasted lists import as ideas and open the sorter; trash clears after 30 days', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
   await open(page)

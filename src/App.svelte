@@ -476,7 +476,8 @@
   // One-card-at-a-time idea sorting; resolves true once every queued idea has a bucket.
   // A sort belongs to the page it was opened on: it hides while another page is
   // open and picks up where it left off on return.
-  let ideaSort: { queue: import('./lib/types').IdeaItem[]; mode: 'proposition' | 'review'; title: string; view: View; resolve: (completed: boolean) => void } | null = null
+  // Sorts run during day generation can also pick ideas for the new day.
+  let ideaSort: { queue: import('./lib/types').IdeaItem[]; mode: 'proposition' | 'review'; title: string; view: View; addToDay?: (itemId: Id) => void; resolve: (completed: boolean) => void } | null = null
   $: ideaSortVisible = Boolean(ideaSort && view === ideaSort.view)
   let ideaImportOpen = false
   // Tracks each plan item's done state so we can fire a goal burst the moment an
@@ -3126,10 +3127,10 @@ return rows`
     plannerStore.ensureIdeaReviewGoal()
   }
 
-  function askIdeaSort(queue: import('./lib/types').IdeaItem[], mode: 'proposition' | 'review', title: string): Promise<boolean> {
+  function askIdeaSort(queue: import('./lib/types').IdeaItem[], mode: 'proposition' | 'review', title: string, addToDay?: (itemId: Id) => void): Promise<boolean> {
     ideaSort?.resolve(false)
     return new Promise((resolve) => {
-      ideaSort = { queue, mode, title, view, resolve }
+      ideaSort = { queue, mode, title, view, addToDay, resolve }
     })
   }
 
@@ -3532,9 +3533,12 @@ return rows`
       return
     }
 
-    // Every proposition must land in a bucket before a new day begins.
+    // Every proposition must land in a bucket or the new day before it begins.
+    // Ideas picked for the day stay in Proposition Party until the day exists,
+    // so cancelling generation never loses them.
     const propositions = bucketItems($plannerStore.ideaBuckets, 'proposition')
-    if (propositions.length > 0 && !(await askIdeaSort(propositions, 'proposition', 'Sort new ideas'))) return
+    const dayIdeaIds: Id[] = []
+    if (propositions.length > 0 && !(await askIdeaSort(propositions, 'proposition', 'Sort new ideas', (itemId) => dayIdeaIds.push(itemId)))) return
 
     const steps = templateQuizSteps(template, $plannerStore.templateQuestions)
     const quizAnswers = steps.length > 0 ? await askDayQuiz(template.name, steps) : {}
@@ -3548,10 +3552,23 @@ return rows`
       todayISO(),
     )
     plannerStore.generatePlan(template.id, date, replaceExisting, quizAnswers)
+    moveIdeasToDay(dayIdeaIds, date)
     const { [date]: _generatedDate, ...remainingSelections } = emptyDayTemplateSelections
     emptyDayTemplateSelections = remainingSelections
     view = 'today'
     if (doabilityReviews.length > 0) goalDoabilityReviews = doabilityReviews
+  }
+
+  function moveIdeasToDay(itemIds: Id[], date: string) {
+    const plan = $plannerStore.plans.find((candidate) => candidate.date === date)
+    if (!plan) return
+    for (const itemId of itemIds) {
+      const found = findIdea($plannerStore.ideaBuckets, itemId)
+      if (!found) continue
+      const { bucketedAt: _bucketedAt, ...item } = found.item
+      plannerStore.pastePlanItems(plan.id, [item], null, 'after')
+      plannerStore.deleteIdeaItem(found.bucket.id, itemId)
+    }
   }
 
   function askDayQuiz(templateName: string, steps: TemplateQuizStep[]): Promise<TemplateQuizAnswers | null> {
@@ -8508,6 +8525,7 @@ return rows`
           onEdit={(itemId, text) => { const found = findIdea($plannerStore.ideaBuckets, itemId); if (found) plannerStore.patchIdeaItem(found.bucket.id, itemId, { text, html: escapeHTML(text) }) }}
           onToggleDone={(itemId, done) => { const found = findIdea($plannerStore.ideaBuckets, itemId); if (found) plannerStore.patchIdeaItem(found.bucket.id, itemId, { done }) }}
           onCut={cutSortedIdea}
+          onAddToDay={ideaSort.addToDay}
           onFinish={finishIdeaSort}
         />
       {/key}

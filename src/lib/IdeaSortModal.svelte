@@ -22,6 +22,8 @@
   export let onToggleDone: (itemId: Id, done: boolean) => void
   // Removes the idea and puts it on the clipboard to paste where it belongs.
   export let onCut: (itemId: Id) => void
+  // Only offered while generating a day: the idea joins that day's tasks.
+  export let onAddToDay: ((itemId: Id) => void) | undefined = undefined
   export let onFinish: (completed: boolean) => void
 
   type Step = 'question' | 'yes' | 'no'
@@ -110,6 +112,12 @@
     dropCurrent()
   }
 
+  function addToDay() {
+    if (!current || !onAddToDay) return
+    onAddToDay(current.id)
+    dropCurrent()
+  }
+
   function dropCurrent() {
     if (!current) return
     const removedId = current.id
@@ -157,6 +165,7 @@
     else if (step === 'yes' && key === 'g') choose('genuine')
     else if (step === 'yes' && key === 'p') choose('possible')
     else if (step === 'yes' && key === 'x') cut()
+    else if (step === 'yes' && key === 'd' && onAddToDay) addToDay()
     else if (step === 'no' && key === 'a') choose('afterlife')
     else if (step === 'no' && key === 't') choose('trash')
     else handled = false
@@ -254,6 +263,9 @@
         {/each}
         {#if step === 'yes'}
           <button type="button" title="Remove this idea and copy it to paste somewhere else" on:click={cut}>Cut (X)</button>
+          {#if onAddToDay}
+            <button type="button" title="Add this idea to the day being generated" on:click={addToDay}>Add to day (D)</button>
+          {/if}
         {/if}
       {/if}
     </div>
