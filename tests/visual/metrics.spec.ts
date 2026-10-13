@@ -75,3 +75,32 @@ test('metric questions split on Enter, use type buttons, and drag like task rows
     )
     .toEqual(['Did you go outside?', 'Energy score', 'Hours slept'])
 })
+
+test('archiving a quiz hides it from the rail and it can be unarchived', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'The phone layout is covered by mobile-metrics.spec.ts')
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  await page.getByRole('button', { name: 'Quizzes', exact: true }).click()
+  await page.getByRole('button', { name: '+ New quiz' }).first().click()
+  await page.getByLabel('Quiz name').fill('Plank')
+
+  await page.getByRole('button', { name: 'Archive quiz' }).click()
+  await expect(page.getByRole('heading', { name: 'No quizzes yet' })).toBeVisible()
+  await expect(page.locator('[data-metric-tab-id]')).toHaveCount(0)
+  await expect
+    .poll(() => page.evaluate(() => Boolean(JSON.parse(localStorage.getItem('balance.appState.v1') || '{}').metrics?.[0]?.archivedAt)))
+    .toBe(true)
+
+  await page.getByRole('button', { name: 'Archived (1)' }).click()
+  const archivedChip = page.locator('[data-archived-metric-tab-id]', { hasText: 'Plank' })
+  await expect(archivedChip).toContainText('Archived')
+  await archivedChip.click()
+  await expect(page.getByText('This quiz is archived and hidden from Quizzes.')).toBeVisible()
+  await page.getByRole('button', { name: 'Unarchive' }).click()
+
+  await expect(page.locator('[data-metric-tab-id]')).toHaveText(['Plank'])
+  await expect(page.getByLabel('Quiz name')).toHaveValue('Plank')
+  await expect(page.getByRole('button', { name: /^Archived \(/ })).toHaveCount(0)
+})

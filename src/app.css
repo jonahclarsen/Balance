@@ -5759,6 +5759,11 @@ body.mobile-checkbox-dragging {
   color: var(--muted);
 }
 
+.archived-banner-actions {
+  display: flex;
+  gap: 8px;
+}
+
 /* The trailing "New metric" pill reads as an action rather than a tab. The
    dashed edge is shared with other "add" buttons (e.g. New list). */
 .dashed-edge {

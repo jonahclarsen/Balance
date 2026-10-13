@@ -2988,6 +2988,17 @@ function createPlannerStore() {
       }))
     },
 
+    setMetricArchived(metricId: Id, archived: boolean) {
+      commitEntities(archived ? 'archive_metric' : 'unarchive_metric', { metricId }, (state) =>
+        updateMetric(state, metricId, (metric) => {
+          if (Boolean(metric.archivedAt) === archived) return metric
+          if (archived) return { ...metric, archivedAt: nowISO(), updatedAt: nowISO() }
+          const { archivedAt: _archivedAt, ...rest } = metric
+          return { ...rest, updatedAt: nowISO() }
+        }),
+      )
+    },
+
     renameMetric(metricId: Id, name: string) {
       commitEntities(
         'rename_metric',

@@ -165,6 +165,9 @@ export type Metric = {
   id: Id
   name: string
   questions: MetricQuestion[]
+  // Set when the quiz is archived: hidden from the Quizzes rail, still openable
+  // from its Archived section and through existing quiz links.
+  archivedAt?: string
   createdAt: string
   updatedAt: string
 }

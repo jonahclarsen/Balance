@@ -490,6 +490,7 @@
   let selectedListTemplateId = ''
   let listViewTemplateId = ''
   let listArchiveOpen = false
+  let archivedMetricsOpen = false
   // The list overlay toast lives inside a modal that doesn't reliably hold DOM
   // focus, so the global key handler routes arrows / Cmd+D into its ListPanel
   // through this binding. The Lists-tab ListPanel handles its own keys directly.
@@ -814,8 +815,11 @@ return rows`
   )
 
   // ---- Metrics ----
-  $: selectedMetric = metrics.find((metric) => metric.id === selectedMetricId) ?? metrics[0]
-  $: if (!selectedMetricId && metrics[0]) selectedMetricId = metrics[0].id
+  // Archived quizzes leave the rail but stay openable from its Archived section.
+  $: activeMetrics = metrics.filter((metric) => !metric.archivedAt)
+  $: archivedMetrics = metrics.filter((metric) => metric.archivedAt)
+  $: selectedMetric = metrics.find((metric) => metric.id === selectedMetricId) ?? activeMetrics[0]
+  $: if (!selectedMetricId && activeMetrics[0]) selectedMetricId = activeMetrics[0].id
   $: if (!importMetricId && metrics[0]) importMetricId = metrics[0].id
   // ---- Notes ----
   $: if (!selectedNoteId && notes[0]) selectedNoteId = notes[0].id
@@ -2169,19 +2173,42 @@ return rows`
   }
 
   async function selectAdjacentMetric(direction: -1 | 1) {
-    if (metrics.length < 2 || !selectedMetric) return
+    if (activeMetrics.length < 2 || !selectedMetric) return
 
-    const currentIndex = metrics.findIndex((metric) => metric.id === selectedMetric.id)
+    const currentIndex = activeMetrics.findIndex((metric) => metric.id === selectedMetric.id)
     if (currentIndex === -1) return
 
-    const nextIndex = (currentIndex + direction + metrics.length) % metrics.length
-    selectedMetricId = metrics[nextIndex].id
+    const nextIndex = (currentIndex + direction + activeMetrics.length) % activeMetrics.length
+    selectedMetricId = activeMetrics[nextIndex].id
 
     await tick()
     const selectedTab = Array.from(
       document.querySelectorAll<HTMLButtonElement>('[data-metric-tab-id]'),
     ).find((tab) => tab.dataset.metricTabId === selectedMetricId)
     selectedTab?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }
+
+  function archiveMetric(metricId: Id) {
+    const index = activeMetrics.findIndex((metric) => metric.id === metricId)
+    const remaining = activeMetrics.filter((metric) => metric.id !== metricId)
+    plannerStore.setMetricArchived(metricId, true)
+    selectedMetricId = remaining[Math.min(Math.max(index, 0), remaining.length - 1)]?.id ?? ''
+  }
+
+  async function confirmDeleteArchivedMetric(metric: Metric) {
+    if (!metric.archivedAt) return
+    const name = metric.name.trim() || 'Untitled quiz'
+    const entryCount = $plannerStore.metricEntries.filter((entry) => entry.metricId === metric.id).length
+    const message =
+      entryCount > 0
+        ? `Permanently delete “${name}” and its ${entryCount} saved answer${entryCount === 1 ? '' : 's'}? You can still undo this action.`
+        : `Permanently delete “${name}” from the archive? You can still undo this action.`
+    const confirmed = isTauri()
+      ? await confirmDialog(message, { title: 'Permanently delete quiz?', kind: 'warning' })
+      : window.confirm(message)
+    if (!confirmed) return
+    plannerStore.deleteMetric(metric.id)
+    if (selectedMetricId === metric.id) selectedMetricId = activeMetrics[0]?.id ?? ''
   }
 
   function openImportModal() {
@@ -7614,7 +7641,7 @@ return rows`
 
       {#if metrics.length > 0}
         <nav class="template-rail metric-rail" aria-label="Select quiz">
-          {#each metrics as metric (metric.id)}
+          {#each activeMetrics as metric (metric.id)}
             <button
               type="button"
               class="rail-chip"
@@ -7627,17 +7654,51 @@ return rows`
             </button>
           {/each}
           <button type="button" class="rail-chip dashed-edge" on:click={createMetricAndSelect}>New quiz</button>
+          {#if archivedMetrics.length > 0}
+            <button
+              type="button"
+              class="rail-chip"
+              aria-expanded={archivedMetricsOpen}
+              on:click={() => (archivedMetricsOpen = !archivedMetricsOpen)}
+            >
+              Archived ({archivedMetrics.length})
+            </button>
+          {/if}
+          {#if archivedMetricsOpen}
+            {#each archivedMetrics as metric (metric.id)}
+              <button
+                type="button"
+                class="rail-chip"
+                class:active={selectedMetric?.id === metric.id}
+                aria-current={selectedMetric?.id === metric.id}
+                data-archived-metric-tab-id={metric.id}
+                on:click={() => (selectedMetricId = metric.id)}
+              >
+                {metric.name || 'Untitled quiz'}
+                <span class="rail-chip-archived">Archived</span>
+              </button>
+            {/each}
+          {/if}
         </nav>
       {/if}
 
-      {#if metrics.length === 0}
+      {#if !selectedMetric}
         <div class="empty-state">
           <h3>No quizzes yet</h3>
-          <p>Create a quiz to start gathering data, one question at a time.</p>
+          <p>{metrics.length > 0 ? 'All quizzes are archived. Unarchive one from Archived, or create a new one.' : 'Create a quiz to start gathering data, one question at a time.'}</p>
           <button class="primary" type="button" on:click={createMetricAndSelect}>+ New quiz</button>
         </div>
-      {:else if selectedMetric}
+      {:else}
         {@const metric = selectedMetric}
+        {#if metric.archivedAt}
+          <div class="list-archived-banner" role="status">
+            <span>This quiz is archived and hidden from Quizzes.</span>
+            <div class="archived-banner-actions">
+              <button type="button" on:click={() => plannerStore.setMetricArchived(metric.id, false)}>Unarchive</button>
+              <button class="danger-text" type="button" on:click={() => { void confirmDeleteArchivedMetric(metric) }}>Delete</button>
+            </div>
+          </div>
+        {/if}
         <div class="metric-list">
           <div class="metric-card">
             <div class="metric-card-header">
@@ -7647,7 +7708,9 @@ return rows`
                 aria-label="Quiz name"
                 on:input={(event) => plannerStore.renameMetric(metric.id, event.currentTarget.value)}
               />
-              <button class="icon-button danger" type="button" title="Delete quiz" on:click={() => plannerStore.deleteMetric(metric.id)}>×</button>
+              {#if !metric.archivedAt}
+                <button class="ghost" type="button" on:click={() => archiveMetric(metric.id)}>Archive quiz</button>
+              {/if}
             </div>
 
             <div class="metric-question-list" role="list" aria-label="Quiz questions">
