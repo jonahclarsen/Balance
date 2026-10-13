@@ -433,7 +433,7 @@
               html={option.html}
               text={option.text}
               placeholder={question !== undefined
-                ? (item.options.length === 1 ? 'Added when you answer yes' : 'Answer')
+                ? (item.options.length === 1 ? 'Added when you answer yes; leave blank to type the answer' : 'Answer')
                 : index === 0 ? 'Template item' : '(Skip)'}
               ariaLabel={index === 0 ? 'Template item' : 'Template alternative'}
               revision={historyRevision}

@@ -32,7 +32,10 @@ export type TemplateListExpansion = {
   listTemplateIds: Id[]
 }
 
-export type TemplateQuizAnswers = Record<Id, Id | null>
+// A question whose only answer is blank takes a typed answer; it carries the
+// whole generated row text, the question followed by what was typed.
+export type TemplateQuizTypedAnswer = { text: string }
+export type TemplateQuizAnswers = Record<Id, Id | null | TemplateQuizTypedAnswer>
 
 export type PlanItem = {
   id: Id

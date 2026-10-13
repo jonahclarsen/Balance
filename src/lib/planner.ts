@@ -406,17 +406,30 @@ export type TemplateQuizStep = {
   // Questions nested under another question row are asked only when an
   // answer to every such ancestor keeps the row in the day.
   questionAncestorIds: Id[]
+  // Set when the row's only answer is blank: the typed answer is appended to
+  // this, the question plus a space unless the question already ends in one.
+  typedAnswerPrefix: string | null
 }
 
 export function templateQuizSteps(template: DailyTemplate, questions: TemplateQuestion[]): TemplateQuizStep[] {
   const byItem = new Map(
-    questions.filter(({ question }) => question.trim() !== '').map(({ id, question }) => [id, question.trim()]),
+    questions.filter(({ question }) => question.trim() !== '').map(({ id, question }) => [id, question]),
   )
   const steps: TemplateQuizStep[] = []
   function visit(items: TemplateItem[], ancestors: Id[]) {
     for (const item of items) {
       const question = byItem.get(item.id)
-      if (question !== undefined) steps.push({ itemId: item.id, question, options: item.options, questionAncestorIds: ancestors })
+      if (question !== undefined) {
+        const typed = item.options.length === 1 && isTemplateOptionTextEmpty(item.options[0])
+        const prefix = question.trimStart()
+        steps.push({
+          itemId: item.id,
+          question: question.trim(),
+          options: item.options,
+          questionAncestorIds: ancestors,
+          typedAnswerPrefix: typed ? (/\s$/.test(prefix) ? prefix : `${prefix} `) : null,
+        })
+      }
       visit(item.children, question === undefined ? ancestors : [...ancestors, item.id])
     }
   }
@@ -440,9 +453,12 @@ function generatePlanItems(
 ): PlanItem[] {
   return items.flatMap((item) => {
     // An answered question decides the option; an unanswered one keeps its odds.
-    const option = item.id in quizAnswers
-      ? item.options.find(({ id }) => id === quizAnswers[item.id]) ?? null
-      : pickOption(item.options)
+    const answer = quizAnswers[item.id]
+    const option = answer && typeof answer === 'object'
+      ? (item.options[0] ? { ...item.options[0], text: answer.text, html: escapeHTML(answer.text) } : null)
+      : item.id in quizAnswers
+        ? item.options.find(({ id }) => id === answer) ?? null
+        : pickOption(item.options)
     const text = option?.text.trim() ?? ''
     if (!option || (text === '' && !option.html.includes('data-balance-image=')) || text.toLowerCase() === '(skip)') {
       return []

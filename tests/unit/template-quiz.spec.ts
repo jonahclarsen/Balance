@@ -53,3 +53,19 @@ test('unanswered rows keep their probability roll', () => {
   expect(generated).not.toContain('No laptop until noon')
   expect(generated).toContain('Breakfast')
 })
+
+test('a question whose only answer is blank takes a typed answer after the question', () => {
+  const typedTemplate: DailyTemplate = { ...template, items: [item('focus', ['']), item('mood', [''])] }
+  const steps = templateQuizSteps(typedTemplate, [
+    { id: 'focus', question: '  Focus:' },
+    { id: 'mood', question: 'Mood: ' },
+  ])
+  expect(steps.map(({ question, typedAnswerPrefix }) => [question, typedAnswerPrefix])).toEqual([
+    ['Focus:', 'Focus: '],
+    ['Mood:', 'Mood: '],
+  ])
+  expect(templateQuizSteps(template, questions).every(({ typedAnswerPrefix }) => typedAnswerPrefix === null)).toBe(true)
+
+  const generated = generatePlanFromTemplate(typedTemplate, '2026-09-30', '', [], [], { focus: { text: 'Focus: <taxes>' }, mood: null })
+  expect(generated.items.map(({ text, html }) => [text, html])).toEqual([['Focus: <taxes>', 'Focus: &lt;taxes&gt;']])
+})
