@@ -3807,7 +3807,9 @@ return rows`
 
       if (event.key === 'Enter' || event.key === 'ArrowRight') {
         event.preventDefault()
-        pasteReviewDecide(true)
+        // Each item must be kept with a fresh press, so holding Enter can't
+        // auto-approve items as their read cooldowns finish.
+        if (!event.repeat) pasteReviewDecide(true)
       } else if (event.key === 'Backspace' || event.key === 'Delete' || event.key === 'ArrowLeft') {
         event.preventDefault()
         pasteReviewDecide(false)
