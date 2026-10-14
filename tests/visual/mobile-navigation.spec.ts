@@ -60,8 +60,10 @@ test('mobile header opens a smooth, close-only swipe drawer', async ({ page }, t
   if (!closeButtonBox) throw new Error('Close button has no tappable bounds')
   expect(Math.abs(closeButtonBox.x - menuButtonBox.x)).toBeLessThan(1)
   expect(Math.abs(closeButtonBox.y - menuButtonBox.y)).toBeLessThan(1)
-  expect(closeButtonBox.width).toBe(menuButtonBox.width)
-  expect(closeButtonBox.height).toBe(menuButtonBox.height)
+  // A transformed drawer can introduce floating-point differences in bounds.
+  // The replacement touch target must match within half a visual pixel.
+  expect(closeButtonBox.width).toBeCloseTo(menuButtonBox.width, 0)
+  expect(closeButtonBox.height).toBeCloseTo(menuButtonBox.height, 0)
 
   await page.screenshot({
     path: 'artifacts/visual-smoke/mobile-swipe-drawer.png',
