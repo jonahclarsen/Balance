@@ -153,3 +153,30 @@ jobs:
             executable-architecture.txt
             widget-architecture.txt
           if-no-files-found: error
+
+  publish-nightly:
+    name: Attach to the nightly release
+    needs: build
+    # The nightly coordinator dispatches this workflow at a plain version tag.
+    # `-all` tags are published by release.yml instead.
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.ref_type == 'tag' &&
+      !endsWith(github.ref_name, '-all')
+    runs-on: ubuntu-latest
+
+    permissions:
+      actions: read
+      contents: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Attach the notarized Mac app if the release is published
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_SHA: ${{ github.sha }}
+          MACOS_RUN_ID: ${{ github.run_id }}
+        run: bash .github/scripts/attach-nightly-macos.sh
