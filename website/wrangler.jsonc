@@ -9,7 +9,14 @@
     "binding": "ASSETS",
     "html_handling": "auto-trailing-slash",
     "not_found_handling": "404-page",
-    "run_worker_first": ["/download/*", "/api/*"]
+    "run_worker_first": true
+  },
+  "kv_namespaces": [{ "binding": "SETTINGS", "id": "328456dd9bcb4aaa8676b3ca09740a2e" }],
+  // The "Jonah Art Admin" Access application, shared with jonah.art/admin.
+  // ADMIN_EMAIL is a secret (wrangler secret put ADMIN_EMAIL).
+  "vars": {
+    "ACCESS_ISSUER": "https://frosty-dust-1729.cloudflareaccess.com",
+    "ACCESS_AUD": "075c75018d6e4fc9ca9215f05e882b90f924c69e3767c2793af3441670a29273"
   },
   "workers_dev": false,
   "preview_urls": false,

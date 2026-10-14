@@ -9,6 +9,19 @@ jonah.art site's redirect settings.
   GitHub release that carries that platform's build. Release tags without
   `-all` publish only Android, so the Mac link can point at an older release.
 - `/api/builds` lists those builds; the landing page shows the version from it.
+- `/admin` picks the font for each role (headings, hero, wordmark, body, nav and
+  buttons, code) with a live preview. Settings live in the `SETTINGS` KV
+  namespace; the Worker injects them into every page and serves the chosen
+  Google Fonts first-party under `/fonts/`. Roles and the catalog are in
+  `public/admin/fonts.js`, and the matching CSS variables are in `site.css`.
+
+## Admin login
+
+`/admin` is behind the "Jonah Art Admin" Cloudflare Access application, the same
+one that protects `jonah.art/admin`, so one sign-in covers both. The Worker
+re-verifies the Access token against `ACCESS_ISSUER`, `ACCESS_AUD` and the
+`ADMIN_EMAIL` secret (`pnpm dlx wrangler@4 secret put ADMIN_EMAIL --config
+website/wrangler.jsonc`).
 
 ## Screenshots
 
@@ -31,4 +44,6 @@ pnpm site:deploy
 
 Deploys the `balance-site` Worker to Jonah's Cloudflare account with the
 `balance.jonah.art` custom domain. Preview locally with
-`pnpm dlx wrangler dev --config website/wrangler.jsonc`.
+`pnpm dlx wrangler dev --config website/wrangler.jsonc`. Locally `/admin`
+returns 401 without an Access token; to try it, run a scratch Worker that
+exports `createWorker(async () => true)` from `worker.js`.
