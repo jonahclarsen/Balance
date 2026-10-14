@@ -26,7 +26,9 @@ website/wrangler.jsonc`).
 ## Screenshots
 
 Every screenshot is rendered headlessly from a synthetic workspace
-(`capture/seed.ts`) in the Iridescent theme. Never use real planner data.
+(`capture/seed.ts`) in the Iridescent theme, once light and once dark. The pages
+swap in the `-dark.webp` copies through `<picture>` when the browser prefers dark
+mode. Never use real planner data.
 
 ```bash
 pnpm site:capture   # builds the app, writes PNGs to artifacts/site-shots

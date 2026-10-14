@@ -4,14 +4,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Balance</title>
-  <meta name="description" content="A daily planner. Days drawn from templates; goals tracked as you check things off. End-to-end encrypted and open source.">
+  <meta name="description" content="Plan your day and track your goals at the same time. A daily planner for Mac and Android. End-to-end encrypted and open source.">
   <meta property="og:title" content="Balance">
-  <meta property="og:description" content="Days drawn from templates. Goals tracked as you check things off.">
+  <meta property="og:description" content="Plan your day and track your goals at the same time. A daily planner for Mac and Android. End-to-end encrypted and open source.">
   <meta property="og:image" content="https://balance.jonah.art/images/mac-today.webp">
   <meta name="theme-color" content="#166f7b">
   <link rel="icon" href="/favicon.png">
   <link rel="preload" href="/assets/sora-latin-700.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="preload" href="/images/mac-today.webp" as="image" type="image/webp">
+  <link rel="preload" href="/images/mac-today.webp" as="image" type="image/webp" media="(prefers-color-scheme: light)">
+  <link rel="preload" href="/images/mac-today-dark.webp" as="image" type="image/webp" media="(prefers-color-scheme: dark)">
   <link rel="stylesheet" href="/assets/site.css">
 </head>
 <body class="landing">
@@ -41,8 +42,8 @@
       </div>
 
       <div class="devices">
-        <div class="mac"><img src="/images/mac-today.webp" width="1920" height="1200" alt="Balance on Mac: today's plan with Goal Rhythm" fetchpriority="high"></div>
-        <div class="phone"><img src="/images/android-today.webp" width="720" height="1598" alt="Balance on Android: today's plan"></div>
+        <div class="mac"><picture><source srcset="/images/mac-today-dark.webp" media="(prefers-color-scheme: dark)"><img src="/images/mac-today.webp" width="1920" height="1200" alt="Balance on Mac: today's plan with Goal Rhythm" fetchpriority="high"></picture></div>
+        <div class="phone"><picture><source srcset="/images/android-today-dark.webp" media="(prefers-color-scheme: dark)"><img src="/images/android-today.webp" width="720" height="1598" alt="Balance on Android: today's plan"></picture></div>
       </div>
     </section>
 
@@ -51,7 +52,7 @@
         <h2>Templates with odds</h2>
         <p>Give each task a chance, from always to now and then. Generate today and the plan rolls itself.</p>
       </div>
-      <div class="mac"><img src="/images/mac-days.webp" width="1920" height="1200" alt="Day template with probability sliders" loading="lazy"></div>
+      <div class="mac"><picture><source srcset="/images/mac-days-dark.webp" media="(prefers-color-scheme: dark)"><img src="/images/mac-days.webp" width="1920" height="1200" alt="Day template with probability sliders" loading="lazy"></picture></div>
     </section>
 
     <section class="wrap split flip reveal">
@@ -59,7 +60,7 @@
         <h2>Goals that count themselves</h2>
         <p>Check off “Run 5k” and Exercise is done for the day. Goal Rhythm shows what’s due next.</p>
       </div>
-      <div class="mac"><img src="/images/mac-goals.webp" width="1920" height="1200" alt="Goals with recent completions" loading="lazy"></div>
+      <div class="mac"><picture><source srcset="/images/mac-goals-dark.webp" media="(prefers-color-scheme: dark)"><img src="/images/mac-goals.webp" width="1920" height="1200" alt="Goals with recent completions" loading="lazy"></picture></div>
     </section>
 
     <section class="band reveal">
@@ -72,8 +73,8 @@
           </a>
         </div>
         <div class="phones">
-          <div class="phone"><img src="/images/android-notes.webp" width="720" height="1598" alt="Notes on Android" loading="lazy"></div>
-          <div class="phone"><img src="/images/android-goals.webp" width="720" height="1598" alt="Goals on Android" loading="lazy"></div>
+          <div class="phone"><picture><source srcset="/images/android-notes-dark.webp" media="(prefers-color-scheme: dark)"><img src="/images/android-notes.webp" width="720" height="1598" alt="Notes on Android" loading="lazy"></picture></div>
+          <div class="phone"><picture><source srcset="/images/android-goals-dark.webp" media="(prefers-color-scheme: dark)"><img src="/images/android-goals.webp" width="720" height="1598" alt="Goals on Android" loading="lazy"></picture></div>
         </div>
       </div>
     </section>
@@ -83,19 +84,19 @@
       <div class="bento">
         <figure class="tile notes reveal">
           <figcaption><strong>Notes</strong> Headings, checklists and images, linkable from any task.</figcaption>
-          <div class="shot"><img src="/images/mac-notes.webp" width="1920" height="1200" alt="Notes" loading="lazy"></div>
+          <div class="shot"><picture><source srcset="/images/mac-notes-dark.webp" media="(prefers-color-scheme: dark)"><img src="/images/mac-notes.webp" width="1920" height="1200" alt="Notes" loading="lazy"></picture></div>
         </figure>
         <figure class="tile lists reveal">
           <figcaption><strong>Lists</strong> Reusable checklists with their own odds.</figcaption>
-          <div class="shot"><img src="/images/mac-lists.webp" width="1920" height="1200" alt="Lists" loading="lazy"></div>
+          <div class="shot"><picture><source srcset="/images/mac-lists-dark.webp" media="(prefers-color-scheme: dark)"><img src="/images/mac-lists.webp" width="1920" height="1200" alt="Lists" loading="lazy"></picture></div>
         </figure>
         <figure class="tile quizzes reveal">
           <figcaption><strong>Quizzes</strong> Questions you answer regularly, charted.</figcaption>
-          <div class="shot"><img src="/images/mac-quizzes.webp" width="1920" height="1200" alt="Quizzes" loading="lazy"></div>
+          <div class="shot"><picture><source srcset="/images/mac-quizzes-dark.webp" media="(prefers-color-scheme: dark)"><img src="/images/mac-quizzes.webp" width="1920" height="1200" alt="Quizzes" loading="lazy"></picture></div>
         </figure>
         <figure class="tile projects reveal">
           <figcaption><strong>Projects</strong> Check in on long efforts: how complete, and how much your heart is in it.</figcaption>
-          <div class="shot"><img src="/images/mac-projects.webp" width="1920" height="1200" alt="Projects" loading="lazy"></div>
+          <div class="shot"><picture><source srcset="/images/mac-projects-dark.webp" media="(prefers-color-scheme: dark)"><img src="/images/mac-projects.webp" width="1920" height="1200" alt="Projects" loading="lazy"></picture></div>
         </figure>
       </div>
       <p class="also reveal">Plus <a href="/docs/#prioritize">Prioritize</a>, idea <a href="/docs/#buckets">Buckets</a>, widgets and Siri, and daily encrypted <a href="/docs/#backups">backups</a>.</p>

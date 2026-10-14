@@ -77,6 +77,7 @@ body {
 a { color: var(--accent); text-underline-offset: 3px; }
 
 img { max-width: 100%; height: auto; display: block; }
+picture { display: contents; }
 
 h1, h2, h3, .wordmark { font-family: var(--font-heading); font-weight: var(--weight-heading); letter-spacing: -0.02em; }
 .hero h1 { font-family: var(--font-hero); font-weight: var(--weight-hero); }

@@ -1,5 +1,6 @@
 // Renders the website and docs screenshots headlessly from a synthetic
-// workspace in the Iridescent theme. See website/README.md.
+// workspace in the Iridescent theme, once light and once dark (files ending in
+// -dark). See website/README.md.
 import { expect, test, type Page } from '@playwright/test'
 import { openView } from '../../tests/helpers/navigation'
 import { createScreenshotState } from './seed'
@@ -9,23 +10,27 @@ const NOW = new Date('2026-10-14T14:20:00')
 const TODAY = '2026-10-14'
 const OUT = 'artifacts/site-shots'
 
-async function open(page: Page) {
+type Scheme = 'light' | 'dark'
+const SCHEMES: Scheme[] = ['light', 'dark']
+
+async function open(page: Page, scheme: Scheme) {
   await page.clock.install({ time: NOW })
+  await page.emulateMedia({ colorScheme: scheme })
   await page.goto('/')
   const state = createScreenshotState(TODAY)
-  await page.evaluate((raw) => {
+  await page.evaluate(([raw, colorScheme]) => {
     localStorage.clear()
     localStorage.setItem('balance.appState.v1', raw)
     localStorage.setItem('balance:deviceAppearance.v1', JSON.stringify({
       version: 1,
-      colorScheme: 'light',
+      colorScheme,
       systemColorSchemeStartDate: '',
       themeId: 'iridescent',
       randomThemeStartDate: '',
       doneTintColor: '',
       checkboxColor: '',
     }))
-  }, JSON.stringify(state))
+  }, [JSON.stringify(state), scheme])
   await page.reload()
   await expect(page.getByRole('navigation', { name: 'Primary', exact: true })
     .or(page.getByRole('button', { name: 'Open navigation', exact: true }))).toBeVisible()
@@ -48,21 +53,21 @@ async function scrollToTop(page: Page) {
   })
 }
 
-async function shot(page: Page, name: string, top = true) {
+async function shot(page: Page, scheme: Scheme, name: string, top = true) {
   await settle(page)
   if (top) {
     await scrollToTop(page)
     await page.waitForTimeout(300)
   }
-  await page.screenshot({ path: `${OUT}/${name}.png` })
+  await page.screenshot({ path: `${OUT}/${name}${scheme === 'dark' ? '-dark' : ''}.png` })
 }
 
 test.describe('desktop', () => {
   test.skip(({ isMobile }) => isMobile)
 
-  test('screens', async ({ page }) => {
-    await open(page)
-    await shot(page, 'mac-today')
+  for (const scheme of SCHEMES) test(`screens ${scheme}`, async ({ page }) => {
+    await open(page, scheme)
+    await shot(page, scheme, 'mac-today')
     for (const [view, name] of [
       ['Next', 'mac-next'],
       ['Days', 'mac-days'],
@@ -74,33 +79,33 @@ test.describe('desktop', () => {
       ['Buckets', 'mac-buckets'],
     ]) {
       await openView(page, view)
-      await shot(page, name)
+      await shot(page, scheme, name)
     }
     await openView(page, 'Prioritize')
     await page.getByRole('button', { name: 'Past sessions', exact: true }).click()
     await page.locator('.prioritize-past button').first().click()
-    await shot(page, 'mac-prioritize')
+    await shot(page, scheme, 'mac-prioritize')
     await openView(page, 'Settings')
     await page.getByRole('heading', { name: 'Sync across your devices' }).evaluate((heading) => heading.scrollIntoView({ block: 'start' }))
-    await shot(page, 'mac-sync', false)
+    await shot(page, scheme, 'mac-sync', false)
   })
 })
 
 test.describe('mobile', () => {
   test.skip(({ isMobile }) => !isMobile)
 
-  test('screens', async ({ page }) => {
-    await open(page)
-    await shot(page, 'android-today')
+  for (const scheme of SCHEMES) test(`screens ${scheme}`, async ({ page }) => {
+    await open(page, scheme)
+    await shot(page, scheme, 'android-today')
     await page.getByRole('button', { name: 'Open navigation', exact: true }).click()
-    await shot(page, 'android-menu')
+    await shot(page, scheme, 'android-menu')
     for (const [view, name] of [
       ['Notes', 'android-notes'],
       ['Goals', 'android-goals'],
       ['Lists', 'android-lists'],
     ]) {
       await openView(page, view)
-      await shot(page, name)
+      await shot(page, scheme, name)
     }
   })
 })
