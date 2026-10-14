@@ -693,8 +693,9 @@ test('list modal collapses at the keyboard boundary and expands for upward wheel
   await page.clock.pauseAt(animationTime)
   const before = await body.evaluate(modalGeometry)
   const expectWithinVisualPixel = (actual: number, expected: number) => {
-    // Fractional CSS zoom can accumulate two layout rounding steps in WebKit.
-    expect(Math.abs(actual - expected)).toBeLessThanOrEqual(2)
+    // Scroll/layout rounding can accumulate two CSS pixels. Bounding rects
+    // are visual pixels, so scale that allowance by the app's CSS zoom.
+    expect(Math.abs(actual - expected)).toBeLessThanOrEqual(2 * before.effectiveZoom)
   }
   const expectedFirstCollapse = Math.max(
     0,
