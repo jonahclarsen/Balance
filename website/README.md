@@ -6,8 +6,9 @@ jonah.art site's redirect settings.
 
 - `/` landing page, `/docs/` user docs.
 - `/download/mac`, `/download/android`, `/download/linux` redirect to the newest
-  GitHub release that carries that platform's build. Release tags without
-  `-all` publish only Android, so the Mac link can point at an older release.
+  GitHub release that carries that platform's build. Nightly releases carry
+  the notarized Mac app and the Android APK; only `-all` tags add Linux, so the
+  Linux link can point at an older release.
 - `/api/builds` lists those builds; the landing page shows the version from it.
 - `/admin` picks the font for each role (headings, hero, wordmark, body, nav and
   buttons, code) with a live preview. Settings live in the `SETTINGS` KV
@@ -40,12 +41,16 @@ text when a captured page's labels change.
 
 ## Deploy
 
+Pushing changes under `website/` to `main` deploys the `balance-site` Worker
+through Cloudflare Workers Builds (trigger "Deploy main", root `/website`,
+`npx wrangler@4 deploy`). Build logs are under the Worker's Deployments tab.
+To deploy by hand:
+
 ```bash
 pnpm site:deploy
 ```
 
-Deploys the `balance-site` Worker to Jonah's Cloudflare account with the
-`balance.jonah.art` custom domain. Preview locally with
+Preview locally with
 `pnpm dlx wrangler dev --config website/wrangler.jsonc`. Locally `/admin`
 returns 401 without an Access token; to try it, run a scratch Worker that
 exports `createWorker(async () => true)` from `worker.js`.

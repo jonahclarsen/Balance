@@ -139,6 +139,8 @@ page's content), refresh them in the same piece of work: run
 text whose labels changed, and commit the new `website/public/images/*.webp`
 with the change. Details are in `website/README.md`.
 
-## Deploy the website after pushing changes to it
+## The website deploys on push
 
-After pushing changes under `website/`, run `pnpm site:deploy`.
+Pushing changes under `website/` to `main` deploys balance.jonah.art through
+Cloudflare Workers Builds. Check the live page after pushing; `pnpm site:deploy`
+deploys by hand if a build fails.

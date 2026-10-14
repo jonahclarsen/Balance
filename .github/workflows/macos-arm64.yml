@@ -133,8 +133,12 @@ jobs:
               --key "$API_KEY_PATH" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID" \
               --wait --timeout 30m
             rm "$API_KEY_PATH"
-            xcrun stapler staple "$APP_PATH"
-            xcrun stapler validate "$APP_PATH"
+            # Stapling fetches the ticket from Apple's CDN, which can drop.
+            for attempt in 1 2 3; do
+              xcrun stapler staple "$APP_PATH" && break
+              if [[ "$attempt" -eq 3 ]]; then exit 1; fi
+              sleep 20
+            done
             spctl --assess --type execute --verbose=2 "$APP_PATH"
           fi
 
