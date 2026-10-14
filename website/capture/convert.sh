@@ -10,4 +10,3 @@ for png in artifacts/site-shots/*.png; do
     *) cwebp -quiet -q 82 -resize 720 0 "$png" -o "website/public/images/$name.webp" ;;
   esac
 done
-node website/capture/stamp-images.mjs

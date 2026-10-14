@@ -30,7 +30,7 @@ Every screenshot is rendered headlessly from a synthetic workspace
 
 ```bash
 pnpm site:capture   # builds the app, writes PNGs to artifacts/site-shots
-pnpm site:images    # converts them to public/images/*.webp and versions their URLs
+pnpm site:images    # converts them to public/images/*.webp
 ```
 
 Check every image after a capture (a montage is quickest), and update the docs
