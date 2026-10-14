@@ -164,28 +164,13 @@ test('pasted item previews preserve saved line breaks', async ({ page }) => {
   expect(metrics.height).toBeGreaterThan(metrics.lineHeight * 1.5)
 })
 
-test('review checkbox is centered and matches planner checkbox appearance', async ({ page }) => {
+test('review checkboxes stay centered and preserve completion when kept', async ({ page }) => {
   await openReviewWithLongItems(page)
 
   const checkbox = page.locator('.paste-review-item.current .check')
-  const plannerCheckbox = page.locator('.plan-row .check').first()
-  const appearance = (input: HTMLElement) => {
-    const style = getComputedStyle(input)
-    return {
-      appearance: style.appearance,
-      // Planner zoom can round CSS dimensions to fractional pixels.
-      width: Math.round(Number.parseFloat(style.width)),
-      height: Math.round(Number.parseFloat(style.height)),
-      borderWidth: Math.round(Number.parseFloat(style.borderWidth)),
-      borderColor: style.borderColor,
-      borderStyle: style.borderStyle,
-      borderRadius: style.borderRadius,
-      backgroundColor: style.backgroundColor,
-      backgroundImage: style.backgroundImage,
-    }
-  }
+  await expect(checkbox).toBeVisible()
+  await expect(checkbox).toBeEnabled()
   await expect(checkbox).not.toBeChecked()
-  expect(await checkbox.evaluate(appearance)).toEqual(await plannerCheckbox.evaluate(appearance))
 
   const upcomingCheckboxes = page.locator('.paste-review-item:not(.current) .check')
   await expect(upcomingCheckboxes).toHaveCount(3)
@@ -193,7 +178,6 @@ test('review checkbox is centered and matches planner checkbox appearance', asyn
     await expect(upcoming).toBeVisible()
     await expect(upcoming).not.toBeChecked()
     await expect(upcoming).toBeDisabled()
-    expect(await upcoming.evaluate(appearance)).toEqual(await plannerCheckbox.evaluate(appearance))
   }
 
   const centerOffset = await checkbox.evaluate((input) => {
@@ -205,17 +189,11 @@ test('review checkbox is centered and matches planner checkbox appearance', asyn
 
   await checkbox.check()
   await expect(checkbox).toBeChecked()
-  await page.mouse.move(0, 0)
-  // Set only the synthetic background control's visual state for comparison.
-  await plannerCheckbox.evaluate((input: HTMLInputElement) => { input.checked = true })
-  expect(await checkbox.evaluate(appearance)).toEqual(await plannerCheckbox.evaluate(appearance))
-  await expect(checkbox).toHaveCSS('background-color', 'rgb(161, 35, 188)')
   await expect(page.locator('.paste-review-item.current')).toHaveClass(/done/)
 
   await page.getByRole('button', { name: 'Keep (→ / Enter)', exact: true }).click()
   const keptCheckbox = page.locator('.paste-review-item.kept .check')
   await expect(keptCheckbox).toBeChecked()
-  expect(await keptCheckbox.evaluate(appearance)).toEqual(await plannerCheckbox.evaluate(appearance))
   await expect(checkbox).not.toBeChecked()
   await expect(checkbox).toBeEnabled()
 

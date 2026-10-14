@@ -734,12 +734,8 @@ test('notes select all blocks and copy plain text plus semantic HTML lists', asy
 
   const first = page.locator('.note-text').first()
   await first.fill('Alpha')
-  await pressNoteKey(first, 'Meta+A')
-  await pressNoteKey(first, 'Meta+B')
   await placeCaretAtEnd(first)
   await pressNoteKey(first, 'Enter')
-
-  await toolbar.getByRole('button', { name: 'Bold', exact: true }).click()
 
   const second = page.locator('.note-text').nth(1)
   await second.fill('Beta')
@@ -751,6 +747,14 @@ test('notes select all blocks and copy plain text plus semantic HTML lists', asy
 
   const third = page.locator('.note-text').nth(2)
   await third.fill('Gamma')
+  // Format the completed fixture explicitly. This clipboard test must not
+  // depend on transient marks inherited by an empty paragraph after Enter.
+  await pressNoteKey(first, 'Meta+A')
+  await pressNoteKey(first, 'Meta+B')
+  await expect(first.locator('strong, b')).toHaveText('Alpha')
+  await expect(second.locator('strong, b')).toHaveCount(0)
+  await expect(third.locator('strong, b')).toHaveCount(0)
+  await placeCaretAtEnd(third)
   await pressNoteKey(third, 'Meta+A')
   await pressNoteKey(third, 'Meta+A')
 

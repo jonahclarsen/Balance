@@ -43,7 +43,7 @@ async function seed(page: Page, tree: SeedItem[]) {
   await page.goto('/')
   await page.evaluate((tree) => {
     // Balance's day starts at 5 a.m.
-    const now = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString()
+    const now = new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString()
     const date = now.slice(0, 10)
     type Seed = { id: string; text: string; children?: Seed[] }
     const item = ({ id, text, children = [] }: Seed): object => (
@@ -113,8 +113,12 @@ async function scanScroll(scope: Locator) {
     }
     const problems: string[] = []
     const linesShown: Record<string, number> = {}
-    for (let scrollTop = 0; scrollTop <= 1200; scrollTop += 10) {
-      target.scrollTop = scrollTop
+    // Narrow screens wrap this fixture far beyond 1,200px. Traverse the
+    // actual scroll range so every nesting level reaches the pinned stack.
+    const maximum = target.scrollHeight - target.clientHeight
+    const step = Math.max(10, Math.floor(target.clientHeight / 40))
+    for (let scrollTop = 0; scrollTop < maximum + step; scrollTop += step) {
+      target.scrollTop = Math.min(scrollTop, maximum)
       await frame()
       const pinned = rows.filter((element) => element.getBoundingClientRect().top > element.parentElement!.getBoundingClientRect().top + 1)
       for (const element of pinned) {

@@ -31,30 +31,30 @@ async function openGroceriesOverlay(page: import('@playwright/test').Page) {
 }
 
 async function openLongGroceriesOverlay(page: import('@playwright/test').Page) {
-  await page.goto('/')
-  await page.evaluate(() => localStorage.clear())
+  await openGroceriesOverlay(page)
+  // These cases exercise navigation through a long generated list. Creation
+  // is covered above; seed the remaining rows instead of repeating 51 UI
+  // creation journeys in every scrolling test (especially costly in WebKit).
+  await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1')!)
+    const template = state.listTemplates.find((entry: { name: string }) => entry.name === 'Groceries')
+    const list = state.lists.find((entry: { listTemplateId: string }) => entry.listTemplateId === template.id)
+    const firstItem = list.items[0]
+    const firstTemplateItem = template.items[0]
+    list.items = Array.from({ length: 52 }, (_, index) => {
+      const text = `Item ${String(index + 1).padStart(2, '0')}`
+      return { ...firstItem, id: index === 0 ? firstItem.id : `long-list-${index}`, text, html: text, children: [] }
+    })
+    template.items = list.items.map((item: { text: string }, index: number) => ({
+      ...firstTemplateItem, id: index === 0 ? firstTemplateItem.id : `long-template-${index}`,
+      text: item.text, html: item.text, children: [],
+    }))
+    localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+  })
   await page.reload()
-
-  await openView(page, 'Lists')
-  await page.getByRole('button', { name: '+ New list' }).click()
-  await page.getByLabel('List name').fill('Groceries')
-
-  const listItems = page.locator('[data-list-template-text-input]')
-  await listItems.first().fill('Item 01')
-  for (let index = 2; index <= 52; index += 1) {
-    await page.getByRole('button', { name: '+ Add list item' }).click()
-    await listItems.nth(index - 1).fill(`Item ${String(index).padStart(2, '0')}`)
-  }
-
-  await openView(page, 'Today')
-  await generateDay(page)
-  const firstItem = page.locator('[data-plan-text-input]').first()
-  await firstItem.fill('Groceries')
-  await firstItem.blur()
-
-  await page.getByTitle('Open Groceries').first().click()
   const dialog = page.getByRole('dialog', { name: 'Groceries' })
   await expect(dialog).toBeVisible()
+  await expect(dialog.getByRole('listitem')).toHaveCount(52)
   return dialog
 }
 

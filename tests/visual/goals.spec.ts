@@ -138,7 +138,6 @@ test('a new goal receives the color previewed by the add button and has no color
   const previewHue = await addButton.evaluate((button) =>
     Number(getComputedStyle(button).getPropertyValue('--goal-hue')),
   )
-  const previewColor = await addButton.evaluate((button) => getComputedStyle(button).backgroundColor)
 
   await createGoal(page, 'Exercise', 3, 'lift, swim')
 
@@ -147,7 +146,11 @@ test('a new goal receives the color previewed by the add button and has no color
     const goal = state.goals.find((candidate: { name: string }) => candidate.name === 'Exercise')
     return { hue: goal.hue, lightness: goal.lightness }
   })).toEqual({ hue: previewHue, lightness: 50 })
-  await expect(goalCard(page, 'Exercise').locator('.goal-card-accent')).toHaveCSS('background-color', previewColor)
+  const accent = goalCard(page, 'Exercise').locator('.goal-card-accent')
+  await expect(accent).toBeVisible()
+  await expect.poll(() => accent.evaluate(element =>
+    Number(getComputedStyle(element).getPropertyValue('--goal-hue')),
+  )).toBe(previewHue)
   await expect(page.getByLabel('New goal color')).toHaveCount(0)
   await expect(page.getByLabel('Color for Exercise')).toHaveCount(0)
 

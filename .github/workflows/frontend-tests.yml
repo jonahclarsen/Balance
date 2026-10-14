@@ -30,15 +30,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm test:unit
+      - run: pnpm test:relay
+
   behavior:
-    # Browser editing fixtures exercise macOS Command-key and clipboard behavior.
-    # Use Intel because macos-15 ARM jobs have failed to acquire runner capacity.
+    # Editing fixtures exercise macOS Command-key and clipboard behavior.
+    # Keep one browser worker per runner; split the complete suite across jobs
+    # so slow WebKit cases do not exhaust the job before artifacts are saved.
     runs-on: ${{ inputs.runner || 'macos-15-intel' }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        shard: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v6
@@ -50,18 +68,40 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium webkit
-      - run: pnpm check
-      - run: pnpm test:unit
-      - run: pnpm test:relay
-      - name: Exercise Lexical Notes on desktop, mobile, and WebKit
-        run: pnpm exec playwright test --config playwright.notes-editors.config.ts --project=lexical --project=lexical-mobile --project=lexical-webkit --workers=1 --shard=${{ matrix.shard }}/3
       - name: Exercise the full desktop, mobile, and WebKit browser suite
-        run: pnpm test:visual --workers=1 --shard=${{ matrix.shard }}/3
+        timeout-minutes: 22
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: artifacts/playwright/results.json
+        run: pnpm test:visual --workers=1 --shard=${{ matrix.shard }}/6 --reporter=list,json
       - uses: actions/upload-artifact@v7
-        if: failure()
+        if: always()
         with:
-          name: frontend-failure-traces-${{ matrix.shard }}
-          path: |
-            artifacts/playwright
-            artifacts/playwright-notes-editors
+          name: frontend-results-${{ matrix.shard }}
+          path: artifacts/playwright
+          retention-days: 7
+
+  lexical:
+    runs-on: ${{ inputs.runner || 'macos-15-intel' }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium webkit
+      - name: Exercise Lexical Notes on desktop, mobile, and WebKit
+        timeout-minutes: 14
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: artifacts/playwright-notes-editors/results.json
+        run: pnpm exec playwright test --config playwright.notes-editors.config.ts --project=lexical --project=lexical-mobile --project=lexical-webkit --workers=1 --reporter=list,json
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: frontend-lexical-results
+          path: artifacts/playwright-notes-editors
           retention-days: 7
