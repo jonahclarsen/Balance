@@ -3402,7 +3402,7 @@ fn metadata_value(connection: &Connection, key: &str) -> Result<Option<String>, 
 
 fn default_replicated_preferences() -> Value {
     json!({
-        "themeId": "random",
+        "themeId": "iridescent",
         "randomThemeId": "iridescent",
         "randomThemeDate": "",
         "randomThemeStartDate": "",

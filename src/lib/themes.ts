@@ -100,7 +100,7 @@ export const THEME_PRESETS = [
 export type PresetThemeId = (typeof THEME_PRESETS)[number]['id']
 export type ThemeId = 'random' | PresetThemeId
 
-export const DEFAULT_THEME_ID: ThemeId = 'random'
+export const DEFAULT_THEME_ID: ThemeId = 'iridescent'
 export const DEFAULT_PRESET_THEME_ID: PresetThemeId = 'iridescent'
 
 export const ACTIVE_THEME_PRESETS = THEME_PRESETS.filter(

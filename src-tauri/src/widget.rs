@@ -174,7 +174,7 @@ pub(crate) fn theme_id_from_device_appearance(appearance: &Value, date: &str) ->
     let selected = appearance
         .get("themeId")
         .and_then(Value::as_str)
-        .unwrap_or("random");
+        .unwrap_or(DEFAULT_THEME_ID);
     let scheduled = appearance
         .get("randomThemeStartDate")
         .and_then(Value::as_str)
