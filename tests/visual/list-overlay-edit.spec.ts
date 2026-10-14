@@ -727,20 +727,20 @@ test('list modal collapses at the keyboard boundary and expands for upward wheel
   await page.keyboard.press('ArrowUp')
   await page.clock.runFor(300)
   const afterFirstReverse = await body.evaluate(modalGeometry)
-  expect(afterFirstReverse.cardHeight).toBeCloseTo(afterFirst.cardHeight, 0)
+  expectWithinVisualPixel(afterFirstReverse.cardHeight, afterFirst.cardHeight)
   expectWithinVisualPixel(afterFirstReverse.selectedTop, before.selectedTop)
 
   await page.keyboard.press('ArrowUp')
   await page.clock.runFor(300)
   const restored = await body.evaluate(modalGeometry)
-  expect(restored.cardHeight).toBeCloseTo(before.cardHeight, 0)
+  expectWithinVisualPixel(restored.cardHeight, before.cardHeight)
   expectWithinVisualPixel(restored.cardTop, before.cardTop)
   expectWithinVisualPixel(restored.selectedTop, before.selectedTop)
 
   await page.keyboard.press('ArrowDown')
   await page.clock.runFor(300)
   const recollapsed = await body.evaluate(modalGeometry)
-  expect(recollapsed.cardHeight).toBeCloseTo(afterFirst.cardHeight, 0)
+  expectWithinVisualPixel(recollapsed.cardHeight, afterFirst.cardHeight)
 
   await body.hover()
   // Playwright's wheel call returns before Chromium necessarily dispatches it.
@@ -756,7 +756,7 @@ test('list modal collapses at the keyboard boundary and expands for upward wheel
 
   expect(wheelMidHeight).toBeGreaterThan(recollapsed.cardHeight)
   expect(wheelMidHeight).toBeLessThan(before.cardHeight)
-  expect(afterWheel.cardHeight).toBeCloseTo(before.cardHeight, 0)
+  expectWithinVisualPixel(afterWheel.cardHeight, before.cardHeight)
   expectWithinVisualPixel(afterWheel.cardTop, before.cardTop)
 
   await page.keyboard.press('ArrowDown')
