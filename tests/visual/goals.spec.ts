@@ -346,7 +346,7 @@ test('goal cards show completion history for the most recent 14 days', async ({ 
   await expect(history.locator(`[data-goal-date="${currentDate}"]`)).toHaveClass(/today/)
   const historyBox = await history.boundingBox()
   const rulesBox = await page.getByLabel('Matching terms for Exercise').boundingBox()
-  const savedCompletionBox = await page.locator('.goal-card-meta').boundingBox()
+  const savedCompletionBox = await page.locator('.goal-card-meta:not(.goal-card-due)').boundingBox()
   const footerBox = await page.locator('.goal-card-footer').boundingBox()
   expect(historyBox).not.toBeNull()
   expect(rulesBox).not.toBeNull()
@@ -2407,7 +2407,7 @@ test('long goal names truncate without overlapping status or archive actions', a
     }
   })).toEqual({ fullyVisible: true, wraps: true })
 
-  await card.locator('.goal-card-meta').click()
+  await card.locator('.goal-card-meta').first().click()
   await expect(nameEditor).not.toBeFocused()
   await expect(nameEditor).toHaveCSS('text-overflow', 'ellipsis')
 })
