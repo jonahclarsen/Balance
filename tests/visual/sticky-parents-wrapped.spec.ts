@@ -21,7 +21,10 @@ function familyTree(parentText: string): SeedItem[] {
           text: wrappedChild,
           children: [
             { id: 'grandchild_1', text: words('Grandchild 1', 25) },
-            ...Array.from({ length: 6 }, (_, index) => ({ id: `grandchild_${index + 2}`, text: `Grandchild ${index + 2}` })),
+            // A sticky row is constrained by its own subtree. On narrow
+            // screens this needs enough children for the long parent to
+            // finish clipping before the subtree scrolls out of view.
+            ...Array.from({ length: 24 }, (_, index) => ({ id: `grandchild_${index + 2}`, text: `Grandchild ${index + 2}` })),
           ],
         },
         { id: 'sibling', text: 'Sibling' },

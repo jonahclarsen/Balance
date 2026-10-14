@@ -30,12 +30,12 @@ async function openGroceriesOverlay(page: import('@playwright/test').Page) {
   return dialog
 }
 
-async function openLongGroceriesOverlay(page: import('@playwright/test').Page) {
+async function openLongGroceriesOverlay(page: import('@playwright/test').Page, completedCount = 0) {
   await openGroceriesOverlay(page)
   // These cases exercise navigation through a long generated list. Creation
   // is covered above; seed the remaining rows instead of repeating 51 UI
   // creation journeys in every scrolling test (especially costly in WebKit).
-  await page.evaluate(() => {
+  await page.evaluate((completedCount) => {
     const state = JSON.parse(localStorage.getItem('balance.appState.v1')!)
     const template = state.listTemplates.find((entry: { name: string }) => entry.name === 'Groceries')
     const list = state.lists.find((entry: { listTemplateId: string }) => entry.listTemplateId === template.id)
@@ -43,14 +43,14 @@ async function openLongGroceriesOverlay(page: import('@playwright/test').Page) {
     const firstTemplateItem = template.items[0]
     list.items = Array.from({ length: 52 }, (_, index) => {
       const text = `Item ${String(index + 1).padStart(2, '0')}`
-      return { ...firstItem, id: index === 0 ? firstItem.id : `long-list-${index}`, text, html: text, children: [] }
+      return { ...firstItem, id: index === 0 ? firstItem.id : `long-list-${index}`, text, html: text, done: index < completedCount, children: [] }
     })
     template.items = list.items.map((item: { text: string }, index: number) => ({
       ...firstTemplateItem, id: index === 0 ? firstTemplateItem.id : `long-template-${index}`,
       text: item.text, html: item.text, children: [],
     }))
     localStorage.setItem('balance.appState.v1', JSON.stringify(state))
-  })
+  }, completedCount)
   await page.reload()
   const dialog = page.getByRole('dialog', { name: 'Groceries' })
   await expect(dialog).toBeVisible()
@@ -887,16 +887,15 @@ test('an open list overlay, its selection, and its scroll position survive a rel
 })
 
 test('reopening a list overlay selects the first unchecked item near 8% from the top of the scroll area', async ({ page }) => {
-  let dialog = await openLongGroceriesOverlay(page)
+  // Seed the completed prefix; keep the boundary toggles as real interactions.
+  let dialog = await openLongGroceriesOverlay(page, 23)
 
   const targetText = 'Item 24'
   await dialog.locator('.plan-row', { hasText: targetText }).click()
   await expect(dialog.locator('.plan-row.selected')).toContainText(targetText)
   // Leave the remembered selection below the first unchecked row.
   await dialog.locator('.plan-row', { hasText: 'Item 30' }).click()
-  for (let index = 1; index <= 24; index += 1) {
-    await dialog.locator('.plan-row', { hasText: `Item ${String(index).padStart(2, '0')}` }).getByRole('checkbox').check()
-  }
+  await dialog.locator('.plan-row', { hasText: targetText }).getByRole('checkbox').check()
   await dialog.locator('.plan-row', { hasText: targetText }).getByRole('checkbox').uncheck()
   await dialog.locator('.plan-row', { hasText: 'Item 29' }).getByRole('checkbox').check()
   await expect(dialog.locator('.plan-row.selected')).toContainText('Item 30')

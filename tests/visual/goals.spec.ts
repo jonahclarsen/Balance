@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { todayISO } from '../../src/lib/planner'
+import { createGoal as makeGoal } from '../../src/lib/goals'
 import { generateDay, openView, primaryNavigation } from '../helpers/navigation'
 
 const playwrightOrigin = `http://127.0.0.1:${process.env.PLAYWRIGHT_PORT ?? '5123'}`
@@ -2234,13 +2235,17 @@ test('clicking a goal rhythm row scrolls to that goal on the goals page', async 
   // Goal creation is covered elsewhere; this fixture needs enough cards to
   // scroll without spending the navigation test's budget on 28 UI submissions.
   await openView(page, 'Goals')
-  await page.evaluate(async () => {
-    const path = '/src/lib/store.ts'
-    const { plannerStore } = await import(/* @vite-ignore */ path)
-    for (let index = 1; index <= 28; index += 1) {
-      plannerStore.addGoal(`Goal ${index}`, 1, [`goal-${index}`], 180)
-    }
-  })
+  const goals = Array.from({ length: 28 }, (_, index) => makeGoal(
+    `Goal ${index + 1}`, 1, [`goal-${index + 1}`], 180, 50, todayISO(), `scroll-goal-${index + 1}`,
+  ))
+  await page.evaluate((goals) => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1')!)
+    state.goals.push(...goals)
+    localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+  }, goals)
+  await page.reload()
+  await openView(page, 'Goals')
+  await expect(page.locator('.goal-card')).toHaveCount(29)
 
   await openView(page, 'Today')
   const targetRow = page.locator('.goal-history-name[data-goal-id]', { hasText: targetGoal })
