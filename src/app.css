@@ -4830,6 +4830,13 @@ body.mobile-checkbox-dragging {
   padding-bottom: 2px;
 }
 
+.goal-history-hide-button .nav-shortcut {
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  background: none;
+}
+
 .goal-history-filters {
   display: flex;
   flex: 0 1 312px;
