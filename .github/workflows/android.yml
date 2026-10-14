@@ -26,6 +26,11 @@ on:
         required: false
         default: false
         type: boolean
+      run_lifecycle_tests:
+        description: Test optimized Android activity destruction and offline reopening
+        required: false
+        default: false
+        type: boolean
       run_sync_catchup_profile:
         description: Profile a synthetic multi-batch Android background catch-up
         required: false
@@ -76,6 +81,10 @@ permissions:
   contents: read
 
 jobs:
+  lifecycle-regression:
+    if: github.ref_type == 'tag' || inputs.run_lifecycle_tests
+    uses: ./.github/workflows/android-lifecycle-tests.yml
+
   build-debug:
     name: Build x86_64 debug APK
     runs-on: ubuntu-latest

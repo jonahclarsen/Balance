@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process'
+import { cdpErrorMessage } from './cdp-error.mjs'
 
-export const packageName = 'app.balance.local.debug'
+export const packageName = process.env.BALANCE_TEST_PACKAGE ?? 'app.balance.local.debug'
 const commandTimeoutMs = 30_000
 const fixturePlans = 30
 const itemsPerPlan = 20
@@ -106,7 +107,7 @@ class CdpClient {
       returnByValue: true,
     }, timeoutMs)
     if (response.exceptionDetails) {
-      throw new Error(response.exceptionDetails.exception?.description ?? response.exceptionDetails.text)
+      throw new Error(cdpErrorMessage(response.exceptionDetails))
     }
     return response.result?.value
   }

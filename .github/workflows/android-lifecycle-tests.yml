@@ -1,0 +1,115 @@
+name: Android activity lifecycle regression
+
+on:
+  workflow_call:
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: Lifecycle path to verify with synthetic data
+        type: choice
+        default: activity
+        options: [activity, process, worker-start]
+      repetitions:
+        description: Activity or process cycles per Android version
+        type: choice
+        default: "20"
+        options: ["20", "100"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build optimized CI APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup-android-build
+        with:
+          variant: lifecycle-release-x86_64
+          rust-target: x86_64-linux-android
+          generate-sync-fixture: "true"
+      - name: Enable inspection for the synthetic test installation
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('src-tauri/gen/android/app/build.gradle.kts')
+          source = p.read_text()
+          marker = 'getByName("release") {'
+          assert marker in source
+          p.write_text(source.replace(marker, marker + '\n            isDebuggable = true'))
+          PY
+      - name: Build with release optimization and shrinking
+        run: pnpm tauri android build --apk --target x86_64 --features tauri/devtools
+      - name: Sign only for this disposable CI installation
+        run: |
+          keytool -genkeypair -keystore /tmp/lifecycle-test.jks -storepass android -keypass android -alias androiddebugkey -dname "CN=Android CI Synthetic" -keyalg RSA -validity 2
+          APK_PATH="$(find src-tauri/gen/android -name '*.apk' -path '*release*' | head -n 1)"
+          test -n "$APK_PATH"
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" sign --ks /tmp/lifecycle-test.jks --ks-pass pass:android --out balance-debug.apk "$APK_PATH"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Balance-android-lifecycle-test-apk
+          retention-days: 1
+          path: |
+            balance-debug.apk
+            sync-e2e-pairing-code.txt
+
+  lifecycle:
+    name: Android ${{ matrix.api }} / ${{ inputs.scenario || 'activity' }}
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [31, 34]
+    steps:
+      - uses: actions/checkout@v6
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v7
+        with:
+          name: Balance-android-lifecycle-test-apk
+      - name: Fetch pinned AOSP WebView for both Android versions
+        run: |
+          curl --fail --location --retry 3 'https://android.googlesource.com/platform/external/chromium-webview/+/27ac2bdb9a1a4e55dc65bb6cdc752dbfdea3b9f4/128.0.6613.88/x86_64/webview.apk?format=TEXT' | base64 --decode > ci-webview.apk
+      - name: Destroy background activities and verify reopening and durable edits
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          BALANCE_TEST_PACKAGE: app.balance.local
+          BALANCE_LIFECYCLE_SCENARIO: ${{ inputs.scenario || 'activity' }}
+          BALANCE_LIFECYCLE_REPEATS: ${{ inputs.repetitions || '20' }}
+        with:
+          api-level: ${{ matrix.api }}
+          arch: x86_64
+          target: default
+          force-avd-creation: false
+          emulator-options: -no-window -gpu lavapipe -noaudio -no-boot-anim -memory 2048 -writable-system
+          disable-animations: true
+          enable-hw-keyboard: true
+          script: |
+            bash .github/scripts/install-ci-webview.sh
+            timeout --foreground --kill-after=30s 15m node .github/scripts/android-activity-recreation-test.mjs
+      - name: Retain host diagnostics
+        if: always()
+        run: bash .github/scripts/collect-android-host-diagnostics.sh
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: android-lifecycle-${{ matrix.api }}
+          retention-days: 7
+          path: |
+            android-lifecycle-*
+            android-host-diagnostics.txt
