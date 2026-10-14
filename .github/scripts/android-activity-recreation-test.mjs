@@ -164,7 +164,19 @@ try {
       let backgroundJobAfterDestruction
       if (scenario === 'activity' && i % 10 === 9) {
         await waitFor(() => /Active default network: \d+/.test(adb(['shell', 'dumpsys', 'connectivity'])), 'network restoration before background sync', 15000)
-        backgroundJobAfterDestruction = await forceBackgroundJob(relay)
+        // A restored default network can still reject the first request.
+        // Require an actual relay request from the rescheduled job, without
+        // reopening the UI or creating replacement work from the foreground.
+        const deadline = Date.now() + 45000
+        let attempts = 0
+        while (!backgroundJobAfterDestruction) {
+          attempts++
+          try { backgroundJobAfterDestruction = { id: await forceBackgroundJob(relay), attempts } }
+          catch (error) {
+            if (Date.now() >= deadline) throw error
+            await sleep(1000)
+          }
+        }
       }
       const start = performance.now()
       launchApp()
