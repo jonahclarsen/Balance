@@ -52,7 +52,7 @@ async function expectCaretIn(block: Locator) {
 async function placeCaretAtEnd(editor: Locator) {
   await editor.evaluate((element) => {
     const input = element as HTMLElement
-    input.closest<HTMLElement>('[data-rich-text-input]')?.focus()
+    input.closest<HTMLElement>('[data-rich-text-input]')?.focus({ preventScroll: true })
     const range = document.createRange()
     range.selectNodeContents(input)
     range.collapse(false)
@@ -1686,12 +1686,12 @@ test('notes save adjustable breathing room and follow the final caret to the bot
     return (lastLine.bottom - toolbar.bottom) / lastLine.height
   })
   await expect.poll(visibleLinesAtMaximum).toBeGreaterThan(1.5)
-  expect(await visibleLinesAtMaximum()).toBeLessThan(3)
+  await expect.poll(visibleLinesAtMaximum).toBeLessThan(3)
   // The maximum follows the window size rather than a fixed share.
   await page.setViewportSize({ width: 1280, height: 1100 })
   await workspace.evaluate((element) => element.scrollTo({ top: element.scrollHeight }))
   await expect.poll(visibleLinesAtMaximum).toBeGreaterThan(1.5)
-  expect(await visibleLinesAtMaximum()).toBeLessThan(3)
+  await expect.poll(visibleLinesAtMaximum).toBeLessThan(3)
 
   await spacingSlider.fill('40')
   await expect.poll(() => page.evaluate(() => localStorage.getItem('balance:noteScrollSpacePercent'))).toBe('40')
@@ -1700,6 +1700,8 @@ test('notes save adjustable breathing room and follow the final caret to the bot
   await expect(page.getByLabel('Bottom writing space')).toHaveValue('40')
 
   await workspace.evaluate((element) => element.scrollTo({ top: element.scrollHeight }))
+  await expect(spacingControl).toHaveCSS('opacity', '1')
+  await expect(spacingControl).toHaveCSS('visibility', 'visible')
   await placeCaretAtEnd(editor)
   await pressNoteKey(editor, 'Enter')
   await expect(page.locator('.note-text')).toHaveCount(2)
@@ -1716,6 +1718,9 @@ test('notes save adjustable breathing room and follow the final caret to the bot
     element.scrollTop = Math.max(0, element.scrollTop - 160)
     return element.scrollTop
   })
+  // scrollTop changes synchronously; its scroll event is delivered later.
+  // Wait until the app observes that the reader has left the bottom.
+  await expect(spacingControl).toHaveCSS('visibility', 'hidden')
   await secondEditor.evaluate((element) => {
     element.dispatchEvent(new InputEvent('beforeinput', { inputType: 'insertText', data: 'x', bubbles: true, cancelable: true }))
   })

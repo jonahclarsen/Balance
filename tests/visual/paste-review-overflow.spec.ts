@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { todayISO, shiftCalendarDateISO } from '../../src/lib/planner'
 
 // A single unbroken token plus a long wrapping sentence: both must stay inside
 // their review card rather than spilling past its rounded border.
@@ -10,10 +11,10 @@ const LONG_ITEMS = [
 ]
 
 async function openReviewWithLongItems(page: import('@playwright/test').Page) {
+  const today = todayISO()
+  const tomorrow = shiftCalendarDateISO(today, 1)
   await page.goto('/')
-  await page.evaluate((itemTexts) => {
-    const today = new Date().toISOString().slice(0, 10)
-    const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10)
+  await page.evaluate(({ itemTexts, today, tomorrow }) => {
     const makeItem = (sourceText: string, index: number) => {
       const html = sourceText.replace(/\n/g, '<br>')
       // RichTextEditor stores line breaks in HTML; its searchable plain-text
@@ -51,7 +52,7 @@ async function openReviewWithLongItems(page: import('@playwright/test').Page) {
       checkboxColor: '#a123bc',
       doneTintColor: '#a123bc',
     }))
-  }, LONG_ITEMS)
+  }, { itemTexts: LONG_ITEMS, today, tomorrow })
   await page.reload()
   await expect(page.locator('[data-plan-text-input]').first()).toBeVisible()
   await expect(page.locator('[data-plan-text-input]').nth(2).locator('br')).toHaveCount(1)
@@ -79,7 +80,6 @@ async function openReviewWithLongItems(page: import('@playwright/test').Page) {
   if (await nextDay.isVisible()) {
     await nextDay.click()
   } else {
-    const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10)
     await page.getByRole('button', { name: `Open ${tomorrow} in Today view`, exact: true }).click()
   }
   await page.locator('[data-plan-text-input]').first().focus()

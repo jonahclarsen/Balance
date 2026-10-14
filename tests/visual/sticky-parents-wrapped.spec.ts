@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
+import { todayISO } from '../../src/lib/planner'
 
 // Pinned parents show at most three lines each and five in total, taking lines
 // from the deepest rows first while every pinned row keeps one.
@@ -41,10 +42,8 @@ function deepTree(): SeedItem[] {
 
 async function seed(page: Page, tree: SeedItem[]) {
   await page.goto('/')
-  await page.evaluate((tree) => {
-    // Balance's day starts at 5 a.m.
-    const now = new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString()
-    const date = now.slice(0, 10)
+  await page.evaluate(({ tree, date }) => {
+    const now = new Date().toISOString()
     type Seed = { id: string; text: string; children?: Seed[] }
     const item = ({ id, text, children = [] }: Seed): object => (
       { id, text, html: text, done: false, startMinutes: null, endMinutes: null, children: children.map(item) }
@@ -66,7 +65,7 @@ async function seed(page: Page, tree: SeedItem[]) {
       goalCompletions: [],
       operations: [],
     }))
-  }, tree)
+  }, { tree, date: todayISO() })
   await page.reload()
 }
 

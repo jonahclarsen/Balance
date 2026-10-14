@@ -1,11 +1,11 @@
 import { expect, test } from '@playwright/test'
+import { todayISO } from '../../src/lib/planner'
 import { openView } from '../helpers/navigation'
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/')
-  await page.evaluate(() => {
+  await page.evaluate((date) => {
     localStorage.clear()
-    const date = new Date().toISOString().slice(0, 10)
     localStorage.setItem('balance.appState.v1', JSON.stringify({
       schemaVersion: 1, deviceId: 'scroll-test', localSequence: 0, historyRevision: 0,
       activePlanDate: date, templates: [], goals: [], goalCompletions: [], operations: [],
@@ -14,7 +14,7 @@ test.beforeEach(async ({ page }) => {
         children: [], done: false, startMinutes: null, endMinutes: null,
       })) }],
     }))
-  })
+  }, todayISO())
   await page.reload()
 })
 
@@ -124,6 +124,12 @@ test('admin settings show defaults, persist scroll tuning and reset it; studio m
   await expect(page.getByLabel('Iridescent background controls')).toBeVisible()
   if (testInfo.project.name !== 'mobile') {
     await openView(page, 'Today')
+    // Returning to a cached page can restore its editor focus asynchronously.
+    // Put the planner explicitly into keyboard-navigation mode before timing S.
+    const editor = page.locator('[data-plan-text-input]').first()
+    await editor.focus()
+    await page.keyboard.press('Escape')
+    await expect(editor).not.toBeFocused()
     await page.clock.install()
     await page.clock.pauseAt(new Date())
     // Align Playwright's 16 ms frames so the 400 ms interval ends on a frame.
