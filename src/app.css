@@ -4807,24 +4807,25 @@ body.mobile-checkbox-dragging {
   padding-block: 5px;
 }
 
-.goal-history-hide {
-  display: flex;
+.goal-history-hide-button {
+  display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   margin-left: auto;
+  background: transparent;
+  padding: 5px 10px;
 }
 
-.goal-history-summary + .goal-history-hide {
+.goal-history-summary + .goal-history-hide-button {
   margin-left: 0;
 }
 
-.goal-history-hide-button {
-  width: 30px;
-  background: transparent;
-  padding: 3px 0 5px;
+.goal-history-toolbar .goal-history-hide-mark {
+  color: inherit;
   font-size: 18px;
   line-height: 1;
+  padding-bottom: 2px;
 }
 
 .goal-history-filters {
