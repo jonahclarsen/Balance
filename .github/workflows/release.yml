@@ -117,7 +117,7 @@ jobs:
             --name Balance-linux-x86_64 \
             --dir release-assets/linux
 
-          test -f release-assets/macos/Balance-macos-arm64.app.zip
+          test -f release-assets/macos/Balance-macos-arm64.dmg
           test -f release-assets/linux/Balance-linux-x86_64.AppImage
           test -f release-assets/linux/Balance-linux-x86_64.deb
 
@@ -137,7 +137,7 @@ jobs:
           ASSETS=(release-assets/android/balance-arm64.apk)
           if [[ "$BUILD_ALL" == "true" ]]; then
             ASSETS+=(
-              release-assets/macos/Balance-macos-arm64.app.zip
+              release-assets/macos/Balance-macos-arm64.dmg
               release-assets/linux/Balance-linux-x86_64.AppImage
               release-assets/linux/Balance-linux-x86_64.deb
             )

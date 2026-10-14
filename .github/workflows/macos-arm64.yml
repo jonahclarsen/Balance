@@ -125,31 +125,77 @@ jobs:
           file "$APP_EXECUTABLE" | grep -q "arm64"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$PLIST")" = "$APP_VERSION"
 
-          if [[ "${BALANCE_NOTARIZE:-}" == "1" ]]; then
-            API_KEY_PATH="$RUNNER_TEMP/AuthKey.p8"
-            echo "$NOTARY_API_KEY_P8" | base64 --decode > "$API_KEY_PATH"
-            ditto -c -k --keepParent "$APP_PATH" "$RUNNER_TEMP/notarization.zip"
-            xcrun notarytool submit "$RUNNER_TEMP/notarization.zip" \
+          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+
+      - name: Install create-dmg
+        run: brew install create-dmg
+
+      - name: Notarize app and package DMG
+        run: |
+          DMG=Balance-macos-arm64.dmg
+          API_KEY_PATH="$RUNNER_TEMP/AuthKey.p8"
+          trap 'rm -f "$API_KEY_PATH"' EXIT
+
+          notarize() {
+            xcrun notarytool submit "$1" \
               --key "$API_KEY_PATH" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID" \
               --wait --timeout 30m
-            rm "$API_KEY_PATH"
-            # Stapling fetches the ticket from Apple's CDN, which can drop.
+          }
+          # Stapling fetches the ticket from Apple's CDN, which can drop.
+          staple() {
             for attempt in 1 2 3; do
-              xcrun stapler staple "$APP_PATH" && break
-              if [[ "$attempt" -eq 3 ]]; then exit 1; fi
+              xcrun stapler staple "$1" && return 0
               sleep 20
             done
+            return 1
+          }
+
+          if [[ "${BALANCE_NOTARIZE:-}" == "1" ]]; then
+            echo "$NOTARY_API_KEY_P8" | base64 --decode > "$API_KEY_PATH"
+            # Staple the app itself so the copy dragged to Applications opens
+            # offline, not only the disk image it came in.
+            ditto -c -k --keepParent "$APP_PATH" "$RUNNER_TEMP/notarization.zip"
+            notarize "$RUNNER_TEMP/notarization.zip"
+            staple "$APP_PATH"
             spctl --assess --type execute --verbose=2 "$APP_PATH"
           fi
 
-          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" Balance-macos-arm64.app.zip
+          # create-dmg copies everything in the source folder onto the image.
+          DMG_SOURCE="$RUNNER_TEMP/dmg-source"
+          mkdir -p "$DMG_SOURCE"
+          ditto "$APP_PATH" "$DMG_SOURCE/Balance.app"
+
+          # The background's arrow sits between these icon positions.
+          create-dmg \
+            --volname Balance \
+            --volicon src-tauri/icons/icon.icns \
+            --background src-tauri/macos/dmg-background.tiff \
+            --window-pos 200 120 \
+            --window-size 540 380 \
+            --icon-size 112 \
+            --text-size 13 \
+            --icon Balance.app 140 170 \
+            --hide-extension Balance.app \
+            --app-drop-link 400 170 \
+            --no-internet-enable \
+            --hdiutil-retries 10 \
+            "$DMG" "$DMG_SOURCE"
+
+          if [[ "${BALANCE_NOTARIZE:-}" == "1" ]]; then
+            codesign --sign "$SIGNING_IDENTITY" --timestamp "$DMG"
+            notarize "$DMG"
+            staple "$DMG"
+            spctl --assess --type open --context context:primary-signature --verbose=2 "$DMG"
+          fi
+
+          hdiutil verify "$DMG"
 
       - name: Upload app artifact
         uses: actions/upload-artifact@v7
         with:
           name: Balance-macos-arm64
           path: |
-            Balance-macos-arm64.app.zip
+            Balance-macos-arm64.dmg
             executable-architecture.txt
             widget-architecture.txt
           if-no-files-found: error

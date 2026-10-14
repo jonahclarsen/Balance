@@ -39,6 +39,6 @@ fi
 
 dir="$(mktemp -d)"
 gh run download "$run_id" --repo "$GITHUB_REPOSITORY" --name Balance-macos-arm64 --dir "$dir"
-test -f "$dir/Balance-macos-arm64.app.zip"
-gh release upload "$RELEASE_TAG" "$dir/Balance-macos-arm64.app.zip" --repo "$GITHUB_REPOSITORY" --clobber
+test -f "$dir/Balance-macos-arm64.dmg"
+gh release upload "$RELEASE_TAG" "$dir/Balance-macos-arm64.dmg" --repo "$GITHUB_REPOSITORY" --clobber
 echo "Attached the Mac app from run $run_id to $RELEASE_TAG"

@@ -8,7 +8,7 @@ const RELEASES = `https://github.com/${REPO}/releases`
 const CACHE_SECONDS = 600
 
 const PLATFORMS = {
-  mac: /^Balance-macos-.*\.zip$/,
+  mac: /^Balance-macos-.*\.(dmg|zip)$/,
   android: /\.apk$/,
   linux: /\.AppImage$/,
 }
