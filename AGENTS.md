@@ -130,6 +130,15 @@ Feature actions must use the stable storage vocabulary and preserve data from
 newer clients through edits, undo and checkpoints. Verify changes with the
 synthetic database and mixed-version CI before releasing.
 
+## Keep the website screenshots current
+
+The site and docs at balance.jonah.art show screenshots of the app. Whenever a
+change alters what the app looks like (styling, layout, labels, or a captured
+page's content), refresh them in the same piece of work: run
+`pnpm site:capture` and `pnpm site:images`, check every image, update any docs
+text whose labels changed, and commit the new `website/public/images/*.webp`
+with the change. Details are in `website/README.md`.
+
 ## Deploy the website after pushing changes to it
 
 After pushing changes under `website/`, run `pnpm site:deploy`.
