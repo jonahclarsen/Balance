@@ -15,7 +15,7 @@ async function storedItem(page: import('@playwright/test').Page) {
   })
 }
 
-test('a list item alternative splits its odds, persists, and undoes', async ({ page }) => {
+test('a list item alternative takes half its appearances, persists, and undoes', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -24,15 +24,18 @@ test('a list item alternative splits its odds, persists, and undoes', async ({ p
   await page.getByRole('button', { name: '+ New list' }).click()
   await page.locator('[data-list-template-text-input]').first().fill('Tidy 5 min')
 
+  await expect(page.locator('.word-cap-count')).toContainText('3 /')
   await page.getByRole('button', { name: 'Add alternative' }).click()
   const alternative = page.getByRole('textbox', { name: 'List item alternative' })
   await expect(alternative).toBeFocused()
   await page.keyboard.type('Tidy 10 min')
   await expect.poll(() => storedItem(page)).toEqual({
     text: 'Tidy 5 min',
-    probability: 50,
+    probability: 100,
     alternatives: [{ text: 'Tidy 10 min', probability: 50 }],
   })
+  // The wordings are mutually exclusive, so an equally long one adds no expected words.
+  await expect(page.locator('.word-cap-count')).toContainText('3 /')
 
   await page.reload()
   await openView(page, 'Lists')

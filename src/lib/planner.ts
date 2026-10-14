@@ -2374,19 +2374,36 @@ function captureTaskNotifications(source: string, text: string, date: string, so
 
 type ListItemVariant = Pick<ListTemplateItemAlternative, 'id' | 'text' | 'html'> & { chance: number }
 
-// The item and its alternatives as competing wordings, each with its chance of
-// being picked (0-1). Totals over 100% are scaled down rather than letting
-// later alternatives starve; any remainder under 100% is the chance of nothing.
+export function clampListItemAlternativeShare(share: number): number {
+  return Number.isFinite(share) ? Math.max(0, Math.min(100, Math.round(share))) : 0
+}
+
+// The item's own wording takes whatever share of its appearances the
+// alternatives leave, so the shares always add up to 100%.
+export function listItemPrimaryShare(item: ListTemplateItem): number {
+  const alternativeTotal = (item.alternatives ?? [])
+    .reduce((sum, alternative) => sum + clampListItemAlternativeShare(alternative.probability), 0)
+  return Math.max(0, 100 - alternativeTotal)
+}
+
+// The item's probability is the chance it appears at all; alternatives only
+// decide which wording appears. Each variant's chance (0-1) is therefore the
+// appearance chance times that wording's share. Alternative shares over 100%
+// are scaled down rather than letting later alternatives starve.
 export function listItemVariants(item: ListTemplateItem): ListItemVariant[] {
-  const options = [item, ...(item.alternatives ?? [])]
-  const probabilities = options.map((option) => clampListItemProbability(option.probability))
-  const scale = Math.max(100, probabilities.reduce((sum, probability) => sum + probability, 0))
-  return options.map((option, index) => ({
-    id: option.id,
-    text: option.text,
-    html: option.html,
-    chance: probabilities[index] / scale,
-  }))
+  const appearance = clampListItemProbability(item.probability) / 100
+  const alternatives = item.alternatives ?? []
+  const shares = alternatives.map((alternative) => clampListItemAlternativeShare(alternative.probability))
+  const scale = Math.max(100, shares.reduce((sum, share) => sum + share, 0))
+  return [
+    { id: item.id, text: item.text, html: item.html, chance: appearance * listItemPrimaryShare(item) / 100 },
+    ...alternatives.map((alternative, index) => ({
+      id: alternative.id,
+      text: alternative.text,
+      html: alternative.html,
+      chance: appearance * shares[index] / scale,
+    })),
+  ]
 }
 
 function isListItemVariantEmpty(variant: Pick<ListTemplateItemAlternative, 'text' | 'html'>): boolean {
@@ -2394,7 +2411,7 @@ function isListItemVariantEmpty(variant: Pick<ListTemplateItemAlternative, 'text
 }
 
 // The chance any non-empty wording appears, which is also the chance that the
-// item's children are generated. An empty alternative works as an explicit skip.
+// item's children are generated. A picked empty alternative generates nothing.
 export function listItemAppearanceChance(item: ListTemplateItem): number {
   const variants = listItemVariants(item)
   if (variants.length === 1) return variants[0].chance

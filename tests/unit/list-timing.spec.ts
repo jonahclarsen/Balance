@@ -70,10 +70,10 @@ test('the expected time follows the current template, weighted by each task and 
   // Removing a task drops it from the estimate straight away.
   expect(summarizeListTiming(lists, 'template', [templateItem('a'), templateItem('b')]).expectedRunMs).toBe(2 * minute)
 
-  // c (4 min) sits under a 50% parent with a 50% chance itself; d is a 30%
-  // alternative wording of b (2 min at 70%) costing 10 min.
+  // c (4 min) sits under a 50% parent with a 50% chance itself; d is an
+  // alternative wording costing 10 min that takes 30% of b's appearances.
   const weighted = [
-    templateItem('b', 70, [], [{ id: 'd', text: 'd', html: 'd', probability: 30 }]),
+    templateItem('b', 100, [], [{ id: 'd', text: 'd', html: 'd', probability: 30 }]),
     templateItem('parent', 50, [templateItem('c', 50)]),
   ]
   expect(typical.get('d')).toBe(10 * minute)

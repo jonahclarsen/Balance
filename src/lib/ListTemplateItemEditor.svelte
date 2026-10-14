@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte'
-  import { htmlToPlainText, linkifyItemText, listItemAppearanceChance, listItemVariants, MIN_LIST_ITEM_PROBABILITY, type ItemLink, listItemWordCount } from './planner'
+  import { htmlToPlainText, linkifyItemText, listItemAppearanceChance, listItemPrimaryShare, listItemVariants, MIN_LIST_ITEM_PROBABILITY, type ItemLink, listItemWordCount } from './planner'
   import { scrollMovedItemsIntoView } from './itemScroll'
   import { formatDuration } from './listTiming'
   import ProbabilitySlider from './ProbabilitySlider.svelte'
@@ -75,8 +75,7 @@
   // Bumped to force the contenteditable to revert when a keystroke would push the
   // template's expected word count past the cap.
   let revertNonce = 0
-  let allowsLowProbability = item.probability < NORMAL_MIN_LIST_ITEM_PROBABILITY ||
-    (item.alternatives ?? []).some(({ probability }) => probability < NORMAL_MIN_LIST_ITEM_PROBABILITY)
+  let allowsLowProbability = item.probability < NORMAL_MIN_LIST_ITEM_PROBABILITY
   // Clearing a row is ambiguous until focus moves: it may be a deletion, or the
   // first half of replacing all text. Keep the persisted item intact while the
   // editor is empty so a committed deletion can archive the original snapshot,
@@ -85,11 +84,8 @@
   $: revision = historyRevision + revertNonce
   $: selected = selectedItemIds.has(item.id)
   $: alternatives = item.alternatives ?? []
-  $: if (
-    item.probability < NORMAL_MIN_LIST_ITEM_PROBABILITY ||
-    alternatives.some(({ probability }) => probability < NORMAL_MIN_LIST_ITEM_PROBABILITY)
-  ) allowsLowProbability = true
-  $: probabilityTotal = item.probability + alternatives.reduce((sum, { probability }) => sum + probability, 0)
+  $: if (item.probability < NORMAL_MIN_LIST_ITEM_PROBABILITY) allowsLowProbability = true
+  $: primaryShare = listItemPrimaryShare(item)
 
   // Each wording's chance of being picked; children follow whichever is picked.
   $: variantChances = new Map(listItemVariants(item).map((variant) => [variant.id, variant.chance]))
@@ -200,8 +196,8 @@
     }
   }
 
-  // An empty alternative is kept as an explicit "skip" share, so clearing one
-  // is an ordinary edit rather than a pending deletion.
+  // Clearing an alternative is an ordinary edit rather than a pending deletion;
+  // an empty wording is simply skipped when it is picked.
   function handleAlternativeTextChange(alternative: ListTemplateItemAlternative, html: string, text: string, options?: TextChangeOptions) {
     if (wouldExceedCap(htmlToPlainText(html) || text, alternative.id)) {
       revertNonce += 1
@@ -473,6 +469,11 @@
         internalLinkSegments={linkifyItemText(item.text, listTemplates, metrics, notes)}
         onInternalLinkClick={(link) => onOpenLink(link)}
       />
+      {#if alternatives.length > 0}
+        <span class="wording-share" aria-label={`This wording: ${primaryShare}% of appearances`} title="Share of this item's appearances that use this wording; alternatives take the rest">
+          ({primaryShare}%)
+        </span>
+      {/if}
       {#if typicalItemMs.has(item.id)}
         <span class="typical-duration" title="Typical time for this task, ignoring interrupted runs">
           ~{formatDuration(typicalItemMs.get(item.id) ?? 0)}
@@ -486,9 +487,6 @@
         generousHitbox
         onChange={handleProbabilityChange}
       />
-      {#if alternatives.length > 0 && probabilityTotal > 100}
-        <span class="total bad-total" title="Over 100%: the chances are scaled down to fit">{probabilityTotal}%</span>
-      {/if}
       <button
         class="icon-button quiet add-alternative"
         type="button"
@@ -501,13 +499,14 @@
     </div>
     {#each alternatives as alternative (alternative.id)}
       <div class="option-row alternative-row">
+        <span class="alternative-label" aria-hidden="true">or</span>
         <RichTextEditor
           className="template-text"
           kind="list-template-item"
           inputId={alternative.id}
           html={alternative.html}
           text={alternative.text}
-          placeholder="(Skip)"
+          placeholder="Alternative"
           ariaLabel="List item alternative"
           singleLine
           {revision}
@@ -527,9 +526,9 @@
         {/if}
         <ProbabilitySlider
           value={alternative.probability}
-          min={allowsLowProbability ? MIN_LIST_ITEM_PROBABILITY : NORMAL_MIN_LIST_ITEM_PROBABILITY}
+          min={0}
           step={5}
-          ariaLabel="Alternative probability"
+          ariaLabel="Share of appearances"
           generousHitbox
           onChange={(probability) => handleAlternativeProbabilityChange(alternative, probability)}
         />
@@ -590,8 +589,15 @@
 
 <style>
   .alternative-row :global(.template-text) { flex: 1; min-width: 0; }
+  .alternative-label,
+  .wording-share {
+    flex: 0 0 auto;
+    color: var(--muted);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
   @media (max-width: 760px) {
-    /* Each slider already shows its share; keep the phone row to two lines. */
-    .total { display: none; }
+    .alternative-label { display: none; }
+    .wording-share { grid-column: 1; grid-row: 2; justify-self: start; }
   }
 </style>

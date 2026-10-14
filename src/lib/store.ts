@@ -83,6 +83,7 @@ import {
   createListTemplateItemAlternative,
   cloneListTemplateItemAlternatives,
   clampListItemProbability,
+  clampListItemAlternativeShare,
   generateListFromTemplate,
   hasIncompletePlanItems,
   insertQuickTask,
@@ -2538,10 +2539,11 @@ function createPlannerStore() {
       const template = get(store).listTemplates.find((candidate) => candidate.id === templateId)
       const item = template ? findListTemplateItemLocation(template.items, itemId)?.item : undefined
       if (!item) return null
-      // Start with an even split between the item's wordings, which is the
-      // usual reason to add one (e.g. alternating between two durations).
+      // Split the item's appearances evenly between its wordings, which is the
+      // usual reason to add one (e.g. alternating between two durations). The
+      // item's own text keeps the remainder; how often it appears is unchanged.
       const variants = 2 + (item.alternatives?.length ?? 0)
-      const probability = clampListItemProbability(Math.floor(100 / variants / 5) * 5)
+      const probability = Math.floor(100 / variants / 5) * 5
       const alternative = createListTemplateItemAlternative('', probability)
       const rebalanced = (item.alternatives ?? []).map((existing) => existing.probability === probability ? existing : { ...existing, probability })
       commitEntities('add_list_template_item_alternative', { templateId, itemId, alternative }, (state) =>
@@ -2550,7 +2552,6 @@ function createPlannerStore() {
           updatedAt: nowISO(),
           items: updateListTemplateItem(template.items, itemId, (current) => ({
             ...current,
-            probability,
             alternatives: [...rebalanced, alternative],
           })),
         })),
@@ -2565,9 +2566,14 @@ function createPlannerStore() {
       patch: Partial<Omit<ListTemplateItemAlternative, 'id'>>,
       options: TextChangeOptions = {},
     ) {
+      // A share can grow only into what the item's own wording still holds.
+      const template = get(store).listTemplates.find((candidate) => candidate.id === templateId)
+      const otherShares = (template ? findListTemplateItemLocation(template.items, itemId)?.item.alternatives ?? [] : [])
+        .filter(({ id }) => id !== alternativeId)
+        .reduce((sum, alternative) => sum + clampListItemAlternativeShare(alternative.probability), 0)
       const normalizedPatch =
         patch.probability !== undefined
-          ? { ...patch, probability: clampListItemProbability(patch.probability) }
+          ? { ...patch, probability: Math.min(clampListItemAlternativeShare(patch.probability), Math.max(0, 100 - otherShares)) }
           : patch
       const isTextPatch = 'text' in patch || 'html' in patch
       const mergeOptions =
@@ -4033,7 +4039,7 @@ function normalizeListTemplateItemAlternative(alternative: ListTemplateItemAlter
     ...alternative,
     text: alternative.text ?? htmlToPlainText(html),
     html,
-    probability: clampListItemProbability(alternative.probability ?? 50),
+    probability: clampListItemAlternativeShare(alternative.probability ?? 0),
   }
 }
 
