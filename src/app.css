@@ -1042,7 +1042,8 @@ h3 {
   --imax-page-header-min-height: 51px;
   position: relative;
   display: grid;
-  grid-template-columns: 248px minmax(0, 1fr);
+  --sidebar-width: 212px;
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
   /* Fit within the safe-area padding the body now reserves, so the fixed-height
      desktop layout doesn't overflow by the inset amount (0 on desktop). */
   height: calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
@@ -1111,8 +1112,8 @@ h3 {
 .sidebar.sidebar-hidden {
   position: absolute;
   z-index: 20;
-  left: -248px;
-  width: 248px;
+  left: calc(-1 * var(--sidebar-width));
+  width: var(--sidebar-width);
   visibility: hidden;
 }
 
@@ -1132,6 +1133,32 @@ h3 {
 nav {
   display: grid;
   gap: 2px;
+}
+
+.primary-nav {
+  --nav-divider-offset: -1.5px;
+  gap: 2px;
+}
+
+.primary-nav button {
+  position: relative;
+}
+
+/* Hairlines separate the flat rows; they step aside around the hovered or
+   active chip so its edge stays clean. */
+.primary-nav button::before {
+  position: absolute;
+  right: 10px;
+  bottom: var(--nav-divider-offset);
+  left: 10px;
+  height: 1px;
+  background: color-mix(in srgb, var(--line) 75%, transparent);
+  content: '';
+  pointer-events: none;
+}
+
+.primary-nav button:is(:last-child, .active, :hover, :has(+ button.active, + button:hover, + .mobile-undo-button))::before {
+  background: transparent;
 }
 
 nav button {
@@ -7443,6 +7470,7 @@ textarea.note-title {
   }
 
   .sidebar .primary-nav {
+    --nav-divider-offset: -4.5px;
     display: grid;
     flex-wrap: nowrap;
     gap: 8px;
