@@ -902,16 +902,11 @@ button {
   transition:
     border-color 160ms var(--ease-out),
     background-color 160ms var(--ease-out),
-    color 160ms var(--ease-out),
-    transform 120ms var(--ease-out);
+    color 160ms var(--ease-out);
 }
 
 button:hover {
   border-color: var(--line-strong);
-}
-
-button:active:not(:disabled) {
-  transform: translateY(1px);
 }
 
 button:disabled {
