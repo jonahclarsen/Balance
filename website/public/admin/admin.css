@@ -60,13 +60,25 @@ body.admin { height: 100vh; height: 100dvh; display: grid; grid-template-rows: a
 
 /* Font buttons: each renders its role's context with the candidate font. */
 .font-grid { display: grid; gap: 8px; }
-.font-option { display: grid; text-align: left; padding: 0; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); background: var(--surface); transition: border-color 0.15s, transform 0.15s; }
-.font-option:hover { border-color: var(--sea); }
+.font-card { position: relative; }
+.font-option { width: 100%; display: grid; text-align: left; padding: 0; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); background: var(--surface); transition: border-color 0.15s, transform 0.15s; }
+.font-card:hover .font-option { border-color: var(--sea); }
 .font-option:active { transform: scale(0.99); }
 .font-option[aria-pressed='true'] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-.font-name { display: flex; justify-content: space-between; gap: 8px; padding: 6px 12px; font-size: 0.78rem; color: var(--muted); border-top: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 60%, var(--surface)); }
+.font-name { display: flex; justify-content: space-between; gap: 8px; padding: 6px 42px 6px 12px; font-size: 0.78rem; color: var(--muted); border-top: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 60%, var(--surface)); }
 .font-name b { color: var(--text); font-weight: 600; }
 .font-option[aria-pressed='true'] .font-name { background: color-mix(in srgb, var(--accent) 12%, var(--surface)); }
+.heart { position: absolute; right: 4px; bottom: 1px; width: 30px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 8px; background: none; color: var(--muted); }
+.heart svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linejoin: round; transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1); }
+.heart:hover { color: #d9467a; }
+.heart:hover svg { transform: scale(1.15); }
+.heart:active svg { transform: scale(0.9); }
+.heart[aria-pressed='true'] { color: #d9467a; }
+.heart[aria-pressed='true'] svg { fill: currentColor; }
+.chips .favorites { display: inline-flex; align-items: center; gap: 4px; text-transform: none; }
+.chips .favorites svg { width: 12px; height: 12px; fill: #d9467a; }
+.chips .favorites .count { font-variant-numeric: tabular-nums; opacity: 0.7; }
+.chips .favorites .count:empty { display: none; }
 .empty { color: var(--muted); text-align: center; padding: 24px 0; }
 
 .ctx { padding: 14px 14px 12px; min-height: 92px; color: var(--text); overflow: hidden; font-family: var(--f-body); font-weight: var(--w-body); }

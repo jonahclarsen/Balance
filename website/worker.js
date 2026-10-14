@@ -1,7 +1,7 @@
 // balance.jonah.art: static site plus download links that always point at the
 // newest GitHub release carrying each platform's build, and /admin for fonts.
 
-import { findFont, fontCssUrl, fontFamilies, overrideCss, sanitizeSettings } from './public/admin/fonts.js'
+import { findFont, fontCssUrl, fontFamilies, overrideCss, sanitizeFavorites, sanitizeSettings } from './public/admin/fonts.js'
 
 const REPO = 'jonahclarsen/Balance'
 const RELEASES = `https://github.com/${REPO}/releases`
@@ -48,6 +48,7 @@ async function cachedBuilds(ctx) {
 }
 
 const FONT_SETTINGS_KEY = 'fonts'
+const FAVORITES_KEY = 'font-favorites'
 const BROWSER_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36'
 
 function base64url(text) {
@@ -90,13 +91,24 @@ async function fontSettings(env) {
   return sanitizeSettings(await env.SETTINGS.get(FONT_SETTINGS_KEY, { type: 'json', cacheTtl: 30 }))
 }
 
-async function fontAdminApi(request, env) {
-  if (request.method === 'GET') return Response.json({ settings: await fontSettings(env) }, { headers: { 'cache-control': 'no-store' } })
+// The admin reads KV uncached so it always sees its own latest writes.
+async function fontAdminApi(request, env, path) {
+  const json = (body) => Response.json(body, { headers: { 'cache-control': 'no-store' } })
+  if (request.method === 'GET' && path === '/admin/api/fonts') {
+    const [settings, favorites] = await Promise.all([env.SETTINGS.get(FONT_SETTINGS_KEY, 'json'), env.SETTINGS.get(FAVORITES_KEY, 'json')])
+    return json({ settings: sanitizeSettings(settings), favorites: sanitizeFavorites(favorites) })
+  }
   if (request.method !== 'PUT') return new Response(null, { status: 405 })
   if (request.headers.get('origin') !== new URL(request.url).origin) return new Response('Invalid origin', { status: 403 })
-  const settings = sanitizeSettings((await request.json().catch(() => null))?.settings)
+  const body = await request.json().catch(() => null)
+  if (path === '/admin/api/favorites') {
+    const favorites = sanitizeFavorites(body?.favorites)
+    await env.SETTINGS.put(FAVORITES_KEY, JSON.stringify(favorites))
+    return json({ favorites })
+  }
+  const settings = sanitizeSettings(body?.settings)
   await env.SETTINGS.put(FONT_SETTINGS_KEY, JSON.stringify(settings))
-  return Response.json({ settings }, { headers: { 'cache-control': 'no-store' } })
+  return json({ settings })
 }
 
 // Google Fonts, served first-party so visitors never contact Google.
@@ -166,7 +178,7 @@ async function handle(request, env, ctx, authorize) {
   const url = new URL(request.url)
   if (url.pathname === '/admin' || url.pathname.startsWith('/admin/')) {
     if (!await authorize(request, env)) return new Response('Sign in through Cloudflare Access.', { status: 401 })
-    if (url.pathname === '/admin/api/fonts') return fontAdminApi(request, env)
+    if (url.pathname === '/admin/api/fonts' || url.pathname === '/admin/api/favorites') return fontAdminApi(request, env, url.pathname)
     return env.ASSETS.fetch(request)
   }
   if (url.pathname === '/fonts/css') return fontCss(url, ctx)

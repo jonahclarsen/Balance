@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { accessAuthorized } from '../../website/worker.js'
-import { fontFamilies, overrideCss, resolveRole, sanitizeSettings } from '../../website/public/admin/fonts.js'
+import { fontFamilies, overrideCss, resolveRole, sanitizeFavorites, sanitizeSettings } from '../../website/public/admin/fonts.js'
 
 const env = {
   ACCESS_ISSUER: 'https://example-team.cloudflareaccess.com',
@@ -47,6 +47,11 @@ test('saved font settings keep only known roles, fonts and weights', () => {
   })
   expect(settings).toEqual({ heading: { family: 'Fraunces', weight: 600 }, mono: { family: 'Space Mono', weight: 400 } })
   expect(overrideCss(settings)).toContain("--font-heading: 'Fraunces'")
+})
+
+test('favorites keep only catalog fonts, once each, in catalog order', () => {
+  expect(sanitizeFavorites(['Space Mono', 'Inter', 'Comic Sans', 'Inter', 42])).toEqual(['Inter', 'Space Mono'])
+  expect(sanitizeFavorites('Inter')).toEqual([])
 })
 
 test('roles follow their parent until overridden and only overridden fonts load', () => {

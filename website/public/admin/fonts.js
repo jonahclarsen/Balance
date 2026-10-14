@@ -134,6 +134,12 @@ export function sanitizeSettings(input) {
   return settings
 }
 
+// The shortlisted families, in catalog order.
+export function sanitizeFavorites(input) {
+  const favorites = new Set(Array.isArray(input) ? input : [])
+  return FONTS.filter((font) => favorites.has(font.family)).map((font) => font.family)
+}
+
 export function overrideCss(settings) {
   const declarations = []
   for (const role of ROLES) {

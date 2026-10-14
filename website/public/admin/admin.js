@@ -1,6 +1,6 @@
 import {
   CATEGORIES, FONTS, ROLES, findFont, fontCssUrl, fullFamilySpec, isGoogle,
-  nearestWeight, overrideCss, resolveRole, sanitizeSettings, stack, weightOptions,
+  nearestWeight, overrideCss, resolveRole, sanitizeFavorites, sanitizeSettings, stack, weightOptions,
 } from './fonts.js'
 
 const $ = (id) => document.getElementById(id)
@@ -8,7 +8,7 @@ const frame = $('preview')
 const panel = $('panel')
 // `hover` is the settings of the font option under the pointer, previewed until
 // the pointer leaves it.
-const state = { saved: {}, draft: {}, hover: null, role: 'heading', category: 'all', query: '', page: '/', highlight: null }
+const state = { saved: {}, draft: {}, favorites: new Set(), hover: null, role: 'heading', category: 'all', query: '', page: '/', highlight: null }
 const candidates = new WeakMap()
 // Preview copy, refreshed from the homepage so it tracks the real wording.
 const copy = { hero: 'Plan your day and track your goals at the same time.', lede: 'A daily planner for Mac and Android.' }
@@ -79,6 +79,25 @@ const CONTEXTS = {
   mono: () => [element('p', {}, ['Press ', element('kbd', { textContent: '?' }), ' to see every shortcut.']), element('p', {}, ['Backticks turn text into ', element('code', { textContent: 'inline code' }), '.'])],
 }
 
+const HEART = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5s-7.5-4.6-9.2-9.4C1.6 7.6 3.9 4 7.4 4c2 0 3.6 1.1 4.6 2.7C13 5.1 14.6 4 16.6 4c3.5 0 5.8 3.6 4.6 7.1-1.7 4.8-9.2 9.4-9.2 9.4Z"/></svg>'
+
+function heartButton(family) {
+  const button = element('button', { type: 'button', className: 'heart', innerHTML: HEART })
+  const sync = () => {
+    const on = state.favorites.has(family)
+    button.setAttribute('aria-pressed', String(on))
+    button.setAttribute('aria-label', `${on ? 'Remove' : 'Add'} ${family} ${on ? 'from' : 'to'} favorites`)
+  }
+  sync()
+  button.addEventListener('click', () => {
+    toggleFavorite(family)
+    sync()
+  })
+  return button
+}
+
+// A card holds the option and, for real fonts, its heart; nesting buttons is
+// invalid, so the heart sits beside the option rather than inside it.
 function fontOption(role, family, label, meta) {
   const candidate = withChoice(role.id, family)
   const pressed = family ? state.draft[role.id]?.family === family : !state.draft[role.id]
@@ -90,8 +109,32 @@ function fontOption(role, family, label, meta) {
   ])
   button.setAttribute('aria-pressed', String(pressed))
   button.addEventListener('click', () => update(candidate))
-  candidates.set(button, candidate)
-  return button
+  const card = element('div', { className: 'font-card' }, family ? [button, heartButton(family)] : [button])
+  candidates.set(card, candidate)
+  return card
+}
+
+// Favorites save on their own, outside the draft. Saves run one at a time and
+// each sends the latest set, so quick toggles can't land out of order.
+let favoritesSave = Promise.resolve()
+
+function toggleFavorite(family) {
+  if (state.favorites.has(family)) state.favorites.delete(family)
+  else state.favorites.add(family)
+  renderCategories()
+  if (state.category === 'favorites') renderFonts()
+  favoritesSave = favoritesSave.then(async () => {
+    try {
+      const response = await fetch('/admin/api/favorites', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ favorites: [...state.favorites] }),
+      })
+      if (!response.ok) throw new Error(response.status === 401 ? 'Signed out. Reload to sign in again.' : `Could not save favorites (${response.status})`)
+    } catch (error) {
+      setStatus(error.message, true)
+    }
+  })
 }
 
 function renderRoles() {
@@ -136,14 +179,19 @@ function renderWeights() {
 function renderFonts() {
   const role = roleById(state.role)
   const query = state.query.trim().toLowerCase()
-  const fonts = FONTS.filter((font) => (state.category === 'all' || font.category === state.category) && font.family.toLowerCase().includes(query))
+  const inCategory = (font) => state.category === 'all' || font.category === state.category ||
+    (state.category === 'favorites' && state.favorites.has(font.family))
+  const fonts = FONTS.filter((font) => inCategory(font) && font.family.toLowerCase().includes(query))
   const fallback = role.follows ? `Same as ${roleById(role.follows).label}` : 'Site default'
   const fallbackFont = resolveRole(withChoice(role.id, null), role.id)
   const options = [
     ...(query || state.category !== 'all' ? [] : [fontOption(role, null, fallback, describe(fallbackFont))]),
     ...fonts.map((font) => fontOption(role, font.family, font.family, font.category)),
   ]
-  $('fonts').replaceChildren(...(options.length ? options : [element('p', { className: 'empty', textContent: 'No fonts match.' })]))
+  const empty = state.category === 'favorites' && !query && state.favorites.size === 0
+    ? 'No favorites yet. Use the heart on a font to shortlist it.'
+    : 'No fonts match.'
+  $('fonts').replaceChildren(...(options.length ? options : [element('p', { className: 'empty', textContent: empty })]))
 }
 
 function renderPicker() {
@@ -155,8 +203,10 @@ function renderPicker() {
 }
 
 function renderCategories() {
-  $('categories').replaceChildren(...['all', ...CATEGORIES].map((category) => {
-    const button = element('button', { type: 'button', textContent: category })
+  $('categories').replaceChildren(...['all', 'favorites', ...CATEGORIES].map((category) => {
+    const button = category === 'favorites'
+      ? element('button', { type: 'button', className: 'favorites', innerHTML: `${HEART}<span>Favorites</span><span class="count">${state.favorites.size || ''}</span>` })
+      : element('button', { type: 'button', textContent: category })
     button.setAttribute('aria-pressed', String(category === state.category))
     button.addEventListener('click', () => {
       state.category = category
@@ -191,7 +241,7 @@ let pointer = null
 const finePointer = matchMedia('(hover: hover) and (pointer: fine)')
 
 function syncHover() {
-  const option = pointer && document.elementFromPoint(pointer.x, pointer.y)?.closest('.font-option')
+  const option = pointer && document.elementFromPoint(pointer.x, pointer.y)?.closest('.font-card')
   const hover = (option && candidates.get(option)) ?? null
   if (hover === state.hover) return
   state.hover = hover
@@ -342,7 +392,10 @@ async function start() {
   try {
     const response = await fetch('/admin/api/fonts')
     if (!response.ok) throw new Error(`Could not load settings (${response.status})`)
-    state.saved = (await response.json()).settings
+    const loaded = await response.json()
+    state.saved = loaded.settings
+    state.favorites = new Set(sanitizeFavorites(loaded.favorites))
+    renderCategories()
     update(state.saved)
     setStatus('')
   } catch (error) {
