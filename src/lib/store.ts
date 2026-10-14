@@ -645,10 +645,6 @@ function createPlannerStore() {
   let backendReloadPromise: Promise<void> | null = null
   let backendReloadRequestRevision = 0
   let nativeHistoryPromise: Promise<unknown> | null = null
-  let nativeHistoryDepth = 0
-  // Bumped when the database disagreed with cached history. Entries shown
-  // before then were drawn from a cache that no longer describes the database.
-  let nativeHistoryGeneration = 0
   let deferredHistoryCommits: (() => void)[] | null = null
 
   // Actions that precompute a tree replacement must read the restored tree,
@@ -660,112 +656,26 @@ function createPlannerStore() {
   }
 
   function withNativeHistory<T>(action: () => Promise<T>): Promise<T> {
-    // Native history allocates an operation ID. Edits must wait until every
-    // queued history command has installed its sequence and history snapshot,
-    // including undo shown from the cache before the database replies.
-    if (nativeHistoryDepth === 0) deferredHistoryCommits = []
-    nativeHistoryDepth += 1
-    localMutationRevision += 1
-    const result = nativeHistoryPromise ? nativeHistoryPromise.then(action, action) : action()
-    const settled = result.finally(() => {
-      nativeHistoryDepth -= 1
+    const run = async () => {
+      // Native history allocates an operation ID. Edits must wait until its
+      // acknowledgement installs the new sequence and history snapshot.
+      deferredHistoryCommits = []
       localMutationRevision += 1
-      if (nativeHistoryDepth === 0) {
-        const deferred = deferredHistoryCommits ?? []
+      try {
+        return await action()
+      } finally {
+        const deferred = deferredHistoryCommits
         deferredHistoryCommits = null
+        localMutationRevision += 1
         for (const commit of deferred) commit()
       }
+    }
+    const result = nativeHistoryPromise ? nativeHistoryPromise.then(run, run) : run()
+    const settled = result.finally(() => {
       if (nativeHistoryPromise === settled) nativeHistoryPromise = null
     })
     nativeHistoryPromise = settled
     return settled
-  }
-
-  // Sync can hold the database for seconds. Waiting for it before showing
-  // undo made Cmd+Z feel ignored, so repeated presses piled up and then
-  // undid far too much. A cached snapshot is shown at once and the database
-  // confirms in order behind it; any disagreement installs its state instead.
-  function applyCachedNativeHistory(direction: 'undo' | 'redo', entry: HistoryEntry): void {
-    if (direction === 'undo') {
-      undoStack.pop()
-      redoStack.push(entry)
-    } else {
-      redoStack.pop()
-      undoStack.push(entry)
-    }
-    lastOperationMergeKey = null
-    redoAvailableState.set(redoStack.length > 0)
-    const generation = nativeHistoryGeneration
-    void withNativeHistory(() => confirmNativeHistory(direction, entry, generation))
-    const snapshot = direction === 'undo' ? entry.before : entry.after
-    store.update((current) => stateFromNativeHistoryEntry(current, snapshot, current.localSequence))
-  }
-
-  async function confirmNativeHistory(direction: 'undo' | 'redo', entry: HistoryEntry, generation: number): Promise<void> {
-    try {
-      await flushOperations()
-      const cacheValid = generation === nativeHistoryGeneration
-      const result = parseBackendHistoryResult(await invoke<string | null>(`${direction}_last_operation`, {
-        expectedOperationId: cacheValid ? entry.operationId : null,
-      }))
-      if (cacheValid && result?.operationId === entry.operationId && result.state === null) {
-        store.update((current) => ({ ...current, localSequence: Math.max(current.localSequence, result.localSequence) }))
-        if (redoStack.length === 0) redoAvailableState.set(result.canRedo)
-        notifyPersistedOperation()
-        return
-      }
-      nativeHistoryGeneration += 1
-      undoStack = []
-      redoStack = []
-      lastOperationMergeKey = null
-      redoAvailableState.set(result?.canRedo ?? false)
-      if (result?.state) {
-        installNativeHistoryState(result.state)
-        notifyPersistedOperation()
-      } else {
-        void requestStableBackendReload()
-      }
-    } catch (error) {
-      nativeHistoryGeneration += 1
-      undoStack = []
-      redoStack = []
-      redoAvailableState.set(false)
-      persistenceError.set(`Could not ${direction}: ${error instanceof Error ? error.message : String(error)}`)
-      void requestStableBackendReload()
-    }
-  }
-
-  // Without a cached snapshot (after launch, or after another device changed
-  // the workspace) the database returns the complete state to install.
-  function uncachedNativeHistory(direction: 'undo' | 'redo'): Promise<string | null> {
-    return withNativeHistory(async () => {
-      await flushOperations()
-      const result = parseBackendHistoryResult(await invoke<string | null>(`${direction}_last_operation`, {
-        expectedOperationId: null,
-      }))
-      undoStack = []
-      redoStack = []
-      lastOperationMergeKey = null
-      if (!result) {
-        redoAvailableState.set(false)
-        return null
-      }
-      if (result.state) installNativeHistoryState(result.state)
-      redoAvailableState.set(result.canRedo)
-      notifyPersistedOperation()
-      return result.operationType ??
-        result.state?.operations.find((operation) => operation.id === result.operationId)?.type ?? 'history'
-    })
-  }
-
-  function installNativeHistoryState(state: AppState): void {
-    const parsed = parseStoredState(JSON.stringify(state))
-    if (!parsed) return
-    store.update((current) => ({
-      ...parsed,
-      ...reuseUnchangedCollections(current, parsed),
-      historyRevision: current.historyRevision + 1,
-    }))
   }
 
   async function waitForNativeHistory(): Promise<void> {
@@ -3233,12 +3143,40 @@ function createPlannerStore() {
     },
 
     async undo(): Promise<string | null> {
-      if (isTauri()) {
+      if (isTauri()) return withNativeHistory(async () => {
+        await flushOperations()
         const expected = undoStack.at(-1)
-        if (!expected) return uncachedNativeHistory('undo')
-        applyCachedNativeHistory('undo', expected)
-        return expected.operationType
-      }
+        const resultJson = await invoke<string | null>('undo_last_operation', {
+          expectedOperationId: expected?.operationId ?? null,
+        })
+        const result = parseBackendHistoryResult(resultJson)
+        if (!result) {
+          undoStack = []
+          redoStack = []
+          redoAvailableState.set(false)
+          return null
+        }
+
+        const operationType = result.operationId === expected?.operationId
+          ? expected.operationType
+          : result.operationType ?? result.state?.operations.find((operation) => operation.id === result.operationId)?.type ?? 'history'
+        lastOperationMergeKey = null
+        if (expected && result.operationId === expected.operationId && result.state === null) {
+          undoStack.pop()
+          redoStack.push(expected)
+          store.update((current) => stateFromNativeHistoryEntry(current, expected.before, result.localSequence))
+        } else if (result.state) {
+          const parsed = parseStoredState(JSON.stringify(result.state))
+          if (parsed) {
+            undoStack = []
+            redoStack = []
+            store.update((current) => ({ ...parsed, historyRevision: current.historyRevision + 1 }))
+          }
+        }
+        redoAvailableState.set(result.canRedo)
+        notifyPersistedOperation()
+        return operationType
+      })
 
       let operationToPersist: Operation | null = null
       let operationType: string | null = null
@@ -3261,12 +3199,37 @@ function createPlannerStore() {
     },
 
     async redo(): Promise<boolean> {
-      if (isTauri()) {
+      if (isTauri()) return withNativeHistory(async () => {
+        await flushOperations()
         const expected = redoStack.at(-1)
-        if (!expected) return (await uncachedNativeHistory('redo')) !== null
-        applyCachedNativeHistory('redo', expected)
+        const resultJson = await invoke<string | null>('redo_last_operation', {
+          expectedOperationId: expected?.operationId ?? null,
+        })
+        const result = parseBackendHistoryResult(resultJson)
+        if (!result) {
+          undoStack = []
+          redoStack = []
+          redoAvailableState.set(false)
+          return false
+        }
+
+        lastOperationMergeKey = null
+        if (expected && result.operationId === expected.operationId && result.state === null) {
+          redoStack.pop()
+          undoStack.push(expected)
+          store.update((current) => stateFromNativeHistoryEntry(current, expected.after, result.localSequence))
+        } else if (result.state) {
+          const parsed = parseStoredState(JSON.stringify(result.state))
+          if (parsed) {
+            undoStack = []
+            redoStack = []
+            store.update((current) => ({ ...parsed, historyRevision: current.historyRevision + 1 }))
+          }
+        }
+        redoAvailableState.set(result.canRedo)
+        notifyPersistedOperation()
         return true
-      }
+      })
 
       let operationToPersist: Operation | null = null
 
@@ -3316,34 +3279,6 @@ function createPlannerStore() {
       await requestStableBackendReload()
     },
   }
-}
-
-// History can return the whole workspace. Keep references for records it did
-// not change so views and derived data that depend on them stay put.
-function reuseUnchangedCollections(current: AppState, next: AppState): Partial<AppState> {
-  const reused: Record<string, unknown> = {}
-  for (const key of ['preferences', 'plans', 'templates', ...ENTITY_COLLECTIONS] as const) {
-    const before = current[key] as unknown
-    const after = next[key] as unknown
-    if (Array.isArray(before) && Array.isArray(after)) {
-      const previous = new Map(before.map((value) => [(value as { id?: unknown }).id, value]))
-      let unchanged = before.length === after.length
-      const values = after.map((value, index) => {
-        const id = (value as { id?: unknown }).id
-        const match = id === undefined ? undefined : previous.get(id)
-        if (match !== undefined && sameStoredValue(match, value)) {
-          unchanged &&= before[index] === match
-          return match
-        }
-        unchanged = false
-        return value
-      })
-      reused[key] = unchanged ? before : values
-    } else if (sameStoredValue(before, after)) {
-      reused[key] = before
-    }
-  }
-  return reused as Partial<AppState>
 }
 
 function parseBackendHistoryResult(raw: string | null): BackendHistoryResult | null {

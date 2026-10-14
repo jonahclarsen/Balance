@@ -1080,7 +1080,6 @@ for (const delayAcknowledgement of [false, true]) {
       await store.flushPendingOperations()
       await store.undo()
       const afterLastUndo = text()
-      await store.flushPendingOperations()
       unsubscribe()
       return { persisted, undone, redone, historyCalls, afterLastUndo }
     }, delayAcknowledgement)
@@ -1228,4 +1227,41 @@ test('disconnect during an active pass becomes Offline and suppresses retries', 
   await expect(page.getByRole('status', { name: 'Sync status: Error' })).toHaveCount(0)
   await openSettings(page)
   await expect(page.locator('#sync-error')).toHaveCount(0)
+})
+
+test('presses while undo waits on a busy database are dropped instead of queued', async ({ page }) => {
+  await page.goto('/?launch-then-hold=1')
+  await expect.poll(() => readSyncStatus(page)).toEqual({ running: false, initialSyncComplete: true })
+  await page.evaluate(async () => {
+    const path = '/src/lib/store.ts'
+    const { plannerStore: store } = await import(/* @vite-ignore */ path)
+    const runtime = globalThis as any
+    const original = runtime.__TAURI_INTERNALS__.invoke
+    runtime.__historyCalls = 0
+    runtime.__TAURI_INTERNALS__.invoke = async (command: string, args: any) => {
+      if (command === 'undo_last_operation') {
+        runtime.__historyCalls += 1
+        await new Promise<void>((resolve) => { runtime.__releaseHistory = resolve })
+        return JSON.stringify({ operationId: args.expectedOperationId, state: null, localSequence: 100 + runtime.__historyCalls, canRedo: true })
+      }
+      return original(command, args)
+    }
+    let live: any
+    store.subscribe((state: any) => { live = state })()
+    const plan = live.plans.find((candidate: any) => candidate.items.some((item: any) => item.id === 'visible-item'))
+    for (const text of ['First edit', 'Second edit', 'Third edit']) {
+      store.patchPlanItem(plan.id, 'visible-item', { text, html: text }, { mergeHistory: false })
+      await store.flushPendingOperations()
+    }
+    ;(document.activeElement as HTMLElement | null)?.blur()
+  })
+  for (let press = 0; press < 3; press += 1) await page.keyboard.press('ControlOrMeta+z')
+  await expect.poll(() => page.evaluate(() => (globalThis as any).__historyCalls)).toBe(1)
+  await page.evaluate(() => (globalThis as any).__releaseHistory())
+  await page.waitForTimeout(200)
+  await page.keyboard.press('ControlOrMeta+z')
+  await expect.poll(() => page.evaluate(() => (globalThis as any).__historyCalls)).toBe(2)
+  await page.evaluate(() => (globalThis as any).__releaseHistory())
+  await page.waitForTimeout(200)
+  expect(await page.evaluate(() => (globalThis as any).__historyCalls)).toBe(2)
 })

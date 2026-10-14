@@ -1189,17 +1189,30 @@ return rows`
     searchOpen = true
   }
 
+  // A press made while an earlier undo or redo is still waiting on the
+  // database (for example behind a sync pass) is dropped rather than queued.
+  // Queued presses all landed late and undid far more than intended. Presses
+  // during the quick reveal that follows still queue so fast typing works.
   let historyQueue = Promise.resolve()
+  let historyAwaitingDatabase = false
   let historyNotice = ''
   let historyNoticeTimer: ReturnType<typeof setTimeout> | undefined
 
   async function undoAndOpenDestination() {
-    historyQueue = historyQueue.then(() => applyHistoryAndReveal('undo'))
-    await historyQueue
+    await queueHistory('undo')
   }
 
   async function redoAndOpenDestination() {
-    historyQueue = historyQueue.then(() => applyHistoryAndReveal('redo'))
+    await queueHistory('redo')
+  }
+
+  async function queueHistory(direction: 'undo' | 'redo') {
+    if (historyAwaitingDatabase) return
+    historyAwaitingDatabase = true
+    historyQueue = historyQueue.then(() => applyHistoryAndReveal(direction)).catch((error) => {
+      historyAwaitingDatabase = false
+      console.error(`Could not ${direction}`, error)
+    })
     await historyQueue
   }
 
@@ -1212,7 +1225,12 @@ return rows`
         ? completionUndoCaret : null
     completionUndoCaret = null
     try {
-      const changed = direction === 'undo' ? await plannerStore.undo() : await plannerStore.redo()
+      let changed
+      try {
+        changed = direction === 'undo' ? await plannerStore.undo() : await plannerStore.redo()
+      } finally {
+        historyAwaitingDatabase = false
+      }
       if (!changed) return
       const destination = historyDestination(before, $plannerStore)
       // Next shows today's plan changes in place, so undo stays there instead
