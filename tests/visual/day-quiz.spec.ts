@@ -31,3 +31,20 @@ test('a question with a blank only answer takes a typed answer after the questio
   await expect(quiz).toBeHidden()
   await expect(page.getByRole('region', { name: 'Daily plan' }).locator('[data-plan-text-input]')).toHaveText(['Focus: snack break'])
 })
+
+test('Cmd+Shift+A selects the row from its question field', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  await openView(page, 'Days')
+  await page.getByRole('button', { name: 'New day', exact: true }).last().click()
+  await page.locator('[data-template-option-text-input]').first().fill('Breakfast')
+  await page.getByRole('button', { name: 'Ask a question when generating the day' }).first().click()
+  await expect(page.locator('.question-input')).toBeFocused()
+  await page.keyboard.press('Meta+Shift+A')
+  await page.keyboard.press('Delete')
+  await expect(page.locator('[data-template-option-text-input]')).not.toHaveText(['Breakfast'])
+  await expect(page.locator('.question-input')).toHaveCount(0)
+})

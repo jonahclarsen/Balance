@@ -4106,7 +4106,8 @@ return rows`
       event.shiftKey &&
       !event.altKey &&
       key === 'a' &&
-      !isFormFieldActive()
+      // A template row's question field belongs to its row, unlike other inputs.
+      (!isFormFieldActive() || document.activeElement?.matches('.question-input'))
     ) {
       if (selectedItemIds.length > 0) {
         event.preventDefault()
