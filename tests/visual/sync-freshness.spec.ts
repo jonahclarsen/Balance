@@ -1080,6 +1080,7 @@ for (const delayAcknowledgement of [false, true]) {
       await store.flushPendingOperations()
       await store.undo()
       const afterLastUndo = text()
+      await store.flushPendingOperations()
       unsubscribe()
       return { persisted, undone, redone, historyCalls, afterLastUndo }
     }, delayAcknowledgement)

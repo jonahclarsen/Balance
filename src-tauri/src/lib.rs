@@ -10628,13 +10628,20 @@ async fn sync_relay_once(
             )
             .map_err(sync::Error::into_string)
         })();
+        // Polls run every few seconds while devices are active and hold the
+        // database lock that undo and saves wait on. Local writes already
+        // republish through their own housekeeping, so only incoming changes
+        // need the projections refreshed here.
+        let state_changed = result
+            .as_ref()
+            .is_ok_and(|pass| pass.state_changed || pass.checkpoint_committed);
         #[cfg(target_os = "macos")]
-        if result.is_ok() {
+        if state_changed || (result.is_ok() && !macos_widget::published_snapshot_is_current()) {
             if let Err(error) = macos_widget::publish_snapshot(&startup.connection) {
                 eprintln!("Could not refresh the macOS widget: {error}");
             }
         }
-        if result.is_ok() {
+        if state_changed {
             if let Err(error) = task_notifications::publish(&startup.connection) {
                 log::warn!("Could not refresh task notifications after sync: {error}");
             }

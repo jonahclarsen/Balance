@@ -102,7 +102,10 @@ for (const structural of [false, true]) for (const cached of [true, false]) for 
       await store.ready
       store.deletePlanItems('plan', ['deleted'])
       await store.flushPendingOperations()
-      if (direction === 'redo') await store.undo()
+      if (direction === 'redo') {
+        await store.undo()
+        await store.flushPendingOperations()
+      }
       delayHistory = true
       const history = store[direction]()
       await historyStarted
@@ -136,3 +139,116 @@ for (const structural of [false, true]) for (const cached of [true, false]) for 
     expect(new Set(result.sequences).size).toBe(result.sequences.length)
   })
 }
+
+test('cached undo shows at once while the database is busy and each press undoes one step', async ({ page }) => {
+  await page.route('**/history-persistence', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><body></body>' }))
+  await page.goto('/history-persistence')
+  const result = await page.evaluate(async () => {
+    const runtime = window as any
+    const items = ['first', 'second', 'third'].map(id => ({ id, text: id, html: id, done: false, children: [] }))
+    const database: any = {
+      schemaVersion: 1, deviceId: 'synthetic-busy', localSequence: 0, activePlanDate: '2026-09-16', templates: [],
+      plans: [{ id: 'plan', title: 'Synthetic day', createdAt: '2026-09-16T00:00:00Z', date: '2026-09-16', dailyReminder: '', items }],
+      operations: [],
+    }
+    const deletes: string[] = []
+    const historyCalls: (string | null)[] = []
+    let busy = false
+    let release = () => {}
+    const databaseFree = () => new Promise<void>(resolve => { release = resolve })
+    let pending = Promise.resolve()
+    runtime.isTauri = true
+    runtime.__TAURI_INTERNALS__ = { invoke: async (command: string, args: any) => {
+      if (command === 'read_app_state') return JSON.stringify(database)
+      if (command === 'persist_operation') {
+        const operation = JSON.parse(args.operationJson)
+        database.localSequence = operation.sequence
+        if (operation.type === 'delete_plan_items') deletes.push(operation.id)
+        return true
+      }
+      if (command === 'undo_last_operation') {
+        historyCalls.push(args.expectedOperationId)
+        if (busy) await (pending = pending.then(databaseFree))
+        database.localSequence += 1
+        return JSON.stringify({ operationId: deletes.pop(), localSequence: database.localSequence, canRedo: true, state: null })
+      }
+      throw new Error(`Unexpected command ${command}`)
+    } }
+    const path = '/src/lib/store.ts'
+    const { plannerStore: store } = await import(/* @vite-ignore */ path)
+    await store.ready
+    for (const id of ['third', 'second', 'first']) {
+      store.deletePlanItems('plan', [id])
+      await store.flushPendingOperations()
+    }
+    let live: any
+    const unsubscribe = store.subscribe((state: any) => { live = state })
+    const visible = () => live.plans[0].items.map((item: any) => item.id)
+    busy = true
+    const afterPress: string[][] = []
+    for (let press = 0; press < 2; press += 1) {
+      await store.undo()
+      afterPress.push(visible())
+    }
+    const callsWhileBusy = historyCalls.length
+    store.patchPlanItem('plan', 'second', { text: 'Edited while busy', html: 'Edited while busy' })
+    const textWhileBusy = live.plans[0].items.find((item: any) => item.id === 'second').text
+    for (let step = 0; step < 2; step += 1) {
+      await new Promise(resolve => setTimeout(resolve, 10))
+      release()
+    }
+    await store.flushPendingOperations()
+    const finalText = live.plans[0].items.find((item: any) => item.id === 'second').text
+    unsubscribe()
+    return { afterPress, callsWhileBusy, historyCalls: historyCalls.length, textWhileBusy, finalText, final: visible() }
+  })
+  expect(result.afterPress).toEqual([['first'], ['first', 'second']])
+  expect(result.callsWhileBusy).toBeLessThanOrEqual(1)
+  expect(result.historyCalls).toBe(2)
+  expect(result.textWhileBusy).toBe('second')
+  expect(result.finalText).toBe('Edited while busy')
+  expect(result.final).toEqual(['first', 'second'])
+})
+
+test('cached undo installs the database state when the database undid something else', async ({ page }) => {
+  await page.route('**/history-persistence', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><body></body>' }))
+  await page.goto('/history-persistence')
+  const result = await page.evaluate(async () => {
+    const runtime = window as any
+    const item = (id: string) => ({ id, text: id, html: id, done: false, children: [] })
+    const database: any = {
+      schemaVersion: 1, deviceId: 'synthetic-mismatch', localSequence: 0, activePlanDate: '2026-09-16', templates: [],
+      plans: [{ id: 'plan', title: 'Synthetic day', createdAt: '2026-09-16T00:00:00Z', date: '2026-09-16', dailyReminder: '', items: [item('local'), item('remote')] }],
+      operations: [],
+    }
+    runtime.isTauri = true
+    runtime.__TAURI_INTERNALS__ = { invoke: async (command: string, args: any) => {
+      if (command === 'read_app_state') return JSON.stringify(database)
+      if (command === 'persist_operation') {
+        database.localSequence = JSON.parse(args.operationJson).sequence
+        return true
+      }
+      if (command === 'undo_last_operation') {
+        database.localSequence += 1
+        database.plans[0].items = [item('local'), item('database')]
+        return JSON.stringify({ operationId: 'op_other_device', localSequence: database.localSequence, canRedo: true, state: database })
+      }
+      throw new Error(`Unexpected command ${command}`)
+    } }
+    const path = '/src/lib/store.ts'
+    const { plannerStore: store } = await import(/* @vite-ignore */ path)
+    await store.ready
+    store.deletePlanItems('plan', ['local'])
+    await store.flushPendingOperations()
+    let live: any
+    const unsubscribe = store.subscribe((state: any) => { live = state })
+    await store.undo()
+    const optimistic = live.plans[0].items.map((entry: any) => entry.id)
+    await store.flushPendingOperations()
+    const settled = live.plans[0].items.map((entry: any) => entry.id)
+    unsubscribe()
+    return { optimistic, settled }
+  })
+  expect(result.optimistic).toEqual(['local', 'remote'])
+  expect(result.settled).toEqual(['local', 'database'])
+})
