@@ -4832,7 +4832,9 @@ body.mobile-checkbox-dragging {
 
 .goal-history-hide-button .nav-shortcut {
   min-width: 0;
-  padding-inline: 4px;
+  border: 0;
+  padding: 0;
+  background: none;
 }
 
 .goal-history-filters {
