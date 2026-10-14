@@ -21,6 +21,15 @@ on:
         type: choice
         default: macos-15-intel
         options: [macos-15, macos-15-intel, macos-26]
+      grep:
+        description: Optional test-title regex for a focused browser reproduction (empty runs the full suite)
+        type: string
+        default: ''
+      repeat:
+        description: Repetitions for a focused reproduction
+        type: choice
+        default: '1'
+        options: ['1', '3', '5']
 
 permissions:
   contents: read
@@ -58,7 +67,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6]
+        shard: ${{ fromJSON(inputs.grep && '[1]' || '[1, 2, 3, 4, 5, 6]') }}
     steps:
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v6
@@ -70,11 +79,18 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium webkit
-      - name: Exercise the full desktop, mobile, and WebKit browser suite
+      - name: Exercise desktop, mobile, and WebKit browser behavior
         timeout-minutes: 22
         env:
           PLAYWRIGHT_JSON_OUTPUT_NAME: artifacts/playwright/results.json
-        run: pnpm test:visual --fully-parallel --workers=1 --shard=${{ matrix.shard }}/6 --reporter=list,json
+          TEST_GREP: ${{ inputs.grep }}
+          TEST_REPEAT: ${{ inputs.repeat || '1' }}
+        run: |
+          if [ -n "$TEST_GREP" ]; then
+            pnpm test:visual --grep "$TEST_GREP" --repeat-each "$TEST_REPEAT" --workers=1 --reporter=list,json
+          else
+            pnpm test:visual --fully-parallel --workers=1 --shard=${{ matrix.shard }}/6 --reporter=list,json
+          fi
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -83,6 +99,7 @@ jobs:
           retention-days: 7
 
   lexical:
+    if: ${{ !inputs.grep }}
     runs-on: ${{ inputs.runner || 'macos-15-intel' }}
     timeout-minutes: 20
     steps:

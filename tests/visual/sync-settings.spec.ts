@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { openView } from '../helpers/navigation'
 
 async function openSync(page: Page, mode = 'new') {
   await page.addInitScript((mode) => {
@@ -42,9 +43,7 @@ async function openSync(page: Page, mode = 'new') {
     }
   }, mode)
   await page.goto('/')
-  const nav = page.getByRole('button', { name: 'Open navigation' })
-  if (await nav.isVisible()) await nav.click()
-  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await openView(page, 'Settings')
   const panel = page.locator('.sync-panel')
   await expect(panel.getByRole('heading', { name: 'Sync across your devices' })).toBeVisible()
   return panel
@@ -54,8 +53,20 @@ async function calls(page: Page) {
   return page.evaluate(() => (window as any).__syncCalls as string[])
 }
 
+async function relayCalls(page: Page) {
+  return (await calls(page)).filter((command) => command === 'sync_relay_once').length
+}
+
+async function pauseAfterStartup(page: Page) {
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1_000))
+  // Let the initial workspace's persistence debounce finish before assigning
+  // delays to the sync passes under test. The clock must be installed before
+  // openSync so these startup timers belong to the same controlled clock.
+  await page.clock.runFor(2_000)
+}
+
 async function startBackgroundSync(page: Page, delay: number) {
-  const previousCalls = (await calls(page)).length
+  const previousCalls = await relayCalls(page)
   await page.evaluate(async (delay) => {
     const runtime = window as any
     runtime.__syncDelayMs = delay
@@ -63,14 +74,14 @@ async function startBackgroundSync(page: Page, delay: number) {
     const { requestSync } = await import(/* @vite-ignore */ schedulerPath)
     runtime.__backgroundSync = requestSync('poll')
   }, delay)
-  await expect.poll(async () => (await calls(page)).length).toBeGreaterThan(previousCalls)
+  await expect.poll(() => relayCalls(page)).toBeGreaterThan(previousCalls)
 }
 
 test('routine background sync stays quiet and keeps controls usable', async ({ page }) => {
-  const panel = await openSync(page, 'connected')
-  await expect(panel.locator('.sync-overview strong')).toHaveText('Connected to sync server')
   await page.clock.install()
-  await page.clock.pauseAt(new Date())
+  const panel = await openSync(page, 'connected')
+  await pauseAfterStartup(page)
+  await expect(panel.locator('.sync-overview strong')).toHaveText('Connected to sync server')
   const syncNow = panel.getByRole('button', { name: 'Sync now', exact: true })
   const connect = panel.getByRole('button', { name: 'Connect another device' })
 
@@ -95,10 +106,12 @@ test('routine background sync stays quiet and keeps controls usable', async ({ p
   await expect(connect).toBeEnabled()
   await expect(panel.locator('.sync-overview strong')).toHaveText('Connected to sync server')
   // A manual request can join a slow poll instead of leaving its button blocked.
+  const beforeManual = await relayCalls(page)
   await syncNow.click()
   await expect(syncNow).toBeDisabled()
   await page.clock.runFor(499)
   await page.evaluate(() => (window as any).__backgroundSync)
+  await expect.poll(() => relayCalls(page)).toBeGreaterThan(beforeManual)
   await page.clock.runFor(1_500)
   await expect(syncNow).toBeEnabled()
   await expect(connect).toBeEnabled()
@@ -106,33 +119,35 @@ test('routine background sync stays quiet and keeps controls usable', async ({ p
 })
 
 test('saving connection settings waits for an active background sync', async ({ page }) => {
+  await page.clock.install()
   const panel = await openSync(page, 'connected')
+  await pauseAfterStartup(page)
   await expect(panel.locator('.sync-overview strong')).toHaveText('Connected to sync server')
   await panel.getByText('Connection settings', { exact: true }).click()
   await panel.getByLabel('Sync server address').fill('https://sync.invalid/synthetic-new-room')
-  await page.clock.install()
-  await page.clock.pauseAt(new Date())
   await startBackgroundSync(page, 500)
+  const beforeSave = await relayCalls(page)
   const save = panel.getByRole('button', { name: 'Save and connect' })
   await save.click()
   await expect(save).toBeDisabled()
   expect(await calls(page)).not.toContain('set_sync_relay_url')
   await page.clock.runFor(500)
   await expect.poll(() => calls(page)).toContain('set_sync_relay_url')
+  await expect.poll(() => relayCalls(page)).toBeGreaterThan(beforeSave)
   await page.clock.runFor(500)
   await expect(save).toBeEnabled()
   await expect(panel.getByLabel('Sync server address')).toHaveValue('https://sync.invalid/synthetic-new-room')
 })
 
 test('quick syncs keep the connection label and only longer syncs show progress', async ({ page }) => {
+  await page.clock.install()
   const panel = await openSync(page, 'connected')
+  await pauseAfterStartup(page)
   const label = panel.locator('.sync-overview strong')
   const lastSync = panel.locator('.sync-overview .sync-state')
   const syncNow = panel.getByRole('button', { name: 'Sync now', exact: true })
   await expect(label).toHaveText('Connected to sync server')
   const originalTime = await lastSync.textContent()
-  await page.clock.install()
-  await page.clock.pauseAt(new Date())
 
   await page.evaluate(() => { (window as any).__syncDelayMs = 500 })
   await syncNow.click()
