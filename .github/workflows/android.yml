@@ -620,11 +620,13 @@ jobs:
       - build-release
       - smoke-test
       - editing-tests
+      - lifecycle-regression
     if: >-
       inputs.publish_tag != '' &&
       needs['build-release'].result == 'success' &&
       needs['smoke-test'].result == 'success' &&
-      needs['editing-tests'].result == 'success'
+      needs['editing-tests'].result == 'success' &&
+      needs['lifecycle-regression'].result == 'success'
     runs-on: ubuntu-latest
 
     permissions:
