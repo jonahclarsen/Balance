@@ -118,7 +118,7 @@ jobs:
           # GITHUB_TOKEN tag pushes intentionally do not trigger other
           # workflows. workflow_dispatch is allowed, so start the release
           # builds explicitly at the selected tag. Android publishes the
-          # release; release.yml adds the notarized Mac app to it.
+          # release, and attach-nightly-macos.sh adds the notarized Mac app.
           dispatch() {
             local label="$1"
             shift

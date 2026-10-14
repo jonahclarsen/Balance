@@ -694,3 +694,8 @@ jobs:
             release-assets/android/balance-arm64.apk \
             --repo "$GITHUB_REPOSITORY" \
             --clobber
+
+      - name: Attach the notarized Mac app if it is ready
+        env:
+          RELEASE_SHA: ${{ github.sha }}
+        run: bash .github/scripts/attach-nightly-macos.sh
