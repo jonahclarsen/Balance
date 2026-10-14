@@ -4449,8 +4449,19 @@ return rows`
 
   // Hides or shows the subtasks of the focused (or selected) task. On a task
   // without subtasks it acts on the parent, so Cmd+R from inside a group folds
-  // that group away and leaves the cursor on its parent.
+  // that group away and leaves the cursor on its parent. With several tasks
+  // selected it acts on each selected task that has subtasks, hiding them all
+  // unless every one is already hidden.
   async function togglePlanItemChildrenFromKeyboard(items: PlanItem[]) {
+    if (selectedItemIds.length > 1) {
+      const parents = selectedItemIds
+        .map((id) => findPlanItem(items, id))
+        .filter((item): item is PlanItem => Boolean(item?.children.length))
+      const collapse = parents.some((parent) => !$collapsedPlanItemIds.has(parent.id))
+      for (const parent of parents) setPlanItemCollapsed(parent.id, collapse)
+      return
+    }
+
     const focused = document.activeElement instanceof HTMLElement
       ? document.activeElement.closest<HTMLElement>('[data-plan-text-focus-target-id]')?.dataset.planTextFocusTargetId
       : undefined

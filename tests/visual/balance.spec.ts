@@ -1950,6 +1950,65 @@ test('a Today task can hide and show its subtasks', async ({ page }, testInfo) =
   await expect(page.locator('[data-plan-text-input]', { hasText: 'Later' })).toBeFocused()
 })
 
+test('Cmd+R hides and shows the subtasks of every selected Today task', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Keyboard selection is desktop-only')
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await generateDay(page, 'Generate today')
+
+  await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    const plan = state.plans?.[0]
+    if (!plan) return
+
+    const workIndex = plan.items.findIndex((item: { text: string }) => item.text === 'Work block')
+    const item = (id: string, text: string, children: unknown[] = []) => ({
+      id,
+      text,
+      html: text,
+      done: false,
+      startMinutes: null,
+      endMinutes: null,
+      children,
+    })
+    plan.items.splice(
+      workIndex + 1,
+      0,
+      item('plan_item_plain', 'Plain'),
+      item('plan_item_later', 'Later', [item('plan_item_later_child', 'Later child')]),
+    )
+    localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+  })
+  await page.reload()
+
+  const workChild = page.locator('[data-plan-text-focus-target]', { hasText: 'Pick the first useful task' })
+  const laterChild = page.locator('[data-plan-text-focus-target]', { hasText: 'Later child' })
+  const laterRow = page.locator('.plan-row').filter({ has: page.locator('[data-plan-text-focus-target]', { hasText: /^Later$/ }) })
+
+  // Hide one parent first: a mixed selection hides every selected parent, and
+  // selected subtasks without subtasks of their own are left alone.
+  await laterRow.getByRole('button', { name: 'Hide subtasks' }).click()
+  await expect(laterChild).toHaveCount(0)
+
+  await focusInputByValue(page, 'Work block')
+  await page.keyboard.press('Meta+Shift+A')
+  await page.keyboard.press('Shift+ArrowDown')
+  await page.keyboard.press('Shift+ArrowDown')
+  await page.keyboard.press('Shift+ArrowDown')
+  await page.keyboard.press('Shift+ArrowDown')
+  await expect(page.locator('[data-plan-item-id].selected')).toHaveCount(5)
+
+  await page.keyboard.press('ControlOrMeta+R')
+  await expect(workChild).toHaveCount(0)
+  await expect(laterChild).toHaveCount(0)
+  await expect(page.locator('[data-plan-item-id].selected')).toHaveCount(3)
+
+  await page.keyboard.press('ControlOrMeta+R')
+  await expect(workChild).toBeVisible()
+  await expect(laterChild).toBeVisible()
+})
+
 test('tab indents a template item only one level after a nested sibling', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
