@@ -287,9 +287,8 @@
     background: transparent;
     text-align: left;
     color: var(--muted);
-    font-size: 12px;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
+    font-size: 13px;
+    font-weight: 600;
   }
 
   .search-group-toggle svg {

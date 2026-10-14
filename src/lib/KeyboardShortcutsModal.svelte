@@ -201,9 +201,8 @@
   .shortcut-group h4 {
     margin: 0 0 10px;
     color: var(--muted);
-    font-size: 12px;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
+    font-size: 13px;
+    font-weight: 600;
   }
 
   dl {

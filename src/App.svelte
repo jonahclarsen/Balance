@@ -7061,7 +7061,6 @@ return rows`
             <h2>
               {activePlan?.title ?? formatPlanTitle(displayedPlanDate)}
               {#if editingReminderPlanId && activePlan && editingReminderPlanId === activePlan.id}
-                <span class="daily-reminder-prefix">—</span>
                 <input
                   bind:this={dailyReminderInput}
                   class="daily-reminder-input"
@@ -7078,7 +7077,7 @@ return rows`
                   title={activePlan ? 'Edit daily reminder' : 'Generate a day before editing the reminder'}
                   on:click={() => { void startDailyReminderEdit(activePlan) }}
                 >
-                  — {activePlan?.dailyReminder ?? DEFAULT_DAILY_REMINDER}
+                  {activePlan?.dailyReminder ?? DEFAULT_DAILY_REMINDER}
                 </button>
               {/if}
             </h2>
