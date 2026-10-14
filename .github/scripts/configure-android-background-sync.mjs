@@ -71,6 +71,8 @@ class BalanceSyncWorker(context: Context, params: WorkerParameters) : Worker(con
         init { System.loadLibrary("balance_lib") }
 
         @JvmStatic external fun runNativeSync(appDataPath: String): Int
+        @JvmStatic external fun nativeBeginScheduling()
+        @JvmStatic external fun nativeFinishScheduling()
 
         @JvmStatic fun enterForeground(context: Context) {
             appForeground = true
@@ -102,7 +104,18 @@ class BalanceSyncWorker(context: Context, params: WorkerParameters) : Worker(con
                 .setConstraints(constraints)
                 .setInitialDelay(delayMinutes, TimeUnit.MINUTES)
                 .build()
-            manager.enqueueUniqueWork(SYNC_NAME, policy, request)
+            // onStop must not block the UI, but native last-activity shutdown
+            // must wait until WorkManager has durably handed off this request.
+            nativeBeginScheduling()
+            try {
+                manager.enqueueUniqueWork(SYNC_NAME, policy, request).result.addListener(
+                    { nativeFinishScheduling() },
+                    java.util.concurrent.Executor { command -> command.run() }
+                )
+            } catch (error: Throwable) {
+                nativeFinishScheduling()
+                throw error
+            }
         }
     }
 }

@@ -22,6 +22,8 @@ use tauri::Manager;
 use tauri_plugin_opener::OpenerExt;
 
 #[cfg(target_os = "android")]
+mod android_lifecycle;
+#[cfg(target_os = "android")]
 mod android_widget;
 mod database_keys;
 #[cfg(test)]
@@ -10920,6 +10922,13 @@ pub fn run() {
         .expect("error while building tauri application");
 
     app.run(|app_handle, event| {
+        #[cfg(target_os = "android")]
+        if let tauri::RunEvent::ExitRequested { code: None, .. } = &event {
+            // Ordinary Home/pause and explicit exits (which carry a code) keep
+            // their existing handling. Only last-activity destruction ends here.
+            android_lifecycle::exit_after_last_activity();
+        }
+
         #[cfg(target_os = "macos")]
         if let tauri::RunEvent::Opened { urls } = &event {
             for url in urls {
