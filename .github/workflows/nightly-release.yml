@@ -108,7 +108,7 @@ jobs:
           echo "dispatch=true" >> "$GITHUB_OUTPUT"
           echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
 
-      - name: Dispatch Android release build
+      - name: Dispatch Android and macOS release builds
         if: steps.release.outputs.dispatch == 'true'
         env:
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
@@ -116,22 +116,27 @@ jobs:
           set -euo pipefail
 
           # GITHUB_TOKEN tag pushes intentionally do not trigger other
-          # workflows. workflow_dispatch is allowed, so start the existing
-          # Android workflow explicitly at the selected release tag.
-          for attempt in 1 2 3; do
-            if gh workflow run android.yml \
-              --repo "$GITHUB_REPOSITORY" \
-              --ref "$RELEASE_TAG" \
-              --field publish_tag="$RELEASE_TAG"; then
-              echo "Dispatched Android release build for $RELEASE_TAG"
-              exit 0
-            fi
+          # workflows. workflow_dispatch is allowed, so start the release
+          # builds explicitly at the selected tag. Android publishes the
+          # release; release.yml adds the notarized Mac app to it.
+          dispatch() {
+            local label="$1"
+            shift
+            for attempt in 1 2 3; do
+              if gh workflow run "$@" --repo "$GITHUB_REPOSITORY" --ref "$RELEASE_TAG"; then
+                echo "Dispatched $label release build for $RELEASE_TAG"
+                return 0
+              fi
 
-            if [[ "$attempt" -lt 3 ]]; then
-              echo "Dispatch attempt $attempt failed; retrying after tag propagation"
-              sleep 3
-            fi
-          done
+              if [[ "$attempt" -lt 3 ]]; then
+                echo "$label dispatch attempt $attempt failed; retrying after tag propagation"
+                sleep 3
+              fi
+            done
 
-          echo "::error::Could not dispatch the Android release build for $RELEASE_TAG"
-          exit 1
+            echo "::error::Could not dispatch the $label release build for $RELEASE_TAG"
+            return 1
+          }
+
+          dispatch Android android.yml --field publish_tag="$RELEASE_TAG"
+          dispatch macOS macos-arm64.yml

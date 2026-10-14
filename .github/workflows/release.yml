@@ -11,7 +11,7 @@ on:
       - completed
 
 concurrency:
-  group: version-release-${{ github.event.workflow_run.head_sha }}
+  group: version-release-${{ github.event.workflow_run.head_sha }}-${{ github.event.workflow_run.event }}
   cancel-in-progress: false
 
 permissions:
@@ -145,5 +145,69 @@ jobs:
 
           gh release upload "$RELEASE_TAG" \
             "${ASSETS[@]}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
+
+  publish-nightly-macos:
+    name: Add the notarized Mac app to a nightly release
+    # Nightly tags dispatch Android and macOS separately. Whichever finishes
+    # last uploads the Mac app, once Android has published the release.
+    if: >-
+      github.event.workflow_run.event == 'workflow_dispatch' &&
+      startsWith(github.event.workflow_run.head_branch, 'v') &&
+      !endsWith(github.event.workflow_run.head_branch, '-all') &&
+      (github.event.workflow_run.name == 'Build Android' ||
+        github.event.workflow_run.name == 'Build macOS arm64 app')
+    runs-on: ubuntu-latest
+
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+      RELEASE_TAG: ${{ github.event.workflow_run.head_branch }}
+
+    steps:
+      - name: Find the macOS build and the published release
+        id: ready
+        run: |
+          set -euo pipefail
+
+          read -r run_id status conclusion < <(gh run list \
+            --repo "$GITHUB_REPOSITORY" \
+            --workflow macos-arm64.yml \
+            --commit "$RELEASE_SHA" \
+            --event workflow_dispatch \
+            --limit 20 \
+            --json databaseId,status,conclusion,headBranch,createdAt \
+            --jq "map(select(.headBranch == \"$RELEASE_TAG\")) | sort_by(.createdAt) | last | [.databaseId, .status, .conclusion] | @tsv") || true
+
+          if [[ -z "${run_id:-}" || "$status" != "completed" ]]; then
+            echo "The macOS build is not complete yet; its completion will retry."
+            exit 0
+          fi
+          if [[ "$conclusion" != "success" ]]; then
+            echo "::error::macOS run $run_id concluded with $conclusion"
+            exit 1
+          fi
+
+          IS_DRAFT="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>/dev/null || true)"
+          if [[ "$IS_DRAFT" != "false" ]]; then
+            echo "$RELEASE_TAG is not published yet; Android's completion will retry."
+            exit 0
+          fi
+
+          echo "macos_run_id=$run_id" >> "$GITHUB_OUTPUT"
+
+      - name: Upload the Mac app
+        if: steps.ready.outputs.macos_run_id != ''
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets/macos
+          gh run download "${{ steps.ready.outputs.macos_run_id }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name Balance-macos-arm64 \
+            --dir release-assets/macos
+          test -f release-assets/macos/Balance-macos-arm64.app.zip
+          gh release upload "$RELEASE_TAG" \
+            release-assets/macos/Balance-macos-arm64.app.zip \
             --repo "$GITHUB_REPOSITORY" \
             --clobber

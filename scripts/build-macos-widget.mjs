@@ -42,10 +42,13 @@ for (const [project, target] of [
 }
 
 const signingIdentity = process.env.APPLE_SIGNING_IDENTITY || '-'
+// Notarization requires a secure timestamp, which ad-hoc signatures cannot carry.
+const timestamp = signingIdentity === '-' ? [] : ['--timestamp']
 execFileSync('codesign', [
   '--force',
   '--sign',
   signingIdentity,
+  ...timestamp,
   '--options',
   'runtime',
   '--entitlements',
@@ -57,6 +60,7 @@ execFileSync('codesign', [
   '--force',
   '--sign',
   signingIdentity,
+  ...timestamp,
   '--options',
   'runtime',
   '--entitlements',
