@@ -11,9 +11,10 @@
   <meta name="theme-color" content="#166f7b">
   <link rel="icon" href="/favicon.png">
   <link rel="preload" href="/assets/sora-latin-700.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/images/mac-today.webp" as="image" type="image/webp">
   <link rel="stylesheet" href="/assets/site.css">
 </head>
-<body>
+<body class="landing">
   <header class="wrap top">
     <a class="brand" href="/"><img src="/assets/logo.png" alt=""><span class="wordmark">Balance</span></a>
     <nav>
@@ -24,78 +25,100 @@
 
   <main>
     <section class="wrap hero">
-      <img class="mark" src="/assets/logo.png" alt="">
-      <h1>Balance</h1>
-      <p class="lede">Plan your day and track your goals at the same time.</p>
-
-      <div class="downloads">
-        <a class="button primary" href="/download/mac">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M2 20h20"/></svg>
-          Mac <small>Apple silicon</small>
-        </a>
-        <a class="button secondary" href="/download/android">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/></svg>
-          Android <small>APK</small>
-        </a>
+      <div class="hero-copy">
+        <h1>Plan your day and track your goals at the same time.</h1>
+        <p class="lede">A daily planner for Mac and Android. End-to-end encrypted and open source.</p>
+        <div class="downloads">
+          <a class="button primary" href="/download/mac">
+            <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128.23,30A40,40,0,0,1,167,0h1a8,8,0,0,1,0,16h-1a24,24,0,0,0-23.24,18,8,8,0,1,1-15.5-4ZM223.3,169.59a8.07,8.07,0,0,0-2.8-3.4C203.53,154.53,200,134.64,200,120c0-17.67,13.47-33.06,21.5-40.67a8,8,0,0,0,0-11.62C208.82,55.74,187.82,48,168,48a72.23,72.23,0,0,0-40,12.13,71.56,71.56,0,0,0-90.71,9.09A74.63,74.63,0,0,0,16,123.4a127,127,0,0,0,40.14,89.73A39.8,39.8,0,0,0,83.59,224h87.68a39.84,39.84,0,0,0,29.12-12.57,125,125,0,0,0,17.82-24.6C225.23,174,224.33,172,223.3,169.59Z"/></svg>
+            Mac <small>Apple silicon</small>
+          </a>
+          <a class="button secondary" href="/download/android">
+            <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M207.06,80.67c-.74-.74-1.49-1.46-2.24-2.17l24.84-24.84a8,8,0,0,0-11.32-11.32l-26,26a111.43,111.43,0,0,0-128.55.19L37.66,42.34A8,8,0,0,0,26.34,53.66L51.4,78.72A113.38,113.38,0,0,0,16,161.13V184a16,16,0,0,0,16,16H224a16,16,0,0,0,16-16V160A111.25,111.25,0,0,0,207.06,80.67ZM92,160a12,12,0,1,1,12-12A12,12,0,0,1,92,160Zm72,0a12,12,0,1,1,12-12A12,12,0,0,1,164,160Z"/></svg>
+            Android <small>APK</small>
+          </a>
+        </div>
       </div>
-      <p class="version" id="version"><a href="https://github.com/jonahclarsen/Balance/releases/latest">Latest release</a></p>
-
-      <ul class="facts">
-        <li><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>End-to-end encrypted</span></li>
-        <li><a href="https://github.com/jonahclarsen/Balance"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8 7-5 5 5 5M16 7l5 5-5 5"/></svg>Open source</a></li>
-        <li><a href="/docs/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5"/></svg>Docs</a></li>
-      </ul>
 
       <div class="devices">
-        <div class="mac"><div class="bar"><i></i><i></i><i></i></div><img src="/images/mac-today.webp" width="1920" height="1200" alt="Balance on Mac: today's plan with Goal Rhythm"></div>
+        <div class="mac"><img src="/images/mac-today.webp" width="1920" height="1200" alt="Balance on Mac: today's plan with Goal Rhythm" fetchpriority="high"></div>
         <div class="phone"><img src="/images/android-today.webp" width="720" height="1598" alt="Balance on Android: today's plan"></div>
       </div>
     </section>
 
-    <section class="wrap features">
-      <div class="feature">
-        <div class="copy">
-          <h2>Templates with odds</h2>
-          <p>Give each task a chance. Generate the day.</p>
-        </div>
-        <div class="mac"><div class="bar"><i></i><i></i><i></i></div><img src="/images/mac-days.webp" width="1920" height="1200" alt="Day template with probability sliders" loading="lazy"></div>
+    <section class="wrap split reveal">
+      <div class="copy">
+        <h2>Templates with odds</h2>
+        <p>Give each task a chance, from always to now and then. Generate today and the plan rolls itself.</p>
       </div>
-      <div class="feature">
-        <div class="copy">
-          <h2>Goals that count themselves</h2>
-          <p>Check off “Run 5k.” Exercise is done.</p>
-        </div>
-        <div class="mac"><div class="bar"><i></i><i></i><i></i></div><img src="/images/mac-goals.webp" width="1920" height="1200" alt="Goals with recent completions" loading="lazy"></div>
+      <div class="mac"><img src="/images/mac-days.webp" width="1920" height="1200" alt="Day template with probability sliders" loading="lazy"></div>
+    </section>
+
+    <section class="wrap split flip reveal">
+      <div class="copy">
+        <h2>Goals that count themselves</h2>
+        <p>Check off “Run 5k” and Exercise is done for the day. Goal Rhythm shows what’s due next.</p>
       </div>
-      <div class="feature">
+      <div class="mac"><img src="/images/mac-goals.webp" width="1920" height="1200" alt="Goals with recent completions" loading="lazy"></div>
+    </section>
+
+    <section class="band reveal">
+      <div class="wrap band-inner">
         <div class="copy">
-          <h2>Mac and Android</h2>
-          <p>Synced through your own server. It sees only ciphertext.</p>
+          <h2>Mac and Android, synced privately</h2>
+          <p>Sync runs through a relay you deploy yourself. Everything is encrypted before it leaves the device, so the relay sees only ciphertext.</p>
+          <a class="more" href="/docs/#sync">How sync works
+            <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M221.66,133.66l-72,72A8,8,0,0,1,136,200V136H40a8,8,0,0,1,0-16h96V56a8,8,0,0,1,13.66-5.66l72,72A8,8,0,0,1,221.66,133.66Z"/></svg>
+          </a>
         </div>
         <div class="phones">
           <div class="phone"><img src="/images/android-notes.webp" width="720" height="1598" alt="Notes on Android" loading="lazy"></div>
           <div class="phone"><img src="/images/android-goals.webp" width="720" height="1598" alt="Goals on Android" loading="lazy"></div>
         </div>
       </div>
-      <div class="feature">
-        <div class="copy">
-          <h2>And the rest</h2>
-          <p>Notes, lists, quizzes, projects, priorities, idea buckets.</p>
-        </div>
-        <div class="gallery">
-          <div class="mac"><div class="bar"><i></i><i></i><i></i></div><img src="/images/mac-notes.webp" width="1920" height="1200" alt="Notes" loading="lazy"></div>
-          <div class="mac"><div class="bar"><i></i><i></i><i></i></div><img src="/images/mac-lists.webp" width="1920" height="1200" alt="Lists" loading="lazy"></div>
-          <div class="mac"><div class="bar"><i></i><i></i><i></i></div><img src="/images/mac-quizzes.webp" width="1920" height="1200" alt="Quizzes" loading="lazy"></div>
-          <div class="mac"><div class="bar"><i></i><i></i><i></i></div><img src="/images/mac-projects.webp" width="1920" height="1200" alt="Projects" loading="lazy"></div>
-        </div>
+    </section>
+
+    <section class="wrap rest">
+      <h2 class="reveal">Everything else a day needs</h2>
+      <div class="bento">
+        <figure class="tile notes reveal">
+          <figcaption><strong>Notes</strong> Headings, checklists and images, linkable from any task.</figcaption>
+          <div class="shot"><img src="/images/mac-notes.webp" width="1920" height="1200" alt="Notes" loading="lazy"></div>
+        </figure>
+        <figure class="tile lists reveal">
+          <figcaption><strong>Lists</strong> Reusable checklists with their own odds.</figcaption>
+          <div class="shot"><img src="/images/mac-lists.webp" width="1920" height="1200" alt="Lists" loading="lazy"></div>
+        </figure>
+        <figure class="tile quizzes reveal">
+          <figcaption><strong>Quizzes</strong> Questions you answer regularly, charted.</figcaption>
+          <div class="shot"><img src="/images/mac-quizzes.webp" width="1920" height="1200" alt="Quizzes" loading="lazy"></div>
+        </figure>
+        <figure class="tile projects reveal">
+          <figcaption><strong>Projects</strong> Check in on long efforts: how complete, and how much your heart is in it.</figcaption>
+          <div class="shot"><img src="/images/mac-projects.webp" width="1920" height="1200" alt="Projects" loading="lazy"></div>
+        </figure>
       </div>
+      <p class="also reveal">Plus <a href="/docs/#prioritize">Prioritize</a>, idea <a href="/docs/#buckets">Buckets</a>, widgets and Siri, and daily encrypted <a href="/docs/#backups">backups</a>.</p>
+    </section>
+
+    <section class="wrap closing reveal">
+      <img class="mark" src="/assets/logo.png" alt="">
+      <h2>Get Balance</h2>
+      <div class="downloads">
+        <a class="button primary" href="/download/mac">Mac <small>Apple silicon</small></a>
+        <a class="button secondary" href="/download/android">Android <small>APK</small></a>
+      </div>
+      <p class="source">
+        <a href="https://github.com/jonahclarsen/Balance"><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,104v8a56.06,56.06,0,0,1-48.44,55.47A39.8,39.8,0,0,1,176,192v40a8,8,0,0,1-8,8H104a8,8,0,0,1-8-8V216H72a40,40,0,0,1-40-40A24,24,0,0,0,8,152a8,8,0,0,1,0-16,40,40,0,0,1,40,40,24,24,0,0,0,24,24H96v-8a39.8,39.8,0,0,1,8.44-24.53A56.06,56.06,0,0,1,56,112v-8a58.14,58.14,0,0,1,7.69-28.32A59.78,59.78,0,0,1,69.07,28,8,8,0,0,1,76,24a59.75,59.75,0,0,1,48,24h24a59.75,59.75,0,0,1,48-24,8,8,0,0,1,6.93,4,59.74,59.74,0,0,1,5.37,47.68A58,58,0,0,1,216,104Z"/></svg>Source on GitHub</a>
+        <span id="version"><a href="https://github.com/jonahclarsen/Balance/releases/latest">Latest release notes</a></span>
+      </p>
     </section>
   </main>
 
   <footer>
     <div class="wrap">
       <span>Balance by <a href="https://jonah.art">Jonah Larsen</a></span>
-      <span><a href="/docs/">Docs</a> · <a href="https://github.com/jonahclarsen/Balance">GitHub</a> · <a href="https://github.com/jonahclarsen/Balance/releases">Releases</a></span>
+      <nav><a href="/docs/">Docs</a><a href="https://github.com/jonahclarsen/Balance">GitHub</a><a href="https://github.com/jonahclarsen/Balance/releases">Releases</a></nav>
     </div>
   </footer>
 
