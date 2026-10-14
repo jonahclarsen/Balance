@@ -2148,13 +2148,14 @@ function createPlannerStore() {
       return fresh.map((item) => item.id)
     },
 
-    // Moves a root-level idea to the end of another bucket. The timestamp
-    // restarts the Trash countdown and records when the decision was made.
+    // Moves a root-level idea to the end of a bucket. Keeping an idea in its own
+    // bucket (a review answering Genuinely again) requeues it at the end. The
+    // timestamp restarts the Trash countdown and records when the decision was made.
     moveIdeaToBucket(itemId: Id, kind: IdeaBucketKind) {
       let moved = false
       commitEntities('move_idea', { itemId, kind }, (state) => {
         const found = findIdea(state.ideaBuckets, itemId)
-        if (!found || found.bucket.kind === kind) return state
+        if (!found) return state
         moved = true
         const item: IdeaItem = { ...found.item, bucketedAt: nowISO() }
         const removed = updateBucket(state, found.bucket.kind, (bucket) => ({ ...bucket, items: bucket.items.filter((candidate) => candidate.id !== itemId) }))

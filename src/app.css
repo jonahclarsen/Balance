@@ -7694,7 +7694,11 @@ textarea.note-title {
 
 .idea-sort-actions,
 .idea-sort-secondary {
-  justify-content: flex-end;
+  justify-content: center;
+}
+
+.idea-sort .paste-review-hint {
+  text-align: center;
 }
 
 .idea-sort-secondary button {

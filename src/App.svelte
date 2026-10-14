@@ -477,7 +477,7 @@
   // A sort belongs to the page it was opened on: it hides while another page is
   // open and picks up where it left off on return.
   // Sorts run during day generation can also pick ideas for the new day.
-  let ideaSort: { queue: import('./lib/types').IdeaItem[]; mode: 'proposition' | 'review'; title: string; view: View; addToDay?: (itemId: Id) => void; resolve: (completed: boolean) => void } | null = null
+  let ideaSort: { queue: import('./lib/types').IdeaItem[]; title: string; view: View; addToDay?: (itemId: Id) => void; resolve: (completed: boolean) => void } | null = null
   $: ideaSortVisible = Boolean(ideaSort && view === ideaSort.view)
   let ideaImportOpen = false
   // Tracks each plan item's done state so we can fire a goal burst the moment an
@@ -3172,10 +3172,10 @@ return rows`
     plannerStore.ensureIdeaReviewGoal()
   }
 
-  function askIdeaSort(queue: import('./lib/types').IdeaItem[], mode: 'proposition' | 'review', title: string, addToDay?: (itemId: Id) => void): Promise<boolean> {
+  function askIdeaSort(queue: import('./lib/types').IdeaItem[], title: string, addToDay?: (itemId: Id) => void): Promise<boolean> {
     ideaSort?.resolve(false)
     return new Promise((resolve) => {
-      ideaSort = { queue, mode, title, view, addToDay, resolve }
+      ideaSort = { queue, title, view, addToDay, resolve }
     })
   }
 
@@ -3198,7 +3198,7 @@ return rows`
   async function startIdeaReview() {
     const queue = bucketItems($plannerStore.ideaBuckets, 'genuine')
     if (queue.length === 0) return
-    const completed = await askIdeaSort(queue, 'review', 'Review Genuinely Worth Doing')
+    const completed = await askIdeaSort(queue, 'Review Genuinely Worth Doing')
     if (!completed) return
     const plan = $plannerStore.plans.find((candidate) => candidate.date === todayISO())
     if (plan) plannerStore.addCompletedPlanItem(plan.id, IDEA_REVIEW_GOAL_NAME)
@@ -3206,14 +3206,14 @@ return rows`
 
   function sortPropositions() {
     const queue = bucketItems($plannerStore.ideaBuckets, 'proposition')
-    if (queue.length > 0) void askIdeaSort(queue, 'proposition', 'Sort Proposition Party')
+    if (queue.length > 0) void askIdeaSort(queue, 'Sort Proposition Party')
   }
 
   function importIdeas(items: PlanItem[]) {
     ideaImportOpen = false
     const ids = new Set(plannerStore.importIdeas(items))
     const queue = bucketItems($plannerStore.ideaBuckets, 'proposition').filter((item) => ids.has(item.id))
-    if (queue.length > 0) void askIdeaSort(queue, 'proposition', 'Sort imported ideas')
+    if (queue.length > 0) void askIdeaSort(queue, 'Sort imported ideas')
   }
 
   function handleQuickAddKeydown(_editor: HTMLDivElement, event: KeyboardEvent) {
@@ -3583,7 +3583,7 @@ return rows`
     // so cancelling generation never loses them.
     const propositions = bucketItems($plannerStore.ideaBuckets, 'proposition')
     const dayIdeaIds: Id[] = []
-    if (propositions.length > 0 && !(await askIdeaSort(propositions, 'proposition', 'Sort new ideas', (itemId) => dayIdeaIds.push(itemId)))) return
+    if (propositions.length > 0 && !(await askIdeaSort(propositions, 'Sort new ideas', (itemId) => dayIdeaIds.push(itemId)))) return
 
     const steps = templateQuizSteps(template, $plannerStore.templateQuestions)
     const quizAnswers = steps.length > 0 ? await askDayQuiz(template.name, steps) : {}
@@ -8609,7 +8609,6 @@ return rows`
         <IdeaSortModal
           queue={ideaSort.queue}
           buckets={$plannerStore.ideaBuckets}
-          mode={ideaSort.mode}
           title={ideaSort.title}
           active={ideaSortVisible}
           onDecide={(itemId, kind) => plannerStore.moveIdeaToBucket(itemId, kind)}

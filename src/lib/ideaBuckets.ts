@@ -28,8 +28,9 @@ export function ideaBucketKindForKey(key: string): IdeaBucketKind | null {
   return IDEA_BUCKETS.find((bucket) => bucket.key === key.toLowerCase())?.kind ?? null
 }
 
-// Leaving Proposition Party takes progressively longer the higher the idea
-// lands, so the commitment buttons unlock on a delay instead of being explained.
+// Committing an idea takes progressively longer the higher it lands, so the
+// buttons unlock on a delay instead of being explained. The Buckets page applies
+// it only to ideas leaving Proposition Party; the sorter applies it after every answer.
 export const BUCKET_UNLOCK_MS: Record<IdeaBucketKind, number> = {
   proposition: 0,
   trash: 0,

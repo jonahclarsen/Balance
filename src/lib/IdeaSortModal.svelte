@@ -3,7 +3,7 @@
   import ProgressBar from './ProgressBar.svelte'
   import TaskCheckbox from './TaskCheckbox.svelte'
   import { dismissOnBackdropClick } from './backdropDismiss'
-  import { bucketUnlockDelay, findIdea, ideaBucketMeta, IDEA_SORT_QUESTION } from './ideaBuckets'
+  import { BUCKET_UNLOCK_MS, findIdea, ideaBucketMeta, IDEA_SORT_QUESTION } from './ideaBuckets'
   import { renderItemDisplayHTML } from './planner'
   import type { Id, IdeaBucket, IdeaBucketKind, IdeaItem } from './types'
 
@@ -11,8 +11,6 @@
   // the key question; Yes picks a keep bucket, No picks a discard bucket.
   export let queue: IdeaItem[]
   export let buckets: IdeaBucket[]
-  // Review passes run the same cards over Genuinely Worth Doing without unlock delays.
-  export const mode: 'proposition' | 'review' = 'proposition'
   export let title: string
   // Hidden while another page is open; the sort resumes where it left off.
   export let active = true
@@ -34,8 +32,9 @@
   let editDraft = ''
   let editInput: HTMLTextAreaElement | null = null
   let decisions: Record<Id, IdeaBucketKind> = {}
-  // Commitment buttons unlock on a delay measured from when the card appeared.
-  let shownAt = Date.now()
+  // Commitment buttons unlock on a delay measured from the Yes or No answer, in
+  // every sort including Genuinely Worth Doing reviews.
+  let answeredAt = Date.now()
   let unlockTimers: number[] = []
   let unlockTick = 0
   let shaking: IdeaBucketKind | null = null
@@ -43,30 +42,27 @@
 
   $: queued = queue[index]
   $: current = queued ? findIdea(buckets, queued.id)?.item ?? queued : undefined
-  $: from = current ? findIdea(buckets, current.id)?.bucket.kind ?? null : null
   $: options = step === 'yes' ? (['possible', 'genuine'] as const) : step === 'no' ? (['trash', 'afterlife'] as const) : []
   $: resetCard(index)
 
   function resetCard(_index: number) {
     step = 'question'
     editing = false
-    shownAt = Date.now()
-    scheduleUnlocks()
   }
 
-  function scheduleUnlocks() {
+  function answer(next: 'yes' | 'no') {
+    step = next
+    answeredAt = Date.now()
     for (const timer of unlockTimers) window.clearTimeout(timer)
     unlockTimers = []
-    if (!current) return
-    const origin = findIdea(buckets, current.id)?.bucket.kind ?? null
     for (const kind of ['trash', 'afterlife', 'possible', 'genuine'] as const) {
-      const delay = bucketUnlockDelay(origin, kind)
+      const delay = BUCKET_UNLOCK_MS[kind]
       if (delay > 0) unlockTimers.push(window.setTimeout(() => { unlockTick += 1 }, delay))
     }
   }
 
   function locked(kind: IdeaBucketKind, _tick: number): boolean {
-    return Date.now() < shownAt + bucketUnlockDelay(from, kind)
+    return Date.now() < answeredAt + BUCKET_UNLOCK_MS[kind]
   }
 
   function shake(kind: IdeaBucketKind) {
@@ -132,7 +128,7 @@
     editing = true
     await tick()
     editInput?.focus()
-    editInput?.select()
+    editInput?.setSelectionRange(editDraft.length, editDraft.length)
   }
 
   function saveEdit() {
@@ -160,8 +156,8 @@
     else if (key === 'b' || event.key === 'ArrowLeft') goBack()
     else if (key === 'e') void startEdit()
     else if (key === 'm') appendToPrevious()
-    else if (step === 'question' && key === 'y') step = 'yes'
-    else if (step === 'question' && key === 'n') step = 'no'
+    else if (step === 'question' && key === 'y') answer('yes')
+    else if (step === 'question' && key === 'n') answer('no')
     else if (step === 'yes' && key === 'g') choose('genuine')
     else if (step === 'yes' && key === 'p') choose('possible')
     else if (step === 'yes' && key === 'x') cut()
@@ -246,8 +242,8 @@
         <button class="primary" type="button" on:click={saveEdit}>Save (Enter)</button>
         <button type="button" on:click={() => (editing = false)}>Cancel (Esc)</button>
       {:else if step === 'question'}
-        <button type="button" on:click={() => (step = 'no')}>No (N)</button>
-        <button class="primary" type="button" on:click={() => (step = 'yes')}>Yes (Y)</button>
+        <button type="button" on:click={() => answer('no')}>No (N)</button>
+        <button class="primary" type="button" on:click={() => answer('yes')}>Yes (Y)</button>
       {:else}
         {#each options as kind (kind)}
           {@const meta = ideaBucketMeta(kind)}
