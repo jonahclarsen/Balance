@@ -82,7 +82,6 @@
 
     {#if step.typedAnswerPrefix != null}
       {@const prefix = step.typedAnswerPrefix}
-      <p class="day-quiz-detail">Adds “{prefix}…”. Leave blank for none.</p>
       {#key step.itemId}
         <form class="day-quiz-typed" on:submit|preventDefault={(event) => answerTyped(new FormData(event.currentTarget).get('answer')?.toString() ?? '')}>
           <input name="answer" type="text" aria-label={step.question} value={typedValue(current, prefix)} autocomplete="off" use:focusInput />
