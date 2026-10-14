@@ -1089,9 +1089,11 @@ h3 {
 }
 
 /* The macOS title bar overlays the webview, so reserve the first row of the
-   sidebar for the native traffic lights instead of showing a separate header. */
+   sidebar for the native traffic lights instead of showing a separate header.
+   The lights end 27px down, so this matches the quick actions' gap to the
+   brand heading below them. */
 .app-shell.macos-titlebar-overlay .sidebar {
-  padding-top: 56px;
+  padding-top: 44px;
 }
 
 .macos-titlebar-drag-region {
