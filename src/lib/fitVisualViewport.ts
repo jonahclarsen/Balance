@@ -8,8 +8,10 @@ export function fitVisualViewport(node: HTMLElement) {
   const viewport = window.visualViewport
   if (!viewport) return {}
   const fit = () => {
-    node.style.top = `${viewport.offsetTop}px`
-    node.style.height = `${viewport.height}px`
+    // Lengths inside a CSS-zoomed shell are scaled, so convert screen pixels.
+    const zoom = node.currentCSSZoom || 1
+    node.style.top = `${viewport.offsetTop / zoom}px`
+    node.style.height = `${viewport.height / zoom}px`
   }
   fit()
   viewport.addEventListener('resize', fit)
