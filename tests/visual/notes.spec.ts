@@ -105,30 +105,6 @@ async function placeCaretAtOffset(editor: Locator, offset: number) {
   }, offset)
 }
 
-async function placeCaretOnLastLine(editor: Locator) {
-  await editor.evaluate((element) => {
-    const input = element as HTMLElement
-    const walker = document.createTreeWalker(input, NodeFilter.SHOW_TEXT)
-    const nodes: Text[] = []
-    let node = walker.nextNode()
-    while (node) {
-      nodes.push(node as Text)
-      node = walker.nextNode()
-    }
-    const lastNode = nodes.at(-1)
-    if (!lastNode) return
-    const lastBreak = lastNode.data.lastIndexOf('\n')
-    const offset = Math.min(lastNode.length, Math.max(0, lastBreak + 2))
-    input.closest<HTMLElement>('[data-rich-text-input]')?.focus()
-    const range = document.createRange()
-    range.setStart(lastNode, offset)
-    range.collapse(true)
-    const selection = document.getSelection()
-    selection?.removeAllRanges()
-    selection?.addRange(range)
-  })
-}
-
 async function noteSelectionEndpoints(page: Page) {
   return page.evaluate(() => {
     const selection = document.getSelection()
@@ -1445,25 +1421,6 @@ test('note formatting toolbar uses a complete static pink stroke on Iridescent',
   await page.screenshot({ path: testInfo.outputPath('notes-iridescent-toolbar.png'), fullPage: false })
 })
 
-test('moving the caret onto the final visual line scrolls fully to the page bottom', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name === 'mobile', 'desktop scroll behavior is covered here')
-  await page.goto('/')
-  await page.evaluate(() => localStorage.clear())
-  await page.reload()
-  await openNotesView(page)
-  await page.getByRole('button', { name: '+ New note' }).click()
-
-  const editor = page.locator('.note-text').first()
-  const workspace = page.locator('.note-document')
-  await editor.fill(Array.from({ length: 80 }, (_, index) => `Caret scroll line ${index + 1}`).join('\n'))
-  await workspace.evaluate((element) => element.scrollTo({ top: 0 }))
-  await placeCaretOnLastLine(editor)
-
-  await expect.poll(() => workspace.evaluate(
-    (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
-  )).toBeLessThanOrEqual(4)
-})
-
 for (const moveTiming of ['before layout finishes', 'after a frame is queued'] as const) {
   test(`moving away from the last note line ${moveTiming} preserves the newer scroll`, async ({ page }) => {
     await page.goto('/')
@@ -1475,7 +1432,11 @@ for (const moveTiming of ['before layout finishes', 'after a frame is queued'] a
     await page.evaluate(() => new Promise<void>((resolve) => {
       requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
     }))
-    await setNoteScrollTop(page, 0)
+    // Bottom-following only applies to a note already resting at its bottom.
+    await setNoteScrollTop(page, 1_000_000)
+    await page.evaluate(() => new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+    }))
 
     // Control the order of layout and scroll callbacks without changing the app.
     await page.evaluate(() => {
@@ -1505,6 +1466,12 @@ for (const moveTiming of ['before layout finishes', 'after a frame is queued'] a
           selection.addRange(range)
           document.dispatchEvent(new Event('selectionchange'))
         }
+        // Leave the bottom before any scroll event fires, as when the note
+        // grows under a reader resting there, so the follow is queued.
+        const noteDocument = document.querySelector<HTMLElement>('.note-document')
+        const noteDocumentScrolls = noteDocument && ['auto', 'scroll'].includes(getComputedStyle(noteDocument).overflowY)
+        const scroller = noteDocumentScrolls ? noteDocument : document.scrollingElement
+        if (scroller) scroller.scrollTop -= 120
         selectOffset(element.textContent!.length)
         if (moveBeforeLayout) selectOffset(17)
       }, moveTiming === 'before layout finishes')
@@ -1536,15 +1503,6 @@ for (const moveTiming of ['before layout finishes', 'after a frame is queued'] a
         runtime.noteFollowFrames.clear()
       })
     }
-
-    await placeCaretAtOffset(editor, await editor.evaluate((element) => element.textContent!.length))
-    await page.evaluate(() => document.dispatchEvent(new Event('selectionchange')))
-    await expect.poll(() => page.evaluate(() => {
-      const noteDocument = document.querySelector<HTMLElement>('.note-document')
-      const noteDocumentScrolls = noteDocument && ['auto', 'scroll'].includes(getComputedStyle(noteDocument).overflowY)
-      const scroller = noteDocumentScrolls ? noteDocument : document.scrollingElement
-      return scroller ? scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop : Infinity
-    })).toBeLessThanOrEqual(4)
   })
 }
 
