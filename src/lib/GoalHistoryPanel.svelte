@@ -325,7 +325,6 @@
     <span class="goal-history-summary">{goalDeadlineSummary.overdue} overdue, {goalDeadlineSummary.upcoming} upcoming in the next 3 days</span>
     {#if onHide}
       <div class="goal-history-hide">
-        {#if hideShortcutLabel}<kbd class="nav-shortcut" aria-hidden="true">{hideShortcutLabel}</kbd>{/if}
         <button
           class="goal-history-hide-button"
           type="button"
@@ -334,6 +333,7 @@
           title={`Hide goal rhythm for 6 hours${hideShortcutLabel ? ` (${hideShortcutLabel})` : ''}`}
           on:click={onHide}
         >×</button>
+        {#if hideShortcutLabel}<kbd class="nav-shortcut" aria-hidden="true">{hideShortcutLabel}</kbd>{/if}
       </div>
     {/if}
   </header>
