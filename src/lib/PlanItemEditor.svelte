@@ -3,6 +3,7 @@
 <script lang="ts">
   import { onDestroy, tick } from 'svelte'
   import AlarmClockIcon from './AlarmClockIcon.svelte'
+  import OverlayModal from './OverlayModal.svelte'
   import { collapsedPlanItemIds, setPlanItemCollapsed } from './collapsedPlanItems'
   import { openExternalURL } from './externalLinks'
   import { goalLightnessShift, goalMatchesForItem, goalsMatchingItemText } from './goals'
@@ -1168,21 +1169,17 @@
 </TreeItemRow>
 
 {#if mobile && mobileTimeEditorOpen && hasActiveTimeRange(item)}
-  <!-- Changes persist during the drag, so tapping the backdrop only dismisses
-       the editor; there is no separate save or cancel state to reconcile. -->
-  <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <div
-    class="mobile-time-editor-backdrop"
-    role="presentation"
-    on:click|self={() => (mobileTimeEditorOpen = false)}
+  <!-- Changes persist during the drag, so closing only dismisses the editor;
+       there is no separate save or cancel state to reconcile. -->
+  <OverlayModal
+    title="Edit time"
+    ariaLabel={`Edit time for ${item.text || 'task'}`}
+    cover="viewport"
+    z={120}
+    maxWidth={560}
+    onClose={() => (mobileTimeEditorOpen = false)}
   >
-    <div
-      class="mobile-time-editor"
-      role="dialog"
-      aria-modal="true"
-      aria-label={`Edit time for ${item.text || 'task'}`}
-      tabindex="-1"
-    >
+    <div class="mobile-time-editor">
       <TimeRange
         startMinutes={item.startMinutes}
         endMinutes={item.endMinutes}
@@ -1196,7 +1193,7 @@
         dragPixelsPerStep={12}
         showRemove={false}
       />
-      <p>Drag either time up or down in 15-minute steps. Tap outside to close.</p>
+      <p>Drag either time up or down in 15-minute steps.</p>
     </div>
-  </div>
+  </OverlayModal>
 {/if}

@@ -60,6 +60,15 @@ user-facing reference is a hand-maintained list in
 Whenever you add, remove, or change a shortcut in `handleGlobalKeydown`, update
 `KeyboardShortcutsModal.svelte` in the same change so the modal stays accurate.
 
+## Build every modal with OverlayModal
+
+Every modal goes through `src/lib/OverlayModal.svelte`, which owns the
+backdrop, card, header, close button, dismissal, scroll lock and phone keyboard
+fitting. Never hand-roll a backdrop or card surface; style only the content
+inside, and add a prop to `OverlayModal` when a dialog needs something new. The
+one exception is the native `<dialog>` in `ImageLayer.svelte`, which reuses the
+`--radius-modal` and `--modal-backdrop` tokens.
+
 ## Keep the app code clean
 This app currently only has one user, but it might have thousands in the future.
 If there's a part of the code that's no longer used, there's no need to hold

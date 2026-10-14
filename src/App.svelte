@@ -13,7 +13,6 @@
   import { onDestroy, onMount, tick } from 'svelte'
   import { startListStorageMaintenance } from './lib/listStorageMaintenance'
   import { startFreezeDiagnostics } from './lib/freezeDiagnostics'
-  import { fitVisualViewport } from './lib/fitVisualViewport'
   import { installMobileKeyboardScroll } from './lib/mobileKeyboardScroll'
   import GoalColorPicker from './lib/GoalColorPicker.svelte'
   import GoalCopyButton from './lib/GoalCopyButton.svelte'
@@ -22,7 +21,6 @@
   import { createRecentPages } from './lib/recentPages'
   import GoalHistoryPanel from './lib/GoalHistoryPanel.svelte'
   import ProgressBar from './lib/ProgressBar.svelte'
-  import { dismissOnBackdropClick } from './lib/backdropDismiss'
   import GoalRecentHistory from './lib/GoalRecentHistory.svelte'
   import PlanItemEditor from './lib/PlanItemEditor.svelte'
   import RecentDayPlans from './lib/RecentDayPlans.svelte'
@@ -6705,10 +6703,15 @@ return rows`
 {/if}
 
 {#if $databaseLoadError}
-  <div class="modal-backdrop database-load-failure-backdrop">
-    <div class="recovery-dialog" role="alertdialog" aria-modal="true" aria-labelledby="database-load-failure-title">
-      <p class="eyebrow">Database protected</p>
-      <h2 id="database-load-failure-title">Balance couldn’t open your encrypted database</h2>
+  <OverlayModal
+    role="alertdialog"
+    eyebrow="Database protected"
+    title="Balance couldn’t open your encrypted database"
+    cover="viewport"
+    z={200}
+    maxWidth={560}
+  >
+    <div class="recovery-dialog">
       <p class="recovery-copy">
         Your saved database has not been replaced. The empty workspace behind this message is only a startup
         placeholder—do not enter new data or change sync settings in it.
@@ -6748,7 +6751,7 @@ return rows`
         </div>
       {/if}
     </div>
-  </div>
+  </OverlayModal>
 {/if}
 
 <main
@@ -8638,15 +8641,19 @@ return rows`
 <GoalBurst bind:this={goalBurst} />
 
 {#if pasteReview}
-  <div class="paste-review-backdrop" style={appShellStyle} use:dismissOnBackdropClick={cancelPasteReview}>
-    <div class="paste-review" role="dialog" aria-modal="true" aria-labelledby="paste-review-title">
-      <div class="paste-review-head">
-        <div>
-          <p class="eyebrow">Review Pasted Items</p>
-          <h2 id="paste-review-title">Item {pasteReview.index + 1} of {pasteReview.nodes.length}</h2>
-        </div>
-        <button class="ghost" type="button" title="Cancel (Esc)" on:click={cancelPasteReview}>✕</button>
-      </div>
+  <OverlayModal
+    eyebrow="Review pasted items"
+    title={`Item ${pasteReview.index + 1} of ${pasteReview.nodes.length}`}
+    cover="viewport"
+    z={100}
+    maxWidth={620}
+    fill
+    closeOnEscape={false}
+    closeTitle="Cancel (Esc)"
+    backdropStyle={appShellStyle}
+    onClose={cancelPasteReview}
+  >
+    <div class="paste-review">
 
       <div class="paste-review-list" aria-label="Items being pasted" bind:this={pasteReviewList}>
         {#each pasteReview.nodes as node, nodeIndex (node.item.id)}
@@ -8725,19 +8732,23 @@ return rows`
 
       <p class="paste-review-hint">{pasteReview.approved.length}/{pasteReview.nodes.length} kept so far</p>
     </div>
-  </div>
+  </OverlayModal>
 {/if}
 
 {#if templateReview}
-  <div class="paste-review-backdrop" style={appShellStyle} use:dismissOnBackdropClick={cancelTemplateReview}>
-    <div class="paste-review template-review" role="dialog" aria-modal="true" aria-labelledby="template-review-title">
-      <div class="paste-review-head">
-        <div>
-          <p class="eyebrow">Recommit to {templateReview.name}</p>
-          <h2 id="template-review-title">Item {templateReview.index + 1} of {templateReview.nodes.length}</h2>
-        </div>
-        <button class="ghost" type="button" title="Cancel without changes (Esc)" on:click={cancelTemplateReview}>✕</button>
-      </div>
+  <OverlayModal
+    eyebrow={`Recommit to ${templateReview.name}`}
+    title={`Item ${templateReview.index + 1} of ${templateReview.nodes.length}`}
+    cover="viewport"
+    z={100}
+    maxWidth={620}
+    fill
+    closeOnEscape={false}
+    closeTitle="Cancel without changes (Esc)"
+    backdropStyle={appShellStyle}
+    onClose={cancelTemplateReview}
+  >
+    <div class="paste-review template-review">
 
       <div class="paste-review-list" aria-label="Template items under review" bind:this={templateReviewList}>
         {#each templateReview.nodes as node, nodeIndex (node.id)}
@@ -8785,52 +8796,51 @@ return rows`
 
       <p class="paste-review-hint">{templateReview.kept.length} kept · {templateReview.discarded.length} discarded</p>
     </div>
-  </div>
+  </OverlayModal>
 {/if}
 
 {#if quickAddOpen}
-  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-  <div class="modal-backdrop quick-add-backdrop" style={appShellStyle} role="presentation" use:dismissOnBackdropClick={closeQuickAdd}>
-    <div class="quick-add-viewport" use:fitVisualViewport>
-      <!-- Shares the Today row markup so task formatting changes carry over. -->
-      <form class="list-panel quick-add-dialog" aria-label="Add idea" on:submit|preventDefault={saveQuickAdd}>
-        <div class="item-shell">
-          <div class="plan-row">
-            <div class="plan-item-main">
-              <RichTextEditor
-                className="item-text"
-                kind="idea"
-                inputId="quick-add"
-                html={quickAddHTML}
-                text={quickAddText}
-                placeholder="New idea"
-                ariaLabel="New idea"
-                onChange={(html, text) => {
-                  quickAddHTML = html
-                  quickAddText = text
-                }}
-                onKeyDown={handleQuickAddKeydown}
-                onBeforeInput={handleQuickAddBeforeInput}
-              />
-            </div>
+  <OverlayModal title="Add idea" cover="viewport" z={100} maxWidth={480} backdropStyle={appShellStyle} onClose={closeQuickAdd}>
+    <!-- Shares the Today row markup so task formatting changes carry over. -->
+    <form class="quick-add-dialog" on:submit|preventDefault={saveQuickAdd}>
+      <div class="item-shell">
+        <div class="plan-row">
+          <div class="plan-item-main">
+            <RichTextEditor
+              className="item-text"
+              kind="idea"
+              inputId="quick-add"
+              html={quickAddHTML}
+              text={quickAddText}
+              placeholder="New idea"
+              ariaLabel="New idea"
+              onChange={(html, text) => {
+                quickAddHTML = html
+                quickAddText = text
+              }}
+              onKeyDown={handleQuickAddKeydown}
+              onBeforeInput={handleQuickAddBeforeInput}
+            />
           </div>
         </div>
-        <div class="quick-add-actions">
-          <button type="button" on:click={closeQuickAdd}>Cancel</button>
-          <button class="primary" type="submit" disabled={!quickAddText.trim()}>Save</button>
-        </div>
-      </form>
-    </div>
-  </div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" on:click={closeQuickAdd}>Cancel</button>
+        <button class="primary" type="submit" disabled={!quickAddText.trim()}>Save</button>
+      </div>
+    </form>
+  </OverlayModal>
 {/if}
 
 {#if recoveryKeyStatus?.recoveryKey}
-  <div class="modal-backdrop">
-    <div class="recovery-dialog" role="dialog" aria-modal="true" aria-labelledby="recovery-title">
-      <p class="eyebrow">Encryption</p>
-      <h2 id="recovery-title">
-        {recoveryKeyRotationArchivedAccount ? 'Save your new recovery key' : 'Save your recovery key'}
-      </h2>
+  <OverlayModal
+    eyebrow="Encryption"
+    title={recoveryKeyRotationArchivedAccount ? 'Save your new recovery key' : 'Save your recovery key'}
+    cover="viewport"
+    z={100}
+    maxWidth={560}
+  >
+    <div class="recovery-dialog">
       <p class="recovery-copy">
         {#if recoveryKeyRotationArchivedAccount}
           This key now unlocks your live Balance database. Your previous key remains in Keychain as
@@ -8867,19 +8877,22 @@ return rows`
 
       <p class="database-path">Database: {recoveryKeyStatus.databasePath}</p>
     </div>
-  </div>
+  </OverlayModal>
 {/if}
 
 {#if recoveryPanelOpen}
-  <div class="modal-backdrop" role="presentation" use:dismissOnBackdropClick={closeRecoveryPanel}>
-    <div class="recovery-panel" role="dialog" aria-modal="true" aria-labelledby="recovery-panel-title">
-      <div class="recovery-panel-head">
-        <div>
-          <p class="eyebrow">Recovery &amp; diagnostics</p>
-          <h2 id="recovery-panel-title">Recovery history</h2>
-        </div>
-        <button type="button" class="ghost" on:click={closeRecoveryPanel} disabled={databaseCompactionBusy}>Close</button>
-      </div>
+  <OverlayModal
+    eyebrow={'Recovery & diagnostics'}
+    title="Recovery history"
+    cover="viewport"
+    z={100}
+    maxWidth={1040}
+    fill
+    closeOnEscape={false}
+    closeDisabled={databaseCompactionBusy}
+    onClose={closeRecoveryPanel}
+  >
+    <div class="recovery-panel">
       {#if !backupBrowserOpen}
       <p class="recovery-copy">
         Each entry is a saved undo snapshot. It can restore removed content or an earlier version of edited text.
@@ -9099,5 +9112,5 @@ return rows`
       </details>
       </div>
     </div>
-  </div>
+  </OverlayModal>
 {/if}

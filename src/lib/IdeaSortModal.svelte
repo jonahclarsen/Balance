@@ -2,7 +2,7 @@
   import { onDestroy, tick } from 'svelte'
   import ProgressBar from './ProgressBar.svelte'
   import TaskCheckbox from './TaskCheckbox.svelte'
-  import { dismissOnBackdropClick } from './backdropDismiss'
+  import OverlayModal from './OverlayModal.svelte'
   import { BUCKET_UNLOCK_MS, findIdea, ideaBucketMeta, IDEA_SORT_QUESTION } from './ideaBuckets'
   import { renderItemDisplayHTML } from './planner'
   import type { Id, IdeaBucket, IdeaBucketKind, IdeaItem } from './types'
@@ -182,18 +182,19 @@
 <svelte:window on:keydown={handleKeydown} />
 
 <!-- Shares the paste-review layout so card sorting looks the same everywhere.
-     Sits inside .content-shell so the sidebar stays usable; a press outside
-     the card closes the sort like every other modal. -->
-<div class="idea-sort-backdrop" hidden={!active} inert={!active} use:dismissOnBackdropClick={() => onFinish(false)}>
-  <div class="paste-review idea-sort" role="dialog" aria-modal="true" aria-labelledby="idea-sort-title">
-    <div class="paste-review-head">
-      <div class="idea-sort-head-main">
-        <h2 class="eyebrow" id="idea-sort-title">{title}</h2>
-        <ProgressBar done={index} total={queue.length} label="Ideas sorted" />
-      </div>
-      <button class="ghost" type="button" title="Close (Esc)" aria-label="Close" on:click={() => onFinish(false)}>✕</button>
-    </div>
-
+     Sits inside .content-shell so the sidebar stays usable. -->
+<OverlayModal
+  {active}
+  {title}
+  class="idea-sort"
+  z={65}
+  maxWidth={620}
+  fill
+  closeOnEscape={false}
+  onClose={() => onFinish(false)}
+>
+  <div class="paste-review">
+    <ProgressBar done={index} total={queue.length} label="Ideas sorted" />
     <div class="paste-review-list" aria-label="Idea being sorted">
       {#if current}
         {#key current.id}
@@ -276,4 +277,4 @@
 
     <p class="paste-review-hint">{Object.keys(decisions).length}/{queue.length} sorted</p>
   </div>
-</div>
+</OverlayModal>

@@ -79,7 +79,7 @@
         {#if items.length > 8}<li class="muted">… and {items.length - 8} more</li>{/if}
       </ol>
     {/if}
-    <div class="idea-import-actions">
+    <div class="modal-actions">
       <button type="button" on:click={onClose}>Cancel</button>
       <button class="primary" type="submit" disabled={items.length === 0}>
         {items.length === 0 ? 'Import' : `Import ${items.length} ${items.length === 1 ? 'idea' : 'ideas'}${total > items.length ? ` (${total} with sub-items)` : ''}`}

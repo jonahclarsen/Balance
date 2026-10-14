@@ -38,10 +38,13 @@
   --font-content: var(--font-interface);
   --font-mono: "Geist Mono", "SFMono-Regular", Menlo, Consolas, monospace;
   /* Shape system: controls (buttons, inputs, rows) use --radius-control,
-     panels and dialogs use --radius-surface, tags and counts are pills. */
+     panels use --radius-surface, modals (OverlayModal) use --radius-modal,
+     tags and counts are pills. */
   --radius-control: 8px;
   --radius-surface: 12px;
+  --radius-modal: 14px;
   --radius-pill: 999px;
+  --modal-backdrop: rgba(28, 26, 20, 0.4);
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --app-background: #f1f6f2;
   --paper: #fffdf8;
@@ -717,7 +720,7 @@
   .empty-state,
   .export-panel,
   .settings-panel,
-  .mobile-time-editor,
+  .overlay-card,
   .export-panel > div,
   .celebration-option-button,
   .path-row,
@@ -725,10 +728,7 @@
   .iridescent-gradient-control:not(.compact),
   .iridescent-color-card,
   .database-loading-card,
-  .recovery-dialog,
-  .paste-review,
   .recovery-key,
-  .recovery-panel,
   .recovery-panel-status:not(.error),
   .recovery-row,
   .recovery-json,
@@ -754,7 +754,7 @@
   .export-panel,
   .settings-panel,
   .mobile-task-menu,
-  .mobile-time-editor,
+  .overlay-card,
   .export-panel > div,
   .celebration-option-button,
   .path-row,
@@ -762,10 +762,7 @@
   .iridescent-gradient-control:not(.compact),
   .iridescent-color-card,
   .database-loading-card,
-  .recovery-dialog,
-  .paste-review,
   .recovery-key,
-  .recovery-panel,
   .recovery-panel-status:not(.error),
   .recovery-row,
   .recovery-json,
@@ -810,8 +807,7 @@
 :root[data-theme='iridescent'] :is(
   .celebration-option-button,
   .iridescent-gradient-settings,
-  .recovery-dialog,
-  .paste-review,
+  .overlay-card,
   .recovery-json,
   .notes-workspace
 )::after {
@@ -2570,25 +2566,9 @@ body.mobile-checkbox-dragging {
   background: var(--active-nav);
 }
 
-.mobile-time-editor-backdrop {
-  position: fixed;
-  z-index: 120;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  background: color-mix(in srgb, var(--ink) 42%, transparent);
-  padding: 16px;
-}
-
 .mobile-time-editor {
   display: grid;
   gap: 14px;
-  width: min(560px, 100%);
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  background: var(--paper-strong);
-  padding: 24px;
-  box-shadow: 0 20px 60px color-mix(in srgb, var(--ink) 28%, transparent);
 }
 
 .mobile-time-editor p {
@@ -3519,10 +3499,6 @@ body.mobile-checkbox-dragging {
   }
 }
 
-.database-load-failure-backdrop {
-  z-index: 200;
-}
-
 .database-loading-backdrop {
   position: fixed;
   inset: 0;
@@ -3731,60 +3707,26 @@ body.mobile-checkbox-dragging {
     inset 0 0 0 1px rgba(255, 255, 255, 0.22);
 }
 
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 100;
-  display: grid;
-  place-items: center;
-  padding: 20px;
-  background: rgba(29, 36, 40, 0.42);
+/* Modal surfaces come from OverlayModal; these are shared content pieces. */
+.modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .recovery-dialog {
   display: grid;
-  width: min(560px, 100%);
-  max-height: calc(100vh - 40px);
-  max-height: calc(100dvh - 40px);
   gap: 14px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--paper);
-  box-shadow: 0 24px 80px rgba(20, 24, 26, 0.22);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 24px;
-  -webkit-overflow-scrolling: touch;
-}
-
-/* Centers the dialog in the screen space the keyboard leaves visible; clicks
-   around the dialog fall through to the backdrop. */
-.quick-add-viewport {
-  position: fixed;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  padding: 20px;
-  pointer-events: none;
 }
 
 .quick-add-dialog {
   display: grid;
-  width: min(480px, 100%);
-  max-height: 100%;
-  overflow-y: auto;
   gap: 12px;
-  pointer-events: auto;
-  box-shadow: 0 24px 80px rgba(20, 24, 26, 0.22);
 }
 
-.quick-add-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.quick-add-actions button {
-  flex: 1;
+.quick-add-dialog .plan-row {
+  border-bottom: 0;
 }
 
 .database-maintenance-spinner {
@@ -3816,46 +3758,15 @@ body.mobile-checkbox-dragging {
   color: var(--muted);
 }
 
-/* Full-viewport dim that sits above everything (including a tall goal rhythm
-   panel, which carries its own z-index) so the review dialog is never obscured. */
-.paste-review-backdrop {
-  position: fixed;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  padding: 20px;
-  background: rgba(29, 36, 40, 0.42);
-  z-index: 100;
-}
-
+/* Fills the modal body; only the card list scrolls. */
 .paste-review {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto auto auto;
-  width: min(620px, 100%);
-  max-height: min(760px, calc(100dvh - 40px));
-  overflow: hidden;
-  gap: 16px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--paper);
-  box-shadow: 0 24px 80px rgba(20, 24, 26, 0.22);
-  padding: 24px;
-}
-
-.paste-review-head {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
+  flex-direction: column;
+  gap: 16px;
 }
 
-.paste-review-head h2 {
-  margin: 0;
-}
-
-.paste-review-head .eyebrow {
-  font-family: 'Sora', sans-serif;
-  text-transform: none;
+.paste-review > :not(.paste-review-list) {
+  flex: 0 0 auto;
 }
 
 .paste-review-card {
@@ -4083,14 +3994,7 @@ body.mobile-checkbox-dragging {
 .recovery-panel {
   display: flex;
   flex-direction: column;
-  width: min(1040px, 100%);
-  max-height: min(88vh, 840px);
   gap: 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--paper);
-  box-shadow: 0 24px 80px rgba(20, 24, 26, 0.22);
-  padding: 24px;
 }
 
 .recovery-scroll {
@@ -4100,13 +4004,6 @@ body.mobile-checkbox-dragging {
   display: grid;
   gap: 14px;
   align-content: start;
-}
-
-.recovery-panel-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
 }
 
 .recovery-panel-status {
@@ -7634,52 +7531,8 @@ textarea.note-title {
 
 /* ---- Idea buckets ------------------------------------------------------- */
 
-/* Covers only the page area (main view + goal rhythm), above list overlays,
-   so the sidebar can still switch pages while a sort is in progress. */
-.idea-sort-backdrop {
-  position: absolute;
-  inset: 0;
-  z-index: 65;
-  display: grid;
-  place-items: center;
-  padding: 20px;
-  background: rgba(29, 36, 40, 0.42);
-}
-
-.idea-sort-backdrop[hidden] {
-  display: none;
-}
-
-.idea-sort-backdrop .paste-review {
-  max-height: min(760px, 100%);
-}
-
-@media (max-width: 760px) {
-  /* Phones scroll the page itself, so pin the sort to the viewport. The
-     navigation drawer still opens above it. */
-  .idea-sort-backdrop {
-    position: fixed;
-    padding: calc(12px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right))
-      calc(12px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left));
-    touch-action: none;
-  }
-
-  .idea-sort-backdrop .paste-review {
-    max-height: 100%;
-    touch-action: auto;
-  }
-}
-
 .idea-sort .paste-review-list {
   max-height: 46dvh;
-}
-
-.idea-sort-head-main {
-  display: grid;
-  flex: 1 1 auto;
-  gap: 10px;
-  min-width: 0;
-  padding-top: 4px;
 }
 
 .idea-sort-question {
@@ -7769,12 +7622,6 @@ textarea.note-title {
 
 .idea-import-preview .muted {
   color: var(--muted);
-}
-
-.idea-import-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
 }
 
 /* Inline code typed with backticks in tasks, days, lists and notes. */

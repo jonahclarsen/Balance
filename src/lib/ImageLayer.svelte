@@ -265,14 +265,16 @@
 {/if}
 
 <style>
-  dialog { padding: 0; border: 1px solid var(--line); border-radius: 14px; background: var(--paper); color: var(--ink); width: min(1120px, calc(100vw - 40px)); max-width: none; max-height: calc(100dvh - 40px); overflow: auto; box-shadow: 0 18px 80px #0006; }
-  dialog::backdrop { background: #000a; }
+  /* Matches OverlayModal's surface; the native dialog keeps image paste in the top layer. */
+  dialog { padding: 0; border: 1px solid var(--line-strong); border-radius: var(--radius-modal); background: var(--paper-strong); color: var(--ink); width: min(1120px, calc(100vw - 40px)); max-width: none; max-height: calc(100dvh - 40px); overflow: auto; box-shadow: var(--shadow); }
+  dialog::backdrop { background: var(--modal-backdrop, rgba(28, 26, 20, 0.4)); backdrop-filter: blur(2px); }
+  dialog.viewer::backdrop { background: #000a; backdrop-filter: none; }
   dialog.viewer { width: calc(100vw - 32px); height: calc(100dvh - 32px); max-height: none; border: 0; background: transparent; box-shadow: none; overflow: hidden; }
   .full-image { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; margin: auto; position: absolute; inset: 0; object-fit: contain; }
   .viewer-close { position: fixed; right: 20px; top: 20px; border-radius: 50%; background: #222b; color: white; font-size: 24px; }
   .compression { padding: 24px; }
   header, footer, footer > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-  h2 { margin: 0; font-size: 20px; }
+  h2 { margin: 0; font-size: 16px; font-weight: 600; }
   header { margin-bottom: 18px; }
   button { cursor: pointer; padding: 8px 12px; border: 1px solid var(--line); border-radius: 7px; color: inherit; background: var(--paper-strong); font: inherit; }
   button:disabled { opacity: .45; cursor: default; }

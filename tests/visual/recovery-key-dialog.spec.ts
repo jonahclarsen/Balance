@@ -99,7 +99,9 @@ test('Android recovery-key confirmation stays usable in a short viewport and sub
   const layout = await dialog.evaluate((element) => {
     const confirmation = element.querySelector<HTMLInputElement>('#recovery-key-confirmation')
     if (!confirmation) throw new Error('Missing recovery-key confirmation input')
-    const style = getComputedStyle(element)
+    const body = element.querySelector<HTMLElement>('.overlay-body')
+    if (!body) throw new Error('Missing modal body')
+    const style = getComputedStyle(body)
     return {
       dialogHeight: element.getBoundingClientRect().height,
       inputHeight: confirmation.getBoundingClientRect().height,
@@ -109,7 +111,7 @@ test('Android recovery-key confirmation stays usable in a short viewport and sub
   })
 
   expect(layout.inputHeight).toBeLessThan(60)
-  expect(layout.dialogHeight).toBeLessThanOrEqual(layout.viewportHeight - 40)
+  expect(layout.dialogHeight).toBeLessThanOrEqual(layout.viewportHeight - 24)
   expect(layout.overflowY).toBe('auto')
 
   await continueButton.scrollIntoViewIfNeeded()

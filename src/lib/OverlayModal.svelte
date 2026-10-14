@@ -4,24 +4,47 @@
   // card cannot scroll the day underneath it.
   let openOverlays = 0
   const SCROLL_LOCK_CLASS = 'overlay-scroll-lock'
+  const PHONE_QUERY = '(max-width: 760px)'
 </script>
 
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
   import { dismissOnBackdropClick } from './backdropDismiss'
+  import { fitVisualViewport } from './fitVisualViewport'
 
   export let active = true
-  export let onClose: () => void
+  // Without onClose the dialog can't be dismissed (no close button, Escape or
+  // backdrop press), for prompts that must be answered.
+  export let onClose: (() => void) | null = null
   export let title = ''
-  export let ariaLabel = title || 'Dialog'
+  export let eyebrow = ''
+  export let ariaLabel = ''
+  export let role: 'dialog' | 'alertdialog' = 'dialog'
   export let z = 60
   export let maxWidth = 720
   export let bodyOverflow: 'auto' | 'hidden' = 'auto'
+  // Lays the body out as a column so its content can fill the card and scroll
+  // its own regions.
+  export let fill = false
   export let headerless = false
   export let floatingCloseSide: 'left' | 'right' = 'right'
   export let height: number | null = null
+  // 'content' covers the page area beside the sidebar; 'viewport' covers the
+  // whole window for prompts that block the entire app.
+  export let cover: 'content' | 'viewport' = 'content'
+  // Turn off when the opener already routes Escape through its own key handling.
+  export let closeOnEscape = true
+  export let closeDisabled = false
+  export let closeTitle = 'Close (Esc)'
+  export let backdropStyle = ''
+  let className = ''
+  export { className as class }
   let backdrop: HTMLDivElement
-  let mobileViewportTop = 0
+
+  $: label = ariaLabel || title || 'Dialog'
+  $: dismiss = () => {
+    if (onClose && !closeDisabled) onClose()
+  }
 
   function isTopmostOverlay() {
     if (!active || !backdrop) return false
@@ -49,10 +72,35 @@
   onMount(() => { mounted = true })
   onDestroy(() => { if (mounted) updateScrollLock(false) })
 
+  // Phone keyboards shrink only the visual viewport, so pin the backdrop to it
+  // and keep focused inputs above the keyboard.
+  function fitPhoneViewport(node: HTMLElement) {
+    const phone = window.matchMedia(PHONE_QUERY)
+    let fitted: ReturnType<typeof fitVisualViewport> | null = null
+    const sync = () => {
+      if (phone.matches && !fitted) {
+        fitted = fitVisualViewport(node)
+      } else if (!phone.matches && fitted) {
+        fitted.destroy?.()
+        fitted = null
+        node.style.top = ''
+        node.style.height = ''
+      }
+    }
+    sync()
+    phone.addEventListener('change', sync)
+    return {
+      destroy() {
+        phone.removeEventListener('change', sync)
+        fitted?.destroy?.()
+      },
+    }
+  }
+
   function handleEscape(event: KeyboardEvent) {
-    if (event.key === 'Escape' && isTopmostOverlay()) {
+    if (closeOnEscape && event.key === 'Escape' && isTopmostOverlay()) {
       event.stopPropagation()
-      onClose()
+      dismiss()
     }
   }
 
@@ -62,47 +110,64 @@
   on:keydown={handleEscape}
 />
 
-<!-- Absolute layer inside .content-shell so it covers the main area + goal rhythm
-     while leaving the sidebar visible. -->
+<!-- By default an absolute layer inside .content-shell so it covers the main
+     area + goal rhythm while leaving the sidebar visible. -->
 <div
   bind:this={backdrop}
   class="overlay-backdrop"
+  class:viewport={cover === 'viewport'}
   hidden={!active}
   inert={!active}
   role="presentation"
-  style={`z-index: ${z}; --mobile-overlay-top: ${mobileViewportTop}px; --overlay-max-width: ${maxWidth}px; --overlay-height: ${height === null ? 'auto' : `${height}px`}; --overlay-body-overflow: ${bodyOverflow}`}
-  use:dismissOnBackdropClick={onClose}
+  style={`z-index: ${z}; --overlay-max-width: ${maxWidth}px; --overlay-height: ${height === null ? 'auto' : `${height}px`}; --overlay-body-overflow: ${bodyOverflow}; ${backdropStyle}`}
+  use:dismissOnBackdropClick={dismiss}
+  use:fitPhoneViewport
   on:keydown={handleEscape}
 >
   <div
-    class="overlay-card"
+    class="overlay-card {className}"
     class:headerless
     class:fixed-height={height !== null}
-    role="dialog"
+    {role}
     aria-modal="true"
-    aria-label={ariaLabel}
+    aria-label={label}
   >
     {#if headerless}
-      <button
-        class="icon-button quiet overlay-floating-close"
-        class:left={floatingCloseSide === 'left'}
-        type="button"
-        title="Close (Esc)"
-        aria-label="Close"
-        on:click={onClose}
-      >✕</button>
+      {#if onClose}
+        <button
+          class="icon-button quiet overlay-floating-close"
+          class:left={floatingCloseSide === 'left'}
+          type="button"
+          title={closeTitle}
+          aria-label="Close"
+          disabled={closeDisabled}
+          on:click={dismiss}
+        >✕</button>
+      {/if}
     {:else}
       <header class="overlay-header">
-        <div class="overlay-title">
+        <div class="overlay-title" class:beside-middle={$$slots['header-middle']}>
+          {#if eyebrow}<p class="eyebrow overlay-eyebrow">{eyebrow}</p>{/if}
           {#if title}<h3>{title}</h3>{:else}<span></span>{/if}
         </div>
-        <div class="overlay-header-middle">
-          <slot name="header-middle" />
-        </div>
-        <button class="icon-button quiet" type="button" title="Close (Esc)" aria-label="Close" on:click={onClose}>✕</button>
+        {#if $$slots['header-middle']}
+          <div class="overlay-header-middle">
+            <slot name="header-middle" />
+          </div>
+        {/if}
+        {#if onClose}
+          <button
+            class="icon-button quiet"
+            type="button"
+            title={closeTitle}
+            aria-label="Close"
+            disabled={closeDisabled}
+            on:click={dismiss}
+          >✕</button>
+        {/if}
       </header>
     {/if}
-    <div class="overlay-body">
+    <div class="overlay-body" class:fill>
       <slot />
     </div>
   </div>
@@ -116,11 +181,15 @@
     align-items: center;
     justify-content: center;
     padding: 24px;
-    background: rgba(28, 26, 20, 0.4);
+    background: var(--modal-backdrop);
     backdrop-filter: blur(2px);
   }
 
   .overlay-backdrop[hidden] { display: none; }
+
+  .overlay-backdrop.viewport {
+    position: fixed;
+  }
 
   .overlay-card {
     position: relative;
@@ -131,7 +200,7 @@
     transform: translateY(calc(0px - var(--overlay-bottom-lift, 0px)));
     background: var(--paper-strong);
     border: 1px solid var(--line-strong);
-    border-radius: 14px;
+    border-radius: var(--radius-modal);
     box-shadow: var(--shadow);
     overflow: hidden;
   }
@@ -153,6 +222,10 @@
 
   .overlay-title {
     min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .overlay-title.beside-middle {
     flex: 0 1 auto;
   }
 
@@ -161,6 +234,15 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .overlay-title:not(.beside-middle) h3 {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .overlay-eyebrow {
+    margin: 0 0 2px;
   }
 
   .overlay-header-middle {
@@ -175,6 +257,17 @@
     min-height: 0;
     padding: 18px;
     overflow-y: var(--overlay-body-overflow);
+  }
+
+  .overlay-body.fill {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .overlay-body.fill > :global(*) {
+    flex: 1 1 auto;
+    min-height: 0;
   }
 
   .overlay-floating-close {
@@ -215,16 +308,18 @@
       /* Touches on the dimmed area belong to the overlay, not the page. */
       touch-action: none;
       /* Cover the safe areas with blur while keeping the card inside them. */
-      padding: calc(12px + max(env(safe-area-inset-top), var(--mobile-overlay-top)))
-        calc(12px + env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom))
-        calc(12px + env(safe-area-inset-left));
+      padding: calc(12px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right))
+        calc(12px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left));
     }
 
+    /* The backdrop tracks the visible viewport, so the card fits inside it
+       above an open keyboard. */
     .overlay-card {
-      max-height: calc(
-        100dvh - max(env(safe-area-inset-top), var(--mobile-overlay-top)) - env(safe-area-inset-bottom) - 24px -
-          var(--overlay-bottom-collapse, 0px)
-      );
+      max-height: calc(100% - var(--overlay-bottom-collapse, 0px));
+    }
+
+    .overlay-card.fixed-height {
+      height: min(var(--overlay-height), calc(100% - var(--overlay-bottom-collapse, 0px)));
     }
 
     .overlay-header {

@@ -162,7 +162,7 @@ test('the Proposition Party Sort button opens the sorter on demand', async ({ pa
   await page.keyboard.press('t')
   await expectIdea(page, 2, 2)
   // A click outside the card closes the sorter, like every other modal.
-  await page.locator('.idea-sort-backdrop').click({ position: { x: 4, y: 4 } })
+  await page.locator('.overlay-backdrop:has(.idea-sort)').click({ position: { x: 4, y: 4 } })
   await expect(sorter(page)).toBeHidden()
   expect(await buckets(page)).toMatchObject({ proposition: ['Synthetic sort two'], trash: ['Synthetic sort one'] })
 })
