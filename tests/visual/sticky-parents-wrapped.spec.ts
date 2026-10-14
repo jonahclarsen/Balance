@@ -87,6 +87,10 @@ async function openOverlay(page: Page) {
 // checks that nothing below the pinned stack is hidden, and it records how
 // many text lines each pinned parent shows once it reaches over its children.
 async function scanScroll(scope: Locator) {
+  // The full narrow-screen tree needs hundreds of scroll steps, each waiting
+  // for two animation frames. Leave room for that scan on a cold CI runner;
+  // individual assertions retain their normal timeout.
+  test.setTimeout(60_000)
   return scope.evaluate(async (root) => {
     const firstRow = root.querySelector<HTMLElement>('[role="listitem"]')!
     let scroller: HTMLElement | null = firstRow.parentElement
