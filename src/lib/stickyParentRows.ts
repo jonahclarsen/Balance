@@ -1,11 +1,30 @@
-// A pinned parent row keeps only its first line in view. Its height for the
-// stack is that one line, and while it is pinned the rest of a wrapped row is
-// clipped away just above its first child, so the children scroll up into view
-// instead of passing under several lines of parent text.
+// A pinned parent row keeps at most its first three lines in view, and the
+// whole pinned stack at most five, taking lines from the deepest rows first
+// (every pinned row keeps at least one). A row's height in the stack is those
+// lines, and while it is pinned the rest of a wrapped row is clipped away just
+// above its first child, so the children scroll up into view instead of
+// passing under the parent's remaining text.
 
-type StickyRow = { shell: HTMLElement; row: HTMLElement; clipLimit: number; clip: number }
-
+const maxRowLines = 3
+const maxStackLines = 5
+const shellSelector = '.item-shell, .template-item'
 const clipProperty = '--tree-sticky-clip'
+
+type StickyRow = {
+  shell: HTMLElement
+  row: HTMLElement
+  property: string
+  fullHeight: number
+  // The row's height with its text cut to one, two, or three lines.
+  lineHeights: number[]
+  // Text lines, counting no further than one past maxRowLines.
+  lineCount: number
+  published: number | null
+  clipLimit: number
+  clip: number
+}
+
+const stickyRows = new Map<HTMLElement, StickyRow>()
 const wrappedRows = new Set<StickyRow>()
 let clipFrame = 0
 
@@ -15,34 +34,91 @@ function rowScale(row: HTMLElement, rowRect = row.getBoundingClientRect()) {
   return row.offsetHeight ? rowRect.height / row.offsetHeight : 1
 }
 
-// The row's height in CSS pixels with its text cut to the first line.
-// Generated list rows show static text instead of an editor.
-function pinnedHeight(row: HTMLElement) {
-  const height = row.offsetHeight
-  const text = row.querySelector<HTMLElement>('[data-rich-text-input], .item-text-display')
-  if (!text) return height
+// The bottom edge of each of the text's first lines. Only text boxes count, so
+// block wrappers inside the editor do not merge lines.
+function textLineBottoms(text: HTMLElement) {
+  const bottoms: number[] = []
+  const walker = document.createTreeWalker(text, NodeFilter.SHOW_TEXT)
   const range = document.createRange()
-  range.selectNodeContents(text)
-  const lines = [...range.getClientRects()].filter((rect) => rect.height > 0)
-  if (lines.length === 0) return height
-  const firstLineBottom = Math.max(...lines.filter((rect) => rect.top < lines[0].bottom - 1).map((rect) => rect.bottom))
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    range.selectNodeContents(node)
+    for (const rect of range.getClientRects()) {
+      if (rect.height === 0) continue
+      const last = bottoms.length - 1
+      if (last >= 0 && rect.top < bottoms[last] - 1) bottoms[last] = Math.max(bottoms[last], rect.bottom)
+      else if (bottoms.length > maxRowLines) return bottoms
+      else bottoms.push(rect.bottom)
+    }
+  }
+  return bottoms
+}
+
+// Generated list rows show static text instead of an editor.
+function measure(entry: StickyRow) {
+  const { row } = entry
+  entry.fullHeight = row.offsetHeight
+  entry.lineHeights = []
+  entry.lineCount = 0
+  const text = row.querySelector<HTMLElement>('[data-rich-text-input], .item-text-display')
+  if (!text) return
+  const bottoms = textLineBottoms(text)
   // Keep the text's bottom padding and any row chrome below the text.
   const rowRect = row.getBoundingClientRect()
-  const textRect = text.getBoundingClientRect()
   const scale = rowScale(row, rowRect)
-  const below = parseFloat(getComputedStyle(text).paddingBottom) * scale + Math.max(0, rowRect.bottom - textRect.bottom)
-  return Math.min(height, Math.ceil((firstLineBottom - rowRect.top + below) / scale))
+  const below = parseFloat(getComputedStyle(text).paddingBottom) * scale + Math.max(0, rowRect.bottom - text.getBoundingClientRect().bottom)
+  entry.lineCount = bottoms.length
+  entry.lineHeights = bottoms.slice(0, maxRowLines).map((bottom) => (
+    Math.min(entry.fullHeight, Math.ceil((bottom - rowRect.top + below) / scale))
+  ))
+}
+
+function nearestStickyAncestor(entry: StickyRow) {
+  for (let shell = entry.shell.parentElement?.closest<HTMLElement>(shellSelector); shell; shell = shell.parentElement?.closest<HTMLElement>(shellSelector)) {
+    const ancestor = stickyRows.get(shell)
+    if (ancestor) return ancestor
+  }
+  return null
+}
+
+// Gives each row its share of the stack's lines and publishes its height.
+function layoutStack() {
+  const stackLines = new Map<StickyRow, number>()
+  const ownLines = new Map<StickyRow, number>()
+  const linesThrough = (entry: StickyRow): number => {
+    const known = stackLines.get(entry)
+    if (known !== undefined) return known
+    const ancestor = nearestStickyAncestor(entry)
+    const above = ancestor ? linesThrough(ancestor) : 0
+    const own = Math.min(maxRowLines, Math.max(1, maxStackLines - above))
+    ownLines.set(entry, own)
+    stackLines.set(entry, above + Math.min(own, Math.max(1, entry.lineCount)))
+    return stackLines.get(entry)!
+  }
+  for (const entry of stickyRows.values()) {
+    linesThrough(entry)
+    if (entry.fullHeight === 0) continue
+    const own = ownLines.get(entry)!
+    const height = entry.lineCount > own ? entry.lineHeights[own - 1] : entry.fullHeight
+    if (height !== entry.published) {
+      entry.published = height
+      entry.shell.style.setProperty(entry.property, `${height}px`)
+    }
+    entry.clipLimit = entry.fullHeight - height
+    setWrapped(entry, entry.clipLimit > 0)
+  }
+  if (wrappedRows.size) scheduleClipUpdate()
 }
 
 function updateClips() {
   clipFrame = 0
+  const entries = [...wrappedRows]
   // Read every displacement before writing any clip.
-  const clips = [...wrappedRows].map((entry) => {
+  const clips = entries.map((entry) => {
     const rowRect = entry.row.getBoundingClientRect()
     const pinnedBy = (rowRect.top - entry.shell.getBoundingClientRect().top) / rowScale(entry.row, rowRect)
     return Math.round(Math.min(entry.clipLimit, Math.max(0, pinnedBy)))
   })
-  ;[...wrappedRows].forEach((entry, index) => setClip(entry, clips[index]))
+  entries.forEach((entry, index) => setClip(entry, clips[index]))
 }
 
 function scheduleClipUpdate() {
@@ -68,6 +144,27 @@ function setWrapped(entry: StickyRow, wrapped: boolean) {
   if (wrappedRows.size === 0) document.removeEventListener('scroll', scheduleClipUpdate, { capture: true })
 }
 
+let layoutQueued = false
+function queueLayoutStack() {
+  if (layoutQueued) return
+  layoutQueued = true
+  queueMicrotask(() => {
+    layoutQueued = false
+    layoutStack()
+  })
+}
+
+let observer: ResizeObserver | null = null
+const entriesByRow = new Map<Element, StickyRow>()
+
+function rowsResized(changes: ResizeObserverEntry[]) {
+  for (const change of changes) {
+    const entry = entriesByRow.get(change.target)
+    if (entry) measure(entry)
+  }
+  layoutStack()
+}
+
 // The bottom edge of what a pinned row still shows.
 export function stickyRowVisibleBottom(row: Element) {
   const rowRect = row.getBoundingClientRect()
@@ -78,18 +175,20 @@ export function stickyRowVisibleBottom(row: Element) {
 // Publishes a sticky row's pinned height on its shell as `property`, so
 // descendants stack below it, and clips the row while it is pinned.
 export function trackStickyParentRow(shell: HTMLElement, row: HTMLElement, property: string) {
-  const entry: StickyRow = { shell, row, clipLimit: 0, clip: 0 }
-  const observer = new ResizeObserver(() => {
-    const height = pinnedHeight(row)
-    shell.style.setProperty(property, `${height}px`)
-    entry.clipLimit = row.offsetHeight - height
-    setWrapped(entry, entry.clipLimit > 0)
-    if (entry.clipLimit > 0) scheduleClipUpdate()
-  })
+  const entry: StickyRow = {
+    shell, row, property, fullHeight: 0, lineHeights: [], lineCount: 0, published: null, clipLimit: 0, clip: 0,
+  }
+  stickyRows.set(shell, entry)
+  entriesByRow.set(row, entry)
+  observer ??= new ResizeObserver(rowsResized)
   observer.observe(row)
   return () => {
-    observer.disconnect()
+    observer?.unobserve(row)
+    stickyRows.delete(shell)
+    entriesByRow.delete(row)
     setWrapped(entry, false)
     shell.style.removeProperty(property)
+    // Rows below this one may now have more lines to show.
+    queueLayoutStack()
   }
 }
