@@ -59,8 +59,11 @@ body.admin { height: 100vh; height: 100dvh; display: grid; grid-template-rows: a
 .chips button[aria-pressed='true'] { background: var(--text); color: var(--bg); border-color: var(--text); }
 
 /* Font buttons: each renders its role's context with the candidate font. */
-.font-grid { display: grid; gap: 8px; }
+/* Cards are spaced with padding, not gap, so the pointer is always over one
+   while the list scrolls and the hover preview never drops between them. */
+.font-grid { display: grid; }
 .font-card { position: relative; }
+.font-card + .font-card { padding-top: 8px; }
 .font-option { width: 100%; display: grid; text-align: left; padding: 0; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); background: var(--surface); transition: border-color 0.15s, transform 0.15s; }
 .font-card:hover .font-option { border-color: var(--sea); }
 .font-option:active { transform: scale(0.99); }
