@@ -127,9 +127,6 @@ jobs:
 
           echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
 
-      - name: Install create-dmg
-        run: brew install create-dmg
-
       - name: Notarize app and package DMG
         run: |
           DMG=Balance-macos-arm64.dmg
@@ -160,26 +157,7 @@ jobs:
             spctl --assess --type execute --verbose=2 "$APP_PATH"
           fi
 
-          # create-dmg copies everything in the source folder onto the image.
-          DMG_SOURCE="$RUNNER_TEMP/dmg-source"
-          mkdir -p "$DMG_SOURCE"
-          ditto "$APP_PATH" "$DMG_SOURCE/Balance.app"
-
-          # The background's arrow sits between these icon positions.
-          create-dmg \
-            --volname Balance \
-            --volicon src-tauri/icons/icon.icns \
-            --background src-tauri/macos/dmg-background.tiff \
-            --window-pos 200 120 \
-            --window-size 540 380 \
-            --icon-size 112 \
-            --text-size 13 \
-            --icon Balance.app 140 170 \
-            --hide-extension Balance.app \
-            --app-drop-link 400 170 \
-            --no-internet-enable \
-            --hdiutil-retries 10 \
-            "$DMG" "$DMG_SOURCE"
+          scripts/macos-dmg/build-dmg.sh "$APP_PATH" "$DMG"
 
           if [[ "${BALANCE_NOTARIZE:-}" == "1" ]]; then
             codesign --sign "$SIGNING_IDENTITY" --timestamp "$DMG"
@@ -187,8 +165,6 @@ jobs:
             staple "$DMG"
             spctl --assess --type open --context context:primary-signature --verbose=2 "$DMG"
           fi
-
-          hdiutil verify "$DMG"
 
       - name: Upload app artifact
         uses: actions/upload-artifact@v7
