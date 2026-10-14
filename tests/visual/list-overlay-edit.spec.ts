@@ -660,6 +660,7 @@ test('ArrowDown checks the final list item when it cannot navigate farther', asy
 test('list modal collapses at the keyboard boundary and expands for upward wheel scrolling', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'The long-list setup helper uses desktop navigation')
   test.setTimeout(60_000)
+  await page.clock.install()
   const dialog = await openLongGroceriesOverlay(page)
   const body = dialog.locator('.overlay-body')
   const rows = dialog.locator('.plan-row')
@@ -684,13 +685,12 @@ test('list modal collapses at the keyboard boundary and expands for upward wheel
   expect(crossoverIndex).toBeGreaterThanOrEqual(0)
 
   await rows.nth(crossoverIndex).click()
-  await page.waitForTimeout(300)
 
   // Drive requestAnimationFrame explicitly: a busy machine can finish the
   // animation before a wall-clock 70 ms sample reaches the browser.
-  const animationTime = new Date()
-  await page.clock.install({ time: animationTime })
-  await page.clock.pauseAt(animationTime)
+  // Pause ahead of the browser clock, then settle the initial selection.
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1_000))
+  await page.clock.runFor(300)
   const before = await body.evaluate(modalGeometry)
   const expectWithinVisualPixel = (actual: number, expected: number) => {
     // Scroll/layout rounding can accumulate two CSS pixels. Bounding rects
