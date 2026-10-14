@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy, tick } from 'svelte'
   import { dragAutoScroll } from './dragAutoScroll'
+  import { trackStickyParentRow } from './stickyParentRows'
   import { vibrateSteps } from './haptics'
   import { captureTreeEditorSelection, restoreTreeEditorSelection, type TreeEditorSelection } from './treeEditorSelection'
   import type { Id, MovePlacement } from './types'
@@ -35,25 +36,15 @@
   let shellElement: HTMLDivElement
   let rowElement: HTMLDivElement
 
-  // Each sticky row publishes its height for its own depth, so a row's offset
-  // is the sum of the rows stuck above it.
+  // Each sticky row publishes its pinned height for its own depth, so a row's
+  // offset is the sum of the rows stuck above it.
   $: stickyTop = `calc(${['var(--tree-sticky-base, 0px)', ...Array.from({ length: depth }, (_, ancestorDepth) => `var(--tree-sticky-row-${ancestorDepth}, 0px)`)].join(' + ')})`
-  $: if (shellElement && rowElement) trackStickyRowHeight(stickyParent, depth)
+  $: if (shellElement && rowElement) trackStickyRow(stickyParent, depth)
 
-  let stickyRowObserver: ResizeObserver | null = null
-  let stickyRowProperty: string | null = null
-  function trackStickyRowHeight(sticky: boolean, rowDepth: number) {
-    stickyRowObserver?.disconnect()
-    stickyRowObserver = null
-    if (stickyRowProperty) shellElement.style.removeProperty(stickyRowProperty)
-    stickyRowProperty = null
-    if (!sticky) return
-    const property = `--tree-sticky-row-${rowDepth}`
-    stickyRowProperty = property
-    stickyRowObserver = new ResizeObserver(() => {
-      shellElement.style.setProperty(property, `${rowElement.offsetHeight}px`)
-    })
-    stickyRowObserver.observe(rowElement)
+  let stopStickyRow: (() => void) | null = null
+  function trackStickyRow(sticky: boolean, rowDepth: number) {
+    stopStickyRow?.()
+    stopStickyRow = sticky ? trackStickyParentRow(shellElement, rowElement, `--tree-sticky-row-${rowDepth}`) : null
   }
 
   async function restoreDragSelection(saved: TreeEditorSelection | null) {
@@ -213,7 +204,7 @@
   }
 
   onDestroy(() => {
-    stickyRowObserver?.disconnect()
+    stopStickyRow?.()
     removeDragListeners()
     stopAutoScroll()
     clearDropMarker()

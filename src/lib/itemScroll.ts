@@ -1,3 +1,4 @@
+import { stickyRowVisibleBottom } from './stickyParentRows'
 import type { Id, MoveDirection } from './types'
 
 export type ItemRowKind = 'plan' | 'day-template' | 'list-template'
@@ -33,7 +34,7 @@ function pinnedParentsBottom(element: Element): number | null {
   const parentRow = parentShell?.firstElementChild
   if (!parentShell || !parentRow?.classList.contains('sticky-parent')) return null
   const rowRect = parentRow.getBoundingClientRect()
-  return rowRect.top > parentShell.getBoundingClientRect().top + 0.5 ? rowRect.bottom : null
+  return rowRect.top > parentShell.getBoundingClientRect().top + 0.5 ? stickyRowVisibleBottom(parentRow) : null
 }
 
 // Keep a moved row (or selected block of rows) away from the viewport edges.

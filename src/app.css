@@ -1996,6 +1996,15 @@ body.mobile-checkbox-dragging {
   z-index: max(5, calc(9 - var(--depth, 0)));
   background-color: var(--paper-strong);
   background-image: var(--tree-sticky-tint, none), linear-gradient(var(--paper), var(--paper));
+  /* stickyParentRows sets the clip only while a wrapped row is pinned; without
+     it this declaration is invalid and the row is not clipped. */
+  clip-path: inset(-100vmax -100vmax var(--tree-sticky-clip) -100vmax);
+}
+
+/* A pinned row being edited shows all of its text. */
+.plan-row.sticky-parent:focus-within,
+.template-main.sticky-parent:focus-within {
+  clip-path: none;
 }
 
 .plan-row.sticky-parent.done,
