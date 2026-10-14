@@ -1,11 +1,15 @@
 import {
-  CATEGORIES, FONTS, ROLES, findFont, fontCssUrl, fontFamilies, fullFamilySpec, isGoogle,
+  CATEGORIES, FONTS, ROLES, findFont, fontCssUrl, fullFamilySpec, isGoogle,
   nearestWeight, overrideCss, resolveRole, sanitizeSettings, stack, weightOptions,
 } from './fonts.js'
 
 const $ = (id) => document.getElementById(id)
 const frame = $('preview')
-const state = { saved: {}, draft: {}, role: 'heading', category: 'all', query: '', page: '/', highlight: null }
+const panel = $('panel')
+// `hover` is the settings of the font option under the pointer, previewed until
+// the pointer leaves it.
+const state = { saved: {}, draft: {}, hover: null, role: 'heading', category: 'all', query: '', page: '/', highlight: null }
+const candidates = new WeakMap()
 // Preview copy, refreshed from the homepage so it tracks the real wording.
 const copy = { hero: 'Plan your day and track your goals at the same time.', lede: 'A daily planner for Mac and Android.' }
 
@@ -24,13 +28,15 @@ function element(tag, props = {}, children = []) {
   return node
 }
 
-// Every catalog font is declared up front; browsers only fetch the files a
-// preview actually renders.
-function loadCatalogFonts() {
-  const specs = FONTS.filter(isGoogle).map(fullFamilySpec)
-  for (let index = 0; index < specs.length; index += 8) {
-    document.head.append(element('link', { rel: 'stylesheet', href: fontCssUrl(specs.slice(index, index + 8)) }))
-  }
+// Every catalog font is declared up front, here and in the preview, so hovering
+// swaps fonts without waiting on CSS; browsers only fetch the files they render.
+const catalogCssUrls = []
+const fontSpecs = FONTS.filter(isGoogle).map(fullFamilySpec)
+for (let index = 0; index < fontSpecs.length; index += 8) catalogCssUrls.push(fontCssUrl(fontSpecs.slice(index, index + 8)))
+
+function loadCatalogFonts(doc) {
+  if (doc.getElementById('catalog-fonts')) return
+  doc.head.append(...catalogCssUrls.map((href, index) => Object.assign(doc.createElement('link'), { rel: 'stylesheet', href, id: index ? '' : 'catalog-fonts' })))
 }
 
 // CSS variables for each role's resolved font, used by the context previews.
@@ -84,6 +90,7 @@ function fontOption(role, family, label, meta) {
   ])
   button.setAttribute('aria-pressed', String(pressed))
   button.addEventListener('click', () => update(candidate))
+  candidates.set(button, candidate)
   return button
 }
 
@@ -173,7 +180,59 @@ function update(draft) {
   renderRoles()
   renderPicker()
   renderActions()
+  state.hover = null
+  syncHover()
   applyPreview()
+}
+
+// The last mouse position over the panel. Hover is resolved from it on every
+// move and scroll, so scrolling the list under a still cursor previews too.
+let pointer = null
+const finePointer = matchMedia('(hover: hover) and (pointer: fine)')
+
+function syncHover() {
+  const option = pointer && document.elementFromPoint(pointer.x, pointer.y)?.closest('.font-option')
+  const hover = (option && candidates.get(option)) ?? null
+  if (hover === state.hover) return
+  state.hover = hover
+  applyPreview()
+}
+
+// Holding the pointer near the top or bottom edge of the font list scrolls it,
+// slowly at first and faster closer to the edge.
+const EDGE = 64
+const EDGE_SPEED = 7
+let edgeFrame = 0
+let edgeCarry = 0
+
+function edgeSpeed() {
+  if (!pointer || panel.scrollHeight <= panel.clientHeight) return 0
+  const list = $('fonts').getBoundingClientRect()
+  const bounds = panel.getBoundingClientRect()
+  if (pointer.x < list.left || pointer.x > list.right) return 0
+  const top = Math.max(bounds.top, $('filters').getBoundingClientRect().bottom)
+  const ease = (distance) => -EDGE_SPEED * (1 - Math.max(0, distance) / EDGE) ** 2
+  if (pointer.y >= top && pointer.y < top + EDGE && list.top < top - 1) return ease(pointer.y - top)
+  if (pointer.y <= bounds.bottom && pointer.y > bounds.bottom - EDGE && list.bottom > bounds.bottom + 1) return -ease(bounds.bottom - pointer.y)
+  return 0
+}
+
+function edgeScroll() {
+  if (edgeFrame) return
+  const step = () => {
+    const speed = edgeSpeed()
+    if (!speed) {
+      edgeFrame = 0
+      edgeCarry = 0
+      return
+    }
+    edgeCarry += speed
+    const pixels = Math.trunc(edgeCarry)
+    edgeCarry -= pixels
+    panel.scrollTop += pixels
+    edgeFrame = requestAnimationFrame(step)
+  }
+  edgeFrame = requestAnimationFrame(step)
 }
 
 // The preview iframe is same-origin, so the draft replaces the saved overrides
@@ -188,16 +247,11 @@ function applyPreview() {
     renderFonts()
   }
   doc.querySelectorAll('#font-overrides, #font-overrides-css').forEach((node) => node.remove())
-  let link = doc.getElementById('draft-fonts')
+  loadCatalogFonts(doc)
   let style = doc.getElementById('draft-overrides')
-  if (!link) doc.head.append(link = doc.createElement('link'), style = doc.createElement('style'))
-  Object.assign(link, { id: 'draft-fonts', rel: 'stylesheet' })
-  style.id = 'draft-overrides'
-  const families = fontFamilies(state.draft)
-  if (families.length) link.href = fontCssUrl(families)
-  else link.removeAttribute('href')
+  if (!style) doc.head.append(style = Object.assign(doc.createElement('style'), { id: 'draft-overrides' }))
   const selectors = state.highlight && roleById(state.highlight).selectors
-  style.textContent = overrideCss(state.draft) +
+  style.textContent = overrideCss(state.hover ?? state.draft) +
     (selectors ? `${selectors} { outline: 2px dashed #539f9c; outline-offset: 3px; border-radius: 2px; }` : '')
 }
 
@@ -248,8 +302,19 @@ async function save() {
 }
 
 async function start() {
-  loadCatalogFonts()
+  loadCatalogFonts(document)
   renderCategories()
+  panel.addEventListener('pointermove', (event) => {
+    if (event.pointerType !== 'mouse' || !finePointer.matches) return
+    pointer = { x: event.clientX, y: event.clientY }
+    syncHover()
+    edgeScroll()
+  })
+  panel.addEventListener('pointerleave', () => {
+    pointer = null
+    syncHover()
+  })
+  panel.addEventListener('scroll', syncHover, { passive: true })
   frame.addEventListener('load', applyPreview)
   for (const button of document.querySelectorAll('[data-page]')) button.addEventListener('click', () => showPage(button.dataset.page))
   for (const button of document.querySelectorAll('[data-width]')) {
