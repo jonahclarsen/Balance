@@ -219,7 +219,7 @@ test('a day generation sort can add ideas to the new day', async ({ page }, test
   await expect(sorter(page)).toBeHidden()
 
   const plan = page.getByRole('region', { name: 'Daily plan' })
-  await expect(plan.locator('[data-plan-text-input]').filter({ hasText: 'Synthetic for today' })).toHaveCount(1)
+  await expect(plan.locator('[data-plan-text-input]').first()).toHaveText('Synthetic for today')
   expect(await buckets(page)).toMatchObject({ proposition: [], trash: ['Synthetic later'] })
 })
 

@@ -3605,13 +3605,12 @@ return rows`
   function moveIdeasToDay(itemIds: Id[], date: string) {
     const plan = $plannerStore.plans.find((candidate) => candidate.date === date)
     if (!plan) return
-    for (const itemId of itemIds) {
-      const found = findIdea($plannerStore.ideaBuckets, itemId)
-      if (!found) continue
-      const { bucketedAt: _bucketedAt, ...item } = found.item
-      plannerStore.pastePlanItems(plan.id, [item], null, 'after')
-      plannerStore.deleteIdeaItem(found.bucket.id, itemId)
-    }
+    // Picked ideas go above the template's items, in the order they were picked.
+    const found = itemIds.flatMap((itemId) => findIdea($plannerStore.ideaBuckets, itemId) ?? [])
+    if (found.length === 0) return
+    const items = found.map(({ item: { bucketedAt: _bucketedAt, ...item } }) => item)
+    plannerStore.pastePlanItems(plan.id, items, plan.items[0]?.id ?? null, 'before')
+    for (const { bucket, item } of found) plannerStore.deleteIdeaItem(bucket.id, item.id)
   }
 
   function askDayQuiz(templateName: string, steps: TemplateQuizStep[]): Promise<TemplateQuizAnswers | null> {
