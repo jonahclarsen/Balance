@@ -78,6 +78,12 @@
   let renderedHTML = renderEditorHTML(html, text, internalLinkSegments)
   let lastRevision = revision
   let lastInternalLinkKey = internalLinkKey(internalLinkSegments)
+  // Legacy array props invalidate sibling editors when one row changes. Their
+  // source markup is unchanged, so reuse its sanitized/linkified rendering.
+  let renderSourceHTML = html
+  let renderSourceText = text
+  let renderSourceLinkKey = lastInternalLinkKey
+  let sourceRenderedHTML = renderedHTML
   let savedSelection: SavedSelection | null = null
   let lastInteractionSelection: SavedSelection | null = null
   let editorBlurPendingWindowOutcome = false
@@ -102,7 +108,13 @@
 
   $: {
     const nextInternalLinkKey = internalLinkKey(internalLinkSegments)
-    const nextHTML = renderEditorHTML(html, text, internalLinkSegments)
+    if (html !== renderSourceHTML || text !== renderSourceText || nextInternalLinkKey !== renderSourceLinkKey) {
+      renderSourceHTML = html
+      renderSourceText = text
+      renderSourceLinkKey = nextInternalLinkKey
+      sourceRenderedHTML = renderEditorHTML(html, text, internalLinkSegments)
+    }
+    const nextHTML = sourceRenderedHTML
     const revisionWasApplied = revision !== lastRevision
 
     if (revisionWasApplied) {

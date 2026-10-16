@@ -80,7 +80,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium webkit
       - name: Exercise desktop, mobile, and WebKit browser behavior
-        timeout-minutes: 22
+        # A WebKit-heavy shard can finish its tests just beyond 22 minutes.
+        timeout-minutes: 25
         env:
           PLAYWRIGHT_JSON_OUTPUT_NAME: artifacts/playwright/results.json
           TEST_GREP: ${{ inputs.grep }}

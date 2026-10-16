@@ -4928,18 +4928,17 @@ test('pasting four or more items onto a different day opens a review queue', asy
   // A short window caps the dialog and scrolls the queue instead of pushing the
   // review controls off-screen.
   await page.setViewportSize({ width: 640, height: 420 })
-  const reviewLayout = await page.getByRole('dialog').evaluate((dialog) => {
+  // VisualViewport resize events and modal fitting can settle after the
+  // browser acknowledges setViewportSize, especially under mobile emulation.
+  await expect.poll(() => page.getByRole('dialog').evaluate((dialog) => {
     const list = dialog.querySelector('.paste-review-list') as HTMLElement
     const actions = dialog.querySelector('.paste-review-actions') as HTMLElement
     return {
-      dialogBottom: dialog.getBoundingClientRect().bottom,
+      dialogFits: dialog.getBoundingClientRect().bottom <= 420,
       listScrolls: list.scrollHeight > list.clientHeight,
-      actionsBottom: actions.getBoundingClientRect().bottom,
+      actionsFit: actions.getBoundingClientRect().bottom <= 420,
     }
-  })
-  expect(reviewLayout.dialogBottom).toBeLessThanOrEqual(420)
-  expect(reviewLayout.actionsBottom).toBeLessThanOrEqual(420)
-  expect(reviewLayout.listScrolls).toBe(true)
+  })).toEqual({ dialogFits: true, listScrolls: true, actionsFit: true })
 
   // The "Keep" button only appears (and Enter only fires) once the read-cooldown elapses.
   const armed = () => page.getByRole('button', { name: 'Keep (→ / Enter)' })

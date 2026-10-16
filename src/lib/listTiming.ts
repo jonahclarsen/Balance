@@ -98,11 +98,19 @@ function outlierLimit(values: number[]): number {
   return q3 + 1.5 * (q3 - q1)
 }
 
-// Each task's typical time comes from finished runs. The list's expected time
-// is computed from the current template rather than past run lengths, so edits
-// take effect right away: every wording's typical time is weighted by how
-// likely it is to be generated, including the chance its ancestors appear.
-export function summarizeListTiming(lists: ListInstance[], listTemplateId: Id, templateItems: ListTemplateItem[]): ListTimingSummary {
+// Historical samples depend on saved runs, not the template being typed in.
+// Keep their medians stable across template edits, including the map passed to
+// every row. Immutable list updates invalidate this cache on check-off/undo/sync.
+const historyTimingCache = new WeakMap<ListInstance[], Map<Id, Pick<ListTimingSummary, 'runCount' | 'typicalItemMs'>>>()
+
+function historicalTiming(lists: ListInstance[], listTemplateId: Id) {
+  let byTemplate = historyTimingCache.get(lists)
+  if (!byTemplate) {
+    byTemplate = new Map()
+    historyTimingCache.set(lists, byTemplate)
+  }
+  const cached = byTemplate.get(listTemplateId)
+  if (cached) return cached
   const runs = lists
     .filter((list) => list.listTemplateId === listTemplateId)
     .map(listRunTiming)
@@ -123,9 +131,18 @@ export function summarizeListTiming(lists: ListInstance[], listTemplateId: Id, t
     typicalItemMs.set(sourceItemId, median(values.filter((value) => value <= limit)))
   }
 
+  const result = { runCount: runs.length, typicalItemMs }
+  byTemplate.set(listTemplateId, result)
+  return result
+}
+
+// Each wording's typical time is weighted by its current appearance chance,
+// so changes to the template still update the estimate immediately.
+export function summarizeListTiming(lists: ListInstance[], listTemplateId: Id, templateItems: ListTemplateItem[]): ListTimingSummary {
+  const { runCount, typicalItemMs } = historicalTiming(lists, listTemplateId)
   const expected = expectedItemsMs(templateItems, 1, typicalItemMs)
   return {
-    runCount: runs.length,
+    runCount,
     expectedRunMs: expected.timed ? expected.ms : null,
     typicalItemMs,
   }

@@ -109,3 +109,17 @@ test('an expected time that rounds to the ideal minute is not treated as over it
   expect(shouldSuggestTrim(summary, 8)).toBe(false)
   expect(shouldSuggestTrim({ ...summary, expectedRunMs: 8 * minute + 40_000 }, 8)).toBe(true)
 })
+
+test('template edits reuse historical timings and new run data refreshes them', () => {
+  const lists = [run(1, [row('a', 0), row('b', 2), row('c', 6)])]
+  const original = summarizeListTiming(lists, 'template', abc)
+  const edited = summarizeListTiming(lists, 'template', [templateItem('b', 50)])
+  expect(edited.typicalItemMs).toBe(original.typicalItemMs)
+  expect(edited.expectedRunMs).toBe(minute)
+
+  const updated = [run(1, [row('a', 0), row('b', 4), row('c', 10)])]
+  expect(summarizeListTiming(updated, 'template', abc).expectedRunMs).toBe(10 * minute)
+  // Restoring an earlier immutable snapshot (undo) restores its timings too.
+  expect(summarizeListTiming(lists, 'template', abc).expectedRunMs).toBe(6 * minute)
+  expect(summarizeListTiming(lists, 'another-template', abc).runCount).toBe(0)
+})

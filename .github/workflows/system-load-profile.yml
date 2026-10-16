@@ -12,6 +12,11 @@ on:
           - macos-15
           - macos-14
           - ubuntu-latest
+      surface:
+        description: Editor to measure with real keystrokes
+        type: choice
+        default: today
+        options: [today, list-template]
       baseline_ref:
         description: Git ref for the baseline run
         required: true
@@ -42,13 +47,14 @@ jobs:
     runs-on: ${{ inputs.runner || 'macos-15' }}
     timeout-minutes: 30
     env:
+      BALANCE_INTERACTION_PERF_SURFACE: ${{ inputs.surface || 'today' }}
       BASELINE_REF: ${{ inputs.baseline_ref }}
       BASELINE_THEME: ${{ inputs.baseline_theme }}
       CANDIDATE_REF: ${{ inputs.candidate_ref }}
       CANDIDATE_THEME: ${{ inputs.candidate_theme }}
       BALANCE_INTERACTION_PERF_PROFILE_ONLY: "1"
       BALANCE_INTERACTION_PERF_OPERATIONS: "1"
-      BALANCE_INTERACTION_PERF_EDITS: "4"
+      BALANCE_INTERACTION_PERF_EDITS: "24"
       BALANCE_INTERACTION_PERF_CLICKS: "4"
       BALANCE_INTERACTION_PERF_FRAME_SAMPLE_MS: "1000"
 
@@ -98,10 +104,14 @@ jobs:
 
           git worktree add --detach "$BASELINE_DIR" "$baseline_sha"
           git worktree add --detach "$CANDIDATE_DIR" "$candidate_sha"
+          mkdir -p "$BASELINE_DIR/tests/helpers" "$CANDIDATE_DIR/tests/helpers"
+          cp tests/helpers/navigation.ts "$BASELINE_DIR/tests/helpers/navigation.ts"
+          cp tests/helpers/navigation.ts "$CANDIDATE_DIR/tests/helpers/navigation.ts"
           cp tests/performance/interactions.spec.ts "$BASELINE_DIR/tests/performance/interactions.spec.ts"
           cp playwright.interaction-performance.config.ts "$BASELINE_DIR/playwright.interaction-performance.config.ts"
-          (cd "$BASELINE_DIR" && pnpm install --force --frozen-lockfile --offline)
-          (cd "$CANDIDATE_DIR" && pnpm install --force --frozen-lockfile --offline)
+          cp tests/performance/interactions.spec.ts "$CANDIDATE_DIR/tests/performance/interactions.spec.ts"
+          (cd "$BASELINE_DIR" && pnpm install --force --frozen-lockfile --offline || pnpm install --frozen-lockfile)
+          (cd "$CANDIDATE_DIR" && pnpm install --force --frozen-lockfile --offline || pnpm install --frozen-lockfile)
 
       - name: Alternate three measured runs under host and renderer contention
         run: |
@@ -134,7 +144,10 @@ jobs:
                 --project mac-desktop-6x-cpu \
                 --grep "common typing" \
                 --trace off
-            } 2>&1)"
+            } 2>&1)" || {
+              printf '%s\n' "$output" | tee -a "$logs"
+              return 1
+            }
             printf '%s\n' "$output" | tee -a "$logs"
             payload="$(printf '%s\n' "$output" | sed -n 's/^INTERACTION_PERF //p')"
             test -n "$payload"
@@ -205,6 +218,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload benchmark results
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: system-load-comparison-profile
@@ -212,6 +226,8 @@ jobs:
             ${{ runner.temp }}/system-load-performance.jsonl
             ${{ runner.temp }}/system-load-performance-summary.json
             ${{ runner.temp }}/system-load-performance.log
+            ${{ runner.temp }}/balance-load-baseline/artifacts/playwright-interaction-performance
+            ${{ runner.temp }}/balance-load-candidate/artifacts/playwright-interaction-performance
           if-no-files-found: error
 
   verify:

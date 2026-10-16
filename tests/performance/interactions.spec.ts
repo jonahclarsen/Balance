@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { openView } from '../helpers/navigation'
 
 const PLAN_COUNT = performanceSize('BALANCE_INTERACTION_PERF_PLANS', 365)
 const ITEMS_PER_PLAN = performanceSize('BALANCE_INTERACTION_PERF_ITEMS_PER_PLAN', 20)
@@ -14,6 +15,7 @@ const THEME_ID = process.env.BALANCE_INTERACTION_PERF_THEME ?? 'iridescent'
 const IRIDESCENT_MOTION_PROFILE = process.env.BALANCE_INTERACTION_PERF_IRIDESCENT_MOTION ?? 'full'
 const CLICK_COUNT = performanceSize('BALANCE_INTERACTION_PERF_CLICKS', 12)
 const FRAME_SAMPLE_MS = performanceSize('BALANCE_INTERACTION_PERF_FRAME_SAMPLE_MS', 1_500)
+const SURFACE = process.env.BALANCE_INTERACTION_PERF_SURFACE ?? 'today'
 const ACTIVE_DATE = '2026-08-16'
 const EDITOR_SELECTOR = `[data-plan-text-input-id="plan_${PLAN_COUNT - 1}_item_1"]`
 
@@ -151,7 +153,7 @@ function summarizeDurations(values: number[]) {
 
 async function installSyntheticWorkspace(page: Page) {
   await page.addInitScript(
-    ({ planCount, itemsPerPlan, listCount, itemsPerList, goalCount, operationCount, activeDate, themeId }) => {
+    ({ planCount, itemsPerPlan, listCount, itemsPerList, goalCount, operationCount, activeDate, themeId, surface }) => {
       const planDate = (index: number) => {
         if (index === planCount - 1) return activeDate
         const date = new Date(`${activeDate}T12:00:00Z`)
@@ -179,9 +181,11 @@ async function installSyntheticWorkspace(page: Page) {
       const lists = Array.from({ length: listCount }, (_, listIndex) => ({
         id: `list_${listIndex}`,
         date: planDate(listIndex % planCount),
-        listTemplateId: `list_template_${listIndex}`,
+        listTemplateId: surface === 'list-template' ? 'list_template_perf' : `list_template_${listIndex}`,
         createdAt: '2026-01-01T00:00:00Z',
-        items: Array.from({ length: itemsPerList }, (_, itemIndex) => item(`list_${listIndex}`, itemIndex)),
+        items: Array.from({ length: itemsPerList }, (_, itemIndex) => surface === 'list-template'
+          ? { ...item(`list_${listIndex}`, itemIndex), id: `template_item_${itemIndex}.${listIndex}`, done: true, doneAt: itemIndex * 60 }
+          : item(`list_${listIndex}`, itemIndex)),
       }))
       const goals = Array.from({ length: goalCount }, (_, goalIndex) => ({
         id: `goal_${goalIndex}`,
@@ -218,7 +222,13 @@ async function installSyntheticWorkspace(page: Page) {
         },
         templates: [],
         plans,
-        listTemplates: [],
+        listTemplates: surface === 'list-template' ? [{
+          id: 'list_template_perf', name: 'Synthetic list', maxExpectedWords: 0,
+          archivedItems: [], createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z',
+          items: Array.from({ length: 100 }, (_, index) => ({
+            id: `template_item_${index}`, text: `Synthetic task ${index}`, html: `Synthetic task ${index}`, probability: 100, children: [],
+          })),
+        }] : [],
         lists,
         metrics: [],
         metricEntries: [],
@@ -229,15 +239,19 @@ async function installSyntheticWorkspace(page: Page) {
       }
 
       localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+      localStorage.setItem('balance:activePlanDate', activeDate)
 
-      // The production Tauri app persists only the coalesced operation through
-      // native IPC. Disable the browser fallback's whole-state localStorage
-      // write so this profile measures the same frontend update/render path.
-      const originalSetItem = Storage.prototype.setItem
-      Storage.prototype.setItem = function (key: string, value: string) {
-        if (key === 'balance.appState.v1') return
-        return originalSetItem.call(this, key, value)
+      // Hydrate through a synthetic native bridge so edits use the desktop
+      // operation queue, without serializing a browser snapshot per keystroke.
+      const runtime = window as unknown as { __TAURI_INTERNALS__: { invoke: (command: string) => Promise<unknown> } }
+      runtime.__TAURI_INTERNALS__ = {
+        invoke: async (command: string) => {
+          if (command === 'read_app_state') return JSON.stringify(state)
+          if (command === 'persist_operation') return true
+          throw new Error(`Unsupported synthetic command: ${command}`)
+        },
       }
+
     },
     {
       planCount: PLAN_COUNT,
@@ -248,37 +262,40 @@ async function installSyntheticWorkspace(page: Page) {
       operationCount: EXISTING_OPERATION_COUNT,
       activeDate: ACTIVE_DATE,
       themeId: THEME_ID,
+      surface: SURFACE,
     },
   )
 }
 
 async function profileEdits(page: Page, selector: string, direction: 'type' | 'backspace', editCount = EDIT_COUNT) {
-  return page.locator(selector).evaluate(
-    async (element, { editCount, direction }) => {
-      const editor = element as HTMLDivElement
-      const samples: Sample[] = []
-      editor.focus()
-
-      for (let index = 0; index < editCount; index += 1) {
-        if (direction === 'type') editor.textContent = `${editor.textContent ?? ''}x`
-        else editor.textContent = (editor.textContent ?? '').slice(0, -1)
-
-        const started = performance.now()
-        editor.dispatchEvent(new InputEvent('input', {
-          bubbles: true,
-          cancelable: false,
-          data: direction === 'type' ? 'x' : null,
-          inputType: direction === 'type' ? 'insertText' : 'deleteContentBackward',
-        }))
-        const dispatched = performance.now()
-        await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
-        samples.push({ dispatchMs: dispatched - started, paintMs: performance.now() - started })
-      }
-
-      return samples
-    },
-    { editCount, direction },
-  )
+  await page.locator(selector).evaluate((element) => {
+    const editor = element as HTMLElement
+    editor.focus()
+    const range = document.createRange()
+    range.selectNodeContents(editor)
+    range.collapse(false)
+    document.getSelection()?.removeAllRanges()
+    document.getSelection()?.addRange(range)
+  })
+  const samples: Sample[] = []
+  for (let index = 0; index < editCount; index += 1) {
+    await page.locator(selector).evaluate((element) => {
+      const runtime = window as unknown as { typingSample: Promise<Sample> }
+      runtime.typingSample = new Promise((resolve) => {
+        let started = 0
+        element.addEventListener('keydown', () => { started = performance.now() }, { once: true, capture: true })
+        element.addEventListener('input', () => {
+          const dispatched = performance.now()
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve({
+            dispatchMs: dispatched - started, paintMs: performance.now() - started,
+          })))
+        }, { once: true })
+      })
+    })
+    await page.keyboard.press(direction === 'type' ? 'x' : 'Backspace')
+    samples.push(await page.evaluate(() => (window as unknown as { typingSample: Promise<Sample> }).typingSample))
+  }
+  return samples
 }
 
 async function profileIdleFrames(page: Page, durationMs = FRAME_SAMPLE_MS) {
@@ -475,11 +492,33 @@ test('profiles common typing and backspacing paths', async ({ page }, testInfo) 
   }
   const idle = await profileIdleRenderer(page)
   const taskActions = await profileTaskActions(page, EDITOR_SELECTOR)
-  const typing = await profileEdits(page, EDITOR_SELECTOR, 'type')
-  const backspacing = await profileEdits(page, EDITOR_SELECTOR, 'backspace')
+  let typingSelector = EDITOR_SELECTOR
+  if (SURFACE === 'list-template') {
+    await openView(page, 'Lists')
+    typingSelector = '[data-list-template-text-input-id="template_item_1"]'
+    await expect(page.locator(typingSelector)).toBeVisible()
+  }
+  const originalText = await page.locator(typingSelector).innerText()
+  const profiler = await page.context().newCDPSession(page)
+  await profiler.send('Profiler.enable')
+  await profiler.send('Profiler.start')
+  const typing = await profileEdits(page, typingSelector, 'type')
+  const backspacing = await profileEdits(page, typingSelector, 'backspace')
+  const { profile: cpu } = await profiler.send('Profiler.stop')
+  await profiler.detach()
+  const hits = new Map<number, number>()
+  for (const id of cpu.samples ?? []) hits.set(id, (hits.get(id) ?? 0) + 1)
+  console.log(`TYPING_CPU ${JSON.stringify(cpu.nodes.map(node => ({
+    function: node.callFrame.functionName,
+    url: node.callFrame.url.replace(/^http:\/\/[^/]+/, ''),
+    line: node.callFrame.lineNumber + 1,
+    samples: hits.get(node.id) ?? 0,
+  })).filter(node => node.samples > 0).sort((a, b) => b.samples - a.samples).slice(0, 35))}`)
+  await testInfo.attach('typing.cpuprofile', { body: JSON.stringify(cpu), contentType: 'application/json' })
   const profile = {
     project: testInfo.project.name,
     fixture: {
+      surface: SURFACE,
       plans: PLAN_COUNT,
       planItems: PLAN_COUNT * ITEMS_PER_PLAN,
       lists: LIST_COUNT,
@@ -510,7 +549,7 @@ test('profiles common typing and backspacing paths', async ({ page }, testInfo) 
     expect(profile.typing.paint.p95Ms).toBeLessThan(paintP95BudgetMs)
     expect(profile.backspacing.paint.p95Ms).toBeLessThan(paintP95BudgetMs)
   }
-  await expect(page.locator(EDITOR_SELECTOR)).toContainText('task')
+  await expect(page.locator(typingSelector)).toHaveText(originalText)
 })
 
 test('profiles goal-name edits that legitimately change the goal collection', async ({ page }, testInfo) => {

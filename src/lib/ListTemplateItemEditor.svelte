@@ -126,7 +126,7 @@
   }
 
   function handleBeforeTextInput(editor: HTMLDivElement, event: InputEvent, wordingId: Id = item.id) {
-    if (!event.cancelable || event.data === null || !event.inputType.startsWith('insert')) return
+    if (!maxExpectedWords || !event.cancelable || event.data === null || !event.inputType.startsWith('insert')) return
 
     const selection = document.getSelection()
     if (!selection || selection.rangeCount === 0) return

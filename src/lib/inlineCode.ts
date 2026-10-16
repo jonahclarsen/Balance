@@ -152,8 +152,10 @@ export function insertTextAroundCode(root: HTMLElement, data: string): boolean {
   if (!selection || !selection.isCollapsed || selection.rangeCount === 0) return false
   const range = selection.getRangeAt(0)
   if (!root.contains(range.startContainer)) return false
-  const caret = offsetOf(root, range.startContainer, range.startOffset)
   const code = codeOf(root, range.startContainer)
+  // Ordinary text outside code needs no DOM clone or offset walk.
+  if (!code && data !== '`') return false
+  const caret = offsetOf(root, range.startContainer, range.startOffset)
 
   if (code) {
     if (offsetOf(root, code, code.childNodes.length) !== caret) return false
