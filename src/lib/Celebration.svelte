@@ -17,12 +17,16 @@
 
   type CelebrationDefinition = ReturnType<typeof getCompletionCelebration>
   type Piece = { className: string; text?: string; style: string }
+  type SkylineBuilding = { x: number; y: number; w: number; h: number }
+  type SkylineWindow = { x: number; y: number; off: number; last: boolean }
 
   let canvas: HTMLCanvasElement
   let banner = false
   let listBurst = false
   let activeDefinition: CelebrationDefinition | null = null
   let pieces: Piece[] = []
+  let skylineBuildings: SkylineBuilding[] = []
+  let skylineWindows: SkylineWindow[] = []
   let message = 'All done — nice work! ✨'
   let ariaLabel = 'Day finished'
   let reduced = false
@@ -54,6 +58,13 @@
     { x: -58, y: 168, delay: 90, hue: 19 },
     { x: -158, y: 120, delay: 50, hue: 166 },
     { x: -220, y: 34, delay: 110, hue: 43 },
+  ]
+  const KINTSUGI_CRACKS = [
+    'M52 70 L62 92 L56 110 L70 128 L66 152',
+    'M62 92 L84 100 L98 94 L110 112',
+    'M110 112 L118 140 L112 170',
+    'M166 66 L156 90 L170 108 L160 130 L172 152',
+    'M198 74 L204 90 L195 104',
   ]
   const SCROLLBAR_FREE_RECIPES = new Set([
     'feedback-tunnel',
@@ -129,6 +140,24 @@
         style: `--x:${12 + index * 26}vw;--y:${61 + (index % 2) * 10}vh;--delay:${0.35 + index * 0.16}s;--r:${-9 + index * 10}deg`,
       }))
     }
+    if (recipe === 'kintsugi') {
+      return Array.from({ length: 14 }, (_, index) => ({
+        className: 'gold-dust', text: index % 3 === 0 ? '✦' : '•',
+        style: `--x:${-110 + random() * 220}px;--y:${-130 + random() * 110}px;--dx:${-24 + random() * 48}px;--rise:${-60 - random() * 90}px;--size:${0.55 + random() * 0.8};--delay:${2.5 + random() * 0.9}s`,
+      }))
+    }
+    if (recipe === 'zero-gravity') {
+      return Array.from({ length: 18 }, (_, index) => ({
+        className: 'gravity-mote', text: ['✦', '•', '○', '✓'][index % 4],
+        style: `--x:${3 + random() * 94}vw;--y:${48 + random() * 46}vh;--dx:${-8 + random() * 16}vw;--rise:${-18 - random() * 30}vh;--spin:${-200 + random() * 400}deg;--size:${0.7 + random() * 0.9};--delay:${random() * 0.25}s;--color:${definition.palette[index % 3]}`,
+      }))
+    }
+    if (recipe === 'mic-drop') {
+      return Array.from({ length: 8 }, (_, index) => ({
+        className: 'mic-burst',
+        style: `--angle:${-75 + index * (150 / 7)}deg;--delay:${index % 2 ? 0.03 : 0}s`,
+      }))
+    }
     if (recipe === 'janitor') {
       return Array.from({ length: 18 }, (_, index) => {
         const x = 18 + index * 6 + random() * 5
@@ -165,6 +194,33 @@
     return []
   }
 
+  function makeSkyline(random: () => number) {
+    const buildings: SkylineBuilding[] = []
+    const windows: SkylineWindow[] = []
+    let x = -4
+    while (x < 600) {
+      const w = Math.round(30 + random() * 30)
+      const h = Math.round(52 + random() * 92)
+      buildings.push({ x, y: 150 - h, w, h })
+      const columns = Math.max(1, Math.floor((w - 8) / 11))
+      const rows = Math.max(1, Math.floor((h - 14) / 14))
+      const inset = (w - (columns * 11 - 5)) / 2
+      for (let row = 0; row < rows; row += 1) {
+        for (let column = 0; column < columns; column += 1) {
+          if (random() > 0.68) continue
+          windows.push({ x: x + inset + column * 11, y: 150 - h + 9 + row * 14, off: 0.7 + 2.3 * random() ** 0.85, last: false })
+        }
+      }
+      x += w + Math.round(2 + random() * 5)
+    }
+    const center = buildings
+      .filter((building) => building.x > 200 && building.x < 380)
+      .sort((a, b) => a.y - b.y)[0] ?? buildings[0]
+    const last = windows.find((light) => light.x >= center.x && light.x < center.x + center.w)
+    if (last) last.last = true
+    return { buildings, windows }
+  }
+
   function clearCanvas() {
     const context = canvas?.getContext('2d')
     if (!context) return
@@ -192,6 +248,8 @@
       delete document.documentElement.dataset.celebrationScrollbars
     }
     pieces = []
+    skylineBuildings = []
+    skylineWindows = []
     activeDefinition = null
     preview = false
     if (resetPresentation) {
@@ -233,6 +291,7 @@
     activeDefinition = definition
     preview = Boolean(request.preview)
     pieces = makePieces(definition, random)
+    if (definition.recipe === 'lights-out') ({ buildings: skylineBuildings, windows: skylineWindows } = makeSkyline(random))
     message = `${definition.icon} ${definition.name} — day complete!`
     ariaLabel = 'Day finished'
     banner = true
@@ -244,7 +303,7 @@
     later(() => { if (token === runToken) cleanup(true) }, Math.min(6000, definition.durationMs + 500))
 
     if (reduced) return
-    animateInterface(definition.recipe)
+    animateInterface(definition.recipe, random)
     if (definition.recipe === 'applause') void requestApplauseHaptic()
     launchCanvas(definition, random, token)
   }
@@ -264,7 +323,7 @@
     animations.push(animation)
   }
 
-  function animateInterface(recipe: string) {
+  function animateInterface(recipe: string, random: () => number) {
     const shell = document.querySelector('.app-shell')
     const pane = document.querySelector('.day-pane')
     const sidebar = document.querySelector('.sidebar')
@@ -277,6 +336,30 @@
         { transform: 'scale(1.008)', filter: 'saturate(1.05)', offset: 0.78 },
         { transform: 'scale(1)', filter: 'saturate(1)' },
       ], { duration: 3200, easing: 'ease-in-out' })
+    } else if (recipe === 'zero-gravity') {
+      rows.forEach((row, index) => {
+        const rise = 34 + random() * 90
+        const drift = (random() - 0.5) * 70
+        const turn = (random() - 0.5) * 22
+        addAnimation(row, [
+          { transform: 'translate(0,0) rotate(0deg)', easing: 'cubic-bezier(.35,0,.45,1)' },
+          { transform: `translate(${drift * 0.55}px,${-rise * 0.62}px) rotate(${turn * 0.45}deg)`, offset: 0.3, easing: 'cubic-bezier(.3,.2,.6,1)' },
+          { transform: `translate(${drift}px,${-rise}px) rotate(${turn}deg)`, offset: 0.72, easing: 'cubic-bezier(.6,0,1,.55)' },
+          { transform: 'translate(0,5px) rotate(0deg)', offset: 0.81, easing: 'ease-out' },
+          { transform: 'translate(0,-5px) rotate(0deg)', offset: 0.87, easing: 'ease-in' },
+          { transform: 'translate(0,0) rotate(0deg)', offset: 0.92 },
+          { transform: 'translate(0,0) rotate(0deg)' },
+        ], { duration: 4400, delay: index * 25 })
+      })
+    } else if (recipe === 'mic-drop') {
+      addAnimation(shell, [
+        { transform: 'translate(0,0)' },
+        { transform: 'translate(0,7px)', offset: 0.14 },
+        { transform: 'translate(-4px,-3px)', offset: 0.34 },
+        { transform: 'translate(3px,2px)', offset: 0.58 },
+        { transform: 'translate(-1px,0)', offset: 0.8 },
+        { transform: 'translate(0,0)' },
+      ], { duration: 400, delay: 1520, easing: 'linear' })
     } else if (recipe === 'applause') {
       addAnimation(pane, [
         { transform: 'perspective(700px) rotateX(0deg)' },
@@ -513,6 +596,115 @@
         <div class="enough-candle"><i></i><span></span></div>
         <p><small>this day was lived</small><b>and it is enough</b></p>
       </div>
+    {:else if activeDefinition.recipe === 'lights-out'}
+      <div class="lights-sky"></div>
+      <div class="lights-moon"></div>
+      {#each [[12, 44], [22, 52], [31, 38], [44, 56], [57, 47], [66, 58], [78, 41], [88, 53], [94, 36], [7, 57], [51, 60], [37, 50]] as [x, y], index}
+        <i class="lights-star" style={`--x:${x}vw;--y:${y}vh;--delay:${(index % 5) * 0.1}s`}></i>
+      {/each}
+      <svg class="lights-skyline" viewBox="0 0 600 150" preserveAspectRatio="xMidYMax slice" role="presentation">
+        {#each skylineBuildings as building}
+          <rect class="lights-building" x={building.x} y={building.y} width={building.w} height={building.h + 2}></rect>
+        {/each}
+        {#each skylineWindows as light}
+          <rect class="lights-window" class:last={light.last} x={light.x} y={light.y} width="6" height="7" style={`--off:${light.off.toFixed(2)}s`}></rect>
+        {/each}
+      </svg>
+      <p class="lights-words">goodnight, <b>day</b></p>
+    {:else if activeDefinition.recipe === 'paper-boat'}
+      <div class="boat-water boat-water-back"><svg viewBox="0 0 1200 60" preserveAspectRatio="none" role="presentation"><path d="M0 26 Q75 8 150 26 T300 26 T450 26 T600 26 T750 26 T900 26 T1050 26 T1200 26 V60 H0 Z"></path></svg></div>
+      <div class="boat-voyage">
+        <div class="boat-bob">
+          <div class="boat-paper">
+            {#each [0, 1, 2] as index}
+              <span class="boat-row" style={`--i:${index}`}><i>✓</i><b></b></span>
+            {/each}
+          </div>
+        </div>
+      </div>
+      <div class="boat-water boat-water-front"><svg viewBox="0 0 1200 60" preserveAspectRatio="none" role="presentation"><path d="M0 30 Q75 14 150 30 T300 30 T450 30 T600 30 T750 30 T900 30 T1050 30 T1200 30 V60 H0 Z"></path></svg></div>
+      <p class="boat-caption">off it goes <span>·</span> see you tomorrow</p>
+    {:else if activeDefinition.recipe === 'kintsugi'}
+      <div class="kintsugi-scene">
+        <svg class="kintsugi-bowl" viewBox="0 0 240 210" role="presentation">
+          <defs>
+            <linearGradient id="kintsugi-glaze" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0" stop-color="#1b2e31"></stop>
+              <stop offset=".3" stop-color="#34565a"></stop>
+              <stop offset=".52" stop-color="#557f7b"></stop>
+              <stop offset=".78" stop-color="#2c4649"></stop>
+              <stop offset="1" stop-color="#172628"></stop>
+            </linearGradient>
+            <radialGradient id="kintsugi-inside" cx="50%" cy="30%" r="70%">
+              <stop offset="0" stop-color="#f3eadb"></stop>
+              <stop offset=".7" stop-color="#d8c7aa"></stop>
+              <stop offset="1" stop-color="#a99579"></stop>
+            </radialGradient>
+            <linearGradient id="kintsugi-gold" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#a5741c"></stop>
+              <stop offset=".38" stop-color="#f6d36f"></stop>
+              <stop offset=".5" stop-color="#fff3c2"></stop>
+              <stop offset=".68" stop-color="#d9a233"></stop>
+              <stop offset="1" stop-color="#8d5f14"></stop>
+            </linearGradient>
+            <filter id="kintsugi-blur" filterUnits="userSpaceOnUse" x="0" y="0" width="240" height="210">
+              <feGaussianBlur stdDeviation="3"></feGaussianBlur>
+            </filter>
+          </defs>
+          <ellipse class="kintsugi-shadow" cx="120" cy="197" rx="72" ry="7"></ellipse>
+          <g class="kintsugi-body">
+            <path class="kintsugi-foot" d="M90 168 L94 188 Q120 194 146 188 L150 168 Z"></path>
+            <path class="kintsugi-glaze" d="M18 62 C20 118 58 172 120 174 C182 172 220 118 222 62 Z"></path>
+            <path class="kintsugi-drip" d="M28 64 C32 82 38 86 42 100 C47 88 51 78 60 66 Z M146 68 C149 88 155 94 158 108 C162 96 166 82 174 68 Z M196 64 C198 76 202 80 204 88 C207 80 209 72 214 64 Z"></path>
+            <path class="kintsugi-sheen" d="M40 84 C46 112 62 138 86 156"></path>
+            <ellipse class="kintsugi-rim" cx="120" cy="62" rx="102" ry="22"></ellipse>
+            <ellipse class="kintsugi-inside" cx="120" cy="64" rx="93" ry="16.5"></ellipse>
+            {#each KINTSUGI_CRACKS as crack, index}
+              <path class="kintsugi-crack" d={crack} pathLength="1" style={`--i:${index}`}></path>
+            {/each}
+            <g class="kintsugi-halo" filter="url(#kintsugi-blur)">
+              {#each KINTSUGI_CRACKS as crack, index}
+                <path class="kintsugi-gold kintsugi-gold-glow" d={crack} pathLength="1" style={`--i:${index}`}></path>
+              {/each}
+            </g>
+            {#each KINTSUGI_CRACKS as crack, index}
+              <path class="kintsugi-gold" d={crack} pathLength="1" style={`--i:${index}`}></path>
+            {/each}
+          </g>
+        </svg>
+        <p><small>mended in gold</small><b>the day is whole</b></p>
+      </div>
+    {:else if activeDefinition.recipe === 'mic-drop'}
+      <div class="mic-dim"></div>
+      <div class="mic-cone"></div>
+      <div class="mic-pool"></div>
+      <div class="mic-shadow"></div>
+      <span class="mic-hand">🫳</span>
+      <div class="mic-body">
+        <svg viewBox="0 0 60 150" role="presentation">
+          <defs>
+            <linearGradient id="mic-metal" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0" stop-color="#5d5d66"></stop>
+              <stop offset=".34" stop-color="#e2e2e8"></stop>
+              <stop offset=".6" stop-color="#8b8b94"></stop>
+              <stop offset="1" stop-color="#36363d"></stop>
+            </linearGradient>
+            <pattern id="mic-mesh" width="5" height="5" patternUnits="userSpaceOnUse">
+              <path d="M0 0 L5 5 M5 0 L0 5" stroke="#1d1d22" stroke-width=".8"></path>
+            </pattern>
+          </defs>
+          <path class="mic-handle" d="M9 58 L51 58 L40 145 Q30 150 20 145 Z"></path>
+          <path class="mic-handle-light" d="M17 64 L25 138"></path>
+          <text class="mic-logo" x="30" y="104">✓</text>
+          <rect class="mic-band" x="5" y="48" width="50" height="11" rx="3"></rect>
+          <rect class="mic-band-stripe" x="5" y="52" width="50" height="3"></rect>
+          <circle class="mic-head" cx="30" cy="27" r="25"></circle>
+          <circle class="mic-mesh" cx="30" cy="27" r="25"></circle>
+          <path class="mic-head-light" d="M15 14 Q22 6 31 5"></path>
+        </svg>
+      </div>
+      <b class="mic-thunk">THUNK.</b>
+      <b class="mic-sign">BALANCE OUT.</b>
     {:else if activeDefinition.recipe === 'goose'}
       <div class="goose-scene"><span class="goose">🪿</span><span class="deadline-paper">DEADLINE</span><b>HONK!</b></div>
     {:else if activeDefinition.recipe === 'janitor'}
@@ -583,6 +775,9 @@
       <div class="approval-stamp">APPROVED<small>DEPARTMENT OF DONE</small></div>
     {:else if activeDefinition.recipe === 'papel-picado'}
       <div class="papel-string"></div>
+    {:else if activeDefinition.recipe === 'zero-gravity'}
+      <div class="gravity-hud"><span>GRAVITY</span><span class="gravity-state"><b class="gravity-off">OFF</b><b class="gravity-on">RESTORED</b></span></div>
+      <div class="gravity-check">✓</div>
     {:else if activeDefinition.recipe === 'inhale'}
       <div class="breath-ring">nothing left<br><b>to do</b></div>
     {:else if activeDefinition.recipe === 'poltergeist'}
@@ -764,6 +959,81 @@
   .buffer-slab { left: -8%; top: var(--y); width: 116%; height: 9%; justify-content: center; overflow: hidden; border-block: 2px solid var(--color); background: color-mix(in srgb, var(--color) 28%, transparent); color: white; font: 1000 clamp(10px, 2.2vw, 23px)/1 ui-monospace, monospace; letter-spacing: .12em; mix-blend-mode: screen; animation: buffer-slab 4.5s steps(9, jump-none) both; }
   .applause-marquee { position: absolute; left: 0; right: 0; top: 9%; padding: 12px; border-block: 4px solid var(--c1); background: var(--c3); color: white; font: 900 clamp(22px, 6vw, 58px) system-ui; text-align: center; white-space: nowrap; animation: marquee-bow 3.4s ease both; }
   .applause-title { position: absolute; left: 50%; top: 52%; padding: 22px; border: 6px double var(--c1); background: var(--c2); color: #27231b; font: 1000 clamp(28px, 7vw, 72px)/.92 system-ui; text-align: center; transform: translate(-50%, -50%); animation: stamp 3.2s ease both; }
+  .lights-sky { position: absolute; inset: 0; background: linear-gradient(to top, #0e1530f2 0%, #1b2650c9 30%, #26335c6b 58%, transparent 84%); animation: lights-sky 4.8s ease both; }
+  .lights-skyline { position: absolute; left: 0; bottom: 0; width: 100%; height: min(max(25vw, 170px), 46vh); animation: lights-skyline 4.8s cubic-bezier(.2,.8,.2,1) both; }
+  .lights-building { fill: #0b1128; stroke: #2b3a6a; stroke-width: .6; }
+  .lights-window { fill: var(--c1); animation: lights-off .12s var(--off) steps(1, end) both; }
+  .lights-window.last { animation: lights-wink .9s 3.15s linear both; }
+  .lights-moon { position: absolute; right: 15vw; bottom: min(calc(min(max(25vw, 170px), 46vh) + 10vh), 66vh); width: clamp(46px, 7vmin, 74px); aspect-ratio: 1; border-radius: 50%; box-shadow: inset calc(clamp(46px, 7vmin, 74px) * -.24) calc(clamp(46px, 7vmin, 74px) * .1) 0 0 var(--c3); filter: drop-shadow(0 0 14px #f6e7c199); animation: lights-moon 4.8s ease both; }
+  .lights-star { position: absolute; left: var(--x); bottom: var(--y); width: 3px; height: 3px; border-radius: 50%; background: var(--c3); box-shadow: 0 0 6px var(--c3); animation: lights-star 4.8s var(--delay) ease both; }
+  .lights-words { position: absolute; left: 50%; bottom: calc(min(max(25vw, 170px), 46vh) + 3vh); margin: 0; padding: .5em 1.1em; border-radius: 999px; background: #0e1530d9; box-shadow: 0 8px 26px #0006; color: var(--c3); font: italic 500 clamp(17px, 2.6vw, 26px)/1.1 Georgia, 'Iowan Old Style', serif; letter-spacing: .03em; white-space: nowrap; transform: translateX(-50%); animation: lights-words 4.8s ease both; }
+  .lights-words b { color: var(--c1); font-weight: 600; }
+
+  .celebration-stage { --waterline: clamp(70px, 14vh, 130px); --mic-floor: 64vh; --mic-w: clamp(38px, 5.6vmin, 58px); }
+  .boat-water { position: absolute; left: 0; right: 0; bottom: 0; height: calc(var(--waterline) + 16px); overflow: hidden; animation: boat-water 4.8s ease both; }
+  .boat-water svg { display: block; width: 200%; height: 100%; animation: boat-flow 3.2s linear infinite; }
+  .boat-water-back { height: calc(var(--waterline) + 26px); }
+  .boat-water-back svg { animation-duration: 5s; animation-direction: reverse; }
+  .boat-water-back path { fill: color-mix(in srgb, var(--c2) 62%, transparent); }
+  .boat-water-front { z-index: 3; height: calc(var(--waterline) + 4px); }
+  .boat-water-front path { fill: color-mix(in srgb, var(--c3) 82%, transparent); }
+  .boat-voyage { position: absolute; z-index: 2; left: 50%; bottom: calc(var(--waterline) - 32px); width: clamp(150px, 22vmin, 210px); aspect-ratio: .84; animation: boat-voyage 4.8s both; }
+  .boat-bob { width: 100%; height: 100%; transform-origin: 50% 90%; filter: drop-shadow(0 0 1px #2f5d7c99) drop-shadow(0 10px 14px #1d2b3a59); animation: boat-bob 2.2s 2.5s ease-in-out infinite; }
+  .boat-paper { position: relative; display: grid; align-content: start; gap: 12%; width: 100%; height: 100%; box-sizing: border-box; padding: 20% 14% 0; background: repeating-linear-gradient(transparent 0 19%, #6fb3d926 19% 20%), linear-gradient(160deg, #fff, var(--c1) 55%, #e6dcc8); transform-origin: 50% 100%; clip-path: polygon(0% 0%, 26% 0%, 50% 0%, 74% 0%, 100% 0%, 100% 100%, 0% 100%); animation: boat-fold 4.8s cubic-bezier(.45,.05,.3,1) both; }
+  .boat-paper::after { content: ''; position: absolute; inset: 0; background: linear-gradient(to bottom, transparent 60%, #2f5d7c2e 60%), linear-gradient(90deg, transparent 50%, #2f5d7c1f 50%); opacity: 0; animation: boat-crease 4.8s ease both; }
+  .boat-row { display: flex; align-items: center; gap: 9%; animation: boat-row-fade 4.8s ease both; }
+  .boat-row i { display: grid; place-items: center; width: 18%; aspect-ratio: 1; box-sizing: border-box; border: 2px solid var(--c3); border-radius: 5px; color: transparent; font: normal 900 clamp(11px, 1.6vmin, 15px)/1 system-ui; animation: boat-tick .3s calc(.35s + var(--i) * .2s) ease-out both; }
+  .boat-row b { flex: 1; height: 7px; border-radius: 999px; background: color-mix(in srgb, var(--c3) 30%, transparent); }
+  .boat-caption { position: absolute; z-index: 4; left: 50%; top: 26%; margin: 0; padding: .55em 1.1em; border-radius: 999px; background: color-mix(in srgb, var(--c1) 94%, transparent); box-shadow: 0 8px 24px #1d2b3a26; color: var(--c3); font: 600 clamp(14px, 2vw, 19px)/1.1 system-ui; white-space: nowrap; transform: translateX(-50%); animation: boat-caption 4.8s ease both; }
+  .boat-caption span { opacity: .5; }
+
+  .kintsugi-scene { position: absolute; left: 50%; top: 50%; display: grid; justify-items: center; gap: clamp(10px, 2vh, 20px); transform: translate(-50%, -50%); animation: kintsugi-arrive 4.8s ease both; }
+  .kintsugi-bowl { display: block; width: clamp(190px, 34vmin, 320px); overflow: visible; filter: drop-shadow(0 16px 18px #1b2a2c40); }
+  .kintsugi-shadow { fill: #1e2a2a40; }
+  .kintsugi-body { transform-box: fill-box; transform-origin: 50% 100%; animation: kintsugi-shudder .32s .55s ease-in-out both; }
+  .kintsugi-foot { fill: #9a7b5d; stroke: #3f3024; stroke-width: 2.5; stroke-linejoin: round; }
+  .kintsugi-glaze { fill: url(#kintsugi-glaze); stroke: #142224; stroke-width: 2.5; stroke-linejoin: round; }
+  .kintsugi-drip { fill: #b6cbbf3d; }
+  .kintsugi-sheen { fill: none; stroke: #ffffff2e; stroke-width: 7; stroke-linecap: round; }
+  .kintsugi-rim { fill: #d9c7a8; stroke: #142224; stroke-width: 2.5; }
+  .kintsugi-inside { fill: url(#kintsugi-inside); }
+  .kintsugi-crack { fill: none; stroke: #101a1b; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 1; animation: kintsugi-draw .3s calc(.55s + var(--i) * .05s) cubic-bezier(.2,.8,.2,1) both; }
+  .kintsugi-gold { fill: none; stroke: url(#kintsugi-gold); stroke-width: 4.4; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 1; animation: kintsugi-draw .85s calc(1.2s + var(--i) * .2s) cubic-bezier(.45,0,.25,1) both; }
+  .kintsugi-gold-glow { stroke: #ffe39a; stroke-width: 9; }
+  .kintsugi-halo { animation: kintsugi-gleam 4.8s ease both; }
+  .kintsugi-scene p { display: grid; justify-items: center; gap: .35rem; margin: 0; padding: .7em 1.4em; border-radius: 14px; background: color-mix(in srgb, var(--c3) 94%, transparent); box-shadow: 0 10px 26px #1b2a2c26; animation: kintsugi-words 4.8s ease both; }
+  .kintsugi-scene small { color: #9a6d17; font: 700 clamp(10px, 1.3vw, 12px)/1 system-ui; letter-spacing: .32em; text-transform: uppercase; }
+  .kintsugi-scene b { color: var(--c2); font: italic 500 clamp(19px, 3vw, 30px)/1.1 Georgia, 'Iowan Old Style', serif; }
+  .gold-dust { left: calc(50% + var(--x)); top: calc(50% + var(--y)); color: #f3cd63; font-size: calc(14px * var(--size)); text-shadow: 0 0 6px #ffe7a0; animation: gold-dust 1.6s var(--delay) ease-out both; }
+
+  .mic-dim { position: absolute; inset: 0; background: radial-gradient(ellipse min(38vmin, 300px) min(52vmin, 420px) at 50% 52%, transparent 30%, #08080fb8 100%); animation: mic-lights 3.8s ease both; }
+  .mic-cone { position: absolute; left: 50%; top: 0; width: min(62vmin, 480px); height: var(--mic-floor); clip-path: polygon(43% 0, 57% 0, 100% 100%, 0 100%); background: linear-gradient(to bottom, color-mix(in srgb, var(--c2) 4%, transparent), color-mix(in srgb, var(--c2) 28%, transparent)); transform: translateX(-50%); animation: mic-cone 3.8s ease both; }
+  .mic-pool { position: absolute; left: 50%; top: var(--mic-floor); width: min(62vmin, 480px); aspect-ratio: 4.2; border-radius: 50%; background: radial-gradient(closest-side, color-mix(in srgb, var(--c2) 48%, transparent), transparent); transform: translate(-50%, -50%); animation: mic-cone 3.8s ease both; }
+  .mic-shadow { position: absolute; left: 50%; top: var(--mic-floor); width: calc(var(--mic-w) * 2.4); height: calc(var(--mic-w) * .38); border-radius: 50%; background: #000; filter: blur(3px); transform: translate(-50%, -50%); animation: mic-shadow 3.8s both; }
+  .mic-hand { position: absolute; left: 50%; top: var(--mic-floor); font-size: calc(var(--mic-w) * 1.5); line-height: 1; animation: mic-hand 3.8s both; }
+  .mic-body { position: absolute; left: 50%; top: var(--mic-floor); width: var(--mic-w); aspect-ratio: 60 / 150; transform-origin: 50% 100%; animation: mic-fall 3.8s both; }
+  .mic-body svg { display: block; width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 6px 8px #0006); }
+  .mic-handle { fill: #26262c; stroke: #111114; stroke-width: 2; stroke-linejoin: round; }
+  .mic-handle-light { fill: none; stroke: #ffffff2e; stroke-width: 3; stroke-linecap: round; }
+  .mic-logo { fill: var(--c2); font: 900 14px system-ui; text-anchor: middle; }
+  .mic-band { fill: #2d2d34; stroke: #111114; stroke-width: 1.5; }
+  .mic-band-stripe { fill: var(--c3); }
+  .mic-head { fill: url(#mic-metal); stroke: #1b1b20; stroke-width: 2; }
+  .mic-mesh { fill: url(#mic-mesh); opacity: .6; }
+  .mic-head-light { fill: none; stroke: #ffffffa0; stroke-width: 3; stroke-linecap: round; }
+  .mic-burst { left: 50%; top: var(--mic-floor); width: 3px; height: clamp(12px, 2.2vmin, 20px); border-radius: 2px; background: var(--c2); transform-origin: 50% 100%; animation: mic-burst .5s calc(1.52s + var(--delay)) ease-out both; }
+  .mic-thunk { position: absolute; left: calc(50% - var(--mic-w) * 2.6); top: calc(var(--mic-floor) - var(--mic-w) * 1.9); color: var(--c2); font: italic 1000 clamp(22px, 3.6vw, 40px)/1 system-ui; letter-spacing: .04em; -webkit-text-stroke: 1.5px #1a1a1f; paint-order: stroke fill; text-shadow: 3px 3px 0 #1a1a1f; transform: translateX(-50%) rotate(-10deg); animation: mic-thunk 3.8s both; }
+  .mic-sign { position: absolute; left: 50%; top: calc(var(--mic-floor) + clamp(28px, 6vh, 56px)); padding: .45em .9em; border: 2px solid var(--c3); border-radius: 10px; background: #121218e0; color: #ffe4ee; font: 900 clamp(20px, 3.4vw, 36px)/1 ui-rounded, system-ui; letter-spacing: .16em; white-space: nowrap; text-shadow: 0 0 6px var(--c3), 0 0 18px var(--c3); box-shadow: 0 0 18px color-mix(in srgb, var(--c3) 55%, transparent), inset 0 0 12px color-mix(in srgb, var(--c3) 35%, transparent); transform: translateX(-50%); animation: mic-sign 3.8s both; }
+
+  .gravity-hud { position: absolute; left: 50%; top: max(11vh, 64px); display: flex; align-items: center; gap: .7em; padding: .55em 1em; border: 1px solid color-mix(in srgb, var(--c1) 60%, transparent); border-radius: 999px; background: #14162ae6; box-shadow: 0 10px 30px #0004; color: #dfe3ff; font: 700 clamp(11px, 1.4vw, 14px)/1 ui-monospace, monospace; letter-spacing: .22em; transform: translateX(-50%); animation: gravity-hud 4.8s ease both; }
+  .gravity-hud::before { content: ''; width: .6em; height: .6em; border-radius: 50%; animation: gravity-dot 4.8s both; }
+  .gravity-state { display: grid; }
+  .gravity-state b { grid-area: 1 / 1; }
+  .gravity-off { color: var(--c2); animation: gravity-off 4.8s both; }
+  .gravity-on { color: var(--c3); animation: gravity-on 4.8s both; }
+  .gravity-check { position: absolute; left: 50%; top: 50%; display: grid; place-items: center; width: clamp(54px, 8vmin, 76px); aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle at 34% 30%, #fff9, transparent 30%), linear-gradient(140deg, #8e98ff, #5f69d8); box-shadow: 0 14px 30px #2a2f5a40, inset 0 -6px 12px #0001; color: white; font: 900 clamp(30px, 4.6vmin, 44px)/1 system-ui; text-shadow: 0 2px 4px #0004; animation: gravity-check 4.8s both; }
+  .gravity-mote { left: var(--x); top: var(--y); color: var(--color); font: 800 calc(15px * var(--size))/1 system-ui; -webkit-text-stroke: .5px #3a3f6a66; text-shadow: 0 0 8px color-mix(in srgb, var(--color) 60%, transparent); animation: gravity-mote 4.8s var(--delay) both; }
+
   .reduced-emblem { position: absolute; left: 50%; top: 50%; display: grid; place-items: center; width: min(42vw, 220px); aspect-ratio: 1; border: 3px solid var(--c1); border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, var(--c2) 65%, white), color-mix(in srgb, var(--c3) 35%, transparent)); box-shadow: 0 16px 46px #0002; transform: translate(-50%, -50%); }
   .reduced-emblem span { font-size: 64px; } .reduced-emblem b { position: absolute; right: 16%; bottom: 12%; display: grid; place-items: center; width: 45px; height: 45px; border-radius: 50%; background: var(--c1); color: white; font: 900 26px system-ui; }
 
@@ -858,6 +1128,82 @@
   @keyframes completed-list-pop { 0%{opacity:0;transform:translate(-50%,-42%) rotate(-9deg) scale(.48)} 18%{opacity:1;transform:translate(-50%,-50%) rotate(3deg) scale(1.12)} 31%,76%{opacity:1;transform:translate(-50%,-50%)} 100%{opacity:0;transform:translate(-50%,-62%) rotate(2deg) scale(.94)} }
   @keyframes completed-row-check { from{opacity:0;transform:translateX(-12px) scale(.92)} to{opacity:1;transform:none} }
   @keyframes check-spark-burst { 0%{opacity:0;transform:translate(-50%,-50%) rotate(-20deg) scale(.15)} 18%{opacity:1} 72%{opacity:1;transform:translate(calc(-50% + var(--check-x)),calc(-50% + var(--check-y))) rotate(8deg)} 100%{opacity:0;transform:translate(calc(-50% + var(--check-x)),calc(-50% + var(--check-y))) rotate(18deg) scale(.72)} }
+
+  @keyframes lights-sky { 0%,100%{opacity:0} 12%,86%{opacity:1} }
+  @keyframes lights-skyline { 0%{opacity:0;transform:translateY(18%)} 11%,88%{opacity:1;transform:none} 100%{opacity:0;transform:translateY(4%)} }
+  @keyframes lights-off { from{fill:var(--c1)} to{fill:#1a2346} }
+  @keyframes lights-wink { 0%,22%{fill:var(--c1)} 23%,45%{fill:#1a2346} 46%,78%{fill:var(--c1)} 79%,100%{fill:#1a2346} }
+  @keyframes lights-moon { 0%,46%{opacity:0;transform:translateY(26px)} 64%,86%{opacity:1;transform:none} 100%{opacity:0} }
+  @keyframes lights-star { 0%,56%{opacity:0;transform:scale(.3)} 64%{opacity:1;transform:scale(1.5)} 70%,84%{opacity:.85;transform:scale(1)} 92%,100%{opacity:0} }
+  @keyframes lights-words { 0%,60%{opacity:0;transform:translate(-50%,10px)} 70%,88%{opacity:1;transform:translate(-50%,0)} 100%{opacity:0;transform:translate(-50%,-4px)} }
+  @keyframes boat-water { 0%,26%{opacity:0;transform:translateY(40%)} 40%,88%{opacity:1;transform:none} 100%{opacity:0;transform:translateY(20%)} }
+  @keyframes boat-flow { to{transform:translateX(-50%)} }
+  @keyframes boat-voyage {
+    0%,40%{transform:translate(-50%,-24vh);animation-timing-function:cubic-bezier(.5,0,.75,.4)}
+    52%{transform:translate(-50%,8px);animation-timing-function:ease-out}
+    57%{transform:translate(-50%,0);animation-timing-function:cubic-bezier(.45,0,.8,.6)}
+    100%{transform:translate(calc(-50% + 70vw),0)}
+  }
+  @keyframes boat-bob { 0%,100%{transform:rotate(-3deg)} 50%{transform:rotate(3.5deg) translateY(4px)} }
+  @keyframes boat-fold {
+    0%{opacity:0;transform:perspective(700px) translateY(18px) rotate(-5deg) rotateY(0deg) scale(.9,.9);clip-path:polygon(0% 0%, 26% 0%, 50% 0%, 74% 0%, 100% 0%, 100% 100%, 0% 100%)}
+    8%,28%{opacity:1;transform:perspective(700px) translateY(0) rotate(-2deg) rotateY(0deg) scale(1,1);clip-path:polygon(0% 0%, 26% 0%, 50% 0%, 74% 0%, 100% 0%, 100% 100%, 0% 100%)}
+    44%,88%{opacity:1;transform:perspective(700px) translateY(0) rotate(0deg) rotateY(360deg) scale(1,.6);clip-path:polygon(0% 60%, 26% 60%, 50% 4%, 74% 60%, 100% 60%, 82% 100%, 18% 100%)}
+    100%{opacity:0;transform:perspective(700px) translateY(0) rotate(0deg) rotateY(360deg) scale(1,.6);clip-path:polygon(0% 60%, 26% 60%, 50% 4%, 74% 60%, 100% 60%, 82% 100%, 18% 100%)}
+  }
+  @keyframes boat-crease { 0%,34%{opacity:0} 46%,100%{opacity:1} }
+  @keyframes boat-row-fade { 0%,26%{opacity:1} 36%,100%{opacity:0} }
+  @keyframes boat-tick { from{color:transparent;background:transparent;transform:scale(.8)} to{color:white;background:var(--c3);transform:scale(1)} }
+  @keyframes boat-caption { 0%,56%{opacity:0;transform:translate(-50%,8px)} 64%,88%{opacity:1;transform:translate(-50%,0)} 100%{opacity:0;transform:translate(-50%,0)} }
+  @keyframes kintsugi-arrive { 0%{opacity:0;transform:translate(-50%,-46%) scale(.95)} 10%,88%{opacity:1;transform:translate(-50%,-50%) scale(1)} 100%{opacity:0;transform:translate(-50%,-50%) scale(.98)} }
+  @keyframes kintsugi-shudder { 0%,100%{transform:none} 25%{transform:rotate(-1.6deg)} 50%{transform:rotate(1.3deg) translateY(1px)} 75%{transform:rotate(-.6deg)} }
+  @keyframes kintsugi-draw { to{stroke-dashoffset:0} }
+  @keyframes kintsugi-gleam { 0%,30%{opacity:0} 50%{opacity:.4} 58%{opacity:1} 70%,100%{opacity:.45} }
+  @keyframes kintsugi-words { 0%,54%{opacity:0;transform:translateY(8px)} 64%,100%{opacity:1;transform:none} }
+  @keyframes gold-dust { 0%{opacity:0;transform:translate(0,0) scale(.4)} 20%{opacity:1} 100%{opacity:0;transform:translate(var(--dx),var(--rise)) scale(1)} }
+  @keyframes mic-lights { 0%,100%{opacity:0} 8%,88%{opacity:1} }
+  @keyframes mic-cone { 0%,3%{opacity:0} 5%{opacity:.8} 7%{opacity:.1} 10%,88%{opacity:1} 100%{opacity:0} }
+  @keyframes mic-shadow { 0%,10%{opacity:0;transform:translate(-50%,-50%) scale(.2)} 29%{opacity:.16;transform:translate(-50%,-50%) scale(.42)} 40%{opacity:.5;transform:translate(-50%,-50%) scale(.9)} 52%,88%{opacity:.45;transform:translate(-30%,-50%) scale(1.25,1)} 100%{opacity:0;transform:translate(-30%,-50%) scale(1.25,1)} }
+  @keyframes mic-hand {
+    0%{opacity:1;transform:translate(-50%,calc(-100% - 72vh - var(--mic-w) * 2.05));animation-timing-function:cubic-bezier(.2,.7,.3,1)}
+    13%{transform:translate(-50%,calc(-100% - 34vh - var(--mic-w) * 2.05));animation-timing-function:ease-in-out}
+    22%{transform:translate(-50%,calc(-100% - 35.5vh - var(--mic-w) * 2.05)) rotate(4deg);animation-timing-function:ease-in-out}
+    29%{transform:translate(-50%,calc(-100% - 36vh - var(--mic-w) * 2.05)) rotate(0deg)}
+    32%{opacity:1;transform:translate(-50%,calc(-100% - 37vh - var(--mic-w) * 2.05)) rotate(-6deg) scale(1.08);animation-timing-function:cubic-bezier(.5,0,.8,.5)}
+    44%,100%{opacity:0;transform:translate(-50%,calc(-100% - 72vh - var(--mic-w) * 2.05)) rotate(-6deg)}
+  }
+  @keyframes mic-fall {
+    0%{opacity:1;transform:translate(-50%,calc(-100% - 72vh)) rotate(-10deg);animation-timing-function:cubic-bezier(.2,.7,.3,1)}
+    13%{transform:translate(-50%,calc(-100% - 34vh)) rotate(-3deg);animation-timing-function:ease-in-out}
+    22%{transform:translate(-50%,calc(-100% - 35.5vh)) rotate(4deg);animation-timing-function:ease-in-out}
+    29%{transform:translate(-50%,calc(-100% - 36vh)) rotate(0deg);animation-timing-function:cubic-bezier(.6,0,1,.6)}
+    40%{transform:translate(-50%,-100%) rotate(0deg);animation-timing-function:cubic-bezier(.2,.6,.4,1)}
+    46%{transform:translate(-50%,calc(-100% - 38px)) rotate(46deg);animation-timing-function:cubic-bezier(.6,0,1,.6)}
+    52%{transform:translate(-50%,calc(-100% - var(--mic-w) * .42)) rotate(84deg);animation-timing-function:ease-out}
+    55%,88%{opacity:1;transform:translate(-50%,calc(-100% - var(--mic-w) * .5)) rotate(80deg)}
+    100%{opacity:0;transform:translate(-50%,calc(-100% - var(--mic-w) * .5)) rotate(80deg)}
+  }
+  @keyframes mic-burst { 0%{opacity:0;transform:translate(-50%,-100%) rotate(var(--angle)) translateY(-6px) scaleY(.3)} 30%{opacity:1} 100%{opacity:0;transform:translate(-50%,-100%) rotate(var(--angle)) translateY(-40px) scaleY(1)} }
+  @keyframes mic-thunk { 0%,39.5%{opacity:0;transform:translateX(-50%) rotate(-10deg) scale(.3)} 43%{opacity:1;transform:translateX(-50%) rotate(-12deg) scale(1.2)} 48%,66%{opacity:1;transform:translateX(-50%) rotate(-10deg) scale(1)} 74%,100%{opacity:0;transform:translateX(-50%) rotate(-8deg) scale(.96)} }
+  @keyframes mic-sign { 0%,56%{opacity:0} 58%{opacity:.9} 60%{opacity:.15} 62%{opacity:1} 64%{opacity:.4} 66%,88%{opacity:1} 100%{opacity:0} }
+  @keyframes gravity-hud { 0%{opacity:0;transform:translate(-50%,-10px)} 7%,65%{opacity:1;transform:translate(-50%,0) scale(1)} 68%{transform:translate(-50%,0) scale(1.08)} 71%,90%{opacity:1;transform:translate(-50%,0) scale(1)} 100%{opacity:0;transform:translate(-50%,0)} }
+  @keyframes gravity-dot { 0%,65%{background:var(--c2);box-shadow:0 0 8px var(--c2)} 66%,100%{background:var(--c3);box-shadow:0 0 8px var(--c3)} }
+  @keyframes gravity-off { 0%,65%{opacity:1} 66%,100%{opacity:0} }
+  @keyframes gravity-on { 0%,65%{opacity:0} 66%,100%{opacity:1} }
+  @keyframes gravity-check {
+    0%{opacity:0;transform:translate(-50%,-50%) translate(-24vw,18vh) rotate(-40deg) scale(.6);animation-timing-function:cubic-bezier(.3,0,.4,1)}
+    12%{opacity:1}
+    66%{transform:translate(-50%,-50%) translate(16vw,-16vh) rotate(150deg) scale(1);animation-timing-function:cubic-bezier(.6,0,1,.55)}
+    80%{opacity:1;transform:translate(-50%,-50%) translate(17vw,62vh) rotate(185deg) scale(1)}
+    81%,100%{opacity:0;transform:translate(-50%,-50%) translate(17vw,62vh) rotate(185deg) scale(1)}
+  }
+  @keyframes gravity-mote {
+    0%{opacity:0;transform:translate(0,0) rotate(0deg);animation-timing-function:cubic-bezier(.3,0,.5,1)}
+    12%{opacity:.95}
+    64%{opacity:.95;transform:translate(var(--dx),var(--rise)) rotate(var(--spin));animation-timing-function:cubic-bezier(.6,0,1,.6)}
+    80%{opacity:.9;transform:translate(var(--dx),70vh) rotate(calc(var(--spin) * 1.3))}
+    81%,100%{opacity:0;transform:translate(var(--dx),70vh) rotate(calc(var(--spin) * 1.3))}
+  }
 
   @supports not (color: color-mix(in srgb, white, black)) {
     .effect-wash { background: radial-gradient(circle, rgba(120,120,220,.25), transparent 58%); }

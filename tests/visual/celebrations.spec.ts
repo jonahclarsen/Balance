@@ -101,7 +101,7 @@ test('Settings hides the preview gallery behind a disclosure with no explanatory
     }
   })
   expect(layout.firstRowCount).toBe(testInfo.project.name === 'mobile' ? 1 : 6)
-  expect(layout.lastRowCount).toBe(testInfo.project.name === 'mobile' ? 1 : 4)
+  expect(layout.lastRowCount).toBe(testInfo.project.name === 'mobile' ? 1 : COMPLETION_CELEBRATIONS.length % 6 || 6)
   expect(layout.lastRowSideGapDifference).toBeLessThanOrEqual(1)
   if (testInfo.project.name === 'desktop') expect(layout.firstRowHeight).toBeLessThan(260)
   expect(layout.pillCount).toBe(0)

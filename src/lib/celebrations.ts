@@ -52,6 +52,20 @@ export const COMPLETION_CELEBRATIONS = [
     palette: ['#f0a45d', '#8d6f68', '#f7e6c8'],
   },
   {
+    id: 'lights-out',
+    name: 'Lights Out',
+    description: 'Every window in town clicks off one by one, until the last one winks goodnight.',
+    icon: '🌃', category: 'pretty', engine: 'atmosphere', recipe: 'lights-out', durationMs: 4800, intensity: 2,
+    palette: ['#ffd27a', '#26335c', '#f6e7c1'],
+  },
+  {
+    id: 'paper-boat',
+    name: 'Paper Boat',
+    description: 'The finished list folds itself into a paper boat and drifts off downstream.',
+    icon: '⛵', category: 'pretty', engine: 'collage', recipe: 'paper-boat', durationMs: 4800, intensity: 2,
+    palette: ['#fbf8f0', '#6fb3d9', '#2f5d7c'],
+  },
+  {
     id: 'deadline-goose',
     name: 'Deadline Goose',
     description: 'A goose steals the final deadline and honks offscreen. No follow-up questions.',
@@ -73,6 +87,13 @@ export const COMPLETION_CELEBRATIONS = [
     palette: ['#c43131', '#f4e7ce', '#243443'],
   },
   {
+    id: 'mic-drop',
+    name: 'Mic Drop',
+    description: 'You did the whole day. Balance drops the mic on your behalf.',
+    icon: '🎤', category: 'funny', engine: 'character', recipe: 'mic-drop', durationMs: 3800, intensity: 3,
+    palette: ['#2a2a30', '#ffd36b', '#ff5d8f'],
+  },
+  {
     id: 'papel-picado-breeze',
     name: 'Papel Picado Breeze',
     description: 'A bright cut-paper banner arrives because finished days deserve decorations.',
@@ -87,11 +108,25 @@ export const COMPLETION_CELEBRATIONS = [
     palette: ['#075985', '#14b8a6', '#d6a84b'],
   },
   {
+    id: 'kintsugi',
+    name: 'Kintsugi',
+    description: 'A cracked tea bowl is mended with gold. The day was never flawless; it is whole.',
+    icon: '🍵', category: 'culture', engine: 'geometry', recipe: 'kintsugi', durationMs: 4800, intensity: 2,
+    palette: ['#e2b04a', '#2e4a4f', '#efe4d2'],
+  },
+  {
     id: 'interface-inhale',
     name: 'Interface Inhale',
     description: 'Everything breathes in, breathes out, and finds there is nothing left to do.',
     icon: '🫧', category: 'ui', engine: 'ui', recipe: 'inhale', durationMs: 3500, intensity: 2,
     palette: ['#9ce5d8', '#c5b3ff', '#f9cae5'],
+  },
+  {
+    id: 'zero-gravity',
+    name: 'Zero Gravity',
+    description: 'Gravity takes the rest of the day off. Your tasks float loose, then settle back home.',
+    icon: '🪐', category: 'ui', engine: 'ui', recipe: 'zero-gravity', durationMs: 4800, intensity: 3,
+    palette: ['#b8c0ff', '#ffd6a5', '#9be7c4'],
   },
   {
     id: 'app-demands-applause',
