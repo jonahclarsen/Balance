@@ -1994,9 +1994,26 @@ body.mobile-checkbox-dragging {
   clip-path: inset(-100vmax -100vmax var(--tree-sticky-clip) -100vmax);
 }
 
+/* Keep partial glyphs out of the shrinking paper edge. The text clip is
+   measured separately so row padding cannot reveal a sliver of the next line. */
+.sticky-parent [data-rich-text-input],
+.sticky-parent .item-text-display {
+  clip-path: inset(0 0 var(--tree-sticky-text-clip) 0);
+}
+
+/* Center the controls in the visible row, including very long parents whose
+   original center would otherwise scroll behind the clip. */
+.sticky-parent:not(:has([data-rich-text-input]:focus)) > :is(button, .check-target, .row-actions) {
+  translate: 0 calc(var(--tree-sticky-clip) / -2);
+}
+
 /* A pinned row being edited shows all of its text. */
 .plan-row.sticky-parent:has([data-rich-text-input]:focus),
 .template-main.sticky-parent:has([data-rich-text-input]:focus) {
+  clip-path: none;
+}
+
+.sticky-parent:has([data-rich-text-input]:focus) [data-rich-text-input] {
   clip-path: none;
 }
 

@@ -8,6 +8,7 @@
 const maxRowLines = 3
 const maxStackLines = 5
 const shellSelector = '.item-shell, .template-item'
+const textClipProperty = '--tree-sticky-text-clip'
 const clipProperty = '--tree-sticky-clip'
 
 type StickyRow = {
@@ -17,8 +18,12 @@ type StickyRow = {
   fullHeight: number
   // The row's height with its text cut to one, two, or three lines.
   lineHeights: number[]
-  // Text lines, counting no further than one past maxRowLines.
   lineCount: number
+  text: HTMLElement | null
+  textBottom: number
+  textLineBottoms: number[]
+  belowText: number
+  textClip: number
   published: number | null
   clipLimit: number
   clip: number
@@ -34,7 +39,7 @@ function rowScale(row: HTMLElement, rowRect = row.getBoundingClientRect()) {
   return row.offsetHeight ? rowRect.height / row.offsetHeight : 1
 }
 
-// The bottom edge of each of the text's first lines. Only text boxes count, so
+// The bottom edge of each text line. Only text boxes count, so
 // block wrappers inside the editor do not merge lines.
 function textLineBottoms(text: HTMLElement) {
   const bottoms: number[] = []
@@ -46,7 +51,6 @@ function textLineBottoms(text: HTMLElement) {
       if (rect.height === 0) continue
       const last = bottoms.length - 1
       if (last >= 0 && rect.top < bottoms[last] - 1) bottoms[last] = Math.max(bottoms[last], rect.bottom)
-      else if (bottoms.length > maxRowLines) return bottoms
       else bottoms.push(rect.bottom)
     }
   }
@@ -59,13 +63,17 @@ function measure(entry: StickyRow) {
   entry.fullHeight = row.offsetHeight
   entry.lineHeights = []
   entry.lineCount = 0
-  const text = row.querySelector<HTMLElement>('[data-rich-text-input], .item-text-display')
+  const text = entry.text = row.querySelector<HTMLElement>('[data-rich-text-input], .item-text-display')
   if (!text) return
   const bottoms = textLineBottoms(text)
   // Keep the text's bottom padding and any row chrome below the text.
   const rowRect = row.getBoundingClientRect()
   const scale = rowScale(row, rowRect)
-  const below = parseFloat(getComputedStyle(text).paddingBottom) * scale + Math.max(0, rowRect.bottom - text.getBoundingClientRect().bottom)
+  const textRect = text.getBoundingClientRect()
+  const below = parseFloat(getComputedStyle(text).paddingBottom) * scale + Math.max(0, rowRect.bottom - textRect.bottom)
+  entry.textBottom = (textRect.bottom - rowRect.top) / scale
+  entry.textLineBottoms = bottoms.map((bottom) => (bottom - rowRect.top) / scale)
+  entry.belowText = below / scale
   entry.lineCount = bottoms.length
   entry.lineHeights = bottoms.slice(0, maxRowLines).map((bottom) => (
     Math.min(entry.fullHeight, Math.ceil((bottom - rowRect.top + below) / scale))
@@ -126,10 +134,22 @@ function scheduleClipUpdate() {
 }
 
 function setClip(entry: StickyRow, clip: number) {
-  if (clip === entry.clip) return
-  entry.clip = clip
-  if (clip > 0) entry.row.style.setProperty(clipProperty, `${clip}px`)
-  else entry.row.style.removeProperty(clipProperty)
+  if (clip !== entry.clip) {
+    entry.clip = clip
+    if (clip > 0) entry.row.style.setProperty(clipProperty, `${clip}px`)
+    else entry.row.style.removeProperty(clipProperty)
+  }
+  // The paper edge moves continuously with the children, but text disappears
+  // one complete line at a time. Padding below the final retained line must
+  // never expose the top of the next line (even when fully pinned).
+  const available = entry.fullHeight - clip - entry.belowText
+  const lastLine = entry.textLineBottoms.findLast((bottom) => bottom <= available + 0.5) ?? 0
+  const textClip = clip > 0 ? Math.max(0, entry.textBottom - lastLine) : 0
+  if (textClip !== entry.textClip) {
+    entry.textClip = textClip
+    if (textClip > 0) entry.text?.style.setProperty(textClipProperty, `${textClip}px`)
+    else entry.text?.style.removeProperty(textClipProperty)
+  }
 }
 
 function setWrapped(entry: StickyRow, wrapped: boolean) {
@@ -177,6 +197,7 @@ export function stickyRowVisibleBottom(row: Element) {
 export function trackStickyParentRow(shell: HTMLElement, row: HTMLElement, property: string) {
   const entry: StickyRow = {
     shell, row, property, fullHeight: 0, lineHeights: [], lineCount: 0, published: null, clipLimit: 0, clip: 0,
+    text: null, textBottom: 0, textLineBottoms: [], belowText: 0, textClip: 0,
   }
   stickyRows.set(shell, entry)
   entriesByRow.set(row, entry)

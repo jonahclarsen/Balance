@@ -194,3 +194,74 @@ test('editing a clipped parent shows all of its text', async ({ page }) => {
   await child.locator('[data-rich-text-input]').focus()
   await expect.poll(() => child.evaluate((element) => getComputedStyle(element).clipPath)).toBe('none')
 })
+
+
+for (const nestedGrandchild of [false, true]) {
+  test(`mixed-height list parents keep whole lines and usable controls (${nestedGrandchild ? 'three' : 'two'} pinned levels)`, async ({ page }, testInfo) => {
+    test.setTimeout(60_000)
+    const tree = familyTree('Parent')
+    tree[0].children![0].text = 'Child line one\nChild line two\nChild line three\nChild line four\nChild line five'
+    tree[0].children![0].children![0].text = 'Grandchild line one\nGrandchild line two'
+    if (nestedGrandchild) {
+      tree[0].children![0].children![0].children = Array.from({ length: 16 }, (_, index) => ({
+        id: `great_grandchild_${index}`, text: `Great grandchild ${index + 1}`,
+      }))
+    }
+    await seed(page, tree)
+    const dialog = await openOverlay(page)
+    const body = dialog.locator('.overlay-body')
+    // Let initial keyboard selection finish before exercising manual scrolling.
+    await page.waitForTimeout(350)
+    const problems = await body.evaluate(async (scroller) => {
+      const problems: string[] = []
+      const steps = Array.from({ length: 61 }, (_, index) => index * 5)
+      for (const top of [...steps, ...steps.reverse()]) {
+        scroller.scrollTop = top
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+        for (const row of scroller.querySelectorAll<HTMLElement>('.sticky-parent')) {
+          const clip = parseFloat(row.style.getPropertyValue('--tree-sticky-clip')) || 0
+          if (!clip) continue
+          const rect = row.getBoundingClientRect()
+          const scale = rect.height / row.offsetHeight
+          const visibleBottom = rect.bottom - clip * scale
+          const text = row.querySelector<HTMLElement>('.item-text-display')!
+          const textClip = parseFloat(text.style.getPropertyValue('--tree-sticky-text-clip')) || 0
+          const cutoff = Math.min(visibleBottom, text.getBoundingClientRect().bottom - textClip * scale)
+          const walker = document.createTreeWalker(text, NodeFilter.SHOW_TEXT)
+          const range = document.createRange()
+          for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+            range.selectNodeContents(node)
+            for (const line of range.getClientRects()) {
+              if (line.width && line.top < cutoff - 0.5 && line.bottom > cutoff + 0.5) {
+                problems.push(`${top}: pinned text cut through a line`)
+              }
+            }
+          }
+          for (const control of row.querySelectorAll<HTMLElement>('input[type="checkbox"], .row-actions button')) {
+            const box = control.getBoundingClientRect()
+            if (box.top < rect.top - 1 || box.bottom > visibleBottom + 1) {
+              problems.push(`${top}: pinned control clipped`)
+            }
+            const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)
+            if (!control.contains(hit)) problems.push(`${top}: pinned control covered`)
+          }
+        }
+      }
+      return problems.slice(0, 10)
+    })
+    expect(problems).toEqual([])
+
+    // Capture full text, the shrinking edge, and the settled stack.
+    for (const top of [0, 65, 100, 220]) {
+      await body.evaluate((element, top) => { element.scrollTop = top }, top)
+      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+      await dialog.screenshot({ path: testInfo.outputPath(`mixed-${top}.png`), animations: 'disabled' })
+    }
+    const child = dialog.locator('[data-plan-item-id="child"]')
+    // A real click must reach the compact row without Playwright scrolling it.
+    const checkbox = child.getByRole('checkbox')
+    const box = (await checkbox.boundingBox())!
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
+    await expect(checkbox).toBeChecked()
+  })
+}
