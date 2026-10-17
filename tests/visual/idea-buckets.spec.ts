@@ -146,6 +146,83 @@ test('a new day sorts every proposition one card at a time', async ({ page }, te
   await expect(page.getByRole('region', { name: 'Daily plan' }).locator('[data-plan-text-input]').first()).toBeVisible()
 })
 
+test('Back undoes the previous sort decision so an idea never lands in two places', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
+  await open(page)
+  await storeCall(page, `
+    plannerStore.addIdea('Synthetic first')
+    plannerStore.addIdea('Synthetic second')
+  `)
+  const state = () => page.evaluate(async () => {
+    const path = '/src/lib/store.ts'
+    const { plannerStore } = await import(/* @vite-ignore */ path)
+    let value: any
+    plannerStore.subscribe((current: any) => { value = current })()
+    const ideas = value.ideaBuckets.flatMap((bucket: any) => bucket.items.map((item: any) => `${bucket.kind}:${item.text}${item.dayAssignmentDate ? '@day' : ''}`))
+    return { ideas, notes: value.notes.length }
+  })
+  const initial = await state()
+
+  await generateDay(page)
+  await expectIdea(page, 1, 2)
+  await page.keyboard.press('y')
+  await page.keyboard.press('d')
+  await expectIdea(page, 1, 1)
+  await page.keyboard.press('b')
+  await expectIdea(page, 1, 2)
+  await expect(sorter(page).locator('.idea-sort-card')).toContainText('Synthetic first')
+  expect(await state()).toEqual(initial)
+
+  // The undone idea stays out of the new day once it is sorted elsewhere.
+  await page.keyboard.press('n')
+  await page.keyboard.press('t')
+  await page.keyboard.press('n')
+  await page.keyboard.press('t')
+  await expect(sorter(page)).toBeHidden()
+  expect(await buckets(page)).toMatchObject({ proposition: [], trash: ['Synthetic first', 'Synthetic second'] })
+  await expect(page.getByRole('region', { name: 'Daily plan' }).getByText('Synthetic first')).toHaveCount(0)
+})
+
+test('Back after a note or a bucket returns the idea to Proposition Party', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
+  await open(page)
+  await openView(page, 'Buckets')
+  await storeCall(page, `
+    plannerStore.addIdea('Synthetic first')
+    plannerStore.addIdea('Synthetic second')
+    plannerStore.addIdea('Synthetic third')
+  `)
+  const notes = () => page.evaluate(async () => {
+    const path = '/src/lib/store.ts'
+    const { plannerStore } = await import(/* @vite-ignore */ path)
+    let value: any
+    plannerStore.subscribe((current: any) => { value = current })()
+    return value.notes.length
+  })
+  const initialNotes = await notes()
+
+  await card(page, 'proposition').getByRole('button', { name: 'Sort', exact: true }).click()
+  await page.keyboard.press('y')
+  await page.clock.fastForward(3000)
+  await page.keyboard.press('p')
+  await page.keyboard.press('y')
+  await page.keyboard.press('n')
+  await expectIdea(page, 2, 2)
+  await expect(sorter(page).locator('.idea-sort-card')).toContainText('Synthetic third')
+  expect(await notes()).toBe(initialNotes + 1)
+
+  await page.keyboard.press('b')
+  await expect(sorter(page).locator('.idea-sort-card')).toContainText('Synthetic second')
+  expect(await notes()).toBe(initialNotes)
+  expect(await buckets(page)).toMatchObject({ proposition: ['Synthetic second', 'Synthetic third'], possible: ['Synthetic first'] })
+
+  await page.keyboard.press('b')
+  await expectIdea(page, 1, 3)
+  await expect(sorter(page).locator('.idea-sort-card')).toContainText('Synthetic first')
+  expect(await buckets(page)).toMatchObject({ proposition: ['Synthetic first', 'Synthetic second', 'Synthetic third'], possible: [] })
+  await expect(sorter(page).getByRole('button', { name: 'Back (B)' })).toBeDisabled()
+})
+
 test('the Proposition Party Sort button opens the sorter on demand', async ({ page }) => {
   await open(page)
   await openView(page, 'Buckets')

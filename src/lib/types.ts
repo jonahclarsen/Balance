@@ -369,6 +369,9 @@ export type IdeaItem = PlanItem & {
   dayAssignmentDate?: string
 }
 
+// Where an idea sat before a sort decision moved it.
+export type IdeaSnapshot = { kind: IdeaBucketKind; index: number; item: IdeaItem }
+
 export type IdeaBucket = {
   id: Id
   kind: IdeaBucketKind

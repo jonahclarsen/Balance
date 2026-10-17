@@ -5,7 +5,7 @@
   import OverlayModal from './OverlayModal.svelte'
   import { BUCKET_UNLOCK_MS, findIdea, ideaBucketMeta, IDEA_SORT_QUESTION } from './ideaBuckets'
   import { renderItemDisplayHTML } from './planner'
-  import type { Id, IdeaBucket, IdeaBucketKind, IdeaItem } from './types'
+  import type { Id, IdeaBucket, IdeaBucketKind, IdeaItem, IdeaSnapshot } from './types'
 
   // Ideas are sorted one card at a time in their original order. Each card asks
   // the key question; Yes picks a keep bucket, No picks a discard bucket.
@@ -23,6 +23,9 @@
   export let onAddToNote: (itemId: Id) => Id | null
   // Only offered while generating a day: the idea joins that day's tasks.
   export let onAddToDay: ((itemId: Id) => void) | undefined = undefined
+  // Back puts the ideas a decision touched back where they were and removes
+  // the note an Add to new note created.
+  export let onRestore: (snapshots: IdeaSnapshot[], noteId: Id | null) => void
   export let onFinish: (completed: boolean) => void
 
   type Step = 'question' | 'yes' | 'no'
@@ -33,6 +36,10 @@
   let editDraft = ''
   let editInput: HTMLTextAreaElement | null = null
   let decisions: Record<Id, IdeaBucketKind> = {}
+  // Each decision records where its ideas were, so Back can undo it instead of
+  // leaving the idea in both its old and new place.
+  type Undo = { index: number; queue: IdeaItem[]; snapshots: IdeaSnapshot[]; noteId: Id | null }
+  let history: Undo[] = []
   // Commitment buttons unlock on a delay measured from the Yes or No answer, in
   // every sort including Genuinely Worth Doing reviews.
   let answeredAt = Date.now()
@@ -72,12 +79,22 @@
     shakeTimer = window.setTimeout(() => { shaking = null }, 420)
   }
 
+  function snapshot(itemId: Id): IdeaSnapshot[] {
+    const found = findIdea(buckets, itemId)
+    return found ? [{ kind: found.bucket.kind, index: found.index, item: found.item }] : []
+  }
+
+  function record(snapshots: IdeaSnapshot[], noteId: Id | null = null) {
+    history = [...history, { index, queue, snapshots, noteId }]
+  }
+
   function choose(kind: IdeaBucketKind) {
     if (!current) return
     if (locked(kind, unlockTick)) {
       shake(kind)
       return
     }
+    record(snapshot(current.id))
     onDecide(current.id, kind)
     decisions = { ...decisions, [current.id]: kind }
     advance()
@@ -92,31 +109,50 @@
   }
 
   function goBack() {
-    if (index > 0) index -= 1
-    else step = 'question'
+    if (step !== 'question') {
+      step = 'question'
+      return
+    }
+    const last = history.at(-1)
+    if (!last) return
+    history = history.slice(0, -1)
+    onRestore(last.snapshots, last.noteId)
+    const { [last.queue[last.index]!.id]: _undone, ...remaining } = decisions
+    decisions = remaining
+    queue = last.queue
+    index = last.index
+    resetCard(index)
   }
 
   function appendToPrevious() {
     if (!current || index === 0) return
     const previousId = queue[index - 1]!.id
+    const snapshots = [...snapshot(previousId), ...snapshot(current.id)]
     if (!onAppendToPrevious(current.id, previousId)) return
+    record(snapshots)
     dropCurrent()
   }
 
   function cut() {
     if (!current) return
+    record(snapshot(current.id))
     onCut(current.id)
     dropCurrent()
   }
 
   function addToDay() {
     if (!current || !onAddToDay) return
+    record(snapshot(current.id))
     onAddToDay(current.id)
     dropCurrent()
   }
 
   function addToNote() {
-    if (!current || !onAddToNote(current.id)) return
+    if (!current) return
+    const snapshots = snapshot(current.id)
+    const noteId = onAddToNote(current.id)
+    if (!noteId) return
+    record(snapshots, noteId)
     dropCurrent()
   }
 
@@ -178,8 +214,6 @@
     }
   }
 
-  $: tag = current && decisions[current.id] ? ideaBucketMeta(decisions[current.id]!).label : null
-
   onDestroy(() => {
     for (const timer of unlockTimers) window.clearTimeout(timer)
     if (shakeTimer !== null) window.clearTimeout(shakeTimer)
@@ -230,7 +264,6 @@
                   class:done={current.done}
                   class:empty={!current.text?.trim()}
                 >{@html current.text?.trim() ? renderItemDisplayHTML(current.html, current.text, []) : '(empty idea)'}</div>
-                {#if tag}<span class="idea-sort-tag">{tag}</span>{/if}
               </div>
               {#if current.children.length > 0}
                 <ul class="idea-sort-children">
@@ -277,7 +310,7 @@
 
     {#if !editing}
       <div class="paste-review-actions idea-sort-secondary">
-        <button type="button" disabled={index === 0 && step === 'question'} on:click={goBack}>Back (B)</button>
+        <button type="button" disabled={history.length === 0 && step === 'question'} on:click={goBack}>Back (B)</button>
         <button type="button" disabled={index === 0} title="Join this idea onto the previous one" on:click={appendToPrevious}>Append to previous (M)</button>
         <button type="button" on:click={() => void startEdit()}>Edit (E)</button>
       </div>
