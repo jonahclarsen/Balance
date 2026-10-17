@@ -291,6 +291,13 @@
     font-weight: 600;
   }
 
+  :global(:root[data-interface-style='classic']) .search-group-toggle {
+    font-size: 12px;
+    font-weight: inherit;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
   .search-group-toggle svg {
     flex: 0 0 16px;
     width: 16px;

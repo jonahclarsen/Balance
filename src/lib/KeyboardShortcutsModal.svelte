@@ -205,6 +205,13 @@
     font-weight: 600;
   }
 
+  :global(:root[data-interface-style='classic']) .shortcut-group h4 {
+    font-size: 12px;
+    font-weight: bold;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
   dl {
     margin: 0;
     display: grid;
