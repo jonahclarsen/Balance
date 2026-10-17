@@ -41,9 +41,13 @@ cross-compiles the vendored OpenSSL linked by SQLCipher.
 The app syncs after persisted edits with a two-second debounce and at launch,
 resume, focus, and online events. Visible polling runs every two seconds after
 recent changes and every eight seconds when quiet; hidden polling is every five
-minutes. Android additionally chains network-constrained one-time WorkManager passes at
+minutes. Android additionally runs network-constrained one-time WorkManager passes at
 a best-effort five-minute cadence, because periodic WorkManager requests have a
-15-minute minimum. The CI-only generator is
+15-minute minimum. Doze defers WorkManager jobs even for apps exempt from battery
+optimization, so an allow-while-idle alarm re-arms itself every five minutes and
+starts each pass as expedited work; a boot/package-replaced receiver re-arms it.
+Each pass records its outcome in `background-sync-status.json` beside the
+database, which the Android Sync panel shows. The CI-only generator is
 `.github/scripts/configure-android-background-sync.mjs`; never generate or build
 that Android project locally.
 

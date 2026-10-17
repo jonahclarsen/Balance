@@ -555,6 +555,10 @@ return rows`
   let exportSettings: ExportSettings | null = null
   let buildInfo: { version: string; commit: string } | null = null
   let availableUpdate: AvailableUpdate | null = null
+  // Stays set after "Not now" so Settings can still offer the update.
+  let latestUpdate: AvailableUpdate | null = null
+  let updateInstallState: 'idle' | 'downloading' | 'installing' = 'idle'
+  let updateInstallError = ''
   let exportSettingsStatus = ''
   let exportSettingsStatusIsError = false
   let exportSettingsBusy = false
@@ -2416,6 +2420,7 @@ return rows`
 
         if (import.meta.env.PROD) {
           void invoke<AvailableUpdate | null>('check_for_update').then((update) => {
+            if (mounted) latestUpdate = update
             if (
               mounted &&
               update &&
@@ -6628,8 +6633,29 @@ return rows`
     availableUpdate = null
   }
 
+  async function installUpdate(update: AvailableUpdate) {
+    if (updateInstallState !== 'idle') return
+    updateInstallState = 'downloading'
+    updateInstallError = ''
+    try {
+      // Android takes over from here: its install sheet, or a silent update
+      // that restarts Balance once it has installed itself before.
+      await invoke('install_android_update', { version: update.version })
+      updateInstallState = 'installing'
+      // If the install sheet is cancelled, Balance keeps running; allow a retry.
+      window.setTimeout(() => { if (updateInstallState === 'installing') updateInstallState = 'idle' }, 15_000)
+    } catch (error) {
+      updateInstallState = 'idle'
+      updateInstallError = error instanceof Error ? error.message : String(error)
+    }
+  }
+
   async function openAvailableUpdate() {
     if (!availableUpdate) return
+    if (isAndroid) {
+      await installUpdate(availableUpdate)
+      return
+    }
 
     try {
       await invoke('open_external_url', { url: availableUpdate.url })
@@ -6680,11 +6706,19 @@ return rows`
     <span class="app-error-banner-icon" aria-hidden="true">↑</span>
     <div class="app-error-banner-text">
       <strong>Balance {availableUpdate.version} is available</strong>
-      <span>A newer release is ready to download from GitHub.</span>
+      {#if updateInstallError}
+        <span>{updateInstallError}</span>
+      {:else if isAndroid}
+        <span>{updateInstallState === 'idle' ? 'Update downloads and installs it in one step.' : 'Android will finish installing the update.'}</span>
+      {:else}
+        <span>A newer release is ready to download from GitHub.</span>
+      {/if}
     </div>
     <div class="app-error-banner-actions">
-      <button type="button" class="ghost" on:click={dismissAvailableUpdate}>Not now</button>
-      <button type="button" class="primary" on:click={() => { void openAvailableUpdate() }}>View release</button>
+      <button type="button" class="ghost" disabled={updateInstallState !== 'idle'} on:click={dismissAvailableUpdate}>Not now</button>
+      <button type="button" class="primary" disabled={updateInstallState !== 'idle'} on:click={() => { void openAvailableUpdate() }}>
+        {#if !isAndroid}View release{:else if updateInstallState === 'downloading'}Downloading…{:else if updateInstallState === 'installing'}Installing…{:else}Update{/if}
+      </button>
     </div>
   </div>
 {/if}
@@ -8484,7 +8518,15 @@ return rows`
 
             <div class="path-row">
               <span>Balance {buildInfo.version} · {buildInfo.commit}</span>
+              {#if isAndroid && latestUpdate}
+                <button type="button" disabled={updateInstallState !== 'idle'} on:click={() => { if (latestUpdate) void installUpdate(latestUpdate) }}>
+                  {updateInstallState === 'downloading' ? 'Downloading…' : updateInstallState === 'installing' ? 'Installing…' : `Update to ${latestUpdate.version}`}
+                </button>
+              {/if}
             </div>
+            {#if isAndroid && latestUpdate && updateInstallError}
+              <p class="export-status error">{updateInstallError}</p>
+            {/if}
           </section>
         {/if}
       </div>

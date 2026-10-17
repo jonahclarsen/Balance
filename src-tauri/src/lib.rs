@@ -24,12 +24,15 @@ use tauri_plugin_opener::OpenerExt;
 #[cfg(target_os = "android")]
 mod android_lifecycle;
 #[cfg(target_os = "android")]
+mod android_updater;
+#[cfg(target_os = "android")]
 mod android_widget;
 mod database_keys;
 #[cfg(test)]
 mod theme_performance;
 mod plan_regeneration;
 mod backup_browser;
+mod background_sync_status;
 #[cfg(not(target_os = "android"))]
 mod desktop_recovery_key;
 mod images;
@@ -1969,6 +1972,31 @@ fn set_macos_widget_hide_content_after_close(enabled: bool) -> Result<MacosWidge
         let _ = enabled;
         Err("The macOS widget is only available on macOS".to_string())
     }
+}
+
+/// Download a release APK into Android's installer. `version` comes from
+/// `check_for_update`, which only reports releases newer than this build.
+#[tauri::command]
+async fn install_android_update(version: String) -> Result<(), String> {
+    let version = semver::Version::parse(&version).map_err(|error| error.to_string())?;
+    #[cfg(target_os = "android")]
+    {
+        tauri::async_runtime::spawn_blocking(move || android_updater::install(&format!("v{version}")))
+            .await
+            .map_err(|error| error.to_string())?
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = version;
+        Err("In-app installs are only available on Android".to_string())
+    }
+}
+
+/// Android's last background relay pass, or nothing before the first one.
+#[tauri::command]
+fn background_sync_status(app: tauri::AppHandle) -> Result<Option<background_sync_status::BackgroundSyncStatus>, String> {
+    let database_path = app_database_path(&app)?;
+    Ok(database_path.parent().and_then(background_sync_status::read))
 }
 
 #[tauri::command]
@@ -10099,7 +10127,12 @@ mod android_keystore {
                 .get_string(&app_data_path)
                 .map_err(|error| error.to_string())?
                 .into();
-            super::run_android_background_sync_at(Path::new(&path))
+            let data_dir = Path::new(&path);
+            let result = super::run_android_background_sync_at(data_dir);
+            if let Some(directory) = super::app_database_path_from_data_dir(data_dir).parent() {
+                super::background_sync_status::record(directory, super::current_timestamp_ms(), &result);
+            }
+            result
         }));
         match result {
             Ok(Ok(())) => 0,
@@ -10135,7 +10168,7 @@ mod android_keystore {
         })
     }
 
-    fn with_env<T>(f: impl FnOnce(&mut JNIEnv) -> Result<T, String>) -> Result<T, String> {
+    pub(super) fn with_env<T>(f: impl FnOnce(&mut JNIEnv) -> Result<T, String>) -> Result<T, String> {
         let vm = JAVA_VM
             .get()
             .ok_or_else(|| "The Java VM was not captured when the library loaded.".to_string())?;
@@ -10894,6 +10927,8 @@ pub fn run() {
             get_macos_widget_settings,
             set_macos_widget_hide_content_after_close,
             check_for_update,
+            background_sync_status,
+            install_android_update,
             save_export_file,
             get_export_settings,
             set_export_directory,

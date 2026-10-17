@@ -138,7 +138,10 @@ BACKGROUND_JOB_OK=0
 for _ in $(seq 1 10); do
   adb shell dumpsys jobscheduler > jobscheduler.txt
   adb logcat -d > background-sync-log.txt 2>/dev/null || true
+  adb shell dumpsys alarm > alarms.txt
+  # The allow-while-idle alarm keeps syncing through Doze, which defers jobs.
   if grep -Fq "$PKG/androidx.work.impl.background.systemjob.SystemJobService" jobscheduler.txt \
+    && grep -Fq "app.balance.local.BACKGROUND_SYNC_ALARM" alarms.txt \
     && grep -q "Scheduled background relay sync in five minutes" background-sync-log.txt; then
     BACKGROUND_JOB_OK=1
     break
@@ -146,11 +149,12 @@ for _ in $(seq 1 10); do
   sleep 2
 done
 if [ "$BACKGROUND_JOB_OK" != 1 ]; then
-  echo "Android WorkManager did not register the automatic relay-sync job."
+  echo "Android did not register the automatic relay-sync job and idle alarm."
   grep -iE "$PKG|workmanager|systemjobservice" jobscheduler.txt | head -40 || true
+  grep -F "$PKG" alarms.txt | head -20 || true
   exit 1
 fi
-echo "[background-sync] WorkManager relay sync is registered only after backgrounding."
+echo "[background-sync] WorkManager relay sync and its idle alarm are registered only after backgrounding."
 
 adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null
 assert_running "foreground-after-background-registration" logcat.txt
