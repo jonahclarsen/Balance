@@ -32,13 +32,19 @@ function marker(block: ClipboardBlock): string {
   }
 }
 
+// Inline code keeps its Markdown backticks in plain text. Adjacent code runs
+// (split only by other formatting) read as one span.
+function plainTextWithCode(html: string): string {
+  return htmlToPlainTextWithBreaks(html.replace(/<\/code>(?:<\/?(?:strong|em|u|a)\b[^>]*>)*<code>/g, (run) => run.slice(7, -6)).replace(/<\/?code>/g, '`'))
+}
+
 export function clipboardPlainText(blocks: ClipboardBlock[]): string {
   if (blocks.length === 0) return ''
   const base = Math.min(...blocks.map((block) => block.depth))
   return blocks.map((block) => {
     const indent = '  '.repeat(Math.max(0, block.depth - base))
     const prefix = marker(block)
-    const lines = htmlToPlainTextWithBreaks(block.html).split('\n')
+    const lines = plainTextWithCode(block.html).split('\n')
     return lines.map((line, index) => index === 0 ? `${indent}${prefix}${line}` : `${indent}${' '.repeat(prefix.length)}${line}`).join('\n')
   }).join('\n')
 }

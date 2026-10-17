@@ -1735,7 +1735,8 @@ class LexicalNoteEditorView implements NoteEditorView {
         const to = block.is(edges.end.block) ? edges.end.offset : Number.POSITIVE_INFINITY
         blocks.push(describe(block, $serializeInline(content, from, to)))
       }
-      if (blocks.length === 1 && blocks[0].kind !== 'quote' && !blocks[0].html.includes('<br>')) return true
+      const [only] = blocks
+      if (blocks.length === 1 && only.kind !== 'quote' && !only.html.includes('<br>') && !only.html.includes('<code>')) return true
     }
     event.preventDefault()
     const plainText = clipboardPlainText(blocks)
