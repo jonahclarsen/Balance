@@ -229,7 +229,7 @@ try {
         }
         client.socket.addEventListener('message', listener)
       })
-      await client.evaluate(`(() => {
+      await Promise.all([paused, client.evaluate(`(() => {
         const observer = new MutationObserver(() => {
           if (!document.querySelector('.quick-add-dialog')) {
             observer.disconnect()
@@ -239,8 +239,7 @@ try {
         observer.observe(document.body, {childList: true, subtree: true})
         setTimeout(() => document.querySelector('.quick-add-dialog').requestSubmit(), 0)
         return true
-      })()`)
-      await paused
+      })()`)])
       const beforePid = appPid()
       adb(['shell', 'kill', '-9', beforePid])
       await waitFor(() => appPid() !== beforePid, 'synthetic process termination')
@@ -261,6 +260,7 @@ try {
       const start = performance.now()
       launchApp()
       await connect()
+      assert(await invoke('get_sync_network_offline'), 'Ten-minute fixture must remain offline')
       const saved = JSON.parse(await invoke('read_app_state'))
       for (const idea of expected) assert(saved.ideaBuckets.some(bucket => bucket.items.some(item => item.text === idea)), `Ten-minute offline resume lost ${idea}`)
       report.offlineBackground = {seconds: offlineBackgroundSeconds, savedIdeas: expected.length,
