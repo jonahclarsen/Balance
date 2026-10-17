@@ -131,7 +131,15 @@ runs:
 
     - name: Configure automatic background relay sync
       shell: bash
-      run: node .github/scripts/configure-android-background-sync.mjs
+      run: |
+        node --test .github/scripts/configure-android-background-sync.test.mjs
+        node .github/scripts/configure-android-background-sync.mjs
+
+    - name: Configure one-tap updates
+      shell: bash
+      run: |
+        node --test .github/scripts/configure-android-updater.test.mjs
+        node .github/scripts/configure-android-updater.mjs
 
     - name: Configure home-screen widget
       shell: bash

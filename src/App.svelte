@@ -59,6 +59,7 @@
   import SearchModal from './lib/SearchModal.svelte'
   import KeyboardShortcutsModal from './lib/KeyboardShortcutsModal.svelte'
   import ThemeTaskPreview from './lib/ThemeTaskPreview.svelte'
+  import InterfaceStylePreview from './lib/InterfaceStylePreview.svelte'
   import DocumentFindBar from './lib/DocumentFindBar.svelte'
   import Celebration from './lib/Celebration.svelte'
   import CelebrationSettings from './lib/CelebrationSettings.svelte'
@@ -100,7 +101,7 @@
     runDatabaseMaintenanceIfNeeded,
   } from './lib/store'
   import type { DatabaseHistoryEntry, DatabaseInspection, DatabaseMaintenanceStatus, DatabaseOperationEntry, MetadataEntry, RecoveryEntry, RecoveryKeyStatus } from './lib/store'
-  import type { ArchivedListTemplateItem, ColorSchemePreference, DailyPlan, DailyTemplate, DeviceAppearancePreferences, Goal, Id, IridescentGradientPreferences, ListInstance, ListTemplate, ListTemplateItem, Metric, MetricEntry, MetricQuestion, MoveDirection, MovePlacement, Note, NoteViewState, PlanItem, TemplateItem, TemplateQuizAnswers } from './lib/types'
+  import type { ArchivedListTemplateItem, ColorSchemePreference, DailyPlan, InterfaceStylePreference, DailyTemplate, DeviceAppearancePreferences, Goal, Id, IridescentGradientPreferences, ListInstance, ListTemplate, ListTemplateItem, Metric, MetricEntry, MetricQuestion, MoveDirection, MovePlacement, Note, NoteViewState, PlanItem, TemplateItem, TemplateQuizAnswers } from './lib/types'
   import { historyDestination, type HistoryDestination } from './lib/historyNavigation'
   import { captureTreeEditorSelection, restoreTreeEditorSelection } from './lib/treeEditorSelection'
   import type { SearchResult } from './lib/search'
@@ -164,6 +165,14 @@
     { id: 'system', name: 'System', description: 'Match this device' },
     { id: 'light', name: 'Light', description: 'Always use light mode' },
     { id: 'dark', name: 'Dark', description: 'Always use dark mode' },
+  ]
+  const INTERFACE_STYLE_OPTIONS: ReadonlyArray<{
+    id: InterfaceStylePreference
+    name: string
+    description: string
+  }> = [
+    { id: 'new', name: 'New', description: 'Geist type and a calm, flat sidebar' },
+    { id: 'classic', name: 'Classic', description: 'Rounded type and boxed sidebar rows' },
   ]
 
   type View = 'next' | 'today' | 'templates' | 'listTemplates' | 'lists' | 'notes' | 'projects' | 'prioritize' | 'buckets' | 'metrics' | 'goals' | 'settings' | 'admin'
@@ -546,6 +555,10 @@ return rows`
   let exportSettings: ExportSettings | null = null
   let buildInfo: { version: string; commit: string } | null = null
   let availableUpdate: AvailableUpdate | null = null
+  // Stays set after "Not now" so Settings can still offer the update.
+  let latestUpdate: AvailableUpdate | null = null
+  let updateInstallState: 'idle' | 'downloading' | 'installing' = 'idle'
+  let updateInstallError = ''
   let exportSettingsStatus = ''
   let exportSettingsStatusIsError = false
   let exportSettingsBusy = false
@@ -904,6 +917,8 @@ return rows`
     systemPrefersDark,
   )
   $: document.documentElement.dataset.theme = displayedThemeId
+  $: classicInterface = deviceAppearance.interfaceStyle === 'classic'
+  $: document.documentElement.dataset.interfaceStyle = deviceAppearance.interfaceStyle
   $: observeCurrentTodayTheme(
     preferencesReady
       && view === 'today'
@@ -2407,6 +2422,7 @@ return rows`
 
         if (import.meta.env.PROD) {
           void invoke<AvailableUpdate | null>('check_for_update').then((update) => {
+            if (mounted) latestUpdate = update
             if (
               mounted &&
               update &&
@@ -2810,6 +2826,11 @@ return rows`
       colorScheme,
       systemColorSchemeStartDate: colorScheme === 'system' ? '' : deviceAppearance.systemColorSchemeStartDate,
     })
+  }
+
+  function updateInterfaceStyle(interfaceStyle: InterfaceStylePreference) {
+    if (interfaceStyle === deviceAppearance.interfaceStyle) return
+    commitDeviceAppearance({ interfaceStyle })
   }
 
   function toggleSystemColorSchemeSchedule() {
@@ -6637,8 +6658,29 @@ return rows`
     availableUpdate = null
   }
 
+  async function installUpdate(update: AvailableUpdate) {
+    if (updateInstallState !== 'idle') return
+    updateInstallState = 'downloading'
+    updateInstallError = ''
+    try {
+      // Android takes over from here: its install sheet, or a silent update
+      // that restarts Balance once it has installed itself before.
+      await invoke('install_android_update', { version: update.version })
+      updateInstallState = 'installing'
+      // If the install sheet is cancelled, Balance keeps running; allow a retry.
+      window.setTimeout(() => { if (updateInstallState === 'installing') updateInstallState = 'idle' }, 15_000)
+    } catch (error) {
+      updateInstallState = 'idle'
+      updateInstallError = error instanceof Error ? error.message : String(error)
+    }
+  }
+
   async function openAvailableUpdate() {
     if (!availableUpdate) return
+    if (isAndroid) {
+      await installUpdate(availableUpdate)
+      return
+    }
 
     try {
       await invoke('open_external_url', { url: availableUpdate.url })
@@ -6689,11 +6731,19 @@ return rows`
     <span class="app-error-banner-icon" aria-hidden="true">↑</span>
     <div class="app-error-banner-text">
       <strong>Balance {availableUpdate.version} is available</strong>
-      <span>A newer release is ready to download from GitHub.</span>
+      {#if updateInstallError}
+        <span>{updateInstallError}</span>
+      {:else if isAndroid}
+        <span>{updateInstallState === 'idle' ? 'Update downloads and installs it in one step.' : 'Android will finish installing the update.'}</span>
+      {:else}
+        <span>A newer release is ready to download from GitHub.</span>
+      {/if}
     </div>
     <div class="app-error-banner-actions">
-      <button type="button" class="ghost" on:click={dismissAvailableUpdate}>Not now</button>
-      <button type="button" class="primary" on:click={() => { void openAvailableUpdate() }}>View release</button>
+      <button type="button" class="ghost" disabled={updateInstallState !== 'idle'} on:click={dismissAvailableUpdate}>Not now</button>
+      <button type="button" class="primary" disabled={updateInstallState !== 'idle'} on:click={() => { void openAvailableUpdate() }}>
+        {#if !isAndroid}View release{:else if updateInstallState === 'downloading'}Downloading…{:else if updateInstallState === 'installing'}Installing…{:else}Update{/if}
+      </button>
     </div>
   </div>
 {/if}
@@ -7109,6 +7159,7 @@ return rows`
             <h2>
               {activePlan?.title ?? formatPlanTitle(displayedPlanDate)}
               {#if editingReminderPlanId && activePlan && editingReminderPlanId === activePlan.id}
+                {#if classicInterface}<span class="daily-reminder-prefix">—</span>{/if}
                 <input
                   bind:this={dailyReminderInput}
                   class="daily-reminder-input"
@@ -7125,7 +7176,7 @@ return rows`
                   title={activePlan ? 'Edit daily reminder' : 'Generate a day before editing the reminder'}
                   on:click={() => { void startDailyReminderEdit(activePlan) }}
                 >
-                  {activePlan?.dailyReminder ?? DEFAULT_DAILY_REMINDER}
+                  {classicInterface ? '— ' : ''}{activePlan?.dailyReminder ?? DEFAULT_DAILY_REMINDER}
                 </button>
               {/if}
             </h2>
@@ -8205,6 +8256,32 @@ return rows`
 
         <section class="settings-section">
           <div>
+            <h3>Interface style</h3>
+            <p>Keep the new look, or go back to the classic one, on this device.</p>
+          </div>
+
+          <div class="interface-style-grid" role="group" aria-label="Interface style">
+            {#each INTERFACE_STYLE_OPTIONS as option (option.id)}
+              <button
+                type="button"
+                class="interface-style-option"
+                class:active={deviceAppearance.interfaceStyle === option.id}
+                aria-pressed={deviceAppearance.interfaceStyle === option.id}
+                on:click={() => updateInterfaceStyle(option.id)}
+              >
+                <InterfaceStylePreview interfaceStyle={option.id} />
+                <span class="interface-style-option-copy">
+                  <strong>{option.name}</strong>
+                  <small>{option.description}</small>
+                </span>
+                <span class="theme-selected-mark" aria-hidden="true">✓</span>
+              </button>
+            {/each}
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <div>
             <h3>Opening messages</h3>
             <p>
               Add or remove messages, one per line. Balance picks a different one every 10 seconds while your database
@@ -8466,7 +8543,15 @@ return rows`
 
             <div class="path-row">
               <span>Balance {buildInfo.version} · {buildInfo.commit}</span>
+              {#if isAndroid && latestUpdate}
+                <button type="button" disabled={updateInstallState !== 'idle'} on:click={() => { if (latestUpdate) void installUpdate(latestUpdate) }}>
+                  {updateInstallState === 'downloading' ? 'Downloading…' : updateInstallState === 'installing' ? 'Installing…' : `Update to ${latestUpdate.version}`}
+                </button>
+              {/if}
             </div>
+            {#if isAndroid && latestUpdate && updateInstallError}
+              <p class="export-status error">{updateInstallError}</p>
+            {/if}
           </section>
         {/if}
       </div>

@@ -1,0 +1,331 @@
+/* Classic interface style: the look from before the October 2026 redesign
+   (rounded system type, bordered sidebar rows, uppercase labels, deeper
+   shadows). The file loads after app.css and wraps its scope in :where(), so
+   each rule replaces the redesigned rule with the same selector while more
+   specific state, theme and component rules still win as they did before.
+   Layout values that the phone layout overrides are restored on desktop
+   widths only. */
+
+:root[data-interface-style='classic'] {
+  font-size: medium;
+  font-weight: normal;
+  letter-spacing: normal;
+  font-feature-settings: normal;
+  --font-interface: ui-rounded, "SF Pro Rounded", "Arial Rounded MT Bold", sans-serif;
+  --font-mono: "Cascadia Mono", "Roboto Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  --radius-control: 6px;
+  --radius-surface: 8px;
+  --shadow: 0 14px 34px rgba(38, 35, 27, 0.09);
+}
+
+:root[data-interface-style='classic'][data-theme='graphite'] {
+  --shadow: 0 14px 34px rgb(26 26 26 / 0.1);
+}
+
+:root[data-interface-style='classic'][data-theme='iridescent'] {
+  --shadow: 0 16px 38px rgb(74 42 100 / 0.12);
+}
+
+:root[data-interface-style='classic'][data-color-scheme='dark'] {
+  --shadow: 0 14px 34px rgba(0, 0, 0, 0.28);
+}
+
+:root[data-interface-style='classic'][data-color-scheme='dark'][data-theme='graphite'] {
+  --shadow: 0 16px 38px rgb(0 0 0 / 0.4);
+}
+
+:root[data-interface-style='classic'][data-color-scheme='dark'][data-theme='iridescent'] {
+  --shadow: 0 16px 38px rgb(0 0 0 / 0.38);
+}
+
+/* Controls */
+
+:where(:root[data-interface-style='classic']) button {
+  font-weight: inherit;
+  transition: none;
+}
+
+:where(:root[data-interface-style='classic']) :is(input, select) {
+  transition: none;
+}
+
+:where(:root[data-interface-style='classic']) input::placeholder {
+  color: revert;
+}
+
+:where(:root[data-interface-style='classic']) :is(input, select):focus {
+  border-color: var(--line);
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+:where(:root[data-interface-style='classic']) .primary {
+  font-weight: inherit;
+  box-shadow: none;
+}
+
+:root[data-color-scheme='dark']:where([data-interface-style='classic']):not([data-theme='graphite'], [data-theme='iridescent']) .primary:not(.outlined) {
+  color: white;
+}
+
+:where(:root[data-interface-style='classic']) .check {
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  transition: none;
+}
+
+:where(:root[data-interface-style='classic']) .add-row {
+  margin-top: 12px;
+  border-color: var(--line);
+  border-style: dashed;
+  text-align: center;
+}
+
+:where(:root[data-interface-style='classic']) .add-row:hover {
+  border-color: var(--line-strong);
+  background: transparent;
+  color: var(--muted);
+}
+
+/* Type */
+
+:where(:root[data-interface-style='classic']) h1 {
+  font-weight: bold;
+  letter-spacing: normal;
+}
+
+:where(:root[data-interface-style='classic']) h2 {
+  font-size: 28px;
+  font-weight: bold;
+  letter-spacing: normal;
+  line-height: 1.15;
+}
+
+:where(:root[data-interface-style='classic']) h3 {
+  font-size: 17px;
+  font-weight: bold;
+  letter-spacing: normal;
+}
+
+:where(:root[data-interface-style='classic']) h2 :is(.daily-reminder-button, .daily-reminder-input, .daily-reminder-prefix) {
+  margin-top: 0;
+  color: var(--muted);
+  font-size: inherit;
+  font-weight: 500;
+  letter-spacing: inherit;
+}
+
+:where(:root[data-interface-style='classic']) h2 .daily-reminder-button {
+  display: inline;
+  line-height: inherit;
+}
+
+:where(:root[data-interface-style='classic']) h2 .daily-reminder-input {
+  display: inline-block;
+  margin-left: 0;
+  line-height: 1;
+  padding: 3px 6px;
+}
+
+:where(:root[data-interface-style='classic']) .eyebrow {
+  margin-bottom: 5px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+:where(:root[data-interface-style='classic']) .field-label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+:where(:root[data-interface-style='classic']) :is(
+  .generation-template-field,
+  .day-template-picker legend,
+  .color-control-label,
+  .goal-create-panel label > span,
+  .goal-card-fields .goal-field > span,
+  .goal-recent-history-header > span
+) {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+:where(:root[data-interface-style='classic']) .time-shortcut-legend thead th {
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Panels */
+
+:where(:root[data-interface-style='classic']) :is(.list-panel, .template-panel, .empty-state, .export-panel, .settings-panel) {
+  border-color: var(--line);
+}
+
+:where(:root[data-interface-style='classic']) .page-header {
+  margin-bottom: 20px;
+}
+
+:where(:root[data-interface-style='classic']) :is(.empty-state, .export-panel, .settings-panel) {
+  padding: 22px;
+}
+
+:where(:root[data-interface-style='classic']) .note-empty {
+  align-content: normal;
+  justify-items: normal;
+  min-height: 420px;
+  border-style: solid;
+  background: var(--paper);
+  box-shadow: var(--shadow);
+}
+
+/* Sidebar navigation */
+
+:where(:root[data-interface-style='classic']) .sidebar-brand-heading h1 {
+  letter-spacing: normal;
+}
+
+:where(:root[data-interface-style='classic']) .sidebar-brand-heading + .muted {
+  margin-top: 0;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+:where(:root[data-interface-style='classic']) .primary-nav button::before {
+  display: none;
+}
+
+:where(:root[data-interface-style='classic']) .primary-nav button {
+  border-color: var(--line);
+  background: var(--paper-strong);
+  color: var(--ink);
+  font-weight: 500;
+}
+
+:where(:root[data-interface-style='classic']) .primary-nav button:hover:not(.active) {
+  border-color: var(--line-strong);
+  background: var(--paper-strong);
+}
+
+:where(:root[data-interface-style='classic']) nav button.active {
+  border-color: var(--accent);
+}
+
+:where(:root[data-interface-style='classic']) .primary-nav button.active,
+:root[data-color-scheme='dark']:where([data-interface-style='classic']) .primary-nav button.active {
+  background: var(--active-nav);
+  color: var(--accent-strong);
+  font-weight: 500;
+  box-shadow: none;
+}
+
+:where(:root[data-interface-style='classic']) .primary-nav .nav-child {
+  border-left: 3px solid color-mix(in srgb, var(--accent) 48%, var(--line));
+  border-radius: 0 6px 6px 0;
+  font-size: 0.92em;
+}
+
+:where(:root[data-interface-style='classic']) .nav-shortcut {
+  min-width: 30px;
+  border: 1px solid var(--line);
+  border-bottom-color: var(--line-strong);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--paper) 72%, transparent);
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 17px;
+  opacity: 1;
+}
+
+:where(:root[data-interface-style='classic']) :is(.primary-nav button.active, .sidebar-search-button.active) .nav-shortcut {
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--line));
+}
+
+:where(:root[data-interface-style='classic']) :is(.sidebar-search-button, .sidebar-add-idea-button) {
+  gap: 8px;
+  padding: 6px 8px;
+  border-color: var(--line);
+  background: transparent;
+  color: var(--ink);
+}
+
+:where(:root[data-interface-style='classic']) .sidebar-search-button.active {
+  border-color: var(--accent);
+  background: var(--active-nav);
+  color: var(--accent-strong);
+}
+
+:where(:root[data-interface-style='classic']) :is(.sidebar-search-button, .sidebar-add-idea-button) svg {
+  stroke-width: 2;
+}
+
+@media (min-width: 761px) {
+  :where(:root[data-interface-style='classic']) .app-shell {
+    --sidebar-width: 248px;
+  }
+
+  :where(:root[data-interface-style='classic']) .sidebar {
+    gap: 28px;
+    padding: 24px 18px;
+    border-right-color: var(--line);
+  }
+
+  :where(:root[data-interface-style='classic']) .app-shell.macos-titlebar-overlay .sidebar {
+    padding-top: 56px;
+  }
+
+  :where(:root[data-interface-style='classic']) .sidebar-brand-heading h1 {
+    font-size: 28px;
+  }
+
+  :where(:root[data-interface-style='classic']) .sidebar-quick-actions {
+    margin-bottom: -16px;
+  }
+
+  :where(:root[data-interface-style='classic']) nav,
+  :where(:root[data-interface-style='classic']) .primary-nav {
+    gap: 8px;
+  }
+
+  :where(:root[data-interface-style='classic']) .primary-nav button {
+    min-height: 0;
+    padding: 8px 12px;
+    font-size: inherit;
+  }
+
+  :where(:root[data-interface-style='classic']) .primary-nav .nav-child {
+    width: calc(100% - 18px);
+    margin-left: 18px;
+    padding-left: 18px;
+  }
+
+  /* Pinned rows and the list template rail meet the top padding edge. Notes
+     and list templates keep their own padding and sticky offsets. */
+  :where(:root[data-interface-style='classic']) .workspace {
+    --list-template-rail-top: -28px;
+  }
+
+  :where(:root[data-interface-style='classic']) .workspace:where(:not(.list-template-workspace)) {
+    --tree-sticky-base: -28px;
+  }
+
+  :where(:root[data-interface-style='classic']) .workspace:where(:not(.notes-view-workspace)) {
+    padding: 28px 22px;
+  }
+
+  :where(:root[data-interface-style='classic']) :is(.list-panel, .template-panel) {
+    padding: 14px;
+  }
+
+  :where(:root[data-interface-style='classic']) .notes-page-header {
+    margin-bottom: calc(20px * var(--notes-page-zoom-inverse));
+  }
+}

@@ -14,18 +14,20 @@ async function write(path, content) {
   await writeFile(path, content)
 }
 
-test('schedules five-minute and immediate relay sync while the activity is backgrounded', async () => {
+test('schedules Doze-safe five-minute and immediate relay sync while the activity is backgrounded', async () => {
   const fixture = await mkdtemp(join(tmpdir(), 'balance-background-sync-'))
   const gradle = join(fixture, 'app/build.gradle.kts')
   const worker = join(fixture, 'app/src/main/java/app/balance/local/BalanceSyncWorker.kt')
   const activity = join(fixture, 'app/src/main/java/app/balance/local/MainActivity.kt')
+  const manifest = join(fixture, 'app/src/main/AndroidManifest.xml')
 
   try {
     await write(gradle, 'dependencies {\n}\n')
     await write(activity, 'package app.balance.local\n\nclass MainActivity : TauriActivity()\n')
+    await write(manifest, '<manifest>\n    <application>\n    </application>\n</manifest>\n')
 
-    await execute(process.execPath, [script, gradle, worker, activity])
-    await execute(process.execPath, [script, gradle, worker, activity])
+    await execute(process.execPath, [script, gradle, worker, activity, manifest])
+    await execute(process.execPath, [script, gradle, worker, activity, manifest])
 
     const configuredGradle = await readFile(gradle, 'utf8')
     assert.equal((configuredGradle.match(/androidx\.work:work-runtime:2\.10\.1/g) ?? []).length, 1)
@@ -38,9 +40,19 @@ test('schedules five-minute and immediate relay sync while the activity is backg
     assert.match(configuredWorker, /SYNC_DELAY_MINUTES = 5L/)
     assert.match(configuredWorker, /OneTimeWorkRequestBuilder<BalanceSyncWorker>/)
     assert.match(configuredWorker, /setInitialDelay\(delayMinutes, TimeUnit\.MINUTES\)/)
-    assert.match(configuredWorker, /ExistingWorkPolicy\.APPEND_OR_REPLACE/)
     assert.match(configuredWorker, /fun refreshNow\(context: Context\)/)
-    assert.match(configuredWorker, /enqueue\(context, 0, ExistingWorkPolicy\.REPLACE\)/)
+    assert.match(configuredWorker, /enqueue\(context, 0, ExistingWorkPolicy\.REPLACE, expedited = true\)/)
+    // WorkManager alone waits for Doze maintenance windows, even for apps
+    // exempt from battery optimization.
+    assert.match(configuredWorker, /setAndAllowWhileIdle\(\s*AlarmManager\.ELAPSED_REALTIME_WAKEUP/)
+    assert.match(configuredWorker, /setExpedited\(OutOfQuotaPolicy\.RUN_AS_NON_EXPEDITED_WORK_REQUEST\)/)
+    assert.match(configuredWorker, /alarmManager\(context\)\?\.cancel\(alarmIntent\(context\)\)/)
+    assert.match(configuredWorker, /scheduleNext\(applicationContext\)\n\s*Result\.success\(\)/)
+
+    const configuredManifest = await readFile(manifest, 'utf8')
+    assert.equal((configuredManifest.match(/RECEIVE_BOOT_COMPLETED/g) ?? []).length, 1)
+    assert.equal((configuredManifest.match(/BalanceSyncAlarmReceiver" android:exported="false"/g) ?? []).length, 1)
+    assert.match(configuredManifest, /BalanceSyncAlarmReceiver[\s\S]*BOOT_COMPLETED[\s\S]*MY_PACKAGE_REPLACED/)
     assert.doesNotMatch(configuredWorker, /PeriodicWorkRequestBuilder|15, TimeUnit\.MINUTES/)
 
     const configuredActivity = await readFile(activity, 'utf8')

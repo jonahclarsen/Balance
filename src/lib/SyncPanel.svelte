@@ -18,11 +18,18 @@
     saveExportFile,
     plannerStore,
   } from './store'
+  import { invoke } from '@tauri-apps/api/core'
   import { automaticSyncStatus, requestSync } from './syncScheduler'
   import { getLastRenderedPlanSnapshot } from './renderedPlanDiagnostics'
 
   // Camera QR scanning is mobile-only (native plugin); on desktop you paste.
   const isMobile = /android|iphone|ipad|ipod/i.test(navigator.userAgent)
+  const isAndroid = /android/i.test(navigator.userAgent)
+
+  type BackgroundSyncStatus = { attemptAt: number | null; successAt: number | null; error: string | null }
+  // Android's own passes while Balance is closed, so a stalled scheduler is visible.
+  let backgroundSync: BackgroundSyncStatus | null = null
+  let backgroundSyncLoaded = false
 
   let syncEnabled = false
   let pairingCode = ''
@@ -67,6 +74,11 @@
   }
 
   onMount(async () => {
+    if (isAndroid) {
+      invoke<BackgroundSyncStatus | null>('background_sync_status')
+        .then((value) => { backgroundSync = value; backgroundSyncLoaded = true })
+        .catch(() => {})
+    }
     try {
       const settings = await getSyncSettings()
       syncEnabled = settings.enabled
@@ -398,6 +410,17 @@
           </p>
           {#if configured && $automaticSyncStatus.lastSuccessAt}
             <p class="sync-state">Last successful sync: {new Date($automaticSyncStatus.lastSuccessAt).toLocaleString()}.</p>
+          {/if}
+          {#if configured && backgroundSyncLoaded}
+            <p class="sync-state">
+              {#if backgroundSync?.error && backgroundSync.attemptAt}
+                Background sync failed {new Date(backgroundSync.attemptAt).toLocaleString()}: {backgroundSync.error}
+              {:else if backgroundSync?.successAt}
+                Last background sync: {new Date(backgroundSync.successAt).toLocaleString()}.
+              {:else}
+                Background sync starts five minutes after you leave Balance.
+              {/if}
+            </p>
           {/if}
         </div>
         <div class="sync-actions">

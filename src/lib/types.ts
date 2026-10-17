@@ -298,9 +298,13 @@ export type DeviceAppearancePreferences = {
   doneTintColor: string
   checkboxColor: string
   iridescentGradient: IridescentGradientPreferences
+  interfaceStyle: InterfaceStylePreference
 }
 
 export type ColorSchemePreference = 'system' | 'light' | 'dark'
+
+// 'classic' restores the look from before the October 2026 redesign.
+export type InterfaceStylePreference = 'new' | 'classic'
 
 export type IridescentGradientColor = {
   hue: number

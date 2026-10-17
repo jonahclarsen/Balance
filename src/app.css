@@ -3212,6 +3212,61 @@ body.mobile-checkbox-dragging {
   }
 }
 
+.interface-style-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  max-width: 560px;
+}
+
+.interface-style-option {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border-radius: 10px;
+  padding: 10px;
+  text-align: left;
+  transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
+}
+
+.interface-style-option:hover {
+  border-color: color-mix(in srgb, var(--accent) 58%, var(--line));
+}
+
+.interface-style-option.active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--paper-strong) 86%, var(--accent));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.interface-style-option-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.interface-style-option strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.interface-style-option small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.interface-style-option.active .theme-selected-mark {
+  opacity: 1;
+  transform: scale(1);
+}
+
+@container settings-panel (max-width: 420px) {
+  .interface-style-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .theme-options-stack,
 .theme-grid {
   display: grid;
