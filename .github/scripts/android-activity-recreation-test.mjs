@@ -15,10 +15,11 @@ assert(process.env.CI && adb(['shell', 'getprop', 'ro.kernel.qemu']).trim() === 
 const scenario = process.env.BALANCE_LIFECYCLE_SCENARIO ?? 'activity'
 const repeats = Number(process.env.BALANCE_LIFECYCLE_REPEATS ?? 20)
 assert(Number.isInteger(repeats) && repeats > 0 && repeats <= 200)
-assert(['activity', 'process', 'worker-start'].includes(scenario))
+assert(['activity', 'process', 'worker-start', 'offline-buckets'].includes(scenario))
 const report = { scenario, cases: [], hypothesis: {
   activity: 'Destroying the last Android activity must exit without native finalizer races and reopen with saved edits intact.',
   process: 'Background process reclamation while offline prevents a fresh native/JS startup.',
+  'offline-buckets': 'An acknowledged bucket Save must survive immediate WebView destruction and offline reopening.',
   'worker-start': 'WorkManager initializes native state before the first activity, leaving startup blocked when a relay request hangs.',
 }[scenario] }
 let client, logcat, relay, editNumber = 0, lastDurableText
@@ -196,6 +197,54 @@ try {
       }
       assert(result.newJsContext, 'Fault injection must actually recreate the WebView, not just resume it')
       assert(result.frameMs < 5000 && result.nativeAndDbMs < 5000, 'Resume blocked for at least five seconds')
+    }
+  } else if (scenario === 'offline-buckets') {
+    await radios(true)
+    await waitFor(() => invoke('get_sync_network_offline'), 'OS offline')
+    const expected = []
+    for (let i = 0; i < repeats; i++) {
+      const text = `Synthetic offline bucket idea ${i}`
+      await client.evaluate(`document.querySelector('button[aria-label="Add idea"]').click()`)
+      await waitFor(() => client.evaluate(`Boolean(document.querySelector('.quick-add-dialog [contenteditable="true"]'))`), 'Quick Add editor')
+      await client.evaluate(`(() => {
+        const editor = document.querySelector('.quick-add-dialog [contenteditable="true"]')
+        editor.focus()
+        document.execCommand('insertText', false, ${JSON.stringify(text)})
+      })()`)
+      // The dialog closing is the app's acknowledgement of Save. Destroy the
+      // renderer at that exact boundary, before an unsubmitted JS timer can run.
+      // This fault injection models WebView/process reclamation, independently
+      // of adb latency and whether Android happens to send visibilitychange.
+      await client.evaluate(`(() => {
+        const observer = new MutationObserver(() => {
+          if (!document.querySelector('.quick-add-dialog')) {
+            observer.disconnect()
+            location.reload()
+          }
+        })
+        observer.observe(document.body, {childList: true, subtree: true})
+        document.querySelector('.quick-add-dialog').requestSubmit()
+        return true
+      })()`)
+      await sleep(300)
+      await connect()
+      expected.push(text)
+      const saved = JSON.parse(await invoke('read_app_state'))
+      const actual = saved.ideaBuckets.flatMap(bucket => bucket.items.map(item => item.text))
+      for (const idea of expected) assert(actual.includes(idea), `Acknowledged offline Save lost after renderer destruction: ${idea}`)
+      const start = performance.now()
+      await home()
+      // Force-stop is stronger than a Recents swipe: no JS shutdown work gets
+      // to rescue a supposedly completed Save.
+      adb(['shell', 'am', 'force-stop', packageName])
+      launchApp()
+      await connect()
+      const reopened = JSON.parse(await invoke('read_app_state'))
+      for (const idea of expected) assert(reopened.ideaBuckets.some(bucket => bucket.items.some(item => item.text === idea)), `Offline cold launch lost ${idea}`)
+      const result = {i, offline: true, savedIdeas: expected.length, startupMs: Math.round(performance.now() - start), ...await responsive()}
+      report.cases.push(result)
+      console.log(JSON.stringify(result))
+      assert(result.frameMs < 2000 && result.nativeAndDbMs < 5000, 'Offline reopening froze editing')
     }
   } else if (scenario === 'worker-start') {
     for (let i = 0; i < 12; i++) {
