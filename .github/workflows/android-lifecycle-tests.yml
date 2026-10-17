@@ -68,7 +68,7 @@ jobs:
             sync-e2e-pairing-code.txt
 
   lifecycle:
-    name: Android ${{ matrix.api }} / ${{ inputs.scenario || 'activity' }}
+    name: Android ${{ matrix.api }} / ${{ matrix.scenario }}
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -76,6 +76,9 @@ jobs:
       fail-fast: false
       matrix:
         api: [31, 34]
+        # Releases must check both ordinary activity teardown and Save followed
+        # by immediate process death. Manual investigations can select one.
+        scenario: ${{ fromJSON(inputs.scenario && format('["{0}"]', inputs.scenario) || '["activity","offline-buckets"]') }}
     steps:
       - uses: actions/checkout@v6
       - name: Enable KVM
@@ -100,7 +103,7 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         env:
           BALANCE_TEST_PACKAGE: app.balance.local
-          BALANCE_LIFECYCLE_SCENARIO: ${{ inputs.scenario || 'activity' }}
+          BALANCE_LIFECYCLE_SCENARIO: ${{ matrix.scenario }}
           BALANCE_LIFECYCLE_REPEATS: ${{ inputs.repetitions || '20' }}
           BALANCE_OFFLINE_BACKGROUND_SECONDS: ${{ inputs.offline_background_seconds || '0' }}
         with:
@@ -120,7 +123,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: android-lifecycle-${{ matrix.api }}
+          name: android-lifecycle-${{ matrix.api }}-${{ matrix.scenario }}
           retention-days: 7
           path: |
             android-lifecycle-*
