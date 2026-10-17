@@ -13,6 +13,10 @@ import type {
 export const GOAL_FUTURE_DAYS = 6
 export const GOAL_RECALCULATION_AGE_DAYS = 2
 export const GOAL_DOABILITY_MISSED_DAY_THRESHOLD = 4
+// Goal Rhythm rows carry their copy text under this type when dragged onto a
+// plan item. It is deliberately not text/plain, so editors never insert the
+// name at the drop point instead of appending it.
+export const GOAL_DRAG_TYPE = 'application/x-balance-goal-name'
 
 export type GoalDoabilityReview = {
   goal: Goal
@@ -901,4 +905,13 @@ export function isoDateDiffDays(from: string, to: string): number {
 
 function maxISODate(left: string, right: string): string {
   return left > right ? left : right
+}
+
+export function hasGoalDrag(event: DragEvent): boolean {
+  return Array.from(event.dataTransfer?.types ?? []).includes(GOAL_DRAG_TYPE)
+}
+
+export function appendGoalNameToItemText(html: string, text: string, goalName: string): { html: string; text: string } {
+  const suffix = text.trim() ? ` - ${goalName}` : goalName
+  return { html: `${html || escapeHTML(text)}${escapeHTML(suffix)}`, text: `${text}${suffix}` }
 }

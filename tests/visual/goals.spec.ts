@@ -2333,6 +2333,34 @@ test('goal rhythm copy button copies the goal name without opening the row', asy
   await expect(page.locator('.primary-nav > button.active')).toContainText('Goals')
 })
 
+test('dragging a goal rhythm goal onto a task appends its copy text', async ({ page }) => {
+  await generateDay(page, 'Generate today')
+  await createGoal(page, 'Exercise', 3, 'lift, swim')
+  await openView(page, 'Today')
+
+  const firstItem = await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    const item = state.plans?.[0]?.items?.[0]
+    return { id: item?.id ?? '', text: item?.text ?? '' }
+  })
+  expect(firstItem.text).not.toBe('')
+
+  const goalRow = page.locator('.goal-history-name[data-goal-id]', { hasText: 'Exercise' })
+  const taskRow = page.locator(`[data-plan-item-id="${firstItem.id}"]`)
+  await goalRow.dragTo(taskRow.locator('.item-text'))
+
+  const expected = `${firstItem.text} - Exercise`
+  await expect(taskRow.locator('.item-text')).toHaveText(expected)
+  await expect(taskRow).not.toHaveClass(/goal-drop-target/)
+  await expect
+    .poll(() => page.evaluate((itemId) => {
+      const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+      return state.plans?.[0]?.items?.find((item: { id: string }) => item.id === itemId)?.text ?? ''
+    }, firstItem.id))
+    .toBe(expected)
+  await expect(page.locator('.primary-nav > button.active')).toContainText('Today')
+})
+
 test('goal rhythm uses dark segment and open-circle colors in dark mode', async ({ page }) => {
   await page.addInitScript(() => { Math.random = () => 165 / 360 })
   await page.reload()

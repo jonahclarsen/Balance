@@ -6,7 +6,7 @@
   import OverlayModal from './OverlayModal.svelte'
   import { collapsedPlanItemIds, setPlanItemCollapsed } from './collapsedPlanItems'
   import { openExternalURL } from './externalLinks'
-  import { goalLightnessShift, goalMatchesForItem, goalsMatchingItemText } from './goals'
+  import { appendGoalNameToItemText, GOAL_DRAG_TYPE, goalLightnessShift, goalMatchesForItem, goalsMatchingItemText, hasGoalDrag } from './goals'
   import { defaultPlanItemTimeRange, formatMinutes, hasActiveTimeRange, isURL, itemLinkFromAnchor, linkifyItemText, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, type ItemLink, type ItemTextSegment, type ItemTimeWarning } from './planner'
   import { scrollMovedItemsIntoView } from './itemScroll'
   import { focusTaskBelow } from './taskCompletionFocus'
@@ -842,6 +842,40 @@
     onLockedSelect(item.id)
   }
 
+  // Counts nested dragenter/dragleave pairs so moving across the row's
+  // children does not flicker its drop highlight.
+  let goalDragDepth = 0
+
+  function handleGoalDragEnter(event: DragEvent) {
+    if (locked || !hasGoalDrag(event)) return
+    event.preventDefault()
+    goalDragDepth += 1
+  }
+
+  function handleGoalDragOver(event: DragEvent) {
+    if (locked || !hasGoalDrag(event)) return
+    event.preventDefault()
+    event.dataTransfer!.dropEffect = 'copy'
+  }
+
+  function handleGoalDragLeave(event: DragEvent) {
+    if (goalDragDepth > 0 && hasGoalDrag(event)) goalDragDepth -= 1
+  }
+
+  function handleGoalDrop(event: DragEvent) {
+    if (!hasGoalDrag(event)) return
+    goalDragDepth = 0
+    event.preventDefault()
+    if (locked) return
+    const goalName = event.dataTransfer!.getData(GOAL_DRAG_TYPE)
+    if (!goalName) return
+    // A focused editor keeps its live DOM over incoming props, so let it
+    // persist and release focus before the appended text arrives.
+    const row = event.currentTarget as HTMLElement
+    if (document.activeElement instanceof HTMLElement && row.contains(document.activeElement)) document.activeElement.blur()
+    patchItem(planId, item.id, appendGoalNameToItemText(item.html, item.text, goalName))
+  }
+
   function focusTextInputAtOffset(input: HTMLDivElement, offset: number) {
     input.focus()
 
@@ -899,6 +933,11 @@
   {onSelectionPointerEnter}
   onWholeRowSelectionToggle={onMobileSelectionToggle}
   onRowClick={handleLockedRowClick}
+  onRowDragEnter={handleGoalDragEnter}
+  onRowDragOver={handleGoalDragOver}
+  onRowDragLeave={handleGoalDragLeave}
+  onRowDrop={handleGoalDrop}
+  dropTarget={goalDragDepth > 0}
 >
   <TaskCheckbox
     checked={item.done}

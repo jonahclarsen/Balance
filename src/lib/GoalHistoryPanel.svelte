@@ -4,6 +4,7 @@
   import {
     buildGoalDayCells,
     filterGoalsByPhrase,
+    GOAL_DRAG_TYPE,
     GOAL_FUTURE_DAYS,
     goalDaysUntilLapse,
     goalLightnessShift,
@@ -251,6 +252,13 @@
     }, 1200)
   }
 
+  function startGoalDrag(event: DragEvent, goal: Goal) {
+    if (!event.dataTransfer) return
+    // Carries the same text the copy button writes to the clipboard.
+    event.dataTransfer.setData(GOAL_DRAG_TYPE, goal.name)
+    event.dataTransfer.effectAllowed = 'copy'
+  }
+
   function handleGoalNameKeydown(event: KeyboardEvent, goalId: string) {
     if (event.key !== 'Enter' && event.key !== ' ') return
     event.preventDefault()
@@ -353,9 +361,11 @@
               data-goal-id={goal.id}
               role="button"
               tabindex="0"
+              draggable="true"
               style={`--goal-hue: ${goal.hue}; --goal-lightness-shift: ${goalLightnessShift(goal.lightness)}%`}
               title={`${goal.name}: every ${goal.cadenceDays} day${goal.cadenceDays === 1 ? '' : 's'}${lapseTooltip(daysUntilLapse)}\nMatch keywords: ${goal.matchTerms.join(', ')}`}
               on:click={() => onOpenGoals(goal.id)}
+              on:dragstart={(event) => startGoalDrag(event, goal)}
               on:keydown={(event) => handleGoalNameKeydown(event, goal.id)}
             >
               <span class="goal-color-dot"></span>

@@ -1830,6 +1830,11 @@ nav button.active {
   box-shadow: inset 3px 0 0 var(--accent);
 }
 
+.plan-row.goal-drop-target {
+  background: color-mix(in srgb, var(--drop-inside) 72%, transparent);
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
 .plan-row.whole-row-selection,
 .template-main.whole-row-selection {
   position: relative;

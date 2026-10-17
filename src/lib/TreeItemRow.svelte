@@ -29,6 +29,11 @@
   export let onSelectionPointerEnter: (itemId: Id) => void = () => {}
   export let onWholeRowSelectionToggle: (itemId: Id) => void = () => {}
   export let onRowClick: (event: MouseEvent) => void = () => {}
+  export let onRowDragEnter: (event: DragEvent) => void = () => {}
+  export let onRowDragOver: (event: DragEvent) => void = () => {}
+  export let onRowDragLeave: (event: DragEvent) => void = () => {}
+  export let onRowDrop: (event: DragEvent) => void = () => {}
+  export let dropTarget = false
 
   type DropTarget = { element: HTMLElement; containerId: Id; targetId: Id; placement: MovePlacement }
 
@@ -227,6 +232,7 @@
     class:whole-row-selection={wholeRowSelection}
     class:done
     class:selected
+    class:goal-drop-target={dropTarget}
     data-item-container-id={containerId}
     data-plan-item-id={kind === 'plan' ? itemId : undefined}
     data-plan-item-depth={kind === 'plan' ? depth : undefined}
@@ -240,6 +246,10 @@
     role="listitem"
     aria-label={ariaLabel}
     on:click={onRowClick}
+    on:dragenter={onRowDragEnter}
+    on:dragover={onRowDragOver}
+    on:dragleave={onRowDragLeave}
+    on:drop={onRowDrop}
     on:pointerenter={() => {
       if (selectionDragging) onSelectionPointerEnter(itemId)
     }}
