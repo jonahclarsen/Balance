@@ -3960,7 +3960,7 @@ return rows`
       return
     }
 
-    if (primaryModifier && event.shiftKey && !event.altKey && event.code === 'KeyG') {
+    if (primaryModifier && !event.altKey && !event.isComposing && event.code === 'KeyG' && (event.shiftKey || view === 'today')) {
       event.preventDefault()
       if (!event.repeat) void generateSelectedDay()
       return
