@@ -810,6 +810,19 @@ test.describe('P-40..P-45 clipboard', () => {
     expect(copied.handled).toBe(false)
   })
 
+  test('copying inline code wraps it in backticks in the plain text', async ({ harness }) => {
+    await harness.boot({ select: 'Simple paragraphs' })
+    const note = harness.noteByTitle('Simple paragraphs')
+    const empty = note.items[3]
+    await pasteInto(harness, empty.id, 0, { text: 'Run pnpm check now', html: 'Run <code><strong>pnpm</strong> check</code> now' })
+    await harness.waitForNote(note.id, (stored) => textOf(stored.items, empty.id) === 'Run pnpm check now')
+    await harness.placeCaret(empty.id, 0, 'Run pnpm check'.length)
+    const copied = await copySelection(harness)
+    expect(copied.handled).toBe(true)
+    expect(copied.text).toBe('Run `pnpm check`')
+    expect(copied.html).toContain('<code>')
+  })
+
   test('Paste and Match Style inserts plain text inline through balancepaste', async ({ harness }) => {
     await harness.boot({ select: 'Simple paragraphs' })
     const note = harness.noteByTitle('Simple paragraphs')

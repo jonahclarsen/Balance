@@ -361,6 +361,8 @@ export type IdeaBucketKind = 'proposition' | 'genuine' | 'possible' | 'afterlife
 export type IdeaItem = PlanItem & {
   // When the idea entered its current bucket; Trash items expire 30 days after.
   bucketedAt?: string
+  // Reserved while generation is unfinished; only this date skips sorting it.
+  dayAssignmentDate?: string
 }
 
 export type IdeaBucket = {

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { openView } from '../helpers/navigation'
 
 test('past days can be generated once but existing past plans are kept', async ({ page }) => {
   await page.clock.setFixedTime(new Date('2026-09-17T12:00:00'))
@@ -37,4 +38,35 @@ test('past days can be generated once but existing past plans are kept', async (
     await expect(page.getByRole('button', { name: 'Generate selected day' })).toBeDisabled()
   }
   await expect(page.locator('[data-plan-text-input]:visible').first()).toBeVisible()
+})
+
+for (const shortcut of ['Meta+g', 'Control+g', 'Meta+Shift+g']) {
+  test(`${shortcut} generates the selected day`, async ({ page }) => {
+    await page.clock.setFixedTime(new Date('2026-09-17T12:00:00'))
+    await page.goto('/')
+    await page.locator('.date-input').fill('2026-09-18')
+    await page.keyboard.press(shortcut)
+
+    await expect(page.locator('.date-input')).toHaveValue('2026-09-18')
+    await expect(page.locator('[data-plan-text-input]').filter({ hasText: 'Wake up' })).toBeVisible()
+    await expect.poll(() => page.evaluate(() => {
+      const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+      return state.plans?.map((plan: { date: string }) => plan.date)
+    })).toEqual(['2026-09-18'])
+  })
+}
+
+test('Cmd+G leaves Find navigation and other views in control', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-09-17T12:00:00'))
+  await page.goto('/')
+  await page.locator('.date-input').fill('2026-09-18')
+  await page.keyboard.press('Meta+f')
+  await expect(page.getByLabel('Find text', { exact: true })).toBeVisible()
+  await page.keyboard.press('Meta+g')
+  await expect(page.locator('.empty-state')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await openView(page, 'Days')
+  await page.keyboard.press('Meta+g')
+  await expect(page.getByRole('region', { name: 'Daily plan' })).toBeHidden()
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('balance.appState.v1') || '{}').plans ?? [])).toEqual([])
 })

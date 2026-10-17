@@ -17,6 +17,7 @@
         "height": 900,
         "resizable": true,
         "zoomHotkeysEnabled": true,
+        "dragDropEnabled": false,
         "fullscreen": false
       }
     ],

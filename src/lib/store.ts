@@ -2148,6 +2148,17 @@ function createPlannerStore() {
       return fresh.map((item) => item.id)
     },
 
+    assignIdeaToDay(itemId: Id, date: string) {
+      commitEntities('assign_idea_to_day', { itemId, date }, (state) => {
+        const found = findIdea(state.ideaBuckets, itemId)
+        if (!found || found.bucket.kind !== 'proposition') return state
+        return updateBucket(state, 'proposition', (bucket) => ({
+          ...bucket,
+          items: bucket.items.map((item) => item.id === itemId ? { ...item, dayAssignmentDate: date } : item),
+        }))
+      })
+    },
+
     // Moves a root-level idea to the end of a bucket. Keeping an idea in its own
     // bucket (a review answering Genuinely again) requeues it at the end. The
     // timestamp restarts the Trash countdown and records when the decision was made.
@@ -2157,7 +2168,8 @@ function createPlannerStore() {
         const found = findIdea(state.ideaBuckets, itemId)
         if (!found) return state
         moved = true
-        const item: IdeaItem = { ...found.item, bucketedAt: nowISO() }
+        const { dayAssignmentDate: _dayAssignmentDate, ...unassigned } = found.item
+        const item: IdeaItem = { ...unassigned, bucketedAt: nowISO() }
         const removed = updateBucket(state, found.bucket.kind, (bucket) => ({ ...bucket, items: bucket.items.filter((candidate) => candidate.id !== itemId) }))
         return updateBucket(removed, kind, (bucket) => ({ ...bucket, items: [...bucket.items, item] }))
       })
@@ -2288,6 +2300,28 @@ function createPlannerStore() {
     },
 
     // ---- Notes (reuse the plan-item tree and shared rich-text editor) ----
+
+    moveIdeaToNewNote(itemId: Id) {
+      let noteId: Id | null = null
+      commitEntities('move_idea_to_note', { itemId }, (state) => {
+        const found = findIdea(state.ideaBuckets, itemId)
+        if (!found) return state
+        const toNoteItem = (item: PlanItem): NoteItem => ({
+          ...item,
+          id: createId('note_item'),
+          kind: 'checklist',
+          children: item.children.map(toNoteItem),
+        })
+        const { bucketedAt: _bucketedAt, ...item } = found.item
+        const note = { ...createNote(item.text), items: [toNoteItem(item)] }
+        noteId = note.id
+        const removed = updateBucket(state, found.bucket.kind, (bucket) => ({
+          ...bucket, items: bucket.items.filter((candidate) => candidate.id !== itemId),
+        }))
+        return { ...removed, notes: [note, ...removed.notes] }
+      })
+      return noteId
+    },
 
     addNote() {
       const note = createNote()
