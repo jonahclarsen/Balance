@@ -364,7 +364,7 @@ async function openPage(page) {
     await waitForSelector('.sidebar.mobile-drawer-open', 'the mobile drawer')
   }
   await tap(pageSelectors[page], `navigate to ${page}`)
-  const expectedHeading = page === 'Today' ? '.day-pane h2' : '.workspace > .page-header h2'
+  const expectedHeading = page === 'Today' ? '.day-pane h2' : '.workspace .recent-page:not([hidden]) > .page-header h2'
   await waitForSelector(expectedHeading, `${page} heading`)
 }
 

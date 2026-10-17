@@ -4,6 +4,10 @@ on:
   workflow_call:
   workflow_dispatch:
     inputs:
+      app_ref:
+        description: Optional historical app commit for before/after reproduction (tests use this branch)
+        type: string
+        default: ''
       scenario:
         description: Lifecycle path to verify with synthetic data
         type: choice
@@ -30,6 +34,8 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.app_ref || github.sha }}
       - uses: ./.github/actions/setup-android-build
         with:
           variant: lifecycle-release-x86_64

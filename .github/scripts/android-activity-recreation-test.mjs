@@ -81,6 +81,7 @@ async function responsive() {
   }, 'real WebView input to persist after lifecycle transition', 10000)
   // Exercise Android's native input dispatch too: JS evaluation alone can miss a blocked main thread.
   adb(['shell', 'input', 'keyevent', 'KEYCODE_BACK'], { timeout: 12000 })
+  await sleep(300) // Let the WebView consume Back before opening another dialog.
   const nativeAndDbMs = Math.round(performance.now() - before)
   return { frameMs, nativeAndDbMs }
 }
@@ -213,36 +214,42 @@ try {
         editor.focus()
         document.execCommand('insertText', false, ${JSON.stringify(text)})
       })()`)
-      // The dialog closing is the app's acknowledgement of Save. Destroy the
-      // renderer at that exact boundary, before an unsubmitted JS timer can run.
-      // This fault injection models WebView/process reclamation, independently
-      // of adb latency and whether Android happens to send visibilitychange.
+      // Pause JS at the exact Save acknowledgement. Killing the synthetic
+      // process while paused models Android reclamation without letting adb
+      // latency or reload's pagehide event rescue an unsubmitted debounce.
+      await client.send('Debugger.enable')
+      const paused = new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('Save was never acknowledged')), 20000)
+        const listener = event => {
+          const message = JSON.parse(String(event.data))
+          if (message.method !== 'Debugger.paused') return
+          clearTimeout(timer)
+          client.socket.removeEventListener('message', listener)
+          resolve()
+        }
+        client.socket.addEventListener('message', listener)
+      })
       await client.evaluate(`(() => {
         const observer = new MutationObserver(() => {
           if (!document.querySelector('.quick-add-dialog')) {
             observer.disconnect()
-            location.reload()
+            debugger
           }
         })
         observer.observe(document.body, {childList: true, subtree: true})
-        document.querySelector('.quick-add-dialog').requestSubmit()
+        setTimeout(() => document.querySelector('.quick-add-dialog').requestSubmit(), 0)
         return true
       })()`)
-      await sleep(300)
-      await connect()
+      await paused
+      const beforePid = appPid()
+      adb(['shell', 'kill', '-9', beforePid])
+      await waitFor(() => appPid() !== beforePid, 'synthetic process termination')
       expected.push(text)
-      const saved = JSON.parse(await invoke('read_app_state'))
-      const actual = saved.ideaBuckets.flatMap(bucket => bucket.items.map(item => item.text))
-      for (const idea of expected) assert(actual.includes(idea), `Acknowledged offline Save lost after renderer destruction: ${idea}`)
       const start = performance.now()
-      await home()
-      // Force-stop is stronger than a Recents swipe: no JS shutdown work gets
-      // to rescue a supposedly completed Save.
-      adb(['shell', 'am', 'force-stop', packageName])
       launchApp()
       await connect()
       const reopened = JSON.parse(await invoke('read_app_state'))
-      for (const idea of expected) assert(reopened.ideaBuckets.some(bucket => bucket.items.some(item => item.text === idea)), `Offline cold launch lost ${idea}`)
+      for (const idea of expected) assert(reopened.ideaBuckets.some(bucket => bucket.items.some(item => item.text === idea)), `Acknowledged offline Save lost after process death: ${idea}`)
       const result = {i, offline: true, savedIdeas: expected.length, startupMs: Math.round(performance.now() - start), ...await responsive()}
       report.cases.push(result)
       console.log(JSON.stringify(result))
