@@ -271,6 +271,43 @@ test('a day generation sort can add ideas to the new day', async ({ page }, test
   expect(await buckets(page)).toMatchObject({ proposition: [], trash: ['Synthetic later'] })
 })
 
+test('day choices survive closing, navigation and reload without applying to another date', async ({ page }) => {
+  await open(page)
+  await storeCall(page, `
+    plannerStore.addIdea('Synthetic reserved')
+    plannerStore.addIdea('Synthetic remaining')
+  `)
+  await generateDay(page)
+  await page.keyboard.press('y')
+  await page.keyboard.press('d')
+  await expect(sorter(page).locator('.idea-sort-card')).toContainText('Synthetic remaining')
+  await page.keyboard.press('Escape')
+
+  await storeCall(page, 'return plannerStore.undo()')
+  await generateDay(page)
+  await expect(sorter(page).locator('.idea-sort-card')).toContainText('Synthetic reserved')
+  await page.keyboard.press('Escape')
+  await storeCall(page, 'return plannerStore.redo()')
+
+  await openView(page, 'Buckets')
+  await page.reload()
+  // The reservation is scoped to October 8; October 9 must ask again.
+  await storeCall(page, "plannerStore.setActivePlanDate('2026-10-09')")
+  await generateDay(page, 'Generate selected day')
+  await expect(sorter(page).locator('.idea-sort-card')).toContainText('Synthetic reserved')
+  await page.keyboard.press('Escape')
+  await storeCall(page, "plannerStore.setActivePlanDate('2026-10-08')")
+  await generateDay(page)
+  await expectIdea(page, 1, 1)
+  await expect(sorter(page).locator('.idea-sort-card')).toContainText('Synthetic remaining')
+  await page.keyboard.press('n')
+  await page.keyboard.press('t')
+  await expect(sorter(page)).toBeHidden()
+  const plan = page.getByRole('region', { name: 'Daily plan' })
+  await expect(plan.locator('[data-plan-text-input]').first()).toHaveText('Synthetic reserved')
+  expect(await buckets(page)).toMatchObject({ proposition: [], trash: ['Synthetic remaining'] })
+})
+
 test('pasted lists import as ideas and open the sorter; trash clears after 30 days', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
   await open(page)

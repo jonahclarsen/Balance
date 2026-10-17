@@ -121,6 +121,8 @@ let future = run(futureBinary, 'future', 'write', { operation: generic('future-d
   record('lists', largeList.id, largeList),
   record('templateListExpansions', 'synthetic-option', { id: 'synthetic-option', listTemplateIds: ['synthetic-list'] }),
   record('futureHabitCheckIns', 'f', { id: 'f', amount: 7 }),
+  record('ideaBuckets', 'bucket_proposition', { id: 'bucket_proposition', kind: 'proposition',
+    items: [{ ...splitItem('reserved-idea', 'Synthetic reserved idea'), dayAssignmentDate: '2026-09-08' }] }),
   record('taskNotifications', 'synthetic-sunset', { id: 'synthetic-sunset', sourceKind: 'plan', sourceId: 'synthetic-day', itemId: 'synthetic-task', at: 2000000000000, text: 'Synthetic walk 6:51 PM', futureDelivery: { enabled: true } }),
   record('planDateAliases', 'future-day-alias', { id: 'future-day-alias', date: '2026-09-08', futureRouting: { enabled: true } }),
   record('regeneratedPlanItems', 'future-retired-item', { id: 'future-retired-item', date: '2026-09-08', parentId: null,
@@ -136,6 +138,10 @@ assert.deepEqual(blindView.entities.find(row => row.collection === 'lists').valu
 assert(!Object.hasOwn(blindView.state, 'futureHabitCheckIns'))
 let blind = run(blindBinary, 'blind', 'write', { operation: generic('blind-device', 1, [record('notes', 'n', { id: 'n', title: 'After', items: [] }, [
   { kind: 'object', fields: { title: { kind: 'replace', value: 'After' }, items: { kind: 'records', entries: { task: { kind: 'object', fields: { done: { kind: 'replace', value: true } }, remove: [] } }, remove: [] } }, remove: [] },
+]), record('ideaBuckets', 'bucket_proposition', { id: 'bucket_proposition' }, [
+  { kind: 'object', fields: { items: { kind: 'records', entries: {
+    'reserved-idea': { kind: 'object', fields: { text: { kind: 'replace', value: 'Synthetic edited idea' } }, remove: [] },
+  }, remove: [] } }, remove: [] },
 ])]) })
 let note = blind.entities.find((row) => row.key === 'n').value
 assert.equal(note.futureColor, 'blue')
@@ -151,6 +157,9 @@ blind = run(blindBinary, 'blind', 'checkpoint')
 assert.deepEqual(blind.entities, beforeCompact)
 future = run(futureBinary, 'future', 'merge', { operations: blind.operations })
 assert.deepEqual(future.entities, blind.entities)
+const reservedIdea = future.entities.find((row) => row.collection === 'ideaBuckets').value.items[0]
+assert.equal(reservedIdea.dayAssignmentDate, '2026-09-08')
+assert.equal(reservedIdea.text, 'Synthetic edited idea')
 assert.deepEqual(future.entities.find((row) => row.collection === 'templateListExpansions').value, { id: 'synthetic-option', listTemplateIds: ['synthetic-list'] })
 
 // Deleting unfamiliar records/fields must survive an older client's next

@@ -3186,7 +3186,7 @@ return rows`
   function cutSortedIdea(itemId: Id) {
     const found = findIdea($plannerStore.ideaBuckets, itemId)
     if (!found) return
-    const { bucketedAt: _bucketedAt, ...item } = found.item
+    const { bucketedAt: _bucketedAt, dayAssignmentDate: _dayAssignmentDate, ...item } = found.item
     writePlanItemsToSystemClipboard({ items: [item], cut: true, sourceDate: todayISO() })
     plannerStore.deleteIdeaItem(found.bucket.id, itemId)
   }
@@ -3577,11 +3577,11 @@ return rows`
     }
 
     // Every proposition must land in a bucket or the new day before it begins.
-    // Ideas picked for the day stay in Proposition Party until the day exists,
-    // so cancelling generation never loses them.
+    // Keep day reservations on the ideas until generation succeeds, so closing
+    // either the sorter or the quiz preserves choices for this specific date.
     const propositions = bucketItems($plannerStore.ideaBuckets, 'proposition')
-    const dayIdeaIds: Id[] = []
-    if (propositions.length > 0 && !(await askIdeaSort(propositions, 'Sort new ideas', (itemId) => dayIdeaIds.push(itemId)))) return
+      .filter((item) => item.dayAssignmentDate !== date)
+    if (propositions.length > 0 && !(await askIdeaSort(propositions, 'Sort new ideas', (itemId) => plannerStore.assignIdeaToDay(itemId, date)))) return
 
     const steps = templateQuizSteps(template, $plannerStore.templateQuestions)
     const quizAnswers = steps.length > 0 ? await askDayQuiz(template.name, steps) : {}
@@ -3595,6 +3595,8 @@ return rows`
       todayISO(),
     )
     plannerStore.generatePlan(template.id, date, replaceExisting, quizAnswers)
+    const dayIdeaIds = bucketItems($plannerStore.ideaBuckets, 'proposition')
+      .filter((item) => item.dayAssignmentDate === date).map((item) => item.id)
     moveIdeasToDay(dayIdeaIds, date)
     const { [date]: _generatedDate, ...remainingSelections } = emptyDayTemplateSelections
     emptyDayTemplateSelections = remainingSelections
@@ -3605,10 +3607,10 @@ return rows`
   function moveIdeasToDay(itemIds: Id[], date: string) {
     const plan = $plannerStore.plans.find((candidate) => candidate.date === date)
     if (!plan) return
-    // Picked ideas go above the template's items, in the order they were picked.
+    // Reserved ideas go above the template's items in their bucket order.
     const found = itemIds.flatMap((itemId) => findIdea($plannerStore.ideaBuckets, itemId) ?? [])
     if (found.length === 0) return
-    const items = found.map(({ item: { bucketedAt: _bucketedAt, ...item } }) => item)
+    const items = found.map(({ item: { bucketedAt: _bucketedAt, dayAssignmentDate: _dayAssignmentDate, ...item } }) => item)
     plannerStore.pastePlanItems(plan.id, items, plan.items[0]?.id ?? null, 'before')
     for (const { bucket, item } of found) plannerStore.deleteIdeaItem(bucket.id, item.id)
   }

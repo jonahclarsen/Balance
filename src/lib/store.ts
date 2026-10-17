@@ -2148,6 +2148,17 @@ function createPlannerStore() {
       return fresh.map((item) => item.id)
     },
 
+    assignIdeaToDay(itemId: Id, date: string) {
+      commitEntities('assign_idea_to_day', { itemId, date }, (state) => {
+        const found = findIdea(state.ideaBuckets, itemId)
+        if (!found || found.bucket.kind !== 'proposition') return state
+        return updateBucket(state, 'proposition', (bucket) => ({
+          ...bucket,
+          items: bucket.items.map((item) => item.id === itemId ? { ...item, dayAssignmentDate: date } : item),
+        }))
+      })
+    },
+
     // Moves a root-level idea to the end of a bucket. Keeping an idea in its own
     // bucket (a review answering Genuinely again) requeues it at the end. The
     // timestamp restarts the Trash countdown and records when the decision was made.
@@ -2157,7 +2168,8 @@ function createPlannerStore() {
         const found = findIdea(state.ideaBuckets, itemId)
         if (!found) return state
         moved = true
-        const item: IdeaItem = { ...found.item, bucketedAt: nowISO() }
+        const { dayAssignmentDate: _dayAssignmentDate, ...unassigned } = found.item
+        const item: IdeaItem = { ...unassigned, bucketedAt: nowISO() }
         const removed = updateBucket(state, found.bucket.kind, (bucket) => ({ ...bucket, items: bucket.items.filter((candidate) => candidate.id !== itemId) }))
         return updateBucket(removed, kind, (bucket) => ({ ...bucket, items: [...bucket.items, item] }))
       })
