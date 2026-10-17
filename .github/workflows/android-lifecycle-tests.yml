@@ -28,6 +28,28 @@ permissions:
   contents: read
 
 jobs:
+  capture-acknowledgement:
+    name: Capture acknowledgement and failed-save retry
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:visual tests/visual/sync-freshness.spec.ts --grep 'Quick Add waits' --project=desktop --project=mobile --workers=2
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: android-capture-acknowledgement-traces
+          path: artifacts/playwright
+
   build:
     name: Build optimized CI APK
     runs-on: ubuntu-latest
