@@ -556,6 +556,8 @@ return rows`
   let widgetPrivacySettingsStatusIsError = false
   let recoveryPanelOpen = false
   let quickAddOpen = false
+  let quickAddSaving = false
+  let quickAddPendingId: Id | null = null
   let quickAddReturnFocus: FocusReturn | null = null
   let prioritizeSessionOpen = false
   let quickAddText = ''
@@ -3148,6 +3150,8 @@ return rows`
 
   // Closing hands focus and the caret back to wherever Option+K was pressed.
   function closeQuickAdd() {
+    if (quickAddSaving) return
+    quickAddPendingId = null
     quickAddOpen = false
     quickAddText = ''
     quickAddHTML = ''
@@ -3157,10 +3161,31 @@ return rows`
   }
 
   // Quick add drops the text into Proposition Party; the next day generation sorts it.
-  function saveQuickAdd() {
+  async function saveQuickAdd() {
+    if (quickAddSaving) return
     const text = quickAddText.trim()
-    if (text) plannerStore.addIdea(text, 'proposition', quickAddHTML)
-    closeQuickAdd()
+    if (!text) return
+    quickAddSaving = true
+    try {
+      // A rejected IPC acknowledgement can follow a successful commit.
+      // Retry the same idea rather than inserting a second copy.
+      const pending = quickAddPendingId ? findIdea($plannerStore.ideaBuckets, quickAddPendingId) : null
+      if (pending) {
+        plannerStore.patchIdeaItem(pending.bucket.id, pending.item.id, { text, html: quickAddHTML })
+      } else {
+        quickAddPendingId = plannerStore.addIdea(text, 'proposition', quickAddHTML)
+      }
+      // Closing the dialog acknowledges Save. Android can reclaim the WebView
+      // immediately afterward, before a persistence debounce or lifecycle event.
+      await plannerStore.flushPendingOperations()
+      quickAddSaving = false
+      closeQuickAdd()
+    } catch (error) {
+      console.error('Could not save idea', error)
+      // The store exposes the save error; retain the draft and ID for retry.
+    } finally {
+      quickAddSaving = false
+    }
   }
 
   // Seeds the weekly "Filter Genuinely Worth Doing" goal once per database.
@@ -8799,10 +8824,10 @@ return rows`
 {/if}
 
 {#if quickAddOpen}
-  <OverlayModal title="Add idea" cover="viewport" z={100} maxWidth={480} backdropStyle={appShellStyle} onClose={closeQuickAdd}>
+  <OverlayModal title="Add idea" cover="viewport" z={100} maxWidth={480} backdropStyle={appShellStyle} onClose={closeQuickAdd} closeDisabled={quickAddSaving}>
     <!-- Shares the Today row markup so task formatting changes carry over. -->
     <form class="quick-add-dialog" on:submit|preventDefault={saveQuickAdd}>
-      <div class="item-shell">
+      <div class="item-shell" inert={quickAddSaving}>
         <div class="plan-row">
           <div class="plan-item-main">
             <RichTextEditor
@@ -8823,9 +8848,12 @@ return rows`
           </div>
         </div>
       </div>
+      {#if $persistenceError}
+        <p role="alert">{$persistenceError}</p>
+      {/if}
       <div class="modal-actions">
-        <button type="button" on:click={closeQuickAdd}>Cancel</button>
-        <button class="primary" type="submit" disabled={!quickAddText.trim()}>Save</button>
+        <button type="button" on:click={closeQuickAdd} disabled={quickAddSaving}>Cancel</button>
+        <button class="primary" type="submit" disabled={quickAddSaving || !quickAddText.trim()}>Save</button>
       </div>
     </form>
   </OverlayModal>

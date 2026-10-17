@@ -14,6 +14,11 @@ on:
         type: choice
         default: "20"
         options: ["20", "100"]
+      offline_background_seconds:
+        description: Offline background duration after bucket saves
+        type: choice
+        default: "0"
+        options: ["0", "600"]
 
 permissions:
   contents: read
@@ -91,6 +96,7 @@ jobs:
           BALANCE_TEST_PACKAGE: app.balance.local
           BALANCE_LIFECYCLE_SCENARIO: ${{ inputs.scenario || 'activity' }}
           BALANCE_LIFECYCLE_REPEATS: ${{ inputs.repetitions || '20' }}
+          BALANCE_OFFLINE_BACKGROUND_SECONDS: ${{ inputs.offline_background_seconds || '0' }}
         with:
           api-level: ${{ matrix.api }}
           arch: x86_64
@@ -101,7 +107,7 @@ jobs:
           enable-hw-keyboard: true
           script: |
             bash .github/scripts/install-ci-webview.sh
-            timeout --foreground --kill-after=30s 15m node .github/scripts/android-activity-recreation-test.mjs
+            timeout --foreground --kill-after=30s 20m node .github/scripts/android-activity-recreation-test.mjs
       - name: Retain host diagnostics
         if: always()
         run: bash .github/scripts/collect-android-host-diagnostics.sh

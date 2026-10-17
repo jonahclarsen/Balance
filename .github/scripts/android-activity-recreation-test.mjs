@@ -14,6 +14,8 @@ import {
 assert(process.env.CI && adb(['shell', 'getprop', 'ro.kernel.qemu']).trim() === '1', 'CI emulator only')
 const scenario = process.env.BALANCE_LIFECYCLE_SCENARIO ?? 'activity'
 const repeats = Number(process.env.BALANCE_LIFECYCLE_REPEATS ?? 20)
+const offlineBackgroundSeconds = Number(process.env.BALANCE_OFFLINE_BACKGROUND_SECONDS ?? 0)
+assert([0, 600].includes(offlineBackgroundSeconds))
 assert(Number.isInteger(repeats) && repeats > 0 && repeats <= 200)
 assert(['activity', 'process', 'worker-start', 'offline-buckets'].includes(scenario))
 const report = { scenario, cases: [], hypothesis: {
@@ -245,6 +247,18 @@ try {
       report.cases.push(result)
       console.log(JSON.stringify(result))
       assert(result.frameMs < 2000 && result.nativeAndDbMs < 5000, 'Offline reopening froze editing')
+    }
+    if (offlineBackgroundSeconds) {
+      await home()
+      await sleep(offlineBackgroundSeconds * 1000)
+      const start = performance.now()
+      launchApp()
+      await connect()
+      const saved = JSON.parse(await invoke('read_app_state'))
+      for (const idea of expected) assert(saved.ideaBuckets.some(bucket => bucket.items.some(item => item.text === idea)), `Ten-minute offline resume lost ${idea}`)
+      report.offlineBackground = {seconds: offlineBackgroundSeconds, savedIdeas: expected.length,
+        resumeMs: Math.round(performance.now() - start), ...await responsive()}
+      assert(report.offlineBackground.frameMs < 2000 && report.offlineBackground.nativeAndDbMs < 5000, 'Ten-minute offline resume froze editing')
     }
   } else if (scenario === 'worker-start') {
     for (let i = 0; i < 12; i++) {
