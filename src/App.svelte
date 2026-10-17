@@ -8618,6 +8618,7 @@ return rows`
           onEdit={(itemId, text) => { const found = findIdea($plannerStore.ideaBuckets, itemId); if (found) plannerStore.patchIdeaItem(found.bucket.id, itemId, { text, html: escapeHTML(text) }) }}
           onToggleDone={(itemId, done) => { const found = findIdea($plannerStore.ideaBuckets, itemId); if (found) plannerStore.patchIdeaItem(found.bucket.id, itemId, { done }) }}
           onCut={cutSortedIdea}
+          onAddToNote={plannerStore.moveIdeaToNewNote}
           onAddToDay={ideaSort.addToDay}
           onFinish={finishIdeaSort}
         />

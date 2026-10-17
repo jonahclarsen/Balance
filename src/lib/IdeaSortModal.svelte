@@ -20,6 +20,7 @@
   export let onToggleDone: (itemId: Id, done: boolean) => void
   // Removes the idea and puts it on the clipboard to paste where it belongs.
   export let onCut: (itemId: Id) => void
+  export let onAddToNote: (itemId: Id) => Id | null
   // Only offered while generating a day: the idea joins that day's tasks.
   export let onAddToDay: ((itemId: Id) => void) | undefined = undefined
   export let onFinish: (completed: boolean) => void
@@ -114,6 +115,11 @@
     dropCurrent()
   }
 
+  function addToNote() {
+    if (!current || !onAddToNote(current.id)) return
+    dropCurrent()
+  }
+
   function dropCurrent() {
     if (!current) return
     const removedId = current.id
@@ -161,6 +167,7 @@
     else if (step === 'yes' && key === 'g') choose('genuine')
     else if (step === 'yes' && key === 'p') choose('possible')
     else if (step === 'yes' && key === 'x') cut()
+    else if (step === 'yes' && key === 'n') addToNote()
     else if (step === 'yes' && key === 'd' && onAddToDay) addToDay()
     else if (step === 'no' && key === 'a') choose('afterlife')
     else if (step === 'no' && key === 't') choose('trash')
@@ -259,6 +266,7 @@
           >{meta.label} ({meta.key.toUpperCase()})</button>
         {/each}
         {#if step === 'yes'}
+          <button type="button" title="Move this idea into a new note" on:click={addToNote}>Add to new note (N)</button>
           <button type="button" title="Remove this idea and copy it to paste somewhere else" on:click={cut}>Cut (X)</button>
           {#if onAddToDay}
             <button type="button" title="Add this idea to the day being generated" on:click={addToDay}>Add to day (D)</button>

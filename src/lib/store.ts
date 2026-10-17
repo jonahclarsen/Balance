@@ -2289,6 +2289,28 @@ function createPlannerStore() {
 
     // ---- Notes (reuse the plan-item tree and shared rich-text editor) ----
 
+    moveIdeaToNewNote(itemId: Id) {
+      let noteId: Id | null = null
+      commitEntities('move_idea_to_note', { itemId }, (state) => {
+        const found = findIdea(state.ideaBuckets, itemId)
+        if (!found) return state
+        const toNoteItem = (item: PlanItem): NoteItem => ({
+          ...item,
+          id: createId('note_item'),
+          kind: 'checklist',
+          children: item.children.map(toNoteItem),
+        })
+        const { bucketedAt: _bucketedAt, ...item } = found.item
+        const note = { ...createNote(item.text), items: [toNoteItem(item)] }
+        noteId = note.id
+        const removed = updateBucket(state, found.bucket.kind, (bucket) => ({
+          ...bucket, items: bucket.items.filter((candidate) => candidate.id !== itemId),
+        }))
+        return { ...removed, notes: [note, ...removed.notes] }
+      })
+      return noteId
+    },
+
     addNote() {
       const note = createNote()
       commitEntities('add_note', { noteId: note.id }, (state) => ({ ...state, notes: [note, ...state.notes] }))

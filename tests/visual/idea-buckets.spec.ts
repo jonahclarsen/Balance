@@ -192,6 +192,54 @@ test('the sorter stays with its page and cuts ideas to the clipboard', async ({ 
   expect(await buckets(page)).toMatchObject({ proposition: ['Synthetic stay'] })
 })
 
+test('sorting moves ideas into new notes with their formatting and children, and supports undo', async ({ page }) => {
+  await open(page)
+  await storeCall(page, `
+    const id = plannerStore.addIdea('Synthetic note', 'proposition', '<strong>Synthetic note</strong>')
+    plannerStore.patchIdeaItem('bucket_proposition', id, { done: true })
+    const child = plannerStore.addRootIdeaItem('bucket_proposition')
+    plannerStore.patchIdeaItem('bucket_proposition', child, { text: 'Synthetic child', html: '<em>Synthetic child</em>' })
+    plannerStore.moveIdeaItem('bucket_proposition', child, id, 'inside')
+    plannerStore.addIdea('Synthetic second note')
+  `)
+  await openView(page, 'Buckets')
+  await card(page, 'proposition').getByRole('button', { name: 'Sort', exact: true }).click()
+  await sorter(page).getByRole('button', { name: 'Yes (Y)' }).click()
+  await sorter(page).getByRole('button', { name: 'Add to new note (N)' }).click()
+  await expectIdea(page, 1, 1)
+  await expect(sorter(page).locator('.idea-sort-card')).toContainText('Synthetic second note')
+  expect(await buckets(page)).toMatchObject({ proposition: ['Synthetic second note'] })
+
+  const notes = () => page.evaluate(async () => {
+    const path = '/src/lib/store.ts'
+    const { plannerStore } = await import(/* @vite-ignore */ path)
+    let state: any
+    plannerStore.subscribe((value: any) => { state = value })()
+    return state.notes
+  })
+  const created = await notes()
+  expect(created).toHaveLength(1)
+  expect(created[0]).toMatchObject({ title: 'Synthetic note', items: [{
+    text: 'Synthetic note', html: '<strong>Synthetic note</strong>', done: true, kind: 'checklist',
+    children: [{ text: 'Synthetic child', html: '<em>Synthetic child</em>', kind: 'checklist' }],
+  }] })
+  await sorter(page).getByRole('button', { name: 'Yes (Y)' }).click()
+  await page.keyboard.press('n')
+  await expect(sorter(page)).toBeHidden()
+  expect(await notes()).toHaveLength(2)
+
+  await storeCall(page, 'return plannerStore.undo()')
+  expect(await notes()).toEqual(created)
+  expect(await buckets(page)).toMatchObject({ proposition: ['Synthetic second note'] })
+  await storeCall(page, 'return plannerStore.redo()')
+  await page.reload()
+  await expect(page.getByRole('region', { name: 'Daily plan' })).toBeVisible()
+  expect(await notes()).toHaveLength(2)
+  expect(await buckets(page)).toMatchObject({ proposition: [] })
+  await openView(page, 'Notes')
+  await expect(page.locator('.note-text').first()).toHaveText('Synthetic second note')
+})
+
 test('a day generation sort can add ideas to the new day', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
   await open(page)
