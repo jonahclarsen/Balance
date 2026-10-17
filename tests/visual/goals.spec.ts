@@ -786,6 +786,40 @@ test('a matching plan item previews its goal, then shows completion when checked
     .toBe(0)
 })
 
+test('the goal burst always clears its canvas, even after a frame fails', async ({ page }) => {
+  await generateDay(page, 'Generate today')
+  await createGoal(page, 'Exercise', 1, 'lift, swim')
+
+  await openView(page, 'Today')
+  const matchingText = await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    return state.plans?.[0]?.items?.find((item: { text: string }) => /lift|swim/i.test(item.text))?.text ?? ''
+  })
+  expect(matchingText).not.toBe('')
+
+  const canvas = page.locator('.goal-burst-canvas')
+  const canvasPixels = () => canvas.evaluate((element: HTMLCanvasElement) => element.width * element.height)
+  const checkbox = page.getByRole('listitem', { name: `Plan item: ${matchingText}` }).getByRole('checkbox', { name: 'Complete item' })
+  await expect.poll(canvasPixels).toBe(0)
+
+  // A frame that throws must not leave its last paint stuck over the UI.
+  await page.evaluate(() => {
+    const original = CanvasRenderingContext2D.prototype.createRadialGradient
+    CanvasRenderingContext2D.prototype.createRadialGradient = function () {
+      CanvasRenderingContext2D.prototype.createRadialGradient = original
+      throw new Error('synthetic frame failure')
+    }
+  })
+  await checkbox.check()
+  await expect.poll(canvasPixels).toBe(0)
+
+  // Later bursts still play, then release the canvas on their own.
+  await checkbox.uncheck()
+  await checkbox.check()
+  await expect.poll(canvasPixels).toBeGreaterThan(0)
+  await expect.poll(canvasPixels, { timeout: 6000 }).toBe(0)
+})
+
 test('a not-yet-due goal previews when its single-word term matches at a word boundary', async ({ page }) => {
   await generateDay(page, 'Generate today')
   await createGoal(page, 'DJ practice', 7, 'dj')

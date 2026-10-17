@@ -5,9 +5,27 @@
 
   type BurstTarget = { x: number; y: number; onArrive?: () => void }
 
+  // The simulation is tuned in 60 fps steps but advances by elapsed time, so a
+  // throttled or 120 Hz display plays it at the same speed.
+  const STEP_MS = 1000 / 60
+  // Cap the catch-up per frame so a long stall can't fling particles across the screen.
+  const MAX_STEPS_PER_FRAME = 4
+  // Every burst finishes well within this, measured from the latest burst. Past
+  // it the canvas is wiped no matter what state the loop is in.
+  const MAX_ACTIVE_MS = 4000
+  // Rapid repeats (checking many goal items at once) share one particle budget.
+  const MAX_PARTICLES = 600
+  // Match the day celebration's canvas: plenty sharp, without a 5K backing store.
+  const MAX_CANVAS_PIXELS = 4_000_000
+
   let canvas: HTMLCanvasElement
+  let ctx: CanvasRenderingContext2D | null = null
+  let width = 0
+  let height = 0
   let raf = 0
-  let sized = false
+  let watchdog = 0
+  let deadline = 0
+  let lastFrame = 0
 
   type Trail = { x: number; y: number }[]
 
@@ -47,6 +65,8 @@
     width: number
   }
 
+  type Flash = { x: number; y: number; radius: number; life: number; hue: number; sat: number; light: number }
+
   type Comet = {
     ox: number
     oy: number
@@ -61,15 +81,15 @@
     light: number
     trail: Trail
     onArrive?: () => void
-    arrived: boolean
+    life: number
   }
 
   type Label = { id: number; text: string; x: number; y: number; color: string }
 
-  const particles: Particle[] = []
-  const rings: Ring[] = []
-  const flashes: { x: number; y: number; radius: number; life: number; hue: number; sat: number; light: number }[] = []
-  const comets: Comet[] = []
+  let particles: Particle[] = []
+  let rings: Ring[] = []
+  let flashes: Flash[] = []
+  let comets: Comet[] = []
   let labels: Label[] = []
   let labelSeq = 0
 
@@ -79,10 +99,14 @@
 
   function goalColorParts(goal: Goal | undefined) {
     return {
-      hue: goal?.hue ?? 165,
+      hue: finiteOr(goal?.hue, 165),
       sat: 74,
-      light: Math.max(38, Math.min(70, 52 + goalLightnessShift(goal?.lightness))),
+      light: Math.max(38, Math.min(70, 52 + finiteOr(goalLightnessShift(goal?.lightness), 0))),
     }
+  }
+
+  function finiteOr(value: unknown, fallback: number) {
+    return typeof value === 'number' && Number.isFinite(value) ? value : fallback
   }
 
   function css({ hue, sat, light }: { hue: number; sat: number; light: number }, alpha = 1) {
@@ -98,12 +122,21 @@
       labels = labels.filter((entry) => entry.id !== id)
     }, 1600)
 
-    if (reducedMotion() || !canvas) return
+    if (reducedMotion() || !canvas || document.hidden || !Number.isFinite(x) || !Number.isFinite(y)) return
+    if (!ensureSize()) return
 
-    ensureSize()
     spawnBurst(x, y, goals)
-    if (target) spawnComet(x, y, target, base)
+    if (target && Number.isFinite(target.x) && Number.isFinite(target.y)) spawnComet(x, y, target, base)
+    deadline = performance.now() + MAX_ACTIVE_MS
+    window.clearTimeout(watchdog)
+    // Independent of requestAnimationFrame: if frames stop arriving, this still
+    // wipes the canvas instead of leaving the last frame painted over the UI.
+    watchdog = window.setTimeout(stop, MAX_ACTIVE_MS + 250)
     startLoop()
+  }
+
+  function addParticle(particle: Particle) {
+    if (particles.length < MAX_PARTICLES) particles.push(particle)
   }
 
   function spawnBurst(x: number, y: number, goals: Goal[]) {
@@ -126,7 +159,7 @@
       const speed = 2.6 + Math.random() * 7
       const roll = Math.random()
       const shape: Particle['shape'] = roll > 0.86 ? 'streamer' : roll > 0.5 ? 'spark' : 'dot'
-      particles.push({
+      addParticle({
         x,
         y,
         vx: Math.cos(angle) * speed,
@@ -155,7 +188,7 @@
     for (let index = 0; index < shards; index += 1) {
       const angle = (Math.PI * 2 * index) / shards + Math.random() * 0.4
       const speed = 1.4 + Math.random() * 2.4
-      particles.push({
+      addParticle({
         x: parent.x,
         y: parent.y,
         vx: Math.cos(angle) * speed,
@@ -197,22 +230,43 @@
       light: Math.min(78, base.light + 16),
       trail: [],
       onArrive: target.onArrive,
-      arrived: false,
+      life: 1,
     })
   }
 
+  // Sizes the backing store to the window. Resizing a canvas also clears it.
   function ensureSize() {
-    if (!canvas) return
-    const dpr = window.devicePixelRatio || 1
-    const width = window.innerWidth
-    const height = window.innerHeight
-    if (sized && canvas.width === Math.round(width * dpr) && canvas.height === Math.round(height * dpr)) return
-    canvas.width = Math.round(width * dpr)
-    canvas.height = Math.round(height * dpr)
-    canvas.style.width = `${width}px`
-    canvas.style.height = `${height}px`
-    canvas.getContext('2d')?.setTransform(dpr, 0, 0, dpr, 0, 0)
-    sized = true
+    if (!canvas) return false
+    ctx ??= canvas.getContext('2d')
+    if (!ctx) return false
+    width = Math.max(1, window.innerWidth)
+    height = Math.max(1, window.innerHeight)
+    let dpr = Math.min(2, window.devicePixelRatio || 1)
+    const requestedPixels = width * height * dpr * dpr
+    if (requestedPixels > MAX_CANVAS_PIXELS) dpr *= Math.sqrt(MAX_CANVAS_PIXELS / requestedPixels)
+    const pixelWidth = Math.round(width * dpr)
+    const pixelHeight = Math.round(height * dpr)
+    if (canvas.width !== pixelWidth) canvas.width = pixelWidth
+    if (canvas.height !== pixelHeight) canvas.height = pixelHeight
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    return true
+  }
+
+  // Drops every effect and releases the canvas backing store. An idle canvas
+  // holds no pixels, so nothing can stay painted over the UI between bursts.
+  function stop() {
+    if (raf) cancelAnimationFrame(raf)
+    raf = 0
+    window.clearTimeout(watchdog)
+    watchdog = 0
+    particles = []
+    rings = []
+    flashes = []
+    comets = []
+    if (canvas && (canvas.width !== 0 || canvas.height !== 0)) {
+      canvas.width = 0
+      canvas.height = 0
+    }
   }
 
   function pushTrail(trail: Trail, x: number, y: number, max: number) {
@@ -253,12 +307,10 @@
 
   function drawTrail(ctx: CanvasRenderingContext2D, trail: Trail, hsl: { hue: number; sat: number; light: number }, width: number, life: number) {
     if (trail.length < 2) return
-    ctx.lineCap = 'round'
-    ctx.lineJoin = 'round'
+    ctx.strokeStyle = css(hsl, 1)
     for (let index = 1; index < trail.length; index += 1) {
       const fade = (index / trail.length) * life
       ctx.globalAlpha = fade * 0.5
-      ctx.strokeStyle = css(hsl, 1)
       ctx.lineWidth = width * (index / trail.length)
       ctx.beginPath()
       ctx.moveTo(trail[index - 1].x, trail[index - 1].y)
@@ -269,124 +321,133 @@
 
   function startLoop() {
     if (raf) return
-    const context = canvas.getContext('2d')
-    if (!context) return
-    const ctx: CanvasRenderingContext2D = context
-    const width = window.innerWidth
-    const height = window.innerHeight
+    lastFrame = 0
+    raf = requestAnimationFrame(frame)
+  }
+
+  function frame(now: number) {
+    raf = 0
+    try {
+      if (!ctx || document.hidden || now >= deadline) {
+        stop()
+        return
+      }
+      const steps = lastFrame ? Math.min(MAX_STEPS_PER_FRAME, Math.max(0, (now - lastFrame) / STEP_MS)) : 1
+      lastFrame = now
+      if (drawFrame(ctx, steps)) raf = requestAnimationFrame(frame)
+      else stop()
+    } catch (error) {
+      // A failed frame must never leave its pixels behind or block later bursts.
+      console.error('Goal burst animation failed', error)
+      stop()
+    }
+  }
+
+  // Advances every effect by `steps` 60 fps steps, draws it, and reports
+  // whether anything is still alive.
+  function drawFrame(ctx: CanvasRenderingContext2D, steps: number) {
     const gravity = 0.15
-    const drag = 0.988
+    const drag = Math.pow(0.988, steps)
+    ctx.clearRect(0, 0, width, height)
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
 
-    function frame() {
-      ctx.clearRect(0, 0, width, height)
-      let alive = false
-
-      // Impact blooms.
-      for (const flash of flashes) {
-        if (flash.life <= 0) continue
-        alive = true
-        flash.life -= 0.09
-        flash.radius += 5
-        const gradient = ctx.createRadialGradient(flash.x, flash.y, 0, flash.x, flash.y, flash.radius)
-        gradient.addColorStop(0, css(flash, Math.max(0, flash.life) * 0.6))
-        gradient.addColorStop(1, css(flash, 0))
-        ctx.globalAlpha = 1
-        ctx.fillStyle = gradient
-        ctx.beginPath()
-        ctx.arc(flash.x, flash.y, flash.radius, 0, Math.PI * 2)
-        ctx.fill()
-      }
-
-      // Shockwaves.
-      for (const ring of rings) {
-        if (ring.life <= 0) continue
-        alive = true
-        ring.radius += (ring.maxRadius - ring.radius) * 0.16
-        ring.life -= ring.decay
-        ctx.globalAlpha = Math.max(0, ring.life) * 0.6
-        ctx.strokeStyle = css(ring, 1)
-        ctx.lineWidth = ring.width * Math.max(0.2, ring.life)
-        ctx.beginPath()
-        ctx.arc(ring.x, ring.y, ring.radius, 0, Math.PI * 2)
-        ctx.stroke()
-      }
-
-      // Firework particles + trails.
-      for (const p of particles) {
-        if (p.life <= 0) continue
-        p.vx *= drag
-        p.vy = p.vy * drag + gravity
-        p.x += p.vx
-        p.y += p.vy
-        p.rotation += p.spin
-        p.twinkle += 0.32
-        p.life -= p.decay
-        if (p.y > height + 60) p.life = 0
-        pushTrail(p.trail, p.x, p.y, p.trailMax)
-
-        if (!p.detonated && p.shellAt > 0 && p.life <= p.shellAt) {
-          p.detonated = true
-          detonate(p)
-        }
-        if (p.life <= 0) continue
-        alive = true
-
-        const hsl = { hue: p.hue, sat: p.sat, light: p.light }
-        drawTrail(ctx, p.trail, hsl, p.size * 1.4, p.life)
-
-        const twinkle = 0.6 + 0.4 * Math.sin(p.twinkle)
-        const alpha = Math.max(0, Math.min(1, p.life)) * twinkle
-        if (p.shape === 'spark') {
-          ctx.globalAlpha = alpha
-          ctx.save()
-          ctx.translate(p.x, p.y)
-          ctx.rotate(p.rotation)
-          ctx.fillStyle = css(hsl, 1)
-          drawStar(ctx, p.size)
-          ctx.restore()
-        } else {
-          glowDot(ctx, p.x, p.y, p.size, hsl, alpha)
-        }
-      }
-
-      // Homing comets → land in the goal cell.
-      for (const comet of comets) {
-        if (comet.arrived) continue
-        alive = true
-        comet.t = Math.min(1, comet.t + comet.speed)
-        const e = easeInOut(comet.t)
-        const inv = 1 - e
-        const bx = inv * inv * comet.ox + 2 * inv * e * comet.cx + e * e * comet.tx
-        const by = inv * inv * comet.oy + 2 * inv * e * comet.cy + e * e * comet.ty
-        pushTrail(comet.trail, bx, by, 16)
-        const hsl = { hue: comet.hue, sat: comet.sat, light: comet.light }
-        drawTrail(ctx, comet.trail, hsl, 5, 1)
-        glowDot(ctx, bx, by, 3.6, hsl, 1)
-
-        if (comet.t >= 1) {
-          comet.arrived = true
-          landComet(comet)
-        }
-      }
-
+    // Impact blooms.
+    for (const flash of flashes) {
+      flash.life -= 0.09 * steps
+      flash.radius += 5 * steps
+      if (flash.life <= 0) continue
+      const gradient = ctx.createRadialGradient(flash.x, flash.y, 0, flash.x, flash.y, flash.radius)
+      gradient.addColorStop(0, css(flash, flash.life * 0.6))
+      gradient.addColorStop(1, css(flash, 0))
       ctx.globalAlpha = 1
+      ctx.fillStyle = gradient
+      ctx.beginPath()
+      ctx.arc(flash.x, flash.y, flash.radius, 0, Math.PI * 2)
+      ctx.fill()
+    }
 
-      prune(particles)
-      prune(rings)
-      pruneFlashes()
-      for (let index = comets.length - 1; index >= 0; index -= 1) {
-        if (comets[index].arrived) comets.splice(index, 1)
+    // Shockwaves.
+    const ringEase = 1 - Math.pow(0.84, steps)
+    for (const ring of rings) {
+      ring.radius += (ring.maxRadius - ring.radius) * ringEase
+      ring.life -= ring.decay * steps
+      if (ring.life <= 0) continue
+      ctx.globalAlpha = ring.life * 0.6
+      ctx.strokeStyle = css(ring, 1)
+      ctx.lineWidth = ring.width * Math.max(0.2, ring.life)
+      ctx.beginPath()
+      ctx.arc(ring.x, ring.y, ring.radius, 0, Math.PI * 2)
+      ctx.stroke()
+    }
+
+    // Firework particles + trails. Shells detonate into new particles, which
+    // join the list and start moving next frame.
+    for (let index = 0, count = particles.length; index < count; index += 1) {
+      const p = particles[index]
+      p.vx *= drag
+      p.vy = p.vy * drag + gravity * steps
+      p.x += p.vx * steps
+      p.y += p.vy * steps
+      p.rotation += p.spin * steps
+      p.twinkle += 0.32 * steps
+      p.life -= p.decay * steps
+      if (p.y > height + 60) p.life = 0
+      pushTrail(p.trail, p.x, p.y, p.trailMax)
+
+      if (!p.detonated && p.shellAt > 0 && p.life <= p.shellAt) {
+        p.detonated = true
+        detonate(p)
       }
+      if (p.life <= 0) continue
 
-      if (alive) {
-        raf = requestAnimationFrame(frame)
+      const hsl = { hue: p.hue, sat: p.sat, light: p.light }
+      drawTrail(ctx, p.trail, hsl, p.size * 1.4, p.life)
+
+      const twinkle = 0.6 + 0.4 * Math.sin(p.twinkle)
+      const alpha = Math.min(1, p.life) * twinkle
+      if (p.shape === 'spark') {
+        ctx.globalAlpha = alpha
+        ctx.save()
+        ctx.translate(p.x, p.y)
+        ctx.rotate(p.rotation)
+        ctx.fillStyle = css(hsl, 1)
+        drawStar(ctx, p.size)
+        ctx.restore()
       } else {
-        raf = 0
-        ctx.clearRect(0, 0, width, height)
+        glowDot(ctx, p.x, p.y, p.size, hsl, alpha)
       }
     }
 
-    raf = requestAnimationFrame(frame)
+    // Homing comets → land in the goal cell.
+    for (const comet of comets) {
+      comet.t = Math.min(1, comet.t + comet.speed * steps)
+      const e = easeInOut(comet.t)
+      const inv = 1 - e
+      const bx = inv * inv * comet.ox + 2 * inv * e * comet.cx + e * e * comet.tx
+      const by = inv * inv * comet.oy + 2 * inv * e * comet.cy + e * e * comet.ty
+      pushTrail(comet.trail, bx, by, 16)
+      const hsl = { hue: comet.hue, sat: comet.sat, light: comet.light }
+      drawTrail(ctx, comet.trail, hsl, 5, 1)
+      glowDot(ctx, bx, by, 3.6, hsl, 1)
+
+      if (comet.t >= 1) {
+        comet.life = 0
+        landComet(comet)
+      }
+    }
+
+    ctx.globalAlpha = 1
+
+    particles = particles.filter(isAlive)
+    rings = rings.filter(isAlive)
+    flashes = flashes.filter(isAlive)
+    comets = comets.filter(isAlive)
+    return particles.length > 0 || rings.length > 0 || flashes.length > 0 || comets.length > 0
+  }
+
+  function isAlive(effect: { life: number }) {
+    return effect.life > 0
   }
 
   function landComet(comet: Comet) {
@@ -397,7 +458,7 @@
     for (let index = 0; index < 12; index += 1) {
       const angle = (Math.PI * 2 * index) / 12 + Math.random() * 0.3
       const speed = 1.6 + Math.random() * 2.2
-      particles.push({
+      addParticle({
         x: comet.tx,
         y: comet.ty,
         vx: Math.cos(angle) * speed,
@@ -418,38 +479,37 @@
         detonated: false,
       })
     }
-    comet.onArrive?.()
+    try {
+      comet.onArrive?.()
+    } catch (error) {
+      console.error('Goal burst landing failed', error)
+    }
   }
 
   function easeInOut(t: number) {
     return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2
   }
 
-  function prune(list: { life: number }[]) {
-    for (let index = list.length - 1; index >= 0; index -= 1) {
-      if (list[index].life <= 0) list.splice(index, 1)
-    }
-  }
-
-  function pruneFlashes() {
-    for (let index = flashes.length - 1; index >= 0; index -= 1) {
-      if (flashes[index].life <= 0) flashes.splice(index, 1)
-    }
-  }
-
   function handleResize() {
-    sized = false
-    ensureSize()
+    if (raf) ensureSize()
+  }
+
+  // Hidden windows get no frames; drop the burst rather than resume a stale one.
+  function handleVisibilityChange() {
+    if (document.hidden) stop()
   }
 
   onMount(() => {
     window.addEventListener('resize', handleResize)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    stop()
   })
 
   onDestroy(() => {
-    cancelAnimationFrame(raf)
-    raf = 0
+    if (typeof window === 'undefined') return
+    stop()
     window.removeEventListener('resize', handleResize)
+    document.removeEventListener('visibilitychange', handleVisibilityChange)
   })
 </script>
 
