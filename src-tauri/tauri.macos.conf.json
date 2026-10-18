@@ -12,6 +12,7 @@
         "maximized": false,
         "visible": false,
         "zoomHotkeysEnabled": true,
+        "dragDropEnabled": false,
         "fullscreen": false,
         "decorations": true,
         "titleBarStyle": "Overlay",
