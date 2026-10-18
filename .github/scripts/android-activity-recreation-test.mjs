@@ -395,11 +395,14 @@ try {
         // Offline focus/resume currently rereads and normalizes the workspace.
         await client.evaluate('window.__startupTasks = []')
         await home()
+        await client.send('Profiler.start')
         const resumed = performance.now()
         launchApp()
         const interaction = await responsive()
         const elapsedMs = Math.round(performance.now() - resumed)
         await sleep(3000)
+        await writeFile(`android-lifecycle-history-${days}-cpu${rate}-resume.cpuprofile`,
+          JSON.stringify((await client.send('Profiler.stop')).profile))
         const resume = {days, rate, phase: 'resume', elapsedMs,
           ...interaction, tasks: await client.evaluate('window.__startupTasks')}
         report.cases.push(resume)
