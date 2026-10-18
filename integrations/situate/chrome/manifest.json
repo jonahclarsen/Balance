@@ -3,9 +3,33 @@
   "name": "Balance Situate",
   "version": "1.0.0",
   "description": "Pause blocked websites and selected Discord threads using your local Balance rules.",
-  "permissions": ["nativeMessaging", "storage"],
-  "host_permissions": ["https://*/*", "http://*/*"],
-  "background": { "service_worker": "background.js", "type": "module" },
-  "content_scripts": [{ "matches": ["https://*/*", "http://*/*"], "js": ["content.js"], "run_at": "document_start", "all_frames": true }],
-  "action": { "default_popup": "popup.html" }
+  "permissions": [
+    "nativeMessaging",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://*/*",
+    "http://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*/*",
+        "http://*/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": true
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArXhI1EYYfD4ZreaUuT7HK3/lBitDTkByImMBB79YXaRqaeyMNHfZvkF6wUYqEZCCdFvv4hIROIrgbEm7gGjG4MoZ/w/fDfrO7cNmNgy/OC53CkajIbqgIfvst1jbuKloXsfdbvNy5vR/GuJ+RKKXDoucqhGFr40EAAlQD59g+bVLSMQz+F3OL2UZoa9KJT9iTYav5RrFlDHgZm4LMRVr9Tot3lhZDT8mYjWqlT3Jp+7V0z2aBKld60od4Z+3I+xnCzKZiaDbtL+smU3dAsGDiKL6XVIIIAl4VjZbh1YLEvYgQRhegW2ISRRNz05hG5rhrkrhYzt6bFsAX3g3eiCD4QIDAQAB"
 }

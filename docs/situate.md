@@ -40,8 +40,8 @@ Activation notices use macOS notification permission and obey system Focus setti
 1. Download the `situate-chrome` artifact from the Situate workflow, or use
    `integrations/situate/chrome` in this repository.
 2. Open `chrome://extensions`, enable Developer mode, and choose **Load unpacked**.
-3. Select the `chrome` directory and copy its extension ID.
-4. Run `python3 integrations/situate/install-chrome.py EXTENSION_ID`.
+3. Select the `chrome` directory. Its public manifest key keeps the ID stable.
+4. Run `python3 integrations/situate/install-chrome.py`.
 5. Open the extension popup to verify its connection to Balance.
 
 The extension reads only a small local Situate status file through Chrome native

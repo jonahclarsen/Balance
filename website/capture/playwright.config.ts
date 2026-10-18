@@ -20,7 +20,7 @@ export default defineConfig({
     timeout: 600_000,
   },
   projects: [
-    { name: 'desktop', use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 }, deviceScaleFactor: 2 } },
+    { name: 'desktop', use: { ...devices['Desktop Chrome'], userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', viewport: { width: 1280, height: 800 }, deviceScaleFactor: 2 } },
     { name: 'mobile', use: { ...devices['Pixel 7'] } },
   ],
 })

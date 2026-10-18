@@ -144,7 +144,7 @@ test('quick syncs keep the connection label and only longer syncs show progress'
   const panel = await openSync(page, 'connected')
   await pauseAfterStartup(page)
   const label = panel.locator('.sync-overview strong')
-  const lastSync = panel.locator('.sync-overview .sync-state')
+  const lastSync = panel.getByText(/^Last successful sync:/)
   const syncNow = panel.getByRole('button', { name: 'Sync now', exact: true })
   await expect(label).toHaveText('Connected to sync server')
   const originalTime = await lastSync.textContent()
