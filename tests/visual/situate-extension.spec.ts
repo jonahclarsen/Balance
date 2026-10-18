@@ -13,6 +13,13 @@ test('extension hides blocked content and restores it after a pass without readi
   await expect(page.getByRole('heading',{name:'Synthetic private content'})).toBeHidden()
   await expect(page.locator('body')).toHaveAttribute('inert','')
   await expect(page.locator('body')).toHaveCSS('display','none')
+  await page.evaluate(() => {
+    const body=document.createElement('body')
+    body.innerHTML='<h1>Synthetic private content</h1><button>Replacement control</button>'
+    document.body.replaceWith(body)
+  })
+  await expect(page.locator('body')).toHaveAttribute('inert','')
+  await expect(page.getByRole('heading',{name:'Synthetic private content'})).toBeHidden()
   await page.evaluate(() => { (window as unknown as {situateBlocked:boolean}).situateBlocked=false })
   await expect(page.locator('#balance-situate-gate')).toHaveCount(0)
   await expect(page.getByRole('heading',{name:'Synthetic private content'})).toBeVisible()
