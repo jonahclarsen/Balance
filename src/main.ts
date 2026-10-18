@@ -1,8 +1,5 @@
 import { mount } from 'svelte'
 import './app.css'
-const App = new URLSearchParams(location.search).has('situateWidget')
-  ? (await import('./lib/SituateWidget.svelte')).default
-  : (await import('./App.svelte')).default
 import {
   applyIridescentHueShift,
   COLOR_SCHEME_QUERY,
@@ -30,6 +27,10 @@ performance.measure('balance-device-theme-bootstrap', {
   start: deviceThemeBootstrapStartedAt,
   end: performance.now(),
 })
+
+const App = new URLSearchParams(location.search).has('situateWidget')
+  ? (await import('./lib/SituateWidget.svelte')).default
+  : (await import('./App.svelte')).default
 
 const app = mount(App, {
   target: document.getElementById('app')!,

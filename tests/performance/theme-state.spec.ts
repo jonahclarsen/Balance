@@ -92,6 +92,7 @@ test('today observation stays cheap with 3,264 historical themes', async ({ page
     }
   })
   await page.goto('/')
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('balance.appState.v1'))).not.toBeNull()
 
   await page.evaluate(() => {
     const key = 'balance.appState.v1'

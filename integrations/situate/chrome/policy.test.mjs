@@ -17,3 +17,13 @@ test('Discord rules block configured routes and preserve other conversations',()
  assert.deepEqual(blockedBy(d,'https://discord.com/channels/123/999'),[])
  assert.deepEqual(blockedBy(d,'https://discord.com.evil.test/channels/123/456'),[])
 })
+
+test('Frank IDs gate only touch-grass conversations, including stale passes', () => {
+  const now=Date.now();
+  const status={version:1,enabled:true,refreshAt:now+60000,frankThreads:['123456789012345678'],modes:[{id:'touch-grass',name:'Touch grass',active:true,targets:[],allTargets:[]}]};
+  const url='https://discord.com/channels/999999999999999999/123456789012345678';
+  assert.equal(blockedBy(status,url).length,1);
+  assert.equal(blockedBy(status,'https://discord.com/channels/999999999999999999/222222222222222222').length,0);
+  status.modes[0].active=false;assert.equal(blockedBy(status,url).length,0);
+  status.refreshAt=now-1;assert.equal(blockedBy(status,url).length,1);
+});

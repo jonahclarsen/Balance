@@ -31,3 +31,6 @@ sync-spike
 
 # Wrangler local state
 .wrangler
+
+# Python companion test caches
+integrations/situate/__pycache__/

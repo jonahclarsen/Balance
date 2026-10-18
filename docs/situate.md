@@ -51,12 +51,23 @@ embedded media. It checks pages and single-page navigation once per second.
 A stale connected feed restores the configured boundaries until Balance refreshes
 it. Before the first successful connection, the popup reports setup is incomplete.
 
-Add Frank's exact channel/thread IDs as **Discord thread/channel** targets in
-Touch grass, category **AI**. Discord routes containing those IDs are blocked;
-other conversations work. A direct thread URL needs that thread's own ID because
-Discord does not include its parent channel in every URL. The Frank core at
-`../../Fubar/frank` keeps channel IDs in instance configuration, not in its public
-source; do not publish instance configuration or credentials to set this up.
+For Frank, the companion can refresh all thread IDs from its existing session index.
+No Frank code changes or Discord token are needed. Run:
+
+```sh
+python3 integrations/situate/sync-frank.py --host oracle-arm \
+  --sessions /absolute/Frank/state/sessions.json --watch
+```
+
+Use the instance's actual `FRANK_STATE_DIR/sessions.json` path. The fixed remote
+reader outputs **only numeric Discord thread IDs**; session data and messages stay
+on Frank's host. Keep this optional helper running (or add the command to your
+login automation). It atomically updates a private local file every 30 seconds;
+known IDs remain blocked during SSH outages. Newly created threads become known
+on the next successful refresh. The Chrome host adds these IDs only to Touch grass.
+Multiple instances can instead export a combined ID list into the same private
+`frank-threads.json` contract. Exact channel/thread IDs can also be added manually
+as **Discord thread/channel** targets; unrelated Discord conversations remain usable.
 
 ## Herdr and Cactus
 
