@@ -333,6 +333,9 @@ export type DatabaseMaintenanceStatus = {
 let undoStack: HistoryEntry[] = []
 let redoStack: HistoryEntry[] = []
 const redoAvailableState = writable(false)
+// Only the latest normalized snapshot's HTML is retained. Resume can reread
+// years of unchanged history; rebuilding DOM for each field blocks the WebView.
+let storedHTMLCache = new Map<string, string>()
 let persistenceTarget: 'tauri' | 'localStorage' | null = null
 let persistenceReady = false
 let pendingOperations = new Map<string, Operation>()
@@ -3993,7 +3996,20 @@ export async function completeDatabaseMaintenanceStartup(): Promise<void> {
 }
 
 function normalizeState(state: AppState): AppState {
-  return {
+  const nextHTMLCache = new Map<string, string>()
+  let cachedBytes = 0
+  const normalizeHTML = (value: string): string => {
+    // Cache by the complete untrusted input, never an item ID. A changed field
+    // still passes through the sanitizer, including changes received via sync.
+    const html = nextHTMLCache.get(value) ?? storedHTMLCache.get(value) ?? sanitizeInlineHTML(value)
+    const bytes = 2 * (value.length + html.length)
+    if (!nextHTMLCache.has(value) && nextHTMLCache.size < 16_384 && cachedBytes + bytes <= 8 * 1024 * 1024) {
+      nextHTMLCache.set(value, html)
+      cachedBytes += bytes
+    }
+    return html
+  }
+  const normalized: AppState = {
     ...state,
     images: state.images ?? [],
     uneditedPlanItems: state.uneditedPlanItems ?? [],
@@ -4009,7 +4025,7 @@ function normalizeState(state: AppState): AppState {
     goalCompletions: (state.goalCompletions ?? []).map(normalizeGoalCompletion),
     templates: state.templates.map((template) => ({
       ...template,
-      items: normalizeTemplateItems(template.items),
+      items: normalizeTemplateItems(template.items, normalizeHTML),
     })),
     plans: state.plans.map((plan) => ({
       ...plan,
@@ -4019,23 +4035,23 @@ function normalizeState(state: AppState): AppState {
           (goalId): goalId is Id => typeof goalId === 'string' && goalId.length > 0,
         ))]
         : undefined,
-      items: normalizePlanItems(plan.items),
+      items: normalizePlanItems(plan.items, normalizeHTML),
     })),
     listTemplates: (state.listTemplates ?? []).map((template) => ({
       ...template,
       maxExpectedWords: template.maxExpectedWords ?? 0,
-      items: normalizeListTemplateItems(template.items ?? []),
-      archivedItems: (template.archivedItems ?? []).map(normalizeArchivedListTemplateItem),
+      items: normalizeListTemplateItems(template.items ?? [], normalizeHTML),
+      archivedItems: (template.archivedItems ?? []).map(entry => normalizeArchivedListTemplateItem(entry, normalizeHTML)),
     })),
     lists: (state.lists ?? []).map((list) => ({
       ...list,
-      items: normalizePlanItems(list.items ?? []),
+      items: normalizePlanItems(list.items ?? [], normalizeHTML),
     })),
     metrics: (state.metrics ?? []).map((metric) => ({
       ...metric,
       questions: (metric.questions ?? []).map((question) => ({
         ...question,
-        html: sanitizeInlineHTML(question.html ?? escapeHTML(question.prompt ?? '')),
+        html: normalizeHTML(question.html ?? escapeHTML(question.prompt ?? '')),
         type: question.type === 'boolean' || question.type === 'number' ? question.type : 'text',
       })),
     })),
@@ -4047,12 +4063,14 @@ function normalizeState(state: AppState): AppState {
       ...note,
       title: note.title ?? '',
       deletedAt: typeof note.deletedAt === 'string' && Number.isFinite(Date.parse(note.deletedAt)) ? note.deletedAt : null,
-      items: normalizeNoteItems(note.items ?? []),
+      items: normalizeNoteItems(note.items ?? [], normalizeHTML),
     })),
   }
+  storedHTMLCache = nextHTMLCache
+  return normalized
 }
 
-function normalizeArchivedListTemplateItem(entry: ArchivedListTemplateItem): ArchivedListTemplateItem {
+function normalizeArchivedListTemplateItem(entry: ArchivedListTemplateItem, normalizeHTML: (value: string) => string): ArchivedListTemplateItem {
   const archivedAt = typeof entry.archivedAt === 'string' && Number.isFinite(Date.parse(entry.archivedAt))
     ? entry.archivedAt
     : nowISO()
@@ -4066,14 +4084,14 @@ function normalizeArchivedListTemplateItem(entry: ArchivedListTemplateItem): Arc
     position: Math.max(0, Math.round(entry.position) || 0),
     archivedAt,
     archivedDate,
-    item: normalizeListTemplateItems([entry.item])[0] ?? createListTemplateItem(),
+    item: normalizeListTemplateItems([entry.item], normalizeHTML)[0] ?? createListTemplateItem(),
   }
 }
 
-function normalizeNoteItems(items: NoteItem[]): NoteItem[] {
+function normalizeNoteItems(items: NoteItem[], normalizeHTML: (value: string) => string): NoteItem[] {
   const kinds = new Set<NoteItemKind>(['paragraph', 'heading', 'quote', 'bullet', 'numbered', 'checklist'])
   return items.map((item) => {
-    const html = sanitizeInlineHTML(item.html ?? escapeHTML(item.text ?? ''))
+    const html = normalizeHTML(item.html ?? escapeHTML(item.text ?? ''))
 
     return {
       ...item,
@@ -4082,13 +4100,13 @@ function normalizeNoteItems(items: NoteItem[]): NoteItem[] {
       startMinutes: item.startMinutes ?? null,
       endMinutes: item.endMinutes ?? null,
       kind: kinds.has(item.kind) ? item.kind : 'paragraph',
-      children: normalizeNoteItems(item.children ?? []),
+      children: normalizeNoteItems(item.children ?? [], normalizeHTML),
     }
   })
 }
 
-function normalizeListTemplateItemAlternative(alternative: ListTemplateItemAlternative): ListTemplateItemAlternative {
-  const html = sanitizeInlineHTML(alternative.html ?? escapeHTML(alternative.text ?? ''))
+function normalizeListTemplateItemAlternative(alternative: ListTemplateItemAlternative, normalizeHTML: (value: string) => string): ListTemplateItemAlternative {
+  const html = normalizeHTML(alternative.html ?? escapeHTML(alternative.text ?? ''))
   return {
     ...alternative,
     text: alternative.text ?? htmlToPlainText(html),
@@ -4097,23 +4115,23 @@ function normalizeListTemplateItemAlternative(alternative: ListTemplateItemAlter
   }
 }
 
-function normalizeListTemplateItems(items: ListTemplateItem[]): ListTemplateItem[] {
+function normalizeListTemplateItems(items: ListTemplateItem[], normalizeHTML: (value: string) => string): ListTemplateItem[] {
   return items.map((item) => {
-    const html = sanitizeInlineHTML(item.html ?? escapeHTML(item.text ?? ''))
+    const html = normalizeHTML(item.html ?? escapeHTML(item.text ?? ''))
     return {
       ...item,
       text: item.text ?? htmlToPlainText(html),
       html,
       probability: clampListItemProbability(item.probability ?? 100),
-      ...(Array.isArray(item.alternatives) ? { alternatives: item.alternatives.map(normalizeListTemplateItemAlternative) } : {}),
-      children: normalizeListTemplateItems(item.children ?? []),
+      ...(Array.isArray(item.alternatives) ? { alternatives: item.alternatives.map(alternative => normalizeListTemplateItemAlternative(alternative, normalizeHTML)) } : {}),
+      children: normalizeListTemplateItems(item.children ?? [], normalizeHTML),
     }
   })
 }
 
-function normalizePlanItems(items: PlanItem[]): PlanItem[] {
+function normalizePlanItems(items: PlanItem[], normalizeHTML: (value: string) => string): PlanItem[] {
   return items.map((item) => {
-    const html = sanitizeInlineHTML(item.html ?? escapeHTML(item.text ?? ''))
+    const html = normalizeHTML(item.html ?? escapeHTML(item.text ?? ''))
 
     return {
       ...item,
@@ -4124,19 +4142,19 @@ function normalizePlanItems(items: PlanItem[]): PlanItem[] {
       startMinutes: item.startMinutes ?? null,
       endMinutes: item.endMinutes ?? null,
       timeHidden: item.timeHidden === true || undefined,
-      children: normalizePlanItems(item.children ?? []),
+      children: normalizePlanItems(item.children ?? [], normalizeHTML),
     }
   })
 }
 
-function normalizeTemplateItems(items: TemplateItem[]): TemplateItem[] {
+function normalizeTemplateItems(items: TemplateItem[], normalizeHTML: (value: string) => string): TemplateItem[] {
   return items.map((item) => ({
     ...item,
     startMinutes: item.startMinutes ?? null,
     endMinutes: item.endMinutes ?? null,
     timeHidden: item.timeHidden === true || undefined,
     options: item.options.map((option) => {
-      const html = sanitizeInlineHTML(option.html ?? escapeHTML(option.text ?? ''))
+      const html = normalizeHTML(option.html ?? escapeHTML(option.text ?? ''))
 
       return {
         ...option,
@@ -4144,6 +4162,6 @@ function normalizeTemplateItems(items: TemplateItem[]): TemplateItem[] {
         html,
       }
     }),
-    children: normalizeTemplateItems(item.children ?? []),
+    children: normalizeTemplateItems(item.children ?? [], normalizeHTML),
   }))
 }

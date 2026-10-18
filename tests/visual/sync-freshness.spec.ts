@@ -1321,3 +1321,53 @@ for (const failFirst of [false, true]) {
     expect(result.matches).toBe(1)
   })
 }
+
+test('offline refresh reuses sanitized history and still sanitizes changed remote HTML', async ({ page }) => {
+  await page.goto('/?launch-then-hold=1')
+  await expect.poll(() => readSyncStatus(page)).toEqual({ running: false, initialSyncComplete: true })
+  const result = await page.evaluate(async () => {
+    const runtime = globalThis as typeof globalThis & {
+      __storedState: string
+      __TAURI_INTERNALS__: { invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown> }
+    }
+    const storePath = '/src/lib/store.ts'
+    const { plannerStore } = await import(/* @vite-ignore */ storePath)
+    await plannerStore.flushPendingOperations()
+    const state = JSON.parse(runtime.__storedState)
+    const original = runtime.__TAURI_INTERNALS__.invoke
+    state.plans.push({ ...state.plans[0], id: 'synthetic-history', date: '2025-01-01',
+      items: Array.from({ length: 100 }, (_, i) => ({ ...state.plans[0].items[0],
+        id: `synthetic-history-${i}`, text: `Synthetic refresh history ${i}`,
+        html: `Synthetic refresh history <strong>${i}</strong>`,
+      })),
+    })
+    runtime.__TAURI_INTERNALS__.invoke = async (command, args) => command === 'read_app_state'
+      ? JSON.stringify(state) : original(command, args)
+    await plannerStore.reloadFromBackend()
+    const descriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML')!
+    let historyParses = 0
+    Object.defineProperty(Element.prototype, 'innerHTML', { ...descriptor, set(value: string) {
+      if (value.includes('Synthetic refresh history')) historyParses++
+      descriptor.set!.call(this, value)
+    } })
+    try {
+      await plannerStore.reloadFromBackend()
+      const unchangedParses = historyParses
+      state.plans.at(-1).items[0].html = 'Synthetic refresh history <strong>changed</strong><img src="x" onerror="alert(1)">'
+      state.plans.at(-1).items[0].text = 'Synthetic refresh history changed'
+      await plannerStore.reloadFromBackend()
+      let html = ''
+      plannerStore.subscribe((state: { plans: Array<{ id: string; items: Array<{ html: string }> }> }) => {
+        html = state.plans.find(plan => plan.id === 'synthetic-history')!.items[0].html
+      })()
+      return { unchangedParses, changedParses: historyParses - unchangedParses, html }
+    } finally {
+      Object.defineProperty(Element.prototype, 'innerHTML', descriptor)
+      runtime.__TAURI_INTERNALS__.invoke = original
+    }
+  })
+  expect(result.unchangedParses).toBe(0)
+  expect(result.changedParses).toBeGreaterThan(0)
+  expect(result.html).toContain('<strong>changed</strong>')
+  expect(result.html).not.toMatch(/onerror|<img/)
+})
