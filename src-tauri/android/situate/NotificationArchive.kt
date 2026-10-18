@@ -39,7 +39,7 @@ class NotificationArchive(private val context: Context, directory: File = contex
     private val indexing=key(namespace+".index.v1",true)
     init {
         db.enableWriteAheadLogging()
-        db.execSQL("PRAGMA secure_delete=ON")
+        db.rawQuery("PRAGMA secure_delete=ON",null).use { it.moveToFirst() }
         db.execSQL("CREATE TABLE IF NOT EXISTS notifications(id INTEGER PRIMARY KEY, identity TEXT UNIQUE NOT NULL, received INTEGER NOT NULL, opened INTEGER NOT NULL DEFAULT 0, app TEXT NOT NULL, blocked INTEGER NOT NULL, payload BLOB NOT NULL)")
         db.execSQL("CREATE TABLE IF NOT EXISTS tokens(token TEXT NOT NULL, notification INTEGER NOT NULL, PRIMARY KEY(token,notification)) WITHOUT ROWID")
         db.execSQL("CREATE INDEX IF NOT EXISTS received_idx ON notifications(received DESC,id DESC)")

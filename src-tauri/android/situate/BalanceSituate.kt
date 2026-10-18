@@ -63,6 +63,7 @@ object BalanceSituate {
         val at = maxOf(System.currentTimeMillis()+1000, status.optLong("refreshAt", System.currentTimeMillis()+3600000))
         if (Build.VERSION.SDK_INT < 31 || alarm.canScheduleExactAlarms()) alarm.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,at,pending)
         else alarm.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,at,pending)
+        SituateAccessibility.enforceCurrent()
         BalanceWidgets.refreshAllAsync(context)
     }
     @JvmStatic fun call(context: Context, action: String, query: String): String {
@@ -108,9 +109,23 @@ class SituateNotifications : NotificationListenerService() {
 class SituateAccessibility : AccessibilityService() {
     private var lastPackage=""
     private var lastAt=0L
+    private var foregroundPackage=""
+    companion object {
+        @Volatile private var current: SituateAccessibility? = null
+        fun enforceCurrent() { android.os.Handler(android.os.Looper.getMainLooper()).post { current?.enforce() } }
+    }
+    override fun onServiceConnected() { super.onServiceConnected(); current=this }
+    override fun onDestroy() { if(current===this) current=null; super.onDestroy() }
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if(event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         val pkg=event.packageName?.toString() ?: return
+        if(pkg=="com.android.systemui") return
+        foregroundPackage=pkg
+        enforce()
+    }
+    private fun enforce() {
+        val pkg=foregroundPackage
+        if(pkg.isBlank()) return
         if(pkg==lastPackage && System.currentTimeMillis()-lastAt<1500) return
         val modes = try { BalanceSituate.blocked(this,pkg) } catch (_: Exception) { return }
         if(modes.isEmpty()) return
