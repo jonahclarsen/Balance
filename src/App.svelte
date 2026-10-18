@@ -10,7 +10,7 @@
   import SituateQuiz from './lib/SituateQuiz.svelte'
   import SituatePills from './lib/SituatePills.svelte'
   import { startSituate, situateDeepLink } from './lib/situate/store'
-  import { invoke, isTauri } from '@tauri-apps/api/core'
+  import { Channel, invoke, isTauri } from '@tauri-apps/api/core'
   import { listen } from '@tauri-apps/api/event'
   import { getCurrentWebview } from '@tauri-apps/api/webview'
   import { confirm as confirmDialog, open as openDialog } from '@tauri-apps/plugin-dialog'
@@ -6659,12 +6659,12 @@ return rows`
     updateInstallState = 'downloading'
     updateInstallError = ''
     try {
-      // Android takes over from here: its install sheet, or a silent update
-      // that restarts Balance once it has installed itself before.
-      await invoke('install_android_update', { version: update.version })
-      updateInstallState = 'installing'
-      // If the install sheet is cancelled, Balance keeps running; allow a retry.
-      window.setTimeout(() => { if (updateInstallState === 'installing') updateInstallState = 'idle' }, 15_000)
+      const onStatus = new Channel<{ state: 'idle' | 'installing'; message: string }>()
+      onStatus.onmessage = ({ state, message }) => {
+        updateInstallState = state
+        updateInstallError = message
+      }
+      await invoke('install_android_update', { version: update.version, onStatus })
     } catch (error) {
       updateInstallState = 'idle'
       updateInstallError = error instanceof Error ? error.message : String(error)

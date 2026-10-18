@@ -43,3 +43,24 @@ account `upload`. The upload certificate's SHA-256 fingerprint is
 Before the first store upload, confirm the Tauri `identifier` in
 `src-tauri/tauri.conf.json`. The current Android application ID is
 `app.balance.local`, and changing it after publishing creates a different app.
+
+## In-app updates
+
+On Android, the update banner and Settings → About download the signed arm64 APK
+straight into `PackageInstaller`. Android 12+ can install eligible self-updates
+without another confirmation. Android may still require permission to install
+from Balance or its own confirmation; those system prompts cannot be bypassed.
+A successful installation reopens Balance. Cancellation and installer failures
+return the update button to its idle state, with failures shown in the app.
+
+The implementation lives in `.github/android/BalanceUpdater.kt`, copied into the
+generated Android project by `.github/scripts/configure-android-updater.mjs`.
+`src-tauri/src/android_updater.rs` forwards installer status through a Tauri
+channel. Keep the button busy until Android reports a result, rather than using
+a timer to guess when installation has finished.
+
+The Android workflow runs `.github/scripts/android-updater-test.sh` on its
+disposable emulator. A debug-only, one-use marker installs that emulator's own
+APK through the production installer path and verifies installation and automatic
+reopening without confirmation. It never downloads or installs a release APK on
+the developer's device, and never uses personal data.

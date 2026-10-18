@@ -349,7 +349,9 @@ jobs:
           # shells, so the test logic lives in a committed file run as one process.
           # This inner deadline exits early enough for the always() diagnostics
           # upload below to run before the job-level deadline.
-          script: timeout --foreground --kill-after=30s 10m bash .github/scripts/android-smoke-test.sh
+          script: |
+            timeout --foreground --kill-after=30s 10m bash .github/scripts/android-smoke-test.sh
+            timeout --foreground --kill-after=10s 2m bash .github/scripts/android-updater-test.sh
 
       - name: Require all Android task scenarios
         if: github.ref_type == 'tag' || inputs.publish_tag != '' || inputs.run_stale_task_repro
@@ -367,6 +369,7 @@ jobs:
           path: |
             android-host-diagnostics.txt
             logcat*.txt
+            android-updater-log.txt
             android-startup-profile.json
             sync-e2e-large-task-profile.json
             android-resume-stress.json
