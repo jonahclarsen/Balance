@@ -273,11 +273,15 @@ try {
   } else if (scenario === 'offline-notifications') {
     await radios(true)
     await waitFor(() => invoke('get_sync_network_offline'), 'OS offline')
-    const state = fixture(200)
-    state.taskNotifications = state.plans[0].items.map((item, i) => ({
-      id: `synthetic-reminder-${i}`, sourceKind: 'plan', sourceId: 'lifecycle-plan', itemId: item.id,
+    const state = fixture()
+    const future = {...state.plans[0], id: 'notification-future-plan',
+      date: new Date(Date.parse(state.plans[0].date) + 86400000).toISOString().slice(0, 10),
+      items: fixture(160).plans[0].items.map(item => ({...item, id: `future-${item.id}`}))}
+    state.plans.push(future)
+    state.taskNotifications = state.plans.flatMap(plan => plan.items.map((item, i) => ({
+      id: `synthetic-reminder-${item.id}`, sourceKind: 'plan', sourceId: plan.id, itemId: item.id,
       at: Date.now() + (i + 60) * 60000, text: item.text,
-    }))
+    })))
     await invoke('initialize_app_state', {stateJson: JSON.stringify(state)}, 120000)
     lastDurableText = undefined
     adb(['shell', 'am', 'force-stop', packageName])
@@ -354,6 +358,7 @@ try {
         await client.send('Emulation.setCPUThrottlingRate', {rate})
         await client.send('Page.enable')
         const {identifier} = await client.send('Page.addScriptToEvaluateOnNewDocument', {source: `
+          window.__startupProfile = '${days}-${rate}';
           window.__startupTasks = [];
           new PerformanceObserver(list => window.__startupTasks.push(...list.getEntries().map(e => ({start: e.startTime, duration: e.duration}))))
             .observe({type: 'longtask', buffered: true});
@@ -366,7 +371,7 @@ try {
         `})
         await client.send('Profiler.start')
         await client.send('Page.reload')
-        await waitFor(() => client.evaluate('window.__startupReadyAt'), 'instrumented startup', 120000)
+        await waitFor(() => client.evaluate(`window.__startupProfile === '${days}-${rate}' && window.__startupReadyAt`), 'instrumented startup', 120000)
         await sleep(3000)
         const profile = (await client.send('Profiler.stop')).profile
         await writeFile(`android-lifecycle-history-${days}-cpu${rate}.cpuprofile`, JSON.stringify(profile))
