@@ -76,6 +76,7 @@ object BalanceSituate {
             "permissions" -> {
                 val intent = when(query) {
                     "notifications" -> Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+                    "mode-notifications" -> Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE,context.packageName)
                     "accessibility" -> Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
                     "alarms" -> if(Build.VERSION.SDK_INT >=31) Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,Uri.parse("package:"+context.packageName)) else Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:"+context.packageName))
                     else -> throw IllegalArgumentException("Unknown permission")
@@ -100,8 +101,12 @@ class SituateNotifications : NotificationListenerService() {
         BalanceSituate.executor.execute {
             try {
                 val blocked = BalanceSituate.blocked(appContext,sbn.packageName)
-                NotificationArchive(appContext).use { it.record(sbn, blocked.map { m -> m.getString("id") }, BalanceSituate.blocked(appContext,sbn.packageName,false).map { m -> m.getString("id") }) }
-                if (blocked.isNotEmpty()) cancelNotification(sbn.key)
+                try {
+                    NotificationArchive(appContext).use { it.record(sbn, blocked.map { m -> m.getString("id") }, BalanceSituate.blocked(appContext,sbn.packageName,false).map { m -> m.getString("id") }) }
+                } finally {
+                    // A full disk or temporarily unavailable key must not disable silencing.
+                    if (blocked.isNotEmpty()) cancelNotification(sbn.key)
+                }
             } catch (_: Exception) { /* Never log notification contents or keys. */ }
         }
     }

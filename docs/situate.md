@@ -90,7 +90,7 @@ Android's widget can resize vertically and includes active mode controls.
 ## Android notification history
 
 Grant notification access for logging/silencing and accessibility access for app
-blocking. The accessibility service requests window-change identities only; it
+blocking. Enable **Mode notifications** so activation notices can appear. The accessibility service requests window-change identities only; it
 cannot retrieve screen content or perform gestures. Grant exact-alarm permission
 for schedule changes during idle; without it Android may delay alarms.
 
