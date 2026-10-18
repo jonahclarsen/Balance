@@ -39,6 +39,18 @@ class HostTests(unittest.TestCase):
             path.write_text(result.stdout);path.chmod(0o600)
             self.assertEqual(host.with_frank({'version':1},path)['frankThreads'],['123456789012345678'])
             path.chmod(0o644);self.assertNotIn('frankThreads',host.with_frank({'version':1},path))
+    def test_multiple_frank_instances_merge_without_transferring_contents(self):
+        with tempfile.TemporaryDirectory() as root:
+            paths=[Path(root)/name for name in ['first.json','second.json']]
+            paths[0].write_text(json.dumps({'123456789012345678':{'prompt':'PRIVATE_ONE'}}))
+            paths[1].write_text(json.dumps({'123456789012345678':{},'223456789012345678':{'prompt':'PRIVATE_TWO'}}))
+            result=subprocess.run([sys.executable,'-c',sync.REMOTE,*map(str,paths)],capture_output=True,text=True,check=True)
+            self.assertEqual(sync.validate(json.loads(result.stdout))['threads'],['123456789012345678','223456789012345678'])
+            self.assertNotIn('PRIVATE',result.stdout)
+            paths[1].unlink()
+            result=subprocess.run([sys.executable,'-c',sync.REMOTE,*map(str,paths)],capture_output=True,text=True)
+            self.assertNotEqual(result.returncode,0)
+            self.assertEqual(result.stdout,'')
     def test_installer_uses_bundled_public_identity_in_a_private_host(self):
         with tempfile.TemporaryDirectory() as root:
             base=Path(root)

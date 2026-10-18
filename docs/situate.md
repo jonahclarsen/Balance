@@ -65,7 +65,10 @@ on Frank's host. Keep this optional helper running (or add the command to your
 login automation). It atomically updates a private local file every 30 seconds;
 known IDs remain blocked during SSH outages. Newly created threads become known
 on the next successful refresh. The Chrome host adds these IDs only to Touch grass.
-Multiple instances can instead export a combined ID list into the same private
+For multiple instances on one host, repeat `--sessions` for each index. The SSH
+account needs read access to those indexes; the helper never elevates privileges.
+If an instance is unavailable, it retains the previous combined list. Different
+hosts can instead export a combined ID list into the same private
 `frank-threads.json` contract. Exact channel/thread IDs can also be added manually
 as **Discord thread/channel** targets; unrelated Discord conversations remain usable.
 

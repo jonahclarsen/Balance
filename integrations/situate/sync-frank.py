@@ -12,9 +12,12 @@ import time
 
 # Executed on the Frank host. Only dictionary keys leave that machine.
 REMOTE = '''import json,re,sys
-with open(sys.argv[1],encoding="utf-8") as source: sessions=json.load(source)
-if not isinstance(sessions,dict): raise ValueError("Invalid session index")
-print(json.dumps({"version":1,"threads":[key for key in sessions if re.fullmatch(r"[0-9]{15,22}",key)]}))
+threads=set()
+for path in sys.argv[1:]:
+ with open(path,encoding="utf-8") as source: sessions=json.load(source)
+ if not isinstance(sessions,dict): raise ValueError("Invalid session index")
+ threads.update(key for key in sessions if re.fullmatch(r"[0-9]{15,22}",key))
+print(json.dumps({"version":1,"threads":sorted(threads)}))
 '''
 def validate(value):
     if not isinstance(value,dict) or value.get('version') != 1 or not isinstance(value.get('threads'),list):
@@ -26,7 +29,9 @@ def validate(value):
 
 def sync(host,source,destination):
     if host.startswith('-') or not re.fullmatch(r'[A-Za-z0-9_.@-]+',host): raise ValueError('Use an SSH host alias')
-    command=shlex.join(['python3','-c',REMOTE,source])
+    sources=[source] if isinstance(source,str) else source
+    if not sources or any(not path.startswith('/') for path in sources): raise ValueError('Use absolute session index paths')
+    command=shlex.join(['python3','-c',REMOTE,*sources])
     result=subprocess.run(['ssh','-o','BatchMode=yes','-o','ConnectTimeout=10',host,command],stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=30,check=True)
     if len(result.stdout)>300000: raise ValueError('Thread index too large')
     value=validate(json.loads(result.stdout))
@@ -42,10 +47,10 @@ def sync(host,source,destination):
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--host',required=True,help='SSH alias, e.g. oracle-arm')
-    parser.add_argument('--sessions',required=True,help='Absolute sessions.json path on the Frank host')
+    parser.add_argument('--sessions',required=True,action='append',help='Absolute sessions.json path; repeat for multiple instances on this host')
     parser.add_argument('--watch',action='store_true',help='Refresh every 30 seconds; retain known IDs during outages')
     args=parser.parse_args()
-    if not args.sessions.startswith('/'): parser.error('--sessions must be absolute')
+    if any(not path.startswith('/') for path in args.sessions): parser.error('--sessions must be absolute')
     destination=Path.home()/'.local/share/balance-situate/frank-threads.json'
     while True:
         try: sync(args.host,args.sessions,destination)
