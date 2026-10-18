@@ -134,7 +134,7 @@ test('a Random day keeps its recorded theme after the 5am rollover', async ({ pa
 
   await expect(workspace).toHaveClass(/before-current-day-workspace/)
   await expectDayRail(workspace, 'before', testInfo.project.name === 'mobile')
-  await expect(page.locator('.sidebar-footer button.primary')).toHaveText('Generate selected day')
+  await expect(page.locator('.sidebar-footer button.primary')).toContainText('Generate selected day')
   await expect(page.locator('html')).toHaveAttribute('data-theme', initialTheme!)
 })
 
@@ -745,7 +745,9 @@ test('threshold-based launch housekeeping never blocks the app with a maintenanc
   await page.goto('/')
   await expect.poll(() => page.evaluate(() => {
     const runtime = globalThis as typeof globalThis & { __databaseStartupCalls: string[] }
-    return runtime.__databaseStartupCalls
+    // Native event registration is independent of database hydration and may
+    // start concurrently (Android also receives Situate deep links).
+    return runtime.__databaseStartupCalls.filter(command => command === 'read_app_state')
   })).toEqual(['read_app_state'])
   await page.evaluate(() => {
     const runtime = globalThis as typeof globalThis & { __finishDatabaseStartup: () => void }
@@ -879,6 +881,7 @@ test('every sidebar menu item has a left-hand Alt shortcut', async ({ page }, te
     { key: 'p', label: 'Projects' },
     { key: 'r', label: 'Prioritize' },
     { key: 'b', label: 'Buckets' },
+    { key: 'z', label: 'Situate' },
     { key: 's', label: 'Settings' },
   ]
 

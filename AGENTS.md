@@ -44,6 +44,15 @@ generated specifically for testing with synthetic data and test-only keys. If a
 problem cannot be reproduced with generated fixtures, stop and explain what the
 user can verify themselves without exposing their key or database contents.
 
+## Preserve Situate's privacy boundary
+
+Read [docs/situate.md](docs/situate.md) before changing Situate or its adapters.
+Android notification history belongs in its separate encrypted, no-backup archive,
+never in planner records, sync, widget snapshots, or integration status files.
+Herdr, Cactus, and Chrome receive only the allowlisted rule/status contract; they
+cannot grant passes or access planner data. Test notification history and terminal
+gates with disposable synthetic fixtures, never installed user data.
+
 ## Always commit and push after making changes
 
 After completing a code change, always commit it and push to the remote — don't

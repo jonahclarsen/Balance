@@ -16,7 +16,6 @@ use rusqlite::{backup::Backup, params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
-#[cfg(target_os = "macos")]
 use tauri::Emitter;
 use tauri::Manager;
 use tauri_plugin_opener::OpenerExt;
@@ -132,6 +131,7 @@ mod macos_haptic_drag {
 mod sync;
 mod connectivity;
 mod task_notifications;
+mod situate;
 #[cfg(any(test, target_os = "android", target_os = "macos"))]
 mod widget;
 
@@ -257,7 +257,6 @@ const PASTE_MATCH_STYLE_MENU_ID: &str = "balance-paste-match-style";
 const PASTE_MATCH_STYLE_EVENT: &str = "balance-paste-match-style";
 #[cfg(target_os = "macos")]
 const MACOS_ALT_SHORTCUT_EVENT: &str = "balance-macos-alt-shortcut";
-#[cfg(target_os = "macos")]
 const BALANCE_DEEP_LINK_EVENT: &str = "balance-deep-link";
 #[cfg(target_os = "macos")]
 const MAIN_WINDOW_FRAME_DEFAULTS_KEY: &str = "BalanceMainWindowFrameV1";
@@ -313,8 +312,8 @@ fn siri_request_processed(connection: &Connection, request_id: &str) -> Result<b
     Ok(metadata_value(connection, &format!("siri_request:{request_id}"))?.is_some())
 }
 
-#[cfg(target_os = "macos")]
 fn deliver_balance_deep_link(app: &tauri::AppHandle, url: String) {
+    if situate::open_widget(app, &url) { return; }
     if !url.starts_with("balance://") {
         return;
     }
@@ -10798,6 +10797,7 @@ pub fn run() {
 
     let app = builder
         .setup(|app| {
+            situate::start(app.handle().clone());
             if let Ok(directory) = app.path().app_data_dir() {
                 freeze_diagnostics::start(directory.join("freeze-diagnostics"), app.package_info().version.to_string(), env!("GIT_COMMIT").to_string());
             }
@@ -10880,6 +10880,9 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "main" && situate::active() { api.prevent_close(); let _ = window.hide(); }
+            }
             #[cfg(target_os = "macos")]
             if matches!(
                 event,
@@ -10894,6 +10897,10 @@ pub fn run() {
             let _ = (window, event);
         })
         .invoke_handler(tauri::generate_handler![
+            situate::situate_load,
+            situate::situate_save,
+            situate::situate_permissions,
+            situate::situate_notifications,
             read_app_state,
             pending_deep_links,
             acknowledge_deep_link,

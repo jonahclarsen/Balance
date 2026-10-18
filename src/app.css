@@ -1460,7 +1460,7 @@ nav button.active {
 
 .workspace {
   /* Pinned task parents meet the scrollport's top edge, as the tab rail does. */
-  --tree-sticky-base: -30px;
+  --tree-sticky-base: -28px;
   border-right: 6px solid transparent;
   border-left: 6px solid transparent;
   min-height: 0;
@@ -5606,12 +5606,12 @@ body.mobile-checkbox-dragging {
    through a long list. The tabs scroll independently so the controls stay
    pinned to the right edge of the rail. */
 .list-template-workspace {
-  --tree-sticky-base: calc(var(--list-template-rail-top, -30px) + 56px);
+  --tree-sticky-base: calc(var(--list-template-rail-top, -28px) + 56px);
 }
 
 .list-template-rail {
   position: sticky;
-  top: var(--list-template-rail-top, -30px);
+  top: var(--list-template-rail-top, -28px);
   z-index: 10;
   height: 56px;
   gap: 16px;

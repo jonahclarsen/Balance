@@ -26,6 +26,9 @@ async function useSixTimesCpuSlowdown(page: Page) {
 }
 
 test('device theme bootstrap stays effectively instant across repeated startups', async ({ page }) => {
+  // Forty-five full navigations under 6× slowdown can exceed the suite's
+  // two-minute wall-clock budget on hosted Macs. The measured p95 stays <10ms.
+  test.setTimeout(240_000)
   await useSixTimesCpuSlowdown(page)
   await page.addInitScript(() => {
     localStorage.setItem('balance:deviceAppearance.v1', JSON.stringify({
@@ -92,6 +95,7 @@ test('today observation stays cheap with 3,264 historical themes', async ({ page
     }
   })
   await page.goto('/')
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('balance.appState.v1'))).not.toBeNull()
 
   await page.evaluate(() => {
     const key = 'balance.appState.v1'

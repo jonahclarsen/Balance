@@ -79,6 +79,12 @@ private enum WidgetSnapshotKey {
     }
 }
 
+private struct SituateMode: Codable, Identifiable {
+    let id: String
+    let name: String
+    let active: Bool
+}
+
 private struct BalanceSnapshot: Codable {
     let date: String
     let hasPlan: Bool
@@ -91,6 +97,7 @@ private struct BalanceSnapshot: Codable {
     let itemDepths: [Int]?
     let itemTimes: [String]?
     let themeId: String?
+    var situateModes: [SituateMode]? = nil
 
     static let placeholder = BalanceSnapshot(
         date: Self.today,
@@ -288,6 +295,20 @@ private struct BalanceWidgetView: View {
                     .accessibilityLabel("\(snapshot.done) of \(snapshot.total) tasks complete")
             }
 
+            if let modes = snapshot.situateModes, !modes.isEmpty {
+                HStack(spacing: 5) {
+                    ForEach(modes.filter { $0.active }.prefix(3)) { mode in
+                        Link(destination: URL(string: "balance://situate?mode=\(mode.id)&widget=1")!) {
+                            Text(mode.name).font(.caption2.weight(.semibold))
+                                .padding(.horizontal, 8).padding(.vertical, 5)
+                                .background(palette.statusAccent.opacity(0.15), in: Capsule())
+                        }.privacySensitive()
+                    }
+                    Link(destination: URL(string: "balance://situate?widget=1")!) {
+                        Image(systemName: "slider.horizontal.3").font(.caption).padding(5)
+                    }.accessibilityLabel("Situate modes")
+                }
+            }
             VStack(alignment: .leading, spacing: 2) {
                 Text("TODAY")
                     .font(.caption2.weight(.bold))

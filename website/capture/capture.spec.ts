@@ -77,6 +77,7 @@ test.describe('desktop', () => {
       ['Goals', 'mac-goals'],
       ['Projects', 'mac-projects'],
       ['Buckets', 'mac-buckets'],
+      ['Situate', 'mac-situate'],
     ]) {
       await openView(page, view)
       await shot(page, scheme, name)

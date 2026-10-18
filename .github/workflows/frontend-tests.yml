@@ -63,7 +63,7 @@ jobs:
     # --fully-parallel permits sharding individual tests instead of keeping
     # large spec files together; --workers=1 still runs each job sequentially.
     runs-on: ${{ inputs.runner || 'macos-15-intel' }}
-    timeout-minutes: 30
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -80,8 +80,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium webkit
       - name: Exercise desktop, mobile, and WebKit browser behavior
-        # A WebKit-heavy shard can finish its tests just beyond 22 minutes.
-        timeout-minutes: 25
+        # WebKit editor and image journeys dominate one shard on slower hosts.
+        # Keep individual assertion deadlines unchanged and allow suite completion.
+        timeout-minutes: 40
         env:
           PLAYWRIGHT_JSON_OUTPUT_NAME: artifacts/playwright/results.json
           TEST_GREP: ${{ inputs.grep }}

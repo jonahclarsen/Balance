@@ -149,6 +149,10 @@ runs:
       shell: bash
       run: node .github/scripts/configure-android-task-notifications.mjs
 
+    - name: Configure Situate
+      shell: bash
+      run: node .github/scripts/configure-android-situate.mjs
+
     - name: Configure persistent freeze diagnostics
       shell: bash
       run: |

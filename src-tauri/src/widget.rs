@@ -40,6 +40,7 @@ pub(crate) struct WidgetSnapshot {
     pub(crate) item_depths: Vec<usize>,
     pub(crate) item_times: Vec<String>,
     pub(crate) theme_id: String,
+    pub(crate) situate_modes: Vec<serde_json::Value>,
 }
 
 impl WidgetSnapshot {
@@ -61,6 +62,7 @@ impl WidgetSnapshot {
             item_depths: Vec::new(),
             item_times: Vec::new(),
             theme_id: normalize_theme_id(theme_id).to_string(),
+            situate_modes: Vec::new(),
         }
     }
 
@@ -123,6 +125,7 @@ pub(crate) fn snapshot_from_plan(
         item_depths,
         item_times,
         theme_id: normalize_theme_id(theme_id).to_string(),
+        situate_modes: Vec::new(),
     }
 }
 

@@ -45,6 +45,20 @@ func balanceReplaceTaskNotifications(_ raw: UnsafePointer<CChar>) -> Int32 {
         }
         return 0
     }
+    if let data = json.data(using: .utf8),
+       let notice = try? JSONSerialization.jsonObject(with: data) as? [String: String],
+       let body = notice["situateNotice"] {
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert, .sound]) { allowed, _ in
+            guard allowed else { return }
+            let content = UNMutableNotificationContent()
+            content.title = "Situate"
+            content.body = body
+            content.sound = .default
+            center.add(UNNotificationRequest(identifier: "balance.situate." + (notice["mode"] ?? "mode"), content: content, trigger: nil))
+        }
+        return 0
+    }
     guard let data = json.data(using: .utf8),
           let records = try? JSONDecoder().decode([TaskReminder].self, from: data) else { return 1 }
     reminderQueue.async {

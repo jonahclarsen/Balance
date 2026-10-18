@@ -129,6 +129,20 @@ object BalanceWidgets {
     private fun renderHome(context: Context, snapshot: BalanceWidgetSnapshot): RemoteViews {
         val views = RemoteViews(context.packageName, themeLayout(snapshot.themeId))
         views.setTextViewText(R.id.widget_brand, brandText(context, snapshot.themeId))
+        val situate = BalanceSituate.status(context).optJSONArray("modes") ?: org.json.JSONArray()
+        val pillIds = intArrayOf(R.id.widget_situate_1, R.id.widget_situate_2, R.id.widget_situate_3)
+        val activeModes = (0 until situate.length()).map { situate.getJSONObject(it) }.filter { it.optBoolean("active") }
+        for ((index, viewId) in pillIds.withIndex()) {
+            val mode = activeModes.getOrNull(index)
+            views.setViewVisibility(viewId, if(mode == null) View.GONE else View.VISIBLE)
+            if(mode != null) {
+                views.setTextViewText(viewId, mode.getString("name"))
+                val intent = Intent(context, MainActivity::class.java).setData(android.net.Uri.parse("balance://situate?mode=" + android.net.Uri.encode(mode.getString("id"))))
+                views.setOnClickPendingIntent(viewId, PendingIntent.getActivity(context, 6700 + index, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
+            }
+        }
+        val situateIntent = Intent(context, MainActivity::class.java).setData(android.net.Uri.parse("balance://situate"))
+        views.setOnClickPendingIntent(R.id.widget_situate_controls, PendingIntent.getActivity(context, 6799, situateIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
         views.setTextViewText(
             R.id.widget_title,
             snapshot.title.ifBlank { "Today’s plan" },
@@ -581,6 +595,11 @@ function homeLayout(theme) {
         </FrameLayout>
     </LinearLayout>
 
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+        ${[1,2,3].map(index => `<TextView android:id="@+id/widget_situate_${index}" android:background="@drawable/balance_widget_${theme.id}_pill" android:layout_marginEnd="6dp" android:layout_width="wrap_content" android:layout_height="wrap_content" android:minHeight="48dp" android:gravity="center" android:paddingHorizontal="8dp" android:textSize="12sp" android:textColor="${theme.accent}" android:visibility="gone" />`).join('\n')}
+        <TextView android:id="@+id/widget_situate_controls" android:layout_width="wrap_content" android:layout_height="48dp" android:gravity="center" android:paddingHorizontal="8dp" android:text="Situate" android:textSize="12sp" android:textColor="${theme.accent}" />
+    </LinearLayout>
+
     <TextView
         android:id="@+id/widget_reminder"
         android:layout_width="match_parent"
@@ -786,7 +805,7 @@ const homeInfo = `<?xml version="1.0" encoding="utf-8"?>
     android:minWidth="250dp"
     android:previewLayout="@layout/balance_home_widget_violet"
     android:resizeMode="horizontal|vertical"
-    android:targetCellHeight="3"
+    android:targetCellHeight="4"
     android:targetCellWidth="4"
     android:updatePeriodMillis="1800000"
     android:widgetCategory="home_screen" />

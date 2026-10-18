@@ -79,12 +79,22 @@ adb shell pm path "$PKG"
 adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS
 adb shell appops set "$PKG" SCHEDULE_EXACT_ALARM allow
 adb shell run-as "$PKG" mkdir -p files
-adb shell run-as "$PKG" touch files/notification-ci-selftest
+adb shell run-as "$PKG" touch files/notification-ci-selftest files/situate-ci-selftest
 
 # First launch: generates the recovery key, wraps it with a hardware-backed
 # Keystore key, writes the ciphertext, and creates the encrypted database.
 launch
 assert_running "first-launch" logcat.txt
+
+SITUATE_OK=0
+for _ in $(seq 1 30); do
+  adb logcat -d > situate-log.txt 2>/dev/null || true
+  if grep -q "BALANCE_SITUATE_E2E: OK" situate-log.txt; then SITUATE_OK=1; break; fi
+  if grep -q "BALANCE_SITUATE_E2E: FAIL" situate-log.txt; then echo "Situate archive self-test failed"; exit 1; fi
+  sleep 1
+done
+if [ "$SITUATE_OK" != 1 ]; then echo "Situate archive self-test did not complete"; exit 1; fi
+bash .github/scripts/android-situate-enforcement.sh
 
 NOTIFICATION_OK=0
 for _ in $(seq 1 15); do
