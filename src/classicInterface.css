@@ -156,13 +156,6 @@
   text-transform: uppercase;
 }
 
-:where(:root[data-interface-style='classic']) .time-shortcut-legend thead th {
-  font-size: 8px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
 /* Panels */
 
 :where(:root[data-interface-style='classic']) :is(.list-panel, .template-panel, .empty-state, .export-panel, .settings-panel) {
@@ -270,12 +263,12 @@
 
 @media (min-width: 761px) {
   :where(:root[data-interface-style='classic']) .app-shell {
-    --sidebar-width: 232px;
+    --sidebar-width: 226px;
   }
 
   :where(:root[data-interface-style='classic']) .sidebar {
     gap: 28px;
-    padding: 24px 16px;
+    padding: 24px 14px;
     font-size: 14px;
     border-right-color: var(--line);
   }
@@ -292,6 +285,9 @@
      chip right. */
   :where(:root[data-interface-style='classic']) .sidebar .generate-day-button {
     justify-content: space-between;
+    gap: 6px;
+    padding-inline: 10px;
+    text-align: left;
   }
 
   :where(:root[data-interface-style='classic']) .sidebar-quick-actions {
@@ -300,7 +296,7 @@
 
   :where(:root[data-interface-style='classic']) nav,
   :where(:root[data-interface-style='classic']) .primary-nav {
-    gap: 8px;
+    gap: 4px;
   }
 
   :where(:root[data-interface-style='classic']) .primary-nav button {

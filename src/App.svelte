@@ -343,10 +343,6 @@
     return `${isMac ? '⇧' : 'Shift+'}${key}`
   }
 
-  function altShiftShortcutLabel(key: string): string {
-    return `${isMac ? '⌥⇧' : 'Alt+Shift+'}${key}`
-  }
-
   const storedWorkspaceViewState = readWorkspaceViewState()
   const launchDate = todayISO()
   // Next greets the first launch of each Balance day; later launches that day
@@ -7064,44 +7060,9 @@ return rows`
     </nav>
 
     <div class="sidebar-footer">
-      {#if view === 'today' || view === 'templates'}
-        <section class="time-shortcut-legend" aria-label="Time shortcuts">
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">Action</th>
-                <th scope="col">Editing</th>
-                <th scope="col">Selected</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <th scope="row">Toggle</th>
-                <td><kbd>{altShiftShortcutLabel('T')}</kbd></td>
-                <td><kbd>T</kbd></td>
-              </tr>
-              <tr>
-                <th scope="row">Start</th>
-                <td><kbd>{altShortcutLabel('[ / ]')}</kbd></td>
-                <td><kbd>[ / ]</kbd></td>
-              </tr>
-              <tr>
-                <th scope="row">End</th>
-                <td><kbd>{primaryShortcutLabel('[ / ]')}</kbd></td>
-                <td><kbd>{shiftShortcutLabel('[ / ]')}</kbd></td>
-              </tr>
-              <tr>
-                <th scope="row">Both</th>
-                <td><kbd>{altShiftShortcutLabel('[ / ]')}</kbd></td>
-                <td aria-label="Not available">—</td>
-              </tr>
-            </tbody>
-          </table>
-        </section>
-      {/if}
       {#if selectedTemplate && view === 'today'}
         <label class="generation-template-field">
-          <span>Template for new days</span>
+          <span>Template</span>
           <select
             value={selectedTemplate.id}
             on:change={(event) => selectDayTemplate(event.currentTarget.value)}
@@ -7122,7 +7083,10 @@ return rows`
           on:click={() => { void generateSelectedDay() }}
         ><span>{generateButtonLabel}</span><kbd class="nav-shortcut" aria-hidden="true">{primaryShortcutLabel(shiftShortcutLabel('G'))}</kbd></button>
       {/if}
-      <p class="tiny">{$plannerStore.plans.length} saved days · {activeGoalCount} active goals</p>
+      <p class="tiny sidebar-stats">
+        <span>{$plannerStore.plans.length} saved days</span>
+        <span>{activeGoalCount} active goals</span>
+      </p>
     </div>
   </aside>
 
