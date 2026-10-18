@@ -58,6 +58,7 @@ async function responsive() {
   const frameMs = Math.round(performance.now() - start)
   const before = performance.now()
   const state = JSON.parse(await invoke('read_app_state'))
+  const readMs = Math.round(performance.now() - before)
   assert(state.plans.some(plan => plan.items.some(item => item.id === 'lifecycle-item-0')), 'Synthetic fixture survived')
   if (lastDurableText !== undefined) assert.equal(state.plans.find(plan => plan.id === 'lifecycle-plan').items[0].text, lastDurableText, 'Previously acknowledged text must survive')
   await client.evaluate(`document.querySelector('.sidebar button[aria-keyshortcuts="Alt+T"]')?.click()`)
@@ -73,7 +74,11 @@ async function responsive() {
     return true
   })()`), 'visible editable synthetic task')
   const marker = ` probe${++editNumber}`
+  const inputStart = performance.now()
   await client.send('Input.insertText', {text: marker})
+  await client.evaluate(`new Promise(resolve => requestAnimationFrame(resolve)).then(() => undefined)`)
+  const inputMs = Math.round(performance.now() - inputStart)
+  const persistStart = performance.now()
   await waitFor(async () => {
     const saved = JSON.parse(await invoke('read_app_state'))
     const text = saved.plans.find(plan => plan.id === 'lifecycle-plan')?.items.find(item => item.id === 'lifecycle-item-0')?.text
@@ -81,11 +86,12 @@ async function responsive() {
     lastDurableText = text
     return true
   }, 'real WebView input to persist after lifecycle transition', 10000)
+  const durableProbeMs = Math.round(performance.now() - persistStart)
   // Exercise Android's native input dispatch too: JS evaluation alone can miss a blocked main thread.
   adb(['shell', 'input', 'keyevent', 'KEYCODE_BACK'], { timeout: 12000 })
   await sleep(300) // Let the WebView consume Back before opening another dialog.
   const nativeAndDbMs = Math.round(performance.now() - before)
-  return { frameMs, nativeAndDbMs }
+  return { frameMs, inputMs, readMs, durableProbeMs, nativeAndDbMs }
 }
 function fixture(count = 40) {
   const state = syntheticState()
@@ -402,7 +408,7 @@ try {
       await client.send('Emulation.setCPUThrottlingRate', {rate: 1})
     }
     assert(report.cases.filter(result => result.phase === 'resume')
-      .every(result => result.tasks.every(task => task.duration < 1000)),
+      .every(result => result.inputMs < 1000 && result.tasks.every(task => task.duration < 1000)),
     'Offline resume blocked the WebView for at least one second with unchanged synthetic history')
   } else if (scenario === 'worker-start') {
     for (let i = 0; i < 12; i++) {
