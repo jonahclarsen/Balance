@@ -1,6 +1,6 @@
 /* Classic interface style: the look from before the October 2026 redesign
    (rounded system type, bordered sidebar rows, uppercase labels, deeper
-   shadows). The file loads after app.css and wraps its scope in :where(), so
+   shadows), with a narrower sidebar and smaller sidebar text. The file loads after app.css and wraps its scope in :where(), so
    each rule replaces the redesigned rule with the same selector while more
    specific state, theme and component rules still win as they did before.
    Layout values that the phone layout overrides are restored on desktop
@@ -239,6 +239,7 @@
   border-radius: 4px;
   background: color-mix(in srgb, var(--paper) 72%, transparent);
   font-family: inherit;
+  padding: 0 4px;
   font-size: 10px;
   font-weight: 700;
   line-height: 17px;
@@ -269,12 +270,13 @@
 
 @media (min-width: 761px) {
   :where(:root[data-interface-style='classic']) .app-shell {
-    --sidebar-width: 248px;
+    --sidebar-width: 232px;
   }
 
   :where(:root[data-interface-style='classic']) .sidebar {
     gap: 28px;
-    padding: 24px 18px;
+    padding: 24px 16px;
+    font-size: 14px;
     border-right-color: var(--line);
   }
 
@@ -283,7 +285,13 @@
   }
 
   :where(:root[data-interface-style='classic']) .sidebar-brand-heading h1 {
-    font-size: 28px;
+    font-size: 26px;
+  }
+
+  /* Generate reads like the navigation rows above it: label left, shortcut
+     chip right. */
+  :where(:root[data-interface-style='classic']) .sidebar .generate-day-button {
+    justify-content: space-between;
   }
 
   :where(:root[data-interface-style='classic']) .sidebar-quick-actions {
