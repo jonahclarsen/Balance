@@ -54,6 +54,7 @@
         { keys: ['alt', 'A'], label: 'Hide goal rhythm for 6 hours, or show it again' },
         { keys: ['alt', 'K'], label: 'Add an idea to Proposition Party' },
         { keys: ['alt', 'I'], label: 'Toggle IMAX mode' },
+        { keys: ['alt', 'U'], label: 'Switch between the new and classic interface style' },
         { keys: ['?'], label: 'Show this shortcuts reference' },
         { keys: ['esc'], label: 'Close overlay / clear selection' },
       ],

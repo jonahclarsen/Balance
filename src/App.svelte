@@ -3874,6 +3874,18 @@ return rows`
       return
     }
 
+    if (
+      event.code === 'KeyU' &&
+      event.altKey &&
+      !primaryModifier &&
+      !event.shiftKey
+    ) {
+      event.preventDefault()
+      event.stopPropagation()
+      if (!event.repeat) updateInterfaceStyle(deviceAppearance.interfaceStyle === 'classic' ? 'new' : 'classic')
+      return
+    }
+
     // The sort modal owns the keyboard while open (its own window listener).
     if (ideaSortVisible) return
 
@@ -8266,7 +8278,7 @@ return rows`
         <section class="settings-section">
           <div>
             <h3>Interface style</h3>
-            <p>Keep the new look, or go back to the classic one, on this device.</p>
+            <p>Keep the new look, or go back to the classic one, on this device. {altShortcutLabel('U')} switches between them.</p>
           </div>
 
           <div class="interface-style-grid" role="group" aria-label="Interface style">
