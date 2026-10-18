@@ -61,6 +61,8 @@ object BalanceTaskNotifications {
         return PendingIntent.getBroadcast(context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }
 
+    // Rust calls this by name through JNI; R8 cannot see that reference.
+    @androidx.annotation.Keep
     @JvmStatic fun replace(context: Context, json: String) {
         replaceSchedules(context, json, fromNative = true)
     }

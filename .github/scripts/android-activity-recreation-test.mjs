@@ -301,7 +301,7 @@ try {
       await client.evaluate('window.__notificationReads')
     }
     const alarms = adb(['shell', 'dumpsys', 'alarm'], {maxBuffer: 32*1024*1024})
-    report.registeredSyntheticReminders = (alarms.match(/balance-notification:synthetic-reminder-/g) ?? []).length
+    report.registeredSyntheticReminders = (alarms.match(/tag=\*walarm\*:app\.balance\.local\.SUNSET_TASK/g) ?? []).length
     assert(report.registeredSyntheticReminders >= 200, 'Exercise actual scheduled reminders')
     assert(report.cases.every(result => result.launchedMs < 5000 && result.nativeAndDbMs < 5000), 'Native resume blocked for at least five seconds with reminders')
   } else if (scenario === 'offline-history') {
@@ -349,8 +349,6 @@ try {
       const coldReadyMs = Math.round(performance.now() - coldStart)
       await sleep(3000) // Include post-hydration launch sync and maintenance.
       await writeFile(`android-lifecycle-history-${days}-cold.cpuprofile`, JSON.stringify((await client.send('Profiler.stop')).profile))
-      const scripts = await client.evaluate(`Promise.all([...document.scripts].filter(s => s.src).map(async s => ({url: s.src, source: await (await fetch(s.src)).text()})))`)
-      await writeFile('android-lifecycle-script-sources.json', JSON.stringify(scripts))
       report.cases.push({days, phase: 'cold', readyMs: coldReadyMs, ...await responsive()})
       // Reload only for controlled CPU comparisons; the cold launch above is
       // separately measured and the resume below keeps the actual activity.
@@ -375,6 +373,16 @@ try {
         await sleep(3000)
         const profile = (await client.send('Profiler.stop')).profile
         await writeFile(`android-lifecycle-history-${days}-cpu${rate}.cpuprofile`, JSON.stringify(profile))
+        const scripts = [...new Map(profile.nodes.filter(node => node.callFrame.url.includes('/assets/'))
+          .map(node => [node.callFrame.scriptId, node.callFrame.url])).entries()]
+        const sources = []
+        await client.send('Debugger.enable')
+        for (const [scriptId, url] of scripts) {
+          const {scriptSource} = await client.send('Debugger.getScriptSource', {scriptId})
+          sources.push({url, source: scriptSource})
+        }
+        await client.send('Debugger.disable')
+        await writeFile('android-lifecycle-script-sources.json', JSON.stringify(sources))
         const startup = await client.evaluate('({readyMs: window.__startupReadyAt, tasks: window.__startupTasks})')
         const result = {days, rate, phase: 'reload', ...startup, ...await responsive()}
         report.cases.push(result)
