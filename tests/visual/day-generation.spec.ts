@@ -40,7 +40,7 @@ test('past days can be generated once but existing past plans are kept', async (
   await expect(page.locator('[data-plan-text-input]:visible').first()).toBeVisible()
 })
 
-for (const shortcut of ['Meta+g', 'Control+g', 'Meta+Shift+g']) {
+for (const shortcut of ['Meta+Shift+g', 'Control+Shift+g']) {
   test(`${shortcut} generates the selected day`, async ({ page }) => {
     await page.clock.setFixedTime(new Date('2026-09-17T12:00:00'))
     await page.goto('/')
@@ -56,13 +56,20 @@ for (const shortcut of ['Meta+g', 'Control+g', 'Meta+Shift+g']) {
   })
 }
 
-test('Cmd+G leaves Find navigation and other views in control', async ({ page }) => {
+test('unshifted Cmd/Ctrl+G does not generate a day and Find keeps its shortcuts', async ({ page }) => {
   await page.clock.setFixedTime(new Date('2026-09-17T12:00:00'))
   await page.goto('/')
   await page.locator('.date-input').fill('2026-09-18')
+  for (const shortcut of ['Meta+g', 'Control+g']) {
+    await page.keyboard.press(shortcut)
+    await expect(page.locator('.empty-state')).toBeVisible()
+  }
+  await expect(page.locator('.generate-day-button').first()).toHaveAttribute('aria-keyshortcuts', /(?:Meta|Control)\+Shift\+G/)
   await page.keyboard.press('Meta+f')
   await expect(page.getByLabel('Find text', { exact: true })).toBeVisible()
   await page.keyboard.press('Meta+g')
+  await expect(page.locator('.empty-state')).toBeVisible()
+  await page.keyboard.press('Meta+Shift+g')
   await expect(page.locator('.empty-state')).toBeVisible()
   await page.keyboard.press('Escape')
   await openView(page, 'Days')

@@ -4006,7 +4006,7 @@ return rows`
       return
     }
 
-    if (primaryModifier && !event.altKey && !event.isComposing && event.code === 'KeyG' && (event.shiftKey || view === 'today')) {
+    if (primaryModifier && !event.altKey && !event.isComposing && event.code === 'KeyG' && event.shiftKey) {
       event.preventDefault()
       if (!event.repeat) void generateSelectedDay()
       return
@@ -7104,11 +7104,11 @@ return rows`
         <button
           class="primary generate-day-button"
           type="button"
-          title={`${generateButtonLabel} (${primaryShortcutLabel('G')})`}
-          aria-keyshortcuts={isMac ? 'Meta+G' : 'Control+G'}
+          title={`${generateButtonLabel} (${primaryShortcutLabel(shiftShortcutLabel('G'))})`}
+          aria-keyshortcuts={isMac ? 'Meta+Shift+G' : 'Control+Shift+G'}
           disabled={!canGenerateDisplayedDay}
           on:click={() => { void generateSelectedDay() }}
-        ><span>{generateButtonLabel}</span><kbd class="nav-shortcut" aria-hidden="true">{primaryShortcutLabel('G')}</kbd></button>
+        ><span>{generateButtonLabel}</span><kbd class="nav-shortcut" aria-hidden="true">{primaryShortcutLabel(shiftShortcutLabel('G'))}</kbd></button>
       {/if}
       <p class="tiny">{$plannerStore.plans.length} saved days · {activeGoalCount} active goals</p>
     </div>
@@ -7281,12 +7281,12 @@ return rows`
                   <button
                     class="primary generate-day-button"
                     type="button"
-                    title={`${generateButtonLabel} (${primaryShortcutLabel('G')})`}
-                    aria-keyshortcuts={isMac ? 'Meta+G' : 'Control+G'}
+                    title={`${generateButtonLabel} (${primaryShortcutLabel(shiftShortcutLabel('G'))})`}
+                    aria-keyshortcuts={isMac ? 'Meta+Shift+G' : 'Control+Shift+G'}
                     disabled={!templates.some((template) => template.id === emptyDayTemplateSelections[displayedPlanDate])}
                     on:click={() => { void generateDayFromTemplate(emptyDayTemplateSelections[displayedPlanDate]) }}
                   >
-                    <span>{generateButtonLabel}</span><kbd class="nav-shortcut" aria-hidden="true">{primaryShortcutLabel('G')}</kbd>
+                    <span>{generateButtonLabel}</span><kbd class="nav-shortcut" aria-hidden="true">{primaryShortcutLabel(shiftShortcutLabel('G'))}</kbd>
                   </button>
                 {/if}
               </div>
