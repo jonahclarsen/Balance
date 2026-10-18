@@ -12,7 +12,7 @@ on:
         description: Lifecycle path to verify with synthetic data
         type: choice
         default: activity
-        options: [activity, process, worker-start, offline-buckets]
+        options: [activity, process, worker-start, offline-buckets, offline-history]
       repetitions:
         description: Activity or process cycles per Android version
         type: choice

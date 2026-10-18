@@ -17,11 +17,12 @@ const repeats = Number(process.env.BALANCE_LIFECYCLE_REPEATS ?? 20)
 const offlineBackgroundSeconds = Number(process.env.BALANCE_OFFLINE_BACKGROUND_SECONDS ?? 0)
 assert([0, 600].includes(offlineBackgroundSeconds))
 assert(Number.isInteger(repeats) && repeats > 0 && repeats <= 200)
-assert(['activity', 'process', 'worker-start', 'offline-buckets'].includes(scenario))
+assert(['activity', 'process', 'worker-start', 'offline-buckets', 'offline-history'].includes(scenario))
 const report = { scenario, cases: [], hypothesis: {
   activity: 'Destroying the last Android activity must exit without native finalizer races and reopen with saved edits intact.',
   process: 'Background process reclamation while offline prevents a fresh native/JS startup.',
   'offline-buckets': 'An acknowledged bucket Save must survive immediate WebView destruction and offline reopening.',
+  'offline-history': 'Offline startup and resume must remain responsive with a year of synthetic history, including slower WebView CPUs.',
   'worker-start': 'WorkManager initializes native state before the first activity, leaving startup blocked when a relay request hangs.',
 }[scenario] }
 let client, logcat, relay, editNumber = 0, lastDurableText
@@ -267,6 +268,84 @@ try {
         resumeMs: Math.round(performance.now() - start), ...await responsive()}
       assert(report.offlineBackground.frameMs < 2000 && report.offlineBackground.nativeAndDbMs < 5000, 'Ten-minute offline resume froze editing')
     }
+  } else if (scenario === 'offline-history') {
+    await radios(true)
+    await waitFor(() => invoke('get_sync_network_offline'), 'OS offline')
+    for (const days of [30, 365]) {
+      const state = fixture()
+      const today = state.plans[0]
+      for (let day = 1; day <= days; day++) {
+        state.plans.push({...today, id: `history-plan-${day}`,
+          date: new Date(Date.parse(today.date) - day * 86400000).toISOString().slice(0, 10),
+          items: Array.from({length: 20}, (_, i) => ({...today.items[0],
+            id: `history-item-${day}-${i}`, text: `Synthetic historical task ${day} ${i}`,
+            html: `Synthetic <strong>historical</strong> task ${day} ${i}`, done: i % 3 === 0,
+          })),
+        })
+      }
+      state.ideaBuckets = [{id: 'history-bucket', kind: 'proposition', items:
+        Array.from({length: 100}, (_, i) => ({...today.items[0], id: `history-idea-${i}`,
+          text: `Synthetic saved idea ${i}`, html: `Synthetic saved idea ${i}`}))}]
+      state.notes = Array.from({length: 50}, (_, i) => ({id: `history-note-${i}`,
+        title: `Synthetic note ${i}`, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+        items: Array.from({length: 20}, (_, j) => ({id: `history-note-${i}-${j}`, kind: 'paragraph',
+          text: 'Synthetic paragraph for startup testing.', html: 'Synthetic paragraph for <em>startup testing</em>.', children: []})),
+      }))
+      await invoke('initialize_app_state', {stateJson: JSON.stringify(state)}, 120000)
+      lastDurableText = undefined
+      adb(['shell', 'am', 'force-stop', packageName])
+      const coldStart = performance.now()
+      launchApp()
+      client?.close()
+      client = await connectDevTools(await waitFor(appPid, 'Balance process'))
+      await client.send('Profiler.enable')
+      await client.send('Profiler.start')
+      await waitForDatabaseReady(client)
+      const coldReadyMs = Math.round(performance.now() - coldStart)
+      await sleep(3000) // Include post-hydration launch sync and maintenance.
+      await writeFile(`android-lifecycle-history-${days}-cold.cpuprofile`, JSON.stringify((await client.send('Profiler.stop')).profile))
+      report.cases.push({days, phase: 'cold', readyMs: coldReadyMs, ...await responsive()})
+      // Reload only for controlled CPU comparisons; the cold launch above is
+      // separately measured and the resume below keeps the actual activity.
+      for (const rate of [1, 4]) {
+        await client.send('Emulation.setCPUThrottlingRate', {rate})
+        await client.send('Page.enable')
+        const {identifier} = await client.send('Page.addScriptToEvaluateOnNewDocument', {source: `
+          window.__startupTasks = [];
+          new PerformanceObserver(list => window.__startupTasks.push(...list.getEntries().map(e => ({start: e.startTime, duration: e.duration}))))
+            .observe({type: 'longtask', buffered: true});
+          window.__startupReadyAt = null;
+          const timer = setInterval(() => {
+            if (document.querySelector('.app-shell') && !document.querySelector('.database-loading-backdrop')) {
+              window.__startupReadyAt = performance.now(); clearInterval(timer);
+            }
+          }, 25);
+        `})
+        await client.send('Profiler.start')
+        await client.send('Page.reload')
+        await waitFor(() => client.evaluate('window.__startupReadyAt'), 'instrumented startup', 120000)
+        await sleep(3000)
+        const profile = (await client.send('Profiler.stop')).profile
+        await writeFile(`android-lifecycle-history-${days}-cpu${rate}.cpuprofile`, JSON.stringify(profile))
+        const startup = await client.evaluate('({readyMs: window.__startupReadyAt, tasks: window.__startupTasks})')
+        const result = {days, rate, phase: 'reload', ...startup, ...await responsive()}
+        report.cases.push(result)
+        console.log(JSON.stringify(result))
+        await client.send('Page.removeScriptToEvaluateOnNewDocument', {identifier})
+        // Offline focus/resume currently rereads and normalizes the workspace.
+        await client.evaluate('window.__startupTasks = []')
+        await home()
+        const resumed = performance.now()
+        launchApp()
+        await sleep(3000)
+        const resume = {days, rate, phase: 'resume', elapsedMs: Math.round(performance.now()-resumed),
+          ...await responsive(), tasks: await client.evaluate('window.__startupTasks')}
+        report.cases.push(resume)
+        console.log(JSON.stringify(resume))
+      }
+      await client.send('Emulation.setCPUThrottlingRate', {rate: 1})
+    }
+    assert(report.cases.every(result => (result.tasks ?? []).every(task => task.duration < 5000)), 'WebView blocked for at least five seconds with synthetic history')
   } else if (scenario === 'worker-start') {
     for (let i = 0; i < 12; i++) {
       relay.setMode('online')
