@@ -125,6 +125,7 @@ class SituateAccessibility : AccessibilityService() {
         if(event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         val pkg=event.packageName?.toString() ?: return
         if(pkg=="com.android.systemui") return
+        if(pkg!=foregroundPackage) { lastPackage=""; lastAt=0L }
         foregroundPackage=pkg
         enforce()
     }
