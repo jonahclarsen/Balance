@@ -352,7 +352,7 @@ try {
       report.cases.push({days, phase: 'cold', readyMs: coldReadyMs, ...await responsive()})
       // Reload only for controlled CPU comparisons; the cold launch above is
       // separately measured and the resume below keeps the actual activity.
-      for (const rate of [1, 4]) {
+      for (const rate of [1, 4, 6]) {
         await client.send('Emulation.setCPUThrottlingRate', {rate})
         await client.send('Page.enable')
         const {identifier} = await client.send('Page.addScriptToEvaluateOnNewDocument', {source: `
@@ -393,15 +393,19 @@ try {
         await home()
         const resumed = performance.now()
         launchApp()
+        const interaction = await responsive()
+        const elapsedMs = Math.round(performance.now() - resumed)
         await sleep(3000)
-        const resume = {days, rate, phase: 'resume', elapsedMs: Math.round(performance.now()-resumed),
-          ...await responsive(), tasks: await client.evaluate('window.__startupTasks')}
+        const resume = {days, rate, phase: 'resume', elapsedMs,
+          ...interaction, tasks: await client.evaluate('window.__startupTasks')}
         report.cases.push(resume)
         console.log(JSON.stringify(resume))
       }
       await client.send('Emulation.setCPUThrottlingRate', {rate: 1})
     }
-    assert(report.cases.every(result => (result.tasks ?? []).every(task => task.duration < 5000)), 'WebView blocked for at least five seconds with synthetic history')
+    assert(report.cases.filter(result => result.phase === 'resume')
+      .every(result => result.tasks.every(task => task.duration < 1000)),
+    'Offline resume blocked the WebView for at least one second with unchanged synthetic history')
   } else if (scenario === 'worker-start') {
     for (let i = 0; i < 12; i++) {
       relay.setMode('online')
