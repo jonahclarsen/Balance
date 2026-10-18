@@ -142,8 +142,9 @@ class BalanceUpdateReceiver : BroadcastReceiver() {
             }
             PackageInstaller.STATUS_SUCCESS -> {
                 if (intent.getBooleanExtra("selfTest", false)) Log.i("BalanceUpdater", "BALANCE_UPDATE_E2E: OK installed")
-                val launch = context.packageManager.getLaunchIntentForPackage(context.packageName)
-                if (launch != null) context.startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                // Android replaces and closes the old process. Installer callbacks
+                // cannot start activities from the background; the next launch
+                // opens the updated app normally.
             }
             PackageInstaller.STATUS_FAILURE_ABORTED -> BalanceUpdater.finished()
             else -> {

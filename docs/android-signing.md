@@ -50,7 +50,8 @@ On Android, the update banner and Settings → About download the signed arm64 A
 straight into `PackageInstaller`. Android 12+ can install eligible self-updates
 without another confirmation. Android may still require permission to install
 from Balance or its own confirmation; those system prompts cannot be bypassed.
-A successful installation reopens Balance. Cancellation and installer failures
+Android closes the old app during replacement; the next launch opens the new
+version. Cancellation and installer failures
 return the update button to its idle state, with failures shown in the app.
 
 The implementation lives in `.github/android/BalanceUpdater.kt`, copied into the
@@ -61,6 +62,6 @@ a timer to guess when installation has finished.
 
 The Android workflow runs `.github/scripts/android-updater-test.sh` on its
 disposable emulator. A debug-only, one-use marker installs that emulator's own
-APK through the production installer path and verifies installation and automatic
-reopening without confirmation. It never downloads or installs a release APK on
+APK through the production installer path and verifies replacement without another
+confirmation on Android 14 and 16. It never downloads or installs a release APK on
 the developer's device, and never uses personal data.

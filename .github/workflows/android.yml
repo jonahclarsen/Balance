@@ -291,6 +291,45 @@ jobs:
             android-release-contents.txt
           if-no-files-found: error
 
+  updater-test:
+    name: Android one-tap update (API ${{ matrix.api }})
+    needs: build-debug
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [34, 36]
+    steps:
+      - uses: actions/checkout@v6
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: actions/download-artifact@v7
+        with:
+          name: Balance-android-debug
+      - name: Install an update without another tap
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          arch: x86_64
+          target: google_apis
+          emulator-options: -no-window -gpu lavapipe -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: timeout --foreground --kill-after=10s 2m bash .github/scripts/android-updater-test.sh
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: android-updater-api-${{ matrix.api }}
+          path: android-updater-log.txt
+          if-no-files-found: ignore
+
   smoke-test:
     name: Android pairing + sync E2E
     needs: build-debug
@@ -349,9 +388,7 @@ jobs:
           # shells, so the test logic lives in a committed file run as one process.
           # This inner deadline exits early enough for the always() diagnostics
           # upload below to run before the job-level deadline.
-          script: |
-            timeout --foreground --kill-after=30s 10m bash .github/scripts/android-smoke-test.sh
-            timeout --foreground --kill-after=10s 2m bash .github/scripts/android-updater-test.sh
+          script: timeout --foreground --kill-after=30s 10m bash .github/scripts/android-smoke-test.sh
 
       - name: Require all Android task scenarios
         if: github.ref_type == 'tag' || inputs.publish_tag != '' || inputs.run_stale_task_repro
@@ -369,7 +406,6 @@ jobs:
           path: |
             android-host-diagnostics.txt
             logcat*.txt
-            android-updater-log.txt
             android-startup-profile.json
             sync-e2e-large-task-profile.json
             android-resume-stress.json
