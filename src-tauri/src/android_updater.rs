@@ -1,8 +1,34 @@
 //! One-tap Android updates: Kotlin streams the release APK into PackageInstaller.
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
+use tauri::ipc::Channel;
 
 use jni::objects::{GlobalRef, JClass, JString};
 use jni::JNIEnv;
+
+static STATUS_CHANNEL: Mutex<Option<Channel<serde_json::Value>>> = Mutex::new(None);
+
+#[no_mangle]
+pub extern "system" fn Java_app_balance_local_BalanceUpdater_nativeStatus(
+    mut env: JNIEnv,
+    _class: JClass,
+    state: JString,
+    message: JString,
+) {
+    let (Ok(state), Ok(message)) = (env.get_string(&state), env.get_string(&message)) else {
+        return;
+    };
+    let state: String = state.into();
+    let message: String = message.into();
+    let mut channel = STATUS_CHANNEL
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    if let Some(channel) = channel.as_ref() {
+        let _ = channel.send(serde_json::json!({ "state": state, "message": message }));
+    }
+    if state == "idle" {
+        *channel = None;
+    }
+}
 
 static UPDATER_CLASS: OnceLock<GlobalRef> = OnceLock::new();
 
@@ -21,15 +47,42 @@ pub extern "system" fn Java_app_balance_local_BalanceUpdater_nativeRegister(
 }
 
 /// Blocks while the APK downloads, then returns once Android's installer has it.
-pub fn install(tag: &str) -> Result<(), String> {
+pub fn install(tag: &str, on_status: Channel<serde_json::Value>) -> Result<(), String> {
+    {
+        let mut channel = STATUS_CHANNEL
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if channel.is_some() {
+            return Err("An update is already running.".into());
+        }
+        *channel = Some(on_status);
+    }
+    let result = start_install(tag);
+    if result.is_err() {
+        *STATUS_CHANNEL
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()) = None;
+    }
+    result
+}
+
+fn start_install(tag: &str) -> Result<(), String> {
     let class = UPDATER_CLASS
         .get()
         .ok_or_else(|| "Balance is still starting. Try again in a moment.".to_string())?;
     let message = super::android_keystore::with_env(|env| {
-        let class = JClass::from(env.new_local_ref(class.as_obj()).map_err(|error| error.to_string())?);
+        let class = JClass::from(
+            env.new_local_ref(class.as_obj())
+                .map_err(|error| error.to_string())?,
+        );
         let tag = env.new_string(tag).map_err(|error| error.to_string())?;
         let result = env
-            .call_static_method(class, "install", "(Ljava/lang/String;)Ljava/lang/String;", &[(&tag).into()])
+            .call_static_method(
+                class,
+                "install",
+                "(Ljava/lang/String;)Ljava/lang/String;",
+                &[(&tag).into()],
+            )
             .and_then(|value| value.l())
             .map_err(|error| error.to_string())?;
         env.get_string(&JString::from(result))

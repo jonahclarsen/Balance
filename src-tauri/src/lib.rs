@@ -1976,17 +1976,20 @@ fn set_macos_widget_hide_content_after_close(enabled: bool) -> Result<MacosWidge
 /// Download a release APK into Android's installer. `version` comes from
 /// `check_for_update`, which only reports releases newer than this build.
 #[tauri::command]
-async fn install_android_update(version: String) -> Result<(), String> {
+async fn install_android_update(
+    version: String,
+    on_status: tauri::ipc::Channel<Value>,
+) -> Result<(), String> {
     let version = semver::Version::parse(&version).map_err(|error| error.to_string())?;
     #[cfg(target_os = "android")]
     {
-        tauri::async_runtime::spawn_blocking(move || android_updater::install(&format!("v{version}")))
+        tauri::async_runtime::spawn_blocking(move || android_updater::install(&format!("v{version}"), on_status))
             .await
             .map_err(|error| error.to_string())?
     }
     #[cfg(not(target_os = "android"))]
     {
-        let _ = version;
+        let _ = (version, on_status);
         Err("In-app installs are only available on Android".to_string())
     }
 }
