@@ -79,6 +79,7 @@
         { keys: ['alt', 'V'], label: 'Open Quizzes' },
         { keys: ['alt', 'G'], label: 'Open Goals' },
         { keys: ['alt', 'S'], label: 'Open Settings' },
+        { keys: ['alt', 'Z'], label: 'Open Situate' },
         { keys: ['alt', 'Q'], label: 'Previous day, template, or quiz' },
         { keys: ['alt', 'W'], label: 'Next day, template, or quiz' },
       ],
