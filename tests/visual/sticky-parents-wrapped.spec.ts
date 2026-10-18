@@ -265,3 +265,64 @@ for (const nestedGrandchild of [false, true]) {
     await expect(checkbox).toBeChecked()
   })
 }
+
+
+test('a tall parent keeps its goals below the retained text while shrinking on narrow screens', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 412, height: 820 })
+  const text = Array.from({ length: 7 }, (_, index) => `Research line ${index + 1}`).join('\n')
+  await seed(page, familyTree(text))
+  await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1')!)
+    const timestamp = new Date().toISOString()
+    state.goals = ['Health routines', 'Creative practice', 'Personal projects'].map((name, index) => ({
+      id: `sticky_goal_${index}`, name, cadenceDays: 1, matchTerms: ['research'], matchTermsHtml: 'research',
+      hue: index * 90, lightness: 50,
+      activityPeriods: [{ startDate: state.activePlanDate, endDate: null }],
+      createdAt: timestamp, updatedAt: timestamp,
+    }))
+    localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+  })
+  await page.reload()
+  const parent = page.locator('[data-plan-item-id="parent"]')
+  await expect(parent.locator('.plan-goal-badge')).toHaveCount(3)
+  await page.waitForTimeout(350)
+  const problems = await parent.evaluate(async (row) => {
+    const problems: string[] = []
+    const shell = row.parentElement!
+    const scroller = document.scrollingElement!
+    const start = shell.getBoundingClientRect().top + scroller.scrollTop
+    for (const offset of [0, 20, 40, 60, 80, 100, 130, 160, 200, 160, 100, 40, 0]) {
+      scroller.scrollTop = start + offset
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+      const clip = parseFloat(row.style.getPropertyValue('--tree-sticky-clip')) || 0
+      if (!clip) continue
+      const rect = row.getBoundingClientRect()
+      const scale = rect.height / (row as HTMLElement).offsetHeight
+      const bottom = rect.bottom - clip * scale
+      const text = row.querySelector<HTMLElement>('[data-rich-text-input]')!
+      const textClip = parseFloat(text.style.getPropertyValue('--tree-sticky-text-clip')) || 0
+      const cutoff = text.getBoundingClientRect().bottom - textClip * scale
+      const walker = document.createTreeWalker(text, NodeFilter.SHOW_TEXT)
+      const range = document.createRange()
+      const visibleLines: number[] = []
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        range.selectNodeContents(node)
+        for (const line of range.getClientRects()) {
+          if (line.height && line.bottom <= cutoff + 0.5) visibleLines.push(line.bottom)
+        }
+      }
+      if (!visibleLines.length) problems.push(`${offset}: all text hidden`)
+      if (offset === 200 && visibleLines.length !== 3) problems.push(`${offset}: expected three retained lines`)
+      for (const badge of row.querySelectorAll<HTMLElement>('.plan-goal-badge')) {
+        const box = badge.getBoundingClientRect()
+        if (box.top < cutoff - 0.5) problems.push(`${offset}: goal overlaps text`)
+        if (box.top < rect.top || box.bottom > bottom + 1) problems.push(`${offset}: goal clipped`)
+        const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)
+        if (!badge.contains(hit)) problems.push(`${offset}: goal covered`)
+      }
+    }
+    return problems
+  })
+  await page.screenshot({ path: testInfo.outputPath('sticky-goals.png') })
+  expect(problems).toEqual([])
+})

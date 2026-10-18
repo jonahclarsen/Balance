@@ -1883,6 +1883,11 @@ body.mobile-checkbox-dragging {
   clip-path: inset(0 0 var(--tree-sticky-text-clip) 0);
 }
 
+/* Wrapped badges occupy the space reserved below the retained text. */
+.sticky-parent:not(:has([data-rich-text-input]:focus)) > .plan-goal-badges {
+  translate: 0 calc(var(--tree-sticky-tail-shift, 0px) * -1);
+}
+
 /* Center the controls in the visible row, including very long parents whose
    original center would otherwise scroll behind the clip. */
 .sticky-parent:not(:has([data-rich-text-input]:focus)) > :is(button, .check-target, .row-actions) {

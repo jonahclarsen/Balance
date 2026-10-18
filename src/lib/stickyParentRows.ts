@@ -23,6 +23,7 @@ type StickyRow = {
   textBottom: number
   textLineBottoms: number[]
   belowText: number
+  tail: HTMLElement | null
   textClip: number
   published: number | null
   clipLimit: number
@@ -80,6 +81,13 @@ function measure(entry: StickyRow) {
   const minimumHeight = controlHeight + parseFloat(rowStyle.paddingTop) + parseFloat(rowStyle.paddingBottom)
     + parseFloat(rowStyle.borderTopWidth) + parseFloat(rowStyle.borderBottomWidth)
   const below = parseFloat(getComputedStyle(text).paddingBottom) * scale + Math.max(0, rowRect.bottom - textRect.bottom)
+  // Narrow rows wrap goal badges below the editor. Keep that trailing content
+  // with the shrinking text instead of leaving its reserved space empty.
+  const tail = row.querySelector<HTMLElement>(':scope > .plan-goal-badges')
+  const belowTextTail = tail && tail.offsetTop >= (textRect.bottom - rowRect.top) / scale - 0.5 ? tail : null
+  if (entry.tail !== belowTextTail) entry.tail?.style.removeProperty('--tree-sticky-tail-shift')
+  entry.tail = belowTextTail
+  entry.tail?.style.setProperty('--tree-sticky-tail-shift', `${entry.clip}px`)
   entry.textBottom = (textRect.bottom - rowRect.top) / scale
   entry.textLineBottoms = bottoms.map((bottom) => (bottom - rowRect.top) / scale)
   entry.belowText = below / scale
@@ -145,6 +153,7 @@ function scheduleClipUpdate() {
 function setClip(entry: StickyRow, clip: number) {
   if (clip !== entry.clip) {
     entry.clip = clip
+    entry.tail?.style.setProperty('--tree-sticky-tail-shift', `${clip}px`)
     if (clip > 0) entry.row.style.setProperty(clipProperty, `${clip}px`)
     else entry.row.style.removeProperty(clipProperty)
   }
@@ -206,7 +215,7 @@ export function stickyRowVisibleBottom(row: Element) {
 export function trackStickyParentRow(shell: HTMLElement, row: HTMLElement, property: string) {
   const entry: StickyRow = {
     shell, row, property, fullHeight: 0, lineHeights: [], lineCount: 0, published: null, clipLimit: 0, clip: 0,
-    text: null, textBottom: 0, textLineBottoms: [], belowText: 0, textClip: 0,
+    text: null, textBottom: 0, textLineBottoms: [], belowText: 0, tail: null, textClip: 0,
   }
   stickyRows.set(shell, entry)
   entriesByRow.set(row, entry)
@@ -217,6 +226,7 @@ export function trackStickyParentRow(shell: HTMLElement, row: HTMLElement, prope
     stickyRows.delete(shell)
     entriesByRow.delete(row)
     setWrapped(entry, false)
+    entry.tail?.style.removeProperty('--tree-sticky-tail-shift')
     shell.style.removeProperty(property)
     // Rows below this one may now have more lines to show.
     queueLayoutStack()
