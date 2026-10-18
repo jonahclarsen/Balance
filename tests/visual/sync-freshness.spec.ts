@@ -1371,3 +1371,78 @@ test('offline refresh reuses sanitized history and still sanitizes changed remot
   expect(result.html).toContain('<strong>changed</strong>')
   expect(result.html).not.toMatch(/onerror|<img/)
 })
+
+for (const action of ['edit', 'navigate'] as const) {
+test(`a local ${action} during incremental history normalization survives the refresh`, async ({ page }) => {
+  await page.goto('/?launch-then-hold=1')
+  await expect.poll(() => readSyncStatus(page)).toEqual({ running: false, initialSyncComplete: true })
+  const result = await page.evaluate(async (action) => {
+    const runtime = globalThis as typeof globalThis & {
+      __storedState: string
+      __TAURI_INTERNALS__: { invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown> }
+    }
+    const storePath = '/src/lib/store.ts'
+    const { plannerStore } = await import(/* @vite-ignore */ storePath)
+    await plannerStore.flushPendingOperations()
+    const backend = JSON.parse(runtime.__storedState)
+    backend.plans.push({ ...backend.plans[0], id: 'history-to-normalize', date: '2025-01-01',
+      items: [{ ...backend.plans[0].items[0], id: 'normalization-item', text: 'Synthetic normalization work',
+        html: '<strong>Synthetic normalization work</strong>' }],
+    })
+    const original = runtime.__TAURI_INTERNALS__.invoke
+    let reads = 0
+    runtime.__TAURI_INTERNALS__.invoke = async (command, args) => {
+      if (command === 'read_app_state') { reads++; return JSON.stringify(backend) }
+      if (command === 'persist_operation') {
+        const op = JSON.parse(String(args?.operationJson))
+        if (op.payload.planId === 'local-plan' && op.payload.itemId === 'visible-item') {
+          Object.assign(backend.plans[0].items[0], op.payload.patch)
+          backend.localSequence = op.sequence
+        }
+        return true
+      }
+      return original(command, args)
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML')!
+    const now = performance.now.bind(performance)
+    let elapsed = 0, injected = false, finished = false, editedDuringRefresh = false
+    Object.defineProperty(performance, 'now', { configurable: true, value: () => now() + elapsed })
+    Object.defineProperty(Element.prototype, 'innerHTML', { ...descriptor, set(value: string) {
+      if (!injected && value.includes('Synthetic normalization work')) {
+        injected = true
+        // Account for expensive parsing without a large or CPU-heavy fixture.
+        elapsed += 50
+        setTimeout(() => {
+          editedDuringRefresh = !finished
+          if (action === 'edit') plannerStore.patchPlanItem('local-plan', 'visible-item', { text: 'Edited while refreshing', html: 'Edited while refreshing' })
+          else plannerStore.setActivePlanDate('2025-02-02')
+        }, 0)
+      }
+      descriptor.set!.call(this, value)
+    } })
+    try {
+      await plannerStore.reloadFromBackend()
+      finished = true
+      await plannerStore.flushPendingOperations()
+      let visible = '', date = ''
+      plannerStore.subscribe((state: { activePlanDate: string; plans: Array<{ id: string; items: Array<{ text: string }> }> }) => {
+        date = state.activePlanDate
+        visible = state.plans.find(plan => plan.id === 'local-plan')!.items[0].text
+      })()
+      return { reads, editedDuringRefresh, visible, date, saved: backend.plans[0].items[0].text }
+    } finally {
+      Object.defineProperty(Element.prototype, 'innerHTML', descriptor)
+      Object.defineProperty(performance, 'now', { configurable: true, value: now })
+      runtime.__TAURI_INTERNALS__.invoke = original
+    }
+  }, action)
+  expect(result.editedDuringRefresh).toBe(true)
+  if (action === 'edit') {
+    expect(result.reads).toBeGreaterThanOrEqual(2)
+    expect(result.visible).toBe('Edited while refreshing')
+    expect(result.saved).toBe('Edited while refreshing')
+  } else {
+    expect(result.date).toBe('2025-02-02')
+  }
+})
+}

@@ -400,6 +400,26 @@ function parseStoredState(raw: string | null): AppState | null {
   }
 }
 
+async function parseNativeStoredState(raw: string | null): Promise<{ state: AppState; canRedo: boolean } | null> {
+  if (!raw) return null
+  const stored = JSON.parse(raw) as AppState & { canRedo?: unknown }
+  if (stored.schemaVersion !== 1) return null
+  const { canRedo, ...parsed } = stored
+  const steps = normalizeStateSteps({ ...parsed, historyRevision: parsed.historyRevision || 0,
+    activePlanDate: localActivePlanDate(), operations: parsed.operations || [] })
+  let sliceStarted = performance.now()
+  for (;;) {
+    const step = steps.next()
+    if (step.done) return { state: step.value, canRedo: canRedo === true }
+    if (performance.now() - sliceStarted >= 8) {
+      // A resolved Promise only queues another microtask and still starves
+      // input. Return to the WebView event loop between history records.
+      await new Promise<void>(resolve => setTimeout(resolve, 0))
+      sliceStarted = performance.now()
+    }
+  }
+}
+
 function readLocalState(): AppState {
   return parseStoredState(localStorage.getItem(STORAGE_KEY)) ?? createInitialState()
 }
@@ -416,7 +436,9 @@ async function hydratePersistence(store: Writable<AppState>): Promise<void> {
     databaseLoadProgress.set({ percent: 15, stage: 'Opening encrypted database' })
     const stored = await invoke<string | null>('read_app_state')
     databaseLoadProgress.set({ percent: 95, stage: 'Restoring workspace' })
-    const parsed = parseStoredState(stored)
+    const snapshot = await parseNativeStoredState(stored)
+    const parsed = snapshot?.state
+    if (snapshot) redoAvailableState.set(snapshot.canRedo)
     persistenceTarget = 'tauri'
 
     if (parsed) {
@@ -721,8 +743,19 @@ function createPlannerStore() {
         continue
       }
 
-      const parsed = parseStoredState(stored)
-      if (!parsed) return
+      const snapshot = await parseNativeStoredState(stored)
+      // Normalization yields to input. A save, undo, or newer refresh during
+      // those slices makes this snapshot stale just like an edit during IPC.
+      const changedWhileNormalizing = mutationRevisionBeforeRead !== localMutationRevision
+      if (changedWhileNormalizing || requestRevisionBeforeRead !== backendReloadRequestRevision) {
+        waitForQuiet = changedWhileNormalizing
+        continue
+      }
+      if (!snapshot) return
+      // Day navigation is local and does not advance the persisted mutation
+      // revision. Read it again after yielding so a refresh cannot move it back.
+      const parsed = { ...snapshot.state, activePlanDate: get(store).activePlanDate }
+      redoAvailableState.set(snapshot.canRedo)
 
       lastOperationMergeKey = null
       store.update((current) => {
@@ -3996,6 +4029,23 @@ export async function completeDatabaseMaintenanceStartup(): Promise<void> {
 }
 
 function normalizeState(state: AppState): AppState {
+  const steps = normalizeStateSteps(state)
+  for (;;) {
+    const step = steps.next()
+    if (step.done) return step.value
+  }
+}
+
+function* normalizeRecords<T>(records: T[], normalize: (record: T) => T): Generator<void, T[], void> {
+  const normalized: T[] = []
+  for (const record of records) {
+    normalized.push(normalize(record))
+    yield
+  }
+  return normalized
+}
+
+function* normalizeStateSteps(state: AppState): Generator<void, AppState, void> {
   const nextHTMLCache = new Map<string, string>()
   let cachedBytes = 0
   const normalizeHTML = (value: string): string => {
@@ -4021,13 +4071,13 @@ function normalizeState(state: AppState): AppState {
     prioritySessions: state.prioritySessions ?? [],
     ideaBuckets: state.ideaBuckets ?? [],
     preferences: normalizeReplicatedPreferences(state.preferences),
-    goals: (state.goals ?? []).map(normalizeGoal),
-    goalCompletions: (state.goalCompletions ?? []).map(normalizeGoalCompletion),
-    templates: state.templates.map((template) => ({
+    goals: yield* normalizeRecords(state.goals ?? [], normalizeGoal),
+    goalCompletions: yield* normalizeRecords(state.goalCompletions ?? [], normalizeGoalCompletion),
+    templates: yield* normalizeRecords(state.templates, (template) => ({
       ...template,
       items: normalizeTemplateItems(template.items, normalizeHTML),
     })),
-    plans: state.plans.map((plan) => ({
+    plans: yield* normalizeRecords(state.plans, (plan) => ({
       ...plan,
       dailyReminder: plan.dailyReminder ?? DEFAULT_DAILY_REMINDER,
       generatedGoalIds: Array.isArray(plan.generatedGoalIds)
@@ -4037,17 +4087,17 @@ function normalizeState(state: AppState): AppState {
         : undefined,
       items: normalizePlanItems(plan.items, normalizeHTML),
     })),
-    listTemplates: (state.listTemplates ?? []).map((template) => ({
+    listTemplates: yield* normalizeRecords(state.listTemplates ?? [], (template) => ({
       ...template,
       maxExpectedWords: template.maxExpectedWords ?? 0,
       items: normalizeListTemplateItems(template.items ?? [], normalizeHTML),
       archivedItems: (template.archivedItems ?? []).map(entry => normalizeArchivedListTemplateItem(entry, normalizeHTML)),
     })),
-    lists: (state.lists ?? []).map((list) => ({
+    lists: yield* normalizeRecords(state.lists ?? [], (list) => ({
       ...list,
       items: normalizePlanItems(list.items ?? [], normalizeHTML),
     })),
-    metrics: (state.metrics ?? []).map((metric) => ({
+    metrics: yield* normalizeRecords(state.metrics ?? [], (metric) => ({
       ...metric,
       questions: (metric.questions ?? []).map((question) => ({
         ...question,
@@ -4055,11 +4105,11 @@ function normalizeState(state: AppState): AppState {
         type: question.type === 'boolean' || question.type === 'number' ? question.type : 'text',
       })),
     })),
-    metricEntries: (state.metricEntries ?? []).map((entry) => ({
+    metricEntries: yield* normalizeRecords(state.metricEntries ?? [], (entry) => ({
       ...entry,
       answers: (entry.answers ?? []).map((answer) => ({ ...answer })),
     })),
-    notes: (state.notes ?? []).map((note) => ({
+    notes: yield* normalizeRecords(state.notes ?? [], (note) => ({
       ...note,
       title: note.title ?? '',
       deletedAt: typeof note.deletedAt === 'string' && Number.isFinite(Date.parse(note.deletedAt)) ? note.deletedAt : null,
