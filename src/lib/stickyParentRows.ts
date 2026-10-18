@@ -70,13 +70,22 @@ function measure(entry: StickyRow) {
   const rowRect = row.getBoundingClientRect()
   const scale = rowScale(row, rowRect)
   const textRect = text.getBoundingClientRect()
+  // A one-line parent still needs room for its checkbox and action buttons.
+  // Clipping to text alone can cut taller controls after typography changes.
+  const rowStyle = getComputedStyle(row)
+  const controlHeight = Math.max(0, ...Array.from(
+    row.querySelectorAll<HTMLElement>(':scope > button, :scope > .check-target, :scope > .row-actions'),
+    control => control.getBoundingClientRect().height / scale,
+  ))
+  const minimumHeight = controlHeight + parseFloat(rowStyle.paddingTop) + parseFloat(rowStyle.paddingBottom)
+    + parseFloat(rowStyle.borderTopWidth) + parseFloat(rowStyle.borderBottomWidth)
   const below = parseFloat(getComputedStyle(text).paddingBottom) * scale + Math.max(0, rowRect.bottom - textRect.bottom)
   entry.textBottom = (textRect.bottom - rowRect.top) / scale
   entry.textLineBottoms = bottoms.map((bottom) => (bottom - rowRect.top) / scale)
   entry.belowText = below / scale
   entry.lineCount = bottoms.length
   entry.lineHeights = bottoms.slice(0, maxRowLines).map((bottom) => (
-    Math.min(entry.fullHeight, Math.ceil((bottom - rowRect.top + below) / scale))
+    Math.min(entry.fullHeight, Math.max(Math.ceil(minimumHeight), Math.ceil((bottom - rowRect.top + below) / scale)))
   ))
 }
 
