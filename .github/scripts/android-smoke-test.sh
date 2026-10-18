@@ -94,6 +94,7 @@ for _ in $(seq 1 30); do
   sleep 1
 done
 if [ "$SITUATE_OK" != 1 ]; then echo "Situate archive self-test did not complete"; exit 1; fi
+bash .github/scripts/android-situate-enforcement.sh
 
 NOTIFICATION_OK=0
 for _ in $(seq 1 15); do
