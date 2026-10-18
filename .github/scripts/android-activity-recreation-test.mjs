@@ -128,6 +128,7 @@ try {
   logcat.stdout.pipe(stream)
   launchApp()
   await connect()
+  report.appBuild = await invoke('build_info')
   await confirmSyntheticKey()
   await seed()
   const pairingCode = (await readFile('sync-e2e-pairing-code.txt', 'utf8')).trim()

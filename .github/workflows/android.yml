@@ -82,6 +82,9 @@ permissions:
 
 jobs:
   lifecycle-regression:
+    permissions:
+      contents: read
+      actions: read
     if: github.ref_type == 'tag' || inputs.run_lifecycle_tests
     uses: ./.github/workflows/android-lifecycle-tests.yml
 
