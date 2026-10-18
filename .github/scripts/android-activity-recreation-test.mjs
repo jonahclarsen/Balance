@@ -314,6 +314,15 @@ try {
           })),
         })
       }
+      state.listTemplates = [{id: 'history-list-template', name: 'Synthetic routine',
+        maxExpectedWords: 0, archivedItems: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+        items: today.items.map(item => ({...item, probability: 100})),
+      }]
+      state.lists = state.plans.map((plan, day) => ({id: `history-list-${day}`, date: plan.date,
+        listTemplateId: 'history-list-template', createdAt: new Date().toISOString(),
+        items: today.items.map((item, i) => ({...item, id: `history-list-item-${day}-${i}`,
+          text: `Synthetic daily routine ${i}`, html: `Synthetic <em>daily routine</em> ${i}`})),
+      }))
       state.ideaBuckets = [{id: 'history-bucket', kind: 'proposition', items:
         Array.from({length: 100}, (_, i) => ({...today.items[0], id: `history-idea-${i}`,
           text: `Synthetic saved idea ${i}`, html: `Synthetic saved idea ${i}`}))}]
@@ -329,6 +338,8 @@ try {
       launchApp()
       client?.close()
       client = await connectDevTools(await waitFor(appPid, 'Balance process'))
+      const scripts = await client.evaluate(`Promise.all([...document.scripts].filter(s => s.src).map(async s => ({url: s.src, source: await (await fetch(s.src)).text()})))`)
+      await writeFile('android-lifecycle-script-sources.json', JSON.stringify(scripts))
       await client.send('Profiler.enable')
       await client.send('Profiler.start')
       await waitForDatabaseReady(client)
