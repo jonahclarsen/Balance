@@ -34,7 +34,7 @@ permissions:
 
 jobs:
   capture-acknowledgement:
-    name: Capture acknowledgement and failed-save retry
+    name: Offline refresh and durable capture
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -48,7 +48,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
-      - run: pnpm test:visual tests/visual/sync-freshness.spec.ts --grep 'Quick Add waits' --project=desktop --project=mobile --workers=2
+      - run: pnpm test:visual tests/visual/sync-freshness.spec.ts --grep 'Quick Add waits|offline refresh reuses' --project=desktop --project=mobile --workers=2
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
@@ -113,9 +113,9 @@ jobs:
       fail-fast: false
       matrix:
         api: [31, 34]
-        # Releases must check both ordinary activity teardown and Save followed
-        # by immediate process death. Manual investigations can select one.
-        scenario: ${{ fromJSON(inputs.scenario && format('["{0}"]', inputs.scenario) || '["activity","offline-buckets"]') }}
+        # Keep release coverage for teardown, durable capture, large offline
+        # workspaces, and the JNI callback that R8 can otherwise remove.
+        scenario: ${{ fromJSON(inputs.scenario && format('["{0}"]', inputs.scenario) || '["activity","offline-buckets","offline-history","offline-notifications"]') }}
     steps:
       - uses: actions/checkout@v6
       - name: Enable KVM
