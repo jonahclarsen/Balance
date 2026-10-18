@@ -13,10 +13,6 @@
   // Every burst finishes well within this, measured from the latest burst. Past
   // it the canvas is wiped no matter what state the loop is in.
   const MAX_ACTIVE_MS = 4000
-  // Rapid repeats (checking many goal items at once) share one particle budget.
-  const MAX_PARTICLES = 600
-  // Match the day celebration's canvas: plenty sharp, without a 5K backing store.
-  const MAX_CANVAS_PIXELS = 4_000_000
 
   let canvas: HTMLCanvasElement
   let ctx: CanvasRenderingContext2D | null = null
@@ -86,10 +82,10 @@
 
   type Label = { id: number; text: string; x: number; y: number; color: string }
 
-  let particles: Particle[] = []
-  let rings: Ring[] = []
-  let flashes: Flash[] = []
-  let comets: Comet[] = []
+  const particles: Particle[] = []
+  const rings: Ring[] = []
+  const flashes: Flash[] = []
+  const comets: Comet[] = []
   let labels: Label[] = []
   let labelSeq = 0
 
@@ -99,14 +95,10 @@
 
   function goalColorParts(goal: Goal | undefined) {
     return {
-      hue: finiteOr(goal?.hue, 165),
+      hue: goal?.hue ?? 165,
       sat: 74,
-      light: Math.max(38, Math.min(70, 52 + finiteOr(goalLightnessShift(goal?.lightness), 0))),
+      light: Math.max(38, Math.min(70, 52 + goalLightnessShift(goal?.lightness))),
     }
-  }
-
-  function finiteOr(value: unknown, fallback: number) {
-    return typeof value === 'number' && Number.isFinite(value) ? value : fallback
   }
 
   function css({ hue, sat, light }: { hue: number; sat: number; light: number }, alpha = 1) {
@@ -122,21 +114,17 @@
       labels = labels.filter((entry) => entry.id !== id)
     }, 1600)
 
-    if (reducedMotion() || !canvas || document.hidden || !Number.isFinite(x) || !Number.isFinite(y)) return
+    if (reducedMotion() || !canvas || document.hidden) return
     if (!ensureSize()) return
 
     spawnBurst(x, y, goals)
-    if (target && Number.isFinite(target.x) && Number.isFinite(target.y)) spawnComet(x, y, target, base)
+    if (target) spawnComet(x, y, target, base)
     deadline = performance.now() + MAX_ACTIVE_MS
     window.clearTimeout(watchdog)
     // Independent of requestAnimationFrame: if frames stop arriving, this still
     // wipes the canvas instead of leaving the last frame painted over the UI.
     watchdog = window.setTimeout(stop, MAX_ACTIVE_MS + 250)
     startLoop()
-  }
-
-  function addParticle(particle: Particle) {
-    if (particles.length < MAX_PARTICLES) particles.push(particle)
   }
 
   function spawnBurst(x: number, y: number, goals: Goal[]) {
@@ -159,7 +147,7 @@
       const speed = 2.6 + Math.random() * 7
       const roll = Math.random()
       const shape: Particle['shape'] = roll > 0.86 ? 'streamer' : roll > 0.5 ? 'spark' : 'dot'
-      addParticle({
+      particles.push({
         x,
         y,
         vx: Math.cos(angle) * speed,
@@ -188,7 +176,7 @@
     for (let index = 0; index < shards; index += 1) {
       const angle = (Math.PI * 2 * index) / shards + Math.random() * 0.4
       const speed = 1.4 + Math.random() * 2.4
-      addParticle({
+      particles.push({
         x: parent.x,
         y: parent.y,
         vx: Math.cos(angle) * speed,
@@ -241,9 +229,8 @@
     if (!ctx) return false
     width = Math.max(1, window.innerWidth)
     height = Math.max(1, window.innerHeight)
-    let dpr = Math.min(2, window.devicePixelRatio || 1)
-    const requestedPixels = width * height * dpr * dpr
-    if (requestedPixels > MAX_CANVAS_PIXELS) dpr *= Math.sqrt(MAX_CANVAS_PIXELS / requestedPixels)
+    // Phones at 3x gain nothing visible from the extra backing-store pixels.
+    const dpr = Math.min(2, window.devicePixelRatio || 1)
     const pixelWidth = Math.round(width * dpr)
     const pixelHeight = Math.round(height * dpr)
     if (canvas.width !== pixelWidth) canvas.width = pixelWidth
@@ -259,10 +246,10 @@
     raf = 0
     window.clearTimeout(watchdog)
     watchdog = 0
-    particles = []
-    rings = []
-    flashes = []
-    comets = []
+    particles.length = 0
+    rings.length = 0
+    flashes.length = 0
+    comets.length = 0
     if (canvas && (canvas.width !== 0 || canvas.height !== 0)) {
       canvas.width = 0
       canvas.height = 0
@@ -439,15 +426,17 @@
 
     ctx.globalAlpha = 1
 
-    particles = particles.filter(isAlive)
-    rings = rings.filter(isAlive)
-    flashes = flashes.filter(isAlive)
-    comets = comets.filter(isAlive)
+    prune(particles)
+    prune(rings)
+    prune(flashes)
+    prune(comets)
     return particles.length > 0 || rings.length > 0 || flashes.length > 0 || comets.length > 0
   }
 
-  function isAlive(effect: { life: number }) {
-    return effect.life > 0
+  function prune(list: { life: number }[]) {
+    for (let index = list.length - 1; index >= 0; index -= 1) {
+      if (list[index].life <= 0) list.splice(index, 1)
+    }
   }
 
   function landComet(comet: Comet) {
@@ -458,7 +447,7 @@
     for (let index = 0; index < 12; index += 1) {
       const angle = (Math.PI * 2 * index) / 12 + Math.random() * 0.3
       const speed = 1.6 + Math.random() * 2.2
-      addParticle({
+      particles.push({
         x: comet.tx,
         y: comet.ty,
         vx: Math.cos(angle) * speed,
@@ -479,11 +468,7 @@
         detonated: false,
       })
     }
-    try {
-      comet.onArrive?.()
-    } catch (error) {
-      console.error('Goal burst landing failed', error)
-    }
+    comet.onArrive?.()
   }
 
   function easeInOut(t: number) {
