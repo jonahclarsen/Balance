@@ -373,15 +373,13 @@ try {
         await sleep(3000)
         const profile = (await client.send('Profiler.stop')).profile
         await writeFile(`android-lifecycle-history-${days}-cpu${rate}.cpuprofile`, JSON.stringify(profile))
-        const scripts = [...new Map(profile.nodes.filter(node => node.callFrame.url.includes('/assets/'))
-          .map(node => [node.callFrame.scriptId, node.callFrame.url])).entries()]
-        const sources = []
-        await client.send('Debugger.enable')
-        for (const [scriptId, url] of scripts) {
-          const {scriptSource} = await client.send('Debugger.getScriptSource', {scriptId})
-          sources.push({url, source: scriptSource})
-        }
-        await client.send('Debugger.disable')
+        const scriptUrls = [...new Set(profile.nodes.map(node => node.callFrame.url).filter(url => url.includes('/assets/')))]
+        // Profiler script IDs can outlive their Debugger IDs after reload.
+        // Fetch the executed URLs; diagnostic collection must not abort a case.
+        const sources = await client.evaluate(`Promise.all(${JSON.stringify(scriptUrls)}.map(async url => {
+          try { return {url, source: await (await fetch(url)).text()} }
+          catch { return {url, unavailable: true} }
+        }))`)
         await writeFile('android-lifecycle-script-sources.json', JSON.stringify(sources))
         const startup = await client.evaluate('({readyMs: window.__startupReadyAt, tasks: window.__startupTasks})')
         const result = {days, rate, phase: 'reload', ...startup, ...await responsive()}
