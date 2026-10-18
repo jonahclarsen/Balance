@@ -118,6 +118,7 @@ import type {
   IdeaBucket,
   IdeaBucketKind,
   IdeaItem,
+  IdeaSnapshot,
   ListInstance,
   ListTemplate,
   ListTemplateItem,
@@ -2174,6 +2175,24 @@ function createPlannerStore() {
         return updateBucket(removed, kind, (bucket) => ({ ...bucket, items: [...bucket.items, item] }))
       })
       return moved
+    },
+
+    // Undoes a sort decision: each idea returns to the bucket and position it
+    // held before, wherever the decision moved, merged or removed it.
+    restoreSortedIdeas(snapshots: IdeaSnapshot[], noteId: Id | null) {
+      commitEntities('restore_sorted_ideas', { itemIds: snapshots.map(({ item }) => item.id), noteId }, (state) => {
+        let next = noteId && state.notes.some((note) => note.id === noteId)
+          ? { ...state, notes: state.notes.filter((note) => note.id !== noteId) }
+          : state
+        for (const { item } of snapshots) {
+          const found = findIdea(next.ideaBuckets, item.id)
+          if (found) next = updateBucket(next, found.bucket.kind, (bucket) => ({ ...bucket, items: bucket.items.filter((candidate) => candidate.id !== item.id) }))
+        }
+        for (const { kind, index, item } of [...snapshots].sort((a, b) => a.index - b.index)) {
+          next = updateBucket(next, kind, (bucket) => ({ ...bucket, items: [...bucket.items.slice(0, index), item, ...bucket.items.slice(index)] }))
+        }
+        return next
+      })
     },
 
     // Rejoins an idea the importer split from its predecessor: the text is

@@ -1694,6 +1694,17 @@ nav button.active {
   min-height: 38px;
 }
 
+.generate-day-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.generate-day-button .nav-shortcut {
+  color: inherit;
+}
+
 .eyebrow {
   margin-bottom: 4px;
   color: var(--accent-strong);
@@ -7629,17 +7640,6 @@ textarea.note-title {
 .idea-sort-secondary button {
   font-size: 13px;
   padding: 6px 10px;
-}
-
-.idea-sort-tag {
-  flex: 0 0 auto;
-  margin-left: auto;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 1px 8px;
-  color: var(--muted);
-  font-size: 11px;
-  white-space: nowrap;
 }
 
 .idea-sort-children {

@@ -7101,7 +7101,14 @@ return rows`
         </label>
       {/if}
       {#if view === 'today'}
-        <button class="primary" type="button" disabled={!canGenerateDisplayedDay} on:click={() => { void generateSelectedDay() }}>{generateButtonLabel}</button>
+        <button
+          class="primary generate-day-button"
+          type="button"
+          title={`${generateButtonLabel} (${primaryShortcutLabel('G')})`}
+          aria-keyshortcuts={isMac ? 'Meta+G' : 'Control+G'}
+          disabled={!canGenerateDisplayedDay}
+          on:click={() => { void generateSelectedDay() }}
+        ><span>{generateButtonLabel}</span><kbd class="nav-shortcut" aria-hidden="true">{primaryShortcutLabel('G')}</kbd></button>
       {/if}
       <p class="tiny">{$plannerStore.plans.length} saved days · {activeGoalCount} active goals</p>
     </div>
@@ -7272,12 +7279,14 @@ return rows`
                     </div>
                   </fieldset>
                   <button
-                    class="primary"
+                    class="primary generate-day-button"
                     type="button"
+                    title={`${generateButtonLabel} (${primaryShortcutLabel('G')})`}
+                    aria-keyshortcuts={isMac ? 'Meta+G' : 'Control+G'}
                     disabled={!templates.some((template) => template.id === emptyDayTemplateSelections[displayedPlanDate])}
                     on:click={() => { void generateDayFromTemplate(emptyDayTemplateSelections[displayedPlanDate]) }}
                   >
-                    {generateButtonLabel}
+                    <span>{generateButtonLabel}</span><kbd class="nav-shortcut" aria-hidden="true">{primaryShortcutLabel('G')}</kbd>
                   </button>
                 {/if}
               </div>
@@ -8732,6 +8741,7 @@ return rows`
           onCut={cutSortedIdea}
           onAddToNote={plannerStore.moveIdeaToNewNote}
           onAddToDay={ideaSort.addToDay}
+          onRestore={plannerStore.restoreSortedIdeas}
           onFinish={finishIdeaSort}
         />
       {/key}
