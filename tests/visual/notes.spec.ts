@@ -1044,11 +1044,10 @@ test('Shift+Tab turns every top-level list type into a paragraph and preserves i
   })
 })
 
-test('all three note list types support arbitrary nested indentation', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name === 'mobile', 'desktop Tab indentation is covered here')
-  const listTypes = ['Bulleted list', 'Numbered list', 'Checklist'] as const
-
-  for (const listType of listTypes) {
+// Each list kind is its own browser journey and retains its own timeout.
+for (const listType of ['Bulleted list', 'Numbered list', 'Checklist'] as const) {
+  test(`note list types support arbitrary nested indentation (${listType})`, async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name === 'mobile', 'desktop Tab indentation is covered here')
     await page.goto('/')
     await page.evaluate(() => localStorage.clear())
     await page.reload()
@@ -1074,8 +1073,8 @@ test('all three note list types support arbitrary nested indentation', async ({ 
     for (let depth = 0; depth < 4; depth += 1) {
       await expect(page.locator('.note-item').nth(depth)).toHaveAttribute('data-note-item-depth', String(depth))
     }
-  }
-})
+  })
+}
 
 test('note checklist state cascades through descendants and reconciles ancestors', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'desktop checklist indentation is covered here')
