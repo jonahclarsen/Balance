@@ -135,7 +135,8 @@ class SituateAccessibility : AccessibilityService() {
         val modes = try { BalanceSituate.blocked(this,pkg) } catch (_: Exception) { return }
         if(modes.isEmpty()) return
         lastPackage=pkg; lastAt=System.currentTimeMillis()
-        performGlobalAction(GLOBAL_ACTION_HOME)
+        // Launch the gate directly. A simultaneous asynchronous Home action can
+        // win the activity transition and hide the gate behind the launcher.
         val mode=modes.first()
         val targets=mode.getJSONArray("targets")
         val target=(0 until targets.length()).map { targets.getJSONObject(it) }.first { it.optString("value")==pkg }
@@ -146,13 +147,20 @@ class SituateAccessibility : AccessibilityService() {
     override fun onInterrupt() { }
 }
 class SituateBlockedActivity : Activity() {
+    private fun leave() {
+        startActivity(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        finish()
+    }
+    @Suppress("DEPRECATION")
+    override fun onBackPressed() { leave() }
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
+        if(Build.VERSION.SDK_INT >= 33) onBackInvokedDispatcher.registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT) { leave() }
         val layout=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(48,100,48,48) }
         layout.addView(TextView(this).apply { text=intent.getStringExtra("mode")+" is on"; textSize=28f })
         layout.addView(TextView(this).apply { text="Take a moment before opening this app."; textSize=18f })
         layout.addView(Button(this).apply { text="Open quiz"; setOnClickListener { startActivity(Intent(this@SituateBlockedActivity,MainActivity::class.java).setData(Uri.parse(intent.getStringExtra("url"))).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)); finish() } })
-        layout.addView(Button(this).apply { text="Keep the boundary"; setOnClickListener { finish() } })
+        layout.addView(Button(this).apply { text="Keep the boundary"; setOnClickListener { leave() } })
         setContentView(layout)
     }
 }

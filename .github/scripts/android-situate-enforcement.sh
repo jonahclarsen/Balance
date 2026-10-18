@@ -32,6 +32,7 @@ wait_for() {
   echo "Situate emulator assertion timed out: $*"
   adb shell dumpsys notification --noredact | grep -E 'NotificationRecord\(|SituateNotifications|Live services' || true
   adb shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity' || true
+  adb logcat -d -s ActivityTaskManager:I AndroidRuntime:E '*:S' > logcat-situate-enforcement.txt || true
   return 1
 }
 resumed() { adb shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity' | grep "$1" >/dev/null; }
@@ -61,6 +62,11 @@ print(json.dumps({'version': 1, 'enabled': True, 'generatedAt': now,
                              'scheduled': False, 'targets': targets}]}))
 PY
 
+adb shell am start -a android.settings.SETTINGS >/dev/null
+wait_for resumed SituateBlockedActivity
+# Back returns to Home instead of briefly reopening the blocked app.
+adb shell input keyevent KEYCODE_BACK
+wait_for resumed com.android.launcher
 adb shell am start -a android.settings.SETTINGS >/dev/null
 wait_for resumed SituateBlockedActivity
 # Wait for the OS to connect the listener before testing a blocked delivery.
