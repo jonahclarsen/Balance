@@ -368,10 +368,16 @@ mod android {
         _class: JClass,
         url: JString,
     ) {
-        if let (Some(app), Ok(url)) = (super::APP.get(), env.get_string(&url)) {
+        if let Ok(url) = env.get_string(&url) {
             let raw: String = url.into();
-            if raw.starts_with("balance://situate") {
-                crate::deliver_balance_deep_link(app, raw);
+            if raw.len() <= 4096 && raw.starts_with("balance://situate") {
+                if let Some(app) = super::APP.get() {
+                    crate::deliver_balance_deep_link(app, raw);
+                } else if let Ok(mut links) = crate::PENDING_DEEP_LINKS.lock() {
+                    if links.len() < 32 && !links.contains(&raw) {
+                        links.push(raw);
+                    }
+                }
             }
         }
     }

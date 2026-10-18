@@ -2242,7 +2242,7 @@ return rows`
   onMount(() => {
     const stopFreezeDiagnostics = startFreezeDiagnostics()
     let stopSituate: (() => void) | undefined
-    void startSituate().then(stop => { stopSituate = stop })
+    const situateStarted = startSituate().then(stop => { if (mounted) stopSituate = stop; else stop() })
     const stopMobileKeyboardScroll = installMobileKeyboardScroll()
     let mounted = true
     let stopAutomaticSync: (() => void) | null = null
@@ -2272,6 +2272,7 @@ return rows`
       try {
         while (mounted && pendingDeepLinks.length > 0) {
           const raw = pendingDeepLinks[0]
+          if (raw.startsWith('balance://situate')) await situateStarted
           if (situateDeepLink(raw)) {
             view = 'situate'
             closeMobileDrawer()
