@@ -70,7 +70,7 @@ wait_for resumed com.android.launcher
 adb shell am start -a android.settings.SETTINGS >/dev/null
 wait_for resumed SituateBlockedActivity
 # Wait for the OS to connect the listener before testing a blocked delivery.
-listener_connected() { adb shell dumpsys notification | grep -A 30 'Live services' | grep SituateNotifications >/dev/null; }
+listener_connected() { adb shell dumpsys notification | grep -A 30 -E 'Live (services|notification listeners)' | grep SituateNotifications >/dev/null; }
 wait_for listener_connected
 adb shell cmd notification post -t Situate-blocked situate-ci-blocked SYNTHETIC_BLOCKED
 wait_for notification_absent situate-ci-blocked
