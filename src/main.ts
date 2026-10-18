@@ -1,6 +1,8 @@
 import { mount } from 'svelte'
 import './app.css'
-import App from './App.svelte'
+const App = new URLSearchParams(location.search).has('situateWidget')
+  ? (await import('./lib/SituateWidget.svelte')).default
+  : (await import('./App.svelte')).default
 import {
   applyIridescentHueShift,
   COLOR_SCHEME_QUERY,

@@ -67,7 +67,8 @@ pub(crate) fn publish_snapshot(connection: &Connection) -> Result<(), String> {
         let preferences = super::read_replicated_preferences(connection)?;
         theme_id_from_preferences(&preferences).to_string()
     };
-    let snapshot = snapshot_from_plan(&date, plan.as_ref(), &theme_id);
+    let mut snapshot = snapshot_from_plan(&date, plan.as_ref(), &theme_id);
+    snapshot.situate_modes = crate::situate::widget_modes();
     let json = serde_json::to_string(&snapshot).map_err(|error| error.to_string())?;
     let json = CString::new(json).map_err(|error| error.to_string())?;
 

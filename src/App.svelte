@@ -6,6 +6,10 @@
   import { blobDataURL, selectedImage } from './lib/imageService'
   import { clipboardHasDirectImage, IMAGE_CLIPBOARD_TYPE } from './lib/imageMarkup'
   import { onBackButtonPress } from '@tauri-apps/api/app'
+  import SituatePanel from './lib/SituatePanel.svelte'
+  import SituateQuiz from './lib/SituateQuiz.svelte'
+  import SituatePills from './lib/SituatePills.svelte'
+  import { startSituate, situateDeepLink } from './lib/situate/store'
   import { invoke, isTauri } from '@tauri-apps/api/core'
   import { listen } from '@tauri-apps/api/event'
   import { getCurrentWebview } from '@tauri-apps/api/webview'
@@ -166,7 +170,7 @@
     { id: 'dark', name: 'Dark', description: 'Always use dark mode' },
   ]
 
-  type View = 'next' | 'today' | 'templates' | 'listTemplates' | 'lists' | 'notes' | 'projects' | 'prioritize' | 'buckets' | 'metrics' | 'goals' | 'settings' | 'admin'
+  type View = 'situate' | 'next' | 'today' | 'templates' | 'listTemplates' | 'lists' | 'notes' | 'projects' | 'prioritize' | 'buckets' | 'metrics' | 'goals' | 'settings' | 'admin'
   type Opener = { container: 'plan' | 'list'; containerId: Id; itemId: Id }
   type ExportSettings = {
     exportDirectory: string
@@ -2237,6 +2241,8 @@ return rows`
 
   onMount(() => {
     const stopFreezeDiagnostics = startFreezeDiagnostics()
+    let stopSituate: (() => void) | undefined
+    void startSituate().then(stop => { stopSituate = stop })
     const stopMobileKeyboardScroll = installMobileKeyboardScroll()
     let mounted = true
     let stopAutomaticSync: (() => void) | null = null
@@ -2266,6 +2272,13 @@ return rows`
       try {
         while (mounted && pendingDeepLinks.length > 0) {
           const raw = pendingDeepLinks[0]
+          if (situateDeepLink(raw)) {
+            view = 'situate'
+            closeMobileDrawer()
+            await invoke('acknowledge_deep_link', { url: raw })
+            pendingDeepLinks.shift()
+            continue
+          }
           const deepLink = parseBalanceDeepLink(raw)
           const added = deepLink
             ? await plannerStore.addPlanItemFromSiri(deepLink.text, deepLink.requestId, todayISO())
@@ -2285,7 +2298,7 @@ return rows`
       }
     }
 
-    if (isTauri() && isMac) {
+    if (isTauri()) {
       void listen<string>(BALANCE_DEEP_LINK_EVENT, ({ payload }) => {
         receiveDeepLink(payload)
       }).then(async (stopListening) => {
@@ -2494,6 +2507,7 @@ return rows`
     return () => {
       stopFreezeDiagnostics()
       stopMobileKeyboardScroll()
+      stopSituate?.()
       stopKeyboardScroll()
       clearTimeout(historyNoticeTimer)
       rememberWorkspaceScroll()
@@ -7014,6 +7028,7 @@ return rows`
       <button data-nav-view="projects" class:active={selectedNavView === 'projects'} type="button" title="Projects (Alt+P)" aria-keyshortcuts="Alt+P" on:click={() => { linkedProjectId = ''; selectMobileDrawerView('projects') }}><span>Projects</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('P')}</kbd></button>
       <button data-nav-view="prioritize" class:active={selectedNavView === 'prioritize'} type="button" title="Prioritize (Alt+R)" aria-keyshortcuts="Alt+R" on:click={() => selectMobileDrawerView('prioritize')}><span>Prioritize</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('R')}</kbd></button>
       <button data-nav-view="buckets" class:active={selectedNavView === 'buckets'} type="button" title="Buckets (Alt+B)" aria-keyshortcuts="Alt+B" on:click={() => selectMobileDrawerView('buckets')}><span>Buckets</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('B')}</kbd></button>
+      <button data-nav-view="situate" class:active={selectedNavView === 'situate'} type="button" on:click={() => selectMobileDrawerView('situate')}><span>Situate</span></button>
       <button data-nav-view="settings" class:active={selectedNavView === 'settings'} type="button" title="Settings (Alt+S)" aria-keyshortcuts="Alt+S" on:click={() => selectMobileDrawerView('settings')}><span>Settings</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('S')}</kbd></button>
       {#if import.meta.env.DEV}
         <button data-nav-view="admin" class:active={selectedNavView === 'admin'} type="button" on:click={() => selectMobileDrawerView('admin')}><span>Admin Settings</span></button>
@@ -7031,6 +7046,7 @@ return rows`
       {/if}
     </nav>
 
+    <SituatePills />
     <div class="sidebar-footer">
       {#if selectedTemplate && view === 'today'}
         <label class="generation-template-field">
@@ -8111,6 +8127,8 @@ return rows`
       </div>
     {/if}
 
+    {#if view === 'situate'}<SituatePanel />{/if}
+    <SituateQuiz />
     {#if view === 'settings'}
       <header class="page-header">
         <div>

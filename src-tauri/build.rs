@@ -3,6 +3,7 @@ fn main() {
     build_macos_connectivity_bridge();
     build_macos_task_notification_bridge();
     build_macos_note_clipboard_bridge();
+    build_macos_situate_bridge();
 
     let commit = std::process::Command::new("git")
         .args(["rev-parse", "--short", "HEAD"])
@@ -137,4 +138,15 @@ fn build_macos_task_notification_bridge() {
     println!("cargo:rerun-if-changed={source}");
     println!("cargo:rustc-link-arg={}", output.display());
     println!("cargo:rustc-link-lib=framework=UserNotifications");
+}
+
+fn build_macos_situate_bridge() {
+    let target = std::env::var("TARGET").unwrap_or_default();
+    let Some(architecture) = target.strip_suffix("-apple-darwin") else { return; };
+    let source = "macos/SituateBridge.swift";
+    let output = std::path::PathBuf::from(std::env::var_os("OUT_DIR").expect("OUT_DIR")).join("SituateBridge.o");
+    let status = std::process::Command::new("xcrun").args(["swiftc", "-parse-as-library", "-emit-object", "-O", "-target", &format!("{architecture}-apple-macosx13.0"), "-o"]).arg(&output).arg(source).status().expect("swiftc Situate");
+    assert!(status.success(), "failed to compile Situate");
+    println!("cargo:rerun-if-changed={source}");
+    println!("cargo:rustc-link-arg={}", output.display());
 }

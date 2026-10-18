@@ -1,0 +1,39 @@
+name: Situate privacy and enforcement
+on:
+  push:
+    branches: [main, 'feat/situate']
+    paths: ['src-tauri/**', 'src/lib/*Situate*', 'src/lib/situate/**', 'integrations/situate/**', 'tests/**', '.github/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: situate-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  native:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm test:unit
+      - run: pnpm test:relay
+      - run: node --test .github/scripts/configure-android-situate.test.mjs .github/scripts/configure-android-widgets.test.mjs integrations/situate/chrome/policy.test.mjs
+      - run: cargo test --manifest-path src-tauri/Cargo.toml
+      - run: node scripts/test-macos-task-notifications.mjs
+      - run: swiftc -parse-as-library -typecheck src-tauri/macos/SituateBridge.swift src-tauri/macos/TaskNotificationBridge.swift
+      - name: Package Chrome extension and read-only host
+        run: zip -r situate-chrome.zip integrations/situate
+      - uses: actions/upload-artifact@v7
+        with:
+          name: situate-chrome
+          path: situate-chrome.zip

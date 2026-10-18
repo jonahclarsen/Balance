@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "Balance Situate",
+  "version": "1.0.0",
+  "description": "Pause blocked websites and selected Discord threads using your local Balance rules.",
+  "permissions": ["nativeMessaging", "storage"],
+  "host_permissions": ["https://*/*", "http://*/*"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "content_scripts": [{ "matches": ["https://*/*", "http://*/*"], "js": ["content.js"], "run_at": "document_start", "all_frames": true }],
+  "action": { "default_popup": "popup.html" }
+}
