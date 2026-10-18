@@ -172,11 +172,15 @@ pub(crate) fn situate_permissions(action: String) -> Result<String, String> {
     }
 }
 #[tauri::command]
-pub(crate) fn situate_notifications(action: String, query: Value) -> Result<Value, String> {
+pub(crate) async fn situate_notifications(action: String, query: Value) -> Result<Value, String> {
     #[cfg(target_os = "android")]
     {
-        return serde_json::from_str(&android::call(&action, &query.to_string())?)
-            .map_err(|e| e.to_string());
+        return tauri::async_runtime::spawn_blocking(move || {
+            serde_json::from_str(&android::call(&action, &query.to_string())?)
+                .map_err(|e| e.to_string())
+        })
+        .await
+        .map_err(|e| e.to_string())?;
     }
     #[cfg(not(target_os = "android"))]
     {

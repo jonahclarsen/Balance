@@ -31,11 +31,11 @@ object BalanceSituate {
         val file = rules(context)
         return if (file.exists()) JSONObject(nativeStatus(file.readText(), System.currentTimeMillis())) else JSONObject().put("modes", JSONArray())
     }
-    fun blocked(context: Context, packageName: String): List<JSONObject> {
+    fun blocked(context: Context, packageName: String, activeOnly: Boolean = true): List<JSONObject> {
         if (packageName == context.packageName || packageName == "com.android.systemui") return emptyList()
         val modes = status(context).optJSONArray("modes") ?: JSONArray()
         return (0 until modes.length()).map { modes.getJSONObject(it) }.filter { mode ->
-            val targets = mode.optJSONArray("targets") ?: JSONArray()
+            val targets = mode.optJSONArray(if(activeOnly) "targets" else "allTargets") ?: JSONArray()
             (0 until targets.length()).any { val t=targets.getJSONObject(it); t.optString("kind")=="app" && t.optString("value")==packageName }
         }
     }
@@ -99,7 +99,7 @@ class SituateNotifications : NotificationListenerService() {
         BalanceSituate.executor.execute {
             try {
                 val blocked = BalanceSituate.blocked(appContext,sbn.packageName)
-                NotificationArchive(appContext).use { it.record(sbn, blocked.map { m -> m.getString("id") }) }
+                NotificationArchive(appContext).use { it.record(sbn, blocked.map { m -> m.getString("id") }, BalanceSituate.blocked(appContext,sbn.packageName,false).map { m -> m.getString("id") }) }
                 if (blocked.isNotEmpty()) cancelNotification(sbn.key)
             } catch (_: Exception) { /* Never log notification contents or keys. */ }
         }

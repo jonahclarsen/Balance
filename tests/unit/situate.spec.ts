@@ -95,3 +95,18 @@ test('a stale schedule fails closed and regeneration preserves unexpired grants'
   d=regenerate(d,now+1);expect(isActive(d,d.modes[0],'mac',now+1)).toBe(false)
   d.epochs=[];d.grants=[];expect(isActive(d,d.modes[0],'mac',now)).toBe(true)
 })
+test('DST wake resets use local clock dates rather than fixed 24-hour intervals', () => {
+  const previous=process.env.TZ
+  try {
+    process.env.TZ='America/Vancouver'
+    const now=new Date(2026,9,31,22).getTime()
+    const d=defaults(now)
+    const night=epoch(d,now)!
+    expect(new Date(night.end).getHours()).toBe(7)
+    expect(night.end-night.at).toBe(10.5*3600000)
+    const spring=defaults(new Date(2026,2,7,22).getTime())
+    const springNight=epoch(spring,new Date(2026,2,7,22).getTime())!
+    expect(new Date(springNight.end).getHours()).toBe(7)
+    expect(springNight.end-springNight.at).toBe(8.5*3600000)
+  } finally { if(previous===undefined) delete process.env.TZ;else process.env.TZ=previous }
+})

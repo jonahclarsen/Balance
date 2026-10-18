@@ -6944,6 +6944,8 @@ return rows`
     </div>
   </header>
 
+  {#if isMobile}<SituatePills />{/if}
+
   {#if isMobile && (historyNotice || $redoAvailable)}
     <div class="history-notice" role="status">
       <span>{historyNotice || 'Change undone'}</span>

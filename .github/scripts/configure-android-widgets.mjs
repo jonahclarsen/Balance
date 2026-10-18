@@ -596,7 +596,7 @@ function homeLayout(theme) {
     </LinearLayout>
 
     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
-        ${[1,2,3].map(index => `<TextView android:id="@+id/widget_situate_${index}" android:layout_width="wrap_content" android:layout_height="wrap_content" android:minHeight="48dp" android:gravity="center" android:paddingHorizontal="8dp" android:textSize="12sp" android:textColor="${theme.accent}" android:visibility="gone" />`).join('\n')}
+        ${[1,2,3].map(index => `<TextView android:id="@+id/widget_situate_${index}" android:background="@drawable/balance_widget_${theme.id}_pill" android:layout_marginEnd="6dp" android:layout_width="wrap_content" android:layout_height="wrap_content" android:minHeight="48dp" android:gravity="center" android:paddingHorizontal="8dp" android:textSize="12sp" android:textColor="${theme.accent}" android:visibility="gone" />`).join('\n')}
         <TextView android:id="@+id/widget_situate_controls" android:layout_width="wrap_content" android:layout_height="48dp" android:gravity="center" android:paddingHorizontal="8dp" android:text="Situate" android:textSize="12sp" android:textColor="${theme.accent}" />
     </LinearLayout>
 

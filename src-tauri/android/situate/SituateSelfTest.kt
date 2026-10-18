@@ -32,7 +32,7 @@ object SituateSelfTest {
             }
             NotificationArchive(context,directory,namespace).use { archive -> check(archive.list(JSONObject().put("search","replacement")).getJSONArray("rows").length()==1);archive.clear();check(archive.list(JSONObject()).getJSONArray("rows").length()==0) }
             android.util.Log.i("BalanceSituate","BALANCE_SITUATE_E2E: OK")
-        } catch(_: Throwable) { android.util.Log.e("BalanceSituate","BALANCE_SITUATE_E2E: FAIL") }
+        } catch(error: Throwable) { android.util.Log.e("BalanceSituate","BALANCE_SITUATE_E2E: FAIL",error) }
         finally {
             directory.deleteRecursively()
             val keys=java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }

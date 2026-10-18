@@ -58,19 +58,20 @@ class NotificationArchive(private val context: Context, directory: File = contex
         return JSONObject(String(cipher.doFinal(bytes.copyOfRange(12,bytes.size)),Charsets.UTF_8))
     }
     private fun words(text: String) = text.lowercase(java.util.Locale.ROOT).split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() }.distinct().take(500)
-    fun record(sbn: StatusBarNotification, modes: List<String>) {
+    fun record(sbn: StatusBarNotification, blockedModes: List<String>, modes: List<String>) {
         val notification=sbn.notification
         val extras=notification.extras
         val title=extras.getCharSequence("android.title")?.toString().orEmpty().take(4096)
         val text=(extras.getCharSequence("android.bigText") ?: extras.getCharSequence("android.text"))?.toString().orEmpty().take(32768)
-        val value=JSONObject().put("app",sbn.packageName).put("title",title).put("text",text).put("received",sbn.postTime).put("modes",JSONArray(modes))
+        val appName=try { context.packageManager.getApplicationLabel(context.packageManager.getApplicationInfo(sbn.packageName,0)).toString() } catch(_: Exception) { sbn.packageName }
+        val value=JSONObject().put("appName",appName).put("blockedModes",JSONArray(blockedModes)).put("app",sbn.packageName).put("title",title).put("text",text).put("received",sbn.postTime).put("modes",JSONArray(modes))
         store(tag("identity:"+sbn.key),value,notification.contentIntent)
     }
     internal fun store(identity: String,value: JSONObject,intent: PendingIntent?=null) {
         val received=value.getLong("received"); val modes=value.getJSONArray("modes"); val app=value.getString("app")
         db.beginTransaction()
         try {
-            db.execSQL("INSERT INTO notifications(identity,received,app,blocked,payload) VALUES(?,?,?,?,?) ON CONFLICT(identity) DO UPDATE SET received=excluded.received,app=excluded.app,blocked=excluded.blocked,payload=excluded.payload", arrayOf(identity,received,tag("app:"+app),if(modes.length()>0) 1 else 0,seal(value.toString())))
+            db.execSQL("INSERT INTO notifications(identity,received,app,blocked,payload) VALUES(?,?,?,?,?) ON CONFLICT(identity) DO UPDATE SET received=excluded.received,app=excluded.app,blocked=excluded.blocked,payload=excluded.payload", arrayOf(identity,received,tag("app:"+app),if((value.optJSONArray("blockedModes") ?: modes).length()>0) 1 else 0,seal(value.toString())))
             val id=db.rawQuery("SELECT id FROM notifications WHERE identity=?",arrayOf(identity)).use { it.moveToFirst(); it.getLong(0) }
             db.execSQL("DELETE FROM tokens WHERE notification=?",arrayOf(id))
             val tokens=words(value.optString("title")+" "+value.optString("text")+" "+app).map { tag("word:"+it) }.toMutableSet()
@@ -95,7 +96,11 @@ class NotificationArchive(private val context: Context, directory: File = contex
         db.rawQuery("SELECT id,received,opened,payload FROM notifications WHERE "+where.joinToString(" AND ")+" ORDER BY $order DESC,id DESC LIMIT 100",args.toTypedArray()).use { cursor ->
             while(cursor.moveToNext()) { val value=unseal(cursor.getBlob(3)); value.put("id",cursor.getLong(0)).put("received",cursor.getLong(1)).put("opened",cursor.getLong(2)); rows.put(value) }
         }
-        return JSONObject().put("rows",rows).put("hasMore",rows.length()==100)
+        val apps=JSONArray()
+        db.rawQuery("SELECT n.payload,a.count FROM notifications n JOIN (SELECT MIN(id) id,COUNT(*) count FROM notifications GROUP BY app) a ON n.id=a.id",null).use { c ->
+            while(c.moveToNext()) { val entry=unseal(c.getBlob(0)); apps.put(JSONObject().put("id",entry.getString("app")).put("name",entry.optString("appName",entry.getString("app"))).put("count",c.getLong(1))) }
+        }
+        return JSONObject().put("rows",rows).put("hasMore",rows.length()==100).put("apps",apps)
     }
     fun open(id: Long) {
         val value=db.rawQuery("SELECT payload FROM notifications WHERE id=?",arrayOf(id.toString())).use { if(it.moveToFirst()) unseal(it.getBlob(0)) else null } ?: return
@@ -109,6 +114,6 @@ class NotificationArchive(private val context: Context, directory: File = contex
             while(c.moveToNext()) { val value=unseal(c.getBlob(3)); value.put("id",c.getLong(0)).put("received",c.getLong(1)).put("opened",c.getLong(2)); writer.write(value.toString()); writer.write("\n") }
         }
     }
-    fun clear() { db.beginTransaction(); try { db.execSQL("DELETE FROM tokens"); db.execSQL("DELETE FROM notifications"); db.setTransactionSuccessful() } finally { db.endTransaction() }; synchronized(intents) { intents.clear() }; db.execSQL("PRAGMA wal_checkpoint(TRUNCATE)") }
+    fun clear() { db.beginTransaction(); try { db.execSQL("DELETE FROM tokens"); db.execSQL("DELETE FROM notifications"); db.setTransactionSuccessful() } finally { db.endTransaction() }; synchronized(intents) { intents.clear() }; db.rawQuery("PRAGMA wal_checkpoint(TRUNCATE)",null).use { it.moveToFirst() } }
     override fun close() { db.close() }
 }
