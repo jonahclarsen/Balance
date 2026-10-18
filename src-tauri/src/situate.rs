@@ -208,7 +208,7 @@ pub(crate) fn open_widget(app: &tauri::AppHandle, raw: &str) -> bool {
             let _ = tauri::WebviewWindowBuilder::new(
                 app,
                 "situate",
-                tauri::WebviewUrl::App(format!("index.html?situateWidget=1&{query}").into()),
+                tauri::WebviewUrl::App(format!("situate.html?{query}").into()),
             )
             .title("Situate")
             .inner_size(440.0, 540.0)

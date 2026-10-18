@@ -13,6 +13,7 @@ export default defineConfig({
   plugins: [svelte({ compilerOptions: { dev: svelteDebug } })],
   resolve: svelteDebug ? {} : { conditions: ['module', 'browser', 'production'] },
   worker: { format: 'es' },
+  build: { rollupOptions: { input: { main: 'index.html', situate: 'situate.html' } } },
   optimizeDeps: { exclude: ['@jsquash/webp'] },
   server: {
     host: '127.0.0.1',

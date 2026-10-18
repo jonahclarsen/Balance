@@ -34,3 +34,57 @@ test('custom questions support required no and conditional questions', async ({p
   await quiz.getByRole('button',{name:'Yes',exact:true}).click()
   await expect(quiz).toBeHidden()
 })
+
+test('night passes show a countdown and automatically restore the boundary', async ({page}) => {
+  await page.clock.setSystemTime(new Date(2026,9,17,22))
+  await page.clock.runFor(1001)
+  await page.getByRole('button',{name:'Enable Situate',exact:true}).click()
+  await page.getByRole('button',{name:'Turn off Touch grass',exact:true}).click()
+  const quiz=page.getByRole('dialog',{name:'Touch grass',exact:true})
+  await quiz.getByRole('button',{name:'Yes',exact:true}).click()
+  await expect(quiz.getByRole('heading',{level:2})).toContainText('one minute in bed')
+  await quiz.getByRole('button',{name:'Yes',exact:true}).click()
+  await expect(page.getByRole('timer')).toContainText('60 minutes')
+  await expect(page.getByRole('button',{name:'Turn on Touch grass',exact:true})).toBeVisible()
+  await page.clock.fastForward(3600001)
+  await expect(page.getByRole('button',{name:'Turn off Touch grass',exact:true})).toBeVisible()
+  await expect(page.getByRole('timer')).toHaveCount(0)
+})
+
+test('entertainment approval leaves AI blocking and other targets intact', async ({page}) => {
+  await page.getByRole('button',{name:'Enable Situate',exact:true}).click()
+  const card=page.locator('article').filter({has:page.getByRole('heading',{name:'Touch grass',exact:true})})
+  await card.locator('summary').click()
+  await card.getByRole('button',{name:'youtube.com',exact:true}).click()
+  const quiz=page.getByRole('dialog',{name:'Touch grass',exact:true})
+  await quiz.getByRole('button',{name:'Yes',exact:true}).click()
+  await expect(quiz.getByRole('heading',{level:2})).toContainText('meal')
+  await quiz.getByRole('button',{name:'No',exact:true}).click()
+  await expect(quiz.getByRole('heading',{name:'Keep this boundary for now.'})).toBeVisible()
+  await quiz.getByRole('button',{name:'Keep Touch grass on'}).click()
+  await card.getByRole('button',{name:'youtube.com',exact:true}).click()
+  await quiz.getByRole('button',{name:'No',exact:true}).click()
+  await expect(quiz).toBeHidden()
+  await expect(page.getByRole('button',{name:'Turn off Touch grass',exact:true})).toBeVisible()
+  const grants=await page.evaluate(()=>JSON.parse(localStorage.getItem('balance-situate-v1')!).grants)
+  expect(grants).toHaveLength(1)
+  expect(grants[0].target).toContain('youtube.com')
+})
+
+test('compact widget opens a quiz without loading planner storage', async ({page}) => {
+  await page.getByRole('button',{name:'Enable Situate',exact:true}).click()
+  await page.addInitScript(() => {
+    const original=Storage.prototype.getItem
+    const keys:string[]=[]
+    ;(window as unknown as {storageReads:string[]}).storageReads=keys
+    Storage.prototype.getItem=function(key:string) { keys.push(key);return original.call(this,key) }
+  })
+  await page.goto('/situate.html?mode=dolo')
+  const quiz=page.getByRole('dialog',{name:'Dolo',exact:true})
+  await expect(quiz).toBeVisible()
+  await quiz.getByRole('button',{name:'Yes',exact:true}).click()
+  await expect(quiz).toBeHidden()
+  const reads=await page.evaluate(()=>(window as unknown as {storageReads:string[]}).storageReads)
+  expect(reads).not.toContain('balance.appState.v1')
+  await expect(page.getByRole('navigation',{name:'Primary',exact:true})).toHaveCount(0)
+})

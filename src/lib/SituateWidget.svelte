@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
+  import { isTauri } from '@tauri-apps/api/core'
   import { listen } from '@tauri-apps/api/event'
   import { situate, situateNow, situateError, situatePlatform, startSituate, requestQuiz, activateMode, situateDeepLink } from './situate/store'
   import { isActive } from './situate/core'
@@ -10,7 +11,7 @@
       if(!mounted) { cleanup();return } stop=cleanup
       const params = new URLSearchParams(location.search)
       if(params.get('mode')) requestQuiz(params.get('mode')!,params.get('target') ?? '')
-      void listen<string>('situate-widget', event => situateDeepLink(event.payload)).then(fn => { if(mounted) unlisten=fn; else fn() })
+      if(isTauri()) void listen<string>('situate-widget', event => situateDeepLink(event.payload)).then(fn => { if(mounted) unlisten=fn; else fn() })
     })
     return () => { mounted=false;stop?.();unlisten?.() }
   })

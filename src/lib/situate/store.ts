@@ -17,7 +17,7 @@ export function mutateSituate(change: (current: Document) => Document): Promise<
     next.revision = current.revision + 1
     if (isTauri()) await invoke('situate_save', { document: next, expectedRevision: current.revision })
     else localStorage.setItem('balance-situate-v1', JSON.stringify(next))
-    situate.set(next); situateError.set('')
+    situate.set(next); situateNow.set(Date.now()); situateError.set('')
   })
   queue = operation.catch(error => { situateError.set(String(error)) })
   return operation
