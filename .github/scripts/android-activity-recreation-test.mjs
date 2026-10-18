@@ -17,11 +17,12 @@ const repeats = Number(process.env.BALANCE_LIFECYCLE_REPEATS ?? 20)
 const offlineBackgroundSeconds = Number(process.env.BALANCE_OFFLINE_BACKGROUND_SECONDS ?? 0)
 assert([0, 600].includes(offlineBackgroundSeconds))
 assert(Number.isInteger(repeats) && repeats > 0 && repeats <= 200)
-assert(['activity', 'process', 'worker-start', 'offline-buckets', 'offline-history'].includes(scenario))
+assert(['activity', 'process', 'worker-start', 'offline-buckets', 'offline-history', 'offline-notifications'].includes(scenario))
 const report = { scenario, cases: [], hypothesis: {
   activity: 'Destroying the last Android activity must exit without native finalizer races and reopen with saved edits intact.',
   process: 'Background process reclamation while offline prevents a fresh native/JS startup.',
   'offline-buckets': 'An acknowledged bucket Save must survive immediate WebView destruction and offline reopening.',
+  'offline-notifications': 'Resuming while native reminders are being registered must not block the Android UI thread.',
   'offline-history': 'Offline startup and resume must remain responsive with a year of synthetic history, including slower WebView CPUs.',
   'worker-start': 'WorkManager initializes native state before the first activity, leaving startup blocked when a relay request hangs.',
 }[scenario] }
@@ -268,6 +269,36 @@ try {
         resumeMs: Math.round(performance.now() - start), ...await responsive()}
       assert(report.offlineBackground.frameMs < 2000 && report.offlineBackground.nativeAndDbMs < 5000, 'Ten-minute offline resume froze editing')
     }
+  } else if (scenario === 'offline-notifications') {
+    await radios(true)
+    await waitFor(() => invoke('get_sync_network_offline'), 'OS offline')
+    const state = fixture(200)
+    state.taskNotifications = state.plans[0].items.map((item, i) => ({
+      id: `synthetic-reminder-${i}`, sourceKind: 'plan', sourceId: 'lifecycle-plan', itemId: item.id,
+      at: Date.now() + (i + 60) * 60000, text: item.text,
+    }))
+    await invoke('initialize_app_state', {stateJson: JSON.stringify(state)}, 120000)
+    lastDurableText = undefined
+    adb(['shell', 'am', 'force-stop', packageName])
+    launchApp()
+    await connect()
+    for (let i = 0; i < repeats; i++) {
+      // read_app_state republishes native reminders. Start a burst, then resume
+      // while a real native scheduling pass may hold its monitor.
+      await client.evaluate(`void (window.__notificationReads = Promise.all(Array.from({length: 4}, () => window.__TAURI_INTERNALS__.invoke('read_app_state'))).then(() => true))`)
+      await home()
+      const start = performance.now()
+      launchApp()
+      const launchedMs = Math.round(performance.now() - start)
+      const result = {i, launchedMs, ...await responsive()}
+      report.cases.push(result)
+      console.log(JSON.stringify(result))
+      await client.evaluate('window.__notificationReads')
+    }
+    const alarms = adb(['shell', 'dumpsys', 'alarm'], {maxBuffer: 32*1024*1024})
+    report.registeredSyntheticReminders = (alarms.match(/balance-notification:synthetic-reminder-/g) ?? []).length
+    assert(report.registeredSyntheticReminders >= 200, 'Exercise actual scheduled reminders')
+    assert(report.cases.every(result => result.launchedMs < 5000 && result.nativeAndDbMs < 5000), 'Native resume blocked for at least five seconds with reminders')
   } else if (scenario === 'offline-history') {
     await radios(true)
     await waitFor(() => invoke('get_sync_network_offline'), 'OS offline')
