@@ -52,15 +52,30 @@ async function confirmSyntheticKey() {
   })()`)
   await waitFor(() => client.evaluate(`!document.querySelector('#recovery-key-confirmation')`), 'synthetic first-run confirmation')
 }
-async function responsive() {
+async function verifyDurableInput(marker) {
+  const start = performance.now()
+  await waitFor(async () => {
+    const saved = JSON.parse(await invoke('read_app_state'))
+    const text = saved.plans.find(plan => plan.id === 'lifecycle-plan')?.items.find(item => item.id === 'lifecycle-item-0')?.text
+    if (!text?.includes(marker)) return false
+    if (lastDurableText !== undefined) assert(text.startsWith(lastDurableText), 'Earlier acknowledged input must survive')
+    lastDurableText = text
+    return true
+  }, 'real WebView input to persist after lifecycle transition', 10000)
+  return Math.round(performance.now() - start)
+}
+async function responsive({deferDatabaseProbe = false} = {}) {
   const start = performance.now()
   await client.evaluate(`new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)))`, 10000)
   const frameMs = Math.round(performance.now() - start)
   const before = performance.now()
-  const state = JSON.parse(await invoke('read_app_state'))
-  const readMs = Math.round(performance.now() - before)
-  assert(state.plans.some(plan => plan.items.some(item => item.id === 'lifecycle-item-0')), 'Synthetic fixture survived')
-  if (lastDurableText !== undefined) assert.equal(state.plans.find(plan => plan.id === 'lifecycle-plan').items[0].text, lastDurableText, 'Previously acknowledged text must survive')
+  let readMs
+  if (!deferDatabaseProbe) {
+    const state = JSON.parse(await invoke('read_app_state'))
+    readMs = Math.round(performance.now() - before)
+    assert(state.plans.some(plan => plan.items.some(item => item.id === 'lifecycle-item-0')), 'Synthetic fixture survived')
+    if (lastDurableText !== undefined) assert.equal(state.plans.find(plan => plan.id === 'lifecycle-plan').items[0].text, lastDurableText, 'Previously acknowledged text must survive')
+  }
   await client.evaluate(`document.querySelector('.sidebar button[aria-keyshortcuts="Alt+T"]')?.click()`)
   await waitFor(() => client.evaluate(`(() => {
     const editor = [...document.querySelectorAll('[data-plan-text-input-id="lifecycle-item-0"]')].find(el => !el.closest('[hidden], [inert]'))
@@ -78,20 +93,13 @@ async function responsive() {
   await client.send('Input.insertText', {text: marker})
   await client.evaluate(`new Promise(resolve => requestAnimationFrame(resolve)).then(() => undefined)`)
   const inputMs = Math.round(performance.now() - inputStart)
-  const persistStart = performance.now()
-  await waitFor(async () => {
-    const saved = JSON.parse(await invoke('read_app_state'))
-    const text = saved.plans.find(plan => plan.id === 'lifecycle-plan')?.items.find(item => item.id === 'lifecycle-item-0')?.text
-    if (!text?.includes(marker)) return false
-    lastDurableText = text
-    return true
-  }, 'real WebView input to persist after lifecycle transition', 10000)
-  const durableProbeMs = Math.round(performance.now() - persistStart)
+  const durableProbeMs = deferDatabaseProbe ? undefined : await verifyDurableInput(marker)
   // Exercise Android's native input dispatch too: JS evaluation alone can miss a blocked main thread.
   adb(['shell', 'input', 'keyevent', 'KEYCODE_BACK'], { timeout: 12000 })
   await sleep(300) // Let the WebView consume Back before opening another dialog.
   const nativeAndDbMs = Math.round(performance.now() - before)
-  return { frameMs, inputMs, readMs, durableProbeMs, nativeAndDbMs }
+  return { frameMs, inputMs, readMs, durableProbeMs, nativeAndDbMs,
+    ...(deferDatabaseProbe ? {marker} : {}) }
 }
 function fixture(count = 40) {
   const state = syntheticState()
@@ -398,13 +406,16 @@ try {
         await client.send('Profiler.start')
         const resumed = performance.now()
         launchApp()
-        const interaction = await responsive()
+        // Probe actual input immediately. Full synthetic database inspections
+        // add large IPC responses of their own, so perform them after timing.
+        const {marker, ...interaction} = await responsive({deferDatabaseProbe: true})
         const elapsedMs = Math.round(performance.now() - resumed)
-        await sleep(3000)
+        await sleep(10000)
         await writeFile(`android-lifecycle-history-${days}-cpu${rate}-resume.cpuprofile`,
           JSON.stringify((await client.send('Profiler.stop')).profile))
         const resume = {days, rate, phase: 'resume', elapsedMs,
           ...interaction, tasks: await client.evaluate('window.__startupTasks')}
+        resume.durableProbeMs = await verifyDurableInput(marker)
         report.cases.push(resume)
         console.log(JSON.stringify(resume))
       }
