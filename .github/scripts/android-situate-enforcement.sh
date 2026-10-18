@@ -2,9 +2,9 @@
 # Disposable CI emulator only. No installed phone, planner data, or recovery key.
 set -euo pipefail
 [[ "${CI:-}" == true ]] || { echo 'Situate enforcement verification requires CI'; exit 1; }
-PKG=app.balance.local
-COMPONENT="$PKG/$PKG.SituateAccessibility"
-LISTENER="$PKG/$PKG.SituateNotifications"
+PKG=app.balance.local.debug
+COMPONENT="$PKG/app.balance.local.SituateAccessibility"
+LISTENER="$PKG/app.balance.local.SituateNotifications"
 old_services=$(adb shell settings get secure enabled_accessibility_services | tr -d '\r')
 old_enabled=$(adb shell settings get secure accessibility_enabled | tr -d '\r')
 backup=0
