@@ -401,8 +401,12 @@ class BalanceHomeWidgetProvider : AppWidgetProvider() {
         if (intent.action == BalanceWidgets.ACTION_REFRESH) {
             val pending = goAsync()
             BalanceWidgets.refreshAllAsync(context) {
-                BalanceSyncWorker.refreshNow(context)
-                pending.finish()
+                try {
+                    BalanceSyncWorker.refreshNow(context) { pending.finish() }
+                } catch (error: Throwable) {
+                    Log.e("BalanceWidgets", "Could not schedule widget sync", error)
+                    pending.finish()
+                }
             }
         } else {
             super.onReceive(context, intent)
@@ -962,22 +966,17 @@ await writeFile(activityPath, activity)
 
 try {
   let worker = await readFile(workerPath, 'utf8')
-  if (!worker.includes('BalanceWidgets.refreshAllAsync(applicationContext)')) {
-    const success = /if \(runNativeSync\(applicationContext\.applicationInfo\.dataDir\) == 0\) \{\n(\s*)scheduleNext\(applicationContext\)\n\1Result\.success\(\)\n(\s*)\}/
+  // doWork already runs off the UI thread. Complete the redraw before returning
+  // success, while WorkManager still keeps the process alive.
+  worker = worker.replaceAll('BalanceWidgets.refreshAllAsync(applicationContext)', 'BalanceWidgets.refreshAll(applicationContext)')
+  if (!worker.includes('BalanceWidgets.refreshAll(applicationContext)')) {
+    const success = /if \(runNativeSync\(applicationContext\.applicationInfo\.dataDir\) == 0\) \{/
     if (!success.test(worker)) {
       throw new Error(`Could not find the background sync success path in ${workerPath}`)
     }
-    worker = worker.replace(
-      success,
-      (_match, bodyIndent, closingIndent) =>
-        `if (runNativeSync(applicationContext.applicationInfo.dataDir) == 0) {
-${bodyIndent}BalanceWidgets.refreshAllAsync(applicationContext)
-${bodyIndent}scheduleNext(applicationContext)
-${bodyIndent}Result.success()
-${closingIndent}}`,
-    )
-    await writeFile(workerPath, worker)
+    worker = worker.replace(success, '$&\n                BalanceWidgets.refreshAll(applicationContext)')
   }
+  await writeFile(workerPath, worker)
 } catch (error) {
   if (error.code !== 'ENOENT') throw error
 }

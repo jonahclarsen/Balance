@@ -406,6 +406,8 @@ jobs:
           path: |
             android-host-diagnostics.txt
             logcat*.txt
+            background-sync-log.txt
+            jobscheduler.txt
             android-startup-profile.json
             sync-e2e-large-task-profile.json
             android-resume-stress.json

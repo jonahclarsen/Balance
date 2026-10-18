@@ -43,9 +43,13 @@ resume, focus, and online events. Visible polling runs every two seconds after
 recent changes and every eight seconds when quiet; hidden polling is every five
 minutes. Android additionally runs network-constrained one-time WorkManager passes at
 a best-effort five-minute cadence, because periodic WorkManager requests have a
-15-minute minimum. Doze defers WorkManager jobs even for apps exempt from battery
-optimization, so an allow-while-idle alarm re-arms itself every five minutes and
-starts each pass as expedited work; a boot/package-replaced receiver re-arms it.
+15-minute minimum. Successful passes append the next delayed request. An
+allow-while-idle alarm provides an additional expedited wakeup, and boot/package
+replacement restores both paths. Neither alarms nor expedited jobs guarantee a
+five-minute deadline under Doze, quotas, or manufacturer battery restrictions.
+Do not describe background refresh as guaranteed or verify it only by checking
+that a job/alarm was registered: the Android smoke test must complete successive
+passes across cached-process death without reopening the activity.
 Each pass records its outcome in `background-sync-status.json` beside the
 database, which the Android Sync panel shows. The CI-only generator is
 `.github/scripts/configure-android-background-sync.mjs`; never generate or build

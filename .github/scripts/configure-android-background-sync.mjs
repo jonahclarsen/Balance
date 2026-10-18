@@ -30,6 +30,8 @@ const source = `package app.balance.local
 
 import android.app.AlarmManager
 import android.app.PendingIntent
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -37,6 +39,10 @@ import android.net.ConnectivityManager
 import android.os.Build
 import android.os.SystemClock
 import android.util.Log
+import androidx.core.app.NotificationCompat
+import androidx.work.ForegroundInfo
+import androidx.work.Operation
+import androidx.work.Data
 import androidx.work.Constraints
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
@@ -48,6 +54,22 @@ import androidx.work.WorkManager
 import java.util.concurrent.TimeUnit
 
 class BalanceSyncWorker(context: Context, params: WorkerParameters) : Worker(context, params) {
+    override fun getForegroundInfo(): ForegroundInfo {
+        val manager = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            manager.createNotificationChannel(NotificationChannel(
+                SYNC_CHANNEL, "Background sync", NotificationManager.IMPORTANCE_LOW,
+            ))
+        }
+        val notification = NotificationCompat.Builder(applicationContext, SYNC_CHANNEL)
+            .setSmallIcon(android.R.drawable.stat_notify_sync)
+            .setContentTitle("Updating Balance")
+            .setOngoing(true)
+            .setSilent(true)
+            .build()
+        return ForegroundInfo(7319, notification)
+    }
+
     override fun doWork(): Result {
         if (appForeground) {
             Log.i(LOG_TAG, "Skipping background relay sync while Balance is foregrounded")
@@ -55,7 +77,11 @@ class BalanceSyncWorker(context: Context, params: WorkerParameters) : Worker(con
         }
         // The delayed job and the Doze-safe alarm can both fire near the same
         // time. One completed pass is enough.
-        if (SystemClock.elapsedRealtime() - lastSuccessAt < DUPLICATE_WINDOW_MS) return Result.success()
+        if (!inputData.getBoolean(MANUAL_REFRESH, false) &&
+            SystemClock.elapsedRealtime() - lastSuccessAt < DUPLICATE_WINDOW_MS) {
+            scheduleNext(applicationContext, recordSuccess = false)
+            return Result.success()
+        }
         // Recheck after WorkManager dispatch in case connectivity disappeared.
         // Do not require VALIDATED: a reachable relay can coexist with blocked probes.
         val offline = try {
@@ -67,6 +93,7 @@ class BalanceSyncWorker(context: Context, params: WorkerParameters) : Worker(con
         return try {
             if (runNativeSync(applicationContext.applicationInfo.dataDir) == 0) {
                 scheduleNext(applicationContext)
+                Log.i(LOG_TAG, "Background relay sync and widget refresh completed")
                 Result.success()
             } else Result.retry()
         } catch (_: Throwable) {
@@ -78,6 +105,8 @@ class BalanceSyncWorker(context: Context, params: WorkerParameters) : Worker(con
 
     companion object {
         private const val SYNC_NAME = "balance-relay-sync-background"
+        private const val SYNC_CHANNEL = "balance-background-sync"
+        private const val MANUAL_REFRESH = "manual-refresh"
         private const val LOG_TAG = "BalanceBackgroundSync"
         private const val SYNC_DELAY_MINUTES = 5L
         private const val DUPLICATE_WINDOW_MS = 60_000L
@@ -92,43 +121,53 @@ class BalanceSyncWorker(context: Context, params: WorkerParameters) : Worker(con
         @JvmStatic external fun nativeBeginScheduling()
         @JvmStatic external fun nativeFinishScheduling()
 
-        @JvmStatic fun enterForeground(context: Context) {
+        @JvmStatic @Synchronized fun enterForeground(context: Context) {
             appForeground = true
             WorkManager.getInstance(context.applicationContext).cancelUniqueWork(SYNC_NAME)
             alarmManager(context)?.cancel(alarmIntent(context))
             Log.i(LOG_TAG, "Deferred background relay sync while Balance is foregrounded")
         }
 
-        @JvmStatic fun enterBackground(context: Context) {
+        @JvmStatic @Synchronized fun enterBackground(context: Context) {
             appForeground = false
             enqueue(context, SYNC_DELAY_MINUTES, ExistingWorkPolicy.REPLACE, expedited = false)
             armAlarm(context)
             Log.i(LOG_TAG, "Scheduled background relay sync in five minutes")
         }
 
-        @JvmStatic fun refreshNow(context: Context) {
-            enqueue(context, 0, ExistingWorkPolicy.REPLACE, expedited = true)
+        @JvmStatic @Synchronized fun refreshNow(context: Context, finished: () -> Unit) {
+            enqueue(context, 0, ExistingWorkPolicy.REPLACE, expedited = true, manual = true, finished = finished)
             Log.i(LOG_TAG, "Scheduled immediate relay sync from widget refresh")
         }
 
-        /** WorkManager jobs wait for Doze maintenance windows even when battery
-         *  optimization is off. An allow-while-idle alarm keeps the cadence, and
-         *  an expedited job is allowed to use the network while the phone idles. */
-        @JvmStatic fun onAlarm(context: Context) {
-            if (appForeground) return
+        // Both alarms and jobs are best effort under Android power management.
+        // Keep an independent delayed work chain so an inexact idle alarm is
+        // never the only way a successful pass can be followed by another.
+        @JvmStatic @Synchronized fun onAlarm(context: Context, finished: () -> Unit) {
+            if (appForeground) { finished(); return }
             armAlarm(context)
-            if (running) return
-            enqueue(context, 0, ExistingWorkPolicy.REPLACE, expedited = true)
+            if (running) { finished(); return }
+            enqueue(context, 0, ExistingWorkPolicy.REPLACE, expedited = true, finished = finished)
             Log.i(LOG_TAG, "Started background relay sync from the idle alarm")
         }
 
-        @JvmStatic fun onBootOrUpdate(context: Context) {
-            if (!appForeground) armAlarm(context)
+        @JvmStatic @Synchronized fun onBootOrUpdate(context: Context, finished: () -> Unit) {
+            if (appForeground) { finished(); return }
+            armAlarm(context)
+            enqueue(context, SYNC_DELAY_MINUTES, ExistingWorkPolicy.KEEP, expedited = false, finished = finished)
         }
 
-        private fun scheduleNext(context: Context) {
-            lastSuccessAt = SystemClock.elapsedRealtime()
-            armAlarm(context)
+        private fun scheduleNext(context: Context, recordSuccess: Boolean = true) {
+            val scheduled = synchronized(this) {
+                if (recordSuccess) lastSuccessAt = SystemClock.elapsedRealtime()
+                if (appForeground) return
+                armAlarm(context)
+                // REPLACE would cancel this worker; KEEP would discard the next
+                // pass because this worker is still running. Append its successor.
+                enqueue(context, SYNC_DELAY_MINUTES, ExistingWorkPolicy.APPEND_OR_REPLACE, expedited = false).result
+            }
+            // Worker thread only. Persist the successor before releasing the job.
+            scheduled.get()
         }
 
         private fun alarmManager(context: Context) =
@@ -157,17 +196,24 @@ class BalanceSyncWorker(context: Context, params: WorkerParameters) : Worker(con
             }
         }
 
-        private fun enqueue(context: Context, delayMinutes: Long, policy: ExistingWorkPolicy, expedited: Boolean) {
+        private fun enqueue(
+            context: Context,
+            delayMinutes: Long,
+            policy: ExistingWorkPolicy,
+            expedited: Boolean,
+            manual: Boolean = false,
+            finished: (() -> Unit)? = null,
+        ): Operation {
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
                 .build()
             val manager = WorkManager.getInstance(context.applicationContext)
             val builder = OneTimeWorkRequestBuilder<BalanceSyncWorker>()
                 .setConstraints(constraints)
+                .setInputData(Data.Builder().putBoolean(MANUAL_REFRESH, manual).build())
                 .setInitialDelay(delayMinutes, TimeUnit.MINUTES)
-            // Older Android versions run expedited work as a foreground service,
-            // which would need a notification. Their Doze rules are looser anyway.
-            if (expedited && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            // WorkManager uses the foreground notification above on Android <12.
+            if (expedited) {
                 builder.setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             }
             val request = builder.build()
@@ -175,10 +221,21 @@ class BalanceSyncWorker(context: Context, params: WorkerParameters) : Worker(con
             // must wait until WorkManager has durably handed off this request.
             nativeBeginScheduling()
             try {
-                manager.enqueueUniqueWork(SYNC_NAME, policy, request).result.addListener(
-                    { nativeFinishScheduling() },
+                val operation = manager.enqueueUniqueWork(SYNC_NAME, policy, request)
+                operation.result.addListener(
+                    {
+                        try {
+                            operation.result.get()
+                        } catch (error: Exception) {
+                            Log.w(LOG_TAG, "Could not persist background relay sync work", error)
+                        } finally {
+                            nativeFinishScheduling()
+                            finished?.invoke()
+                        }
+                    },
                     java.util.concurrent.Executor { command -> command.run() }
                 )
+                return operation
             } catch (error: Throwable) {
                 nativeFinishScheduling()
                 throw error
@@ -189,10 +246,18 @@ class BalanceSyncWorker(context: Context, params: WorkerParameters) : Worker(con
 
 class BalanceSyncAlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        when (intent.action) {
-            BalanceSyncWorker.ACTION_SYNC_ALARM -> BalanceSyncWorker.onAlarm(context)
-            // Alarms do not survive a reboot or an app update.
-            Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_MY_PACKAGE_REPLACED -> BalanceSyncWorker.onBootOrUpdate(context)
+        val pending = goAsync()
+        try {
+            when (intent.action) {
+                BalanceSyncWorker.ACTION_SYNC_ALARM -> BalanceSyncWorker.onAlarm(context) { pending.finish() }
+                // Alarms do not survive a reboot or an app update.
+                Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_MY_PACKAGE_REPLACED ->
+                    BalanceSyncWorker.onBootOrUpdate(context) { pending.finish() }
+                else -> pending.finish()
+            }
+        } catch (error: Throwable) {
+            Log.w("BalanceBackgroundSync", "Could not schedule background relay sync", error)
+            pending.finish()
         }
     }
 }
@@ -247,11 +312,12 @@ activity = addLifecycleCall(activity, 'onStop', 'BalanceSyncWorker.enterBackgrou
 await writeFile(activityPath, activity)
 
 let manifest = await readFile(manifestPath, 'utf8')
-const bootPermission = 'android.permission.RECEIVE_BOOT_COMPLETED'
-if (!manifest.includes(bootPermission)) {
-  const application = /^(\s*)<application\b/m
-  if (!application.test(manifest)) throw new Error(`Could not find <application> in ${manifestPath}`)
-  manifest = manifest.replace(application, (line, indent) => `${indent}<uses-permission android:name="${bootPermission}" />\n${line}`)
+for (const permission of ['android.permission.RECEIVE_BOOT_COMPLETED', 'android.permission.FOREGROUND_SERVICE']) {
+  if (!manifest.includes(permission)) {
+    const application = /^(\s*)<application\b/m
+    if (!application.test(manifest)) throw new Error(`Could not find <application> in ${manifestPath}`)
+    manifest = manifest.replace(application, (line, indent) => `${indent}<uses-permission android:name="${permission}" />\n${line}`)
+  }
 }
 if (!manifest.includes('app.balance.local.BalanceSyncAlarmReceiver')) {
   if (!manifest.includes('</application>')) throw new Error(`Could not find </application> in ${manifestPath}`)

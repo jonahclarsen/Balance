@@ -14,7 +14,7 @@ async function write(path, content) {
   await writeFile(path, content)
 }
 
-test('schedules Doze-safe five-minute and immediate relay sync while the activity is backgrounded', async () => {
+test('keeps background sync recurring and preserves receiver handoffs', async () => {
   const fixture = await mkdtemp(join(tmpdir(), 'balance-background-sync-'))
   const gradle = join(fixture, 'app/build.gradle.kts')
   const worker = join(fixture, 'app/src/main/java/app/balance/local/BalanceSyncWorker.kt')
@@ -40,17 +40,29 @@ test('schedules Doze-safe five-minute and immediate relay sync while the activit
     assert.match(configuredWorker, /SYNC_DELAY_MINUTES = 5L/)
     assert.match(configuredWorker, /OneTimeWorkRequestBuilder<BalanceSyncWorker>/)
     assert.match(configuredWorker, /setInitialDelay\(delayMinutes, TimeUnit\.MINUTES\)/)
-    assert.match(configuredWorker, /fun refreshNow\(context: Context\)/)
-    assert.match(configuredWorker, /enqueue\(context, 0, ExistingWorkPolicy\.REPLACE, expedited = true\)/)
-    // WorkManager alone waits for Doze maintenance windows, even for apps
-    // exempt from battery optimization.
+    assert.match(configuredWorker, /fun refreshNow\(context: Context, finished: \(\) -> Unit\)/)
+    assert.match(configuredWorker, /enqueue\(context, 0, ExistingWorkPolicy\.REPLACE, expedited = true, manual = true, finished = finished\)/)
+    // Alarms remain best effort; successful jobs must also persist a successor.
     assert.match(configuredWorker, /setAndAllowWhileIdle\(\s*AlarmManager\.ELAPSED_REALTIME_WAKEUP/)
     assert.match(configuredWorker, /setExpedited\(OutOfQuotaPolicy\.RUN_AS_NON_EXPEDITED_WORK_REQUEST\)/)
     assert.match(configuredWorker, /alarmManager\(context\)\?\.cancel\(alarmIntent\(context\)\)/)
-    assert.match(configuredWorker, /scheduleNext\(applicationContext\)\n\s*Result\.success\(\)/)
+    assert.match(configuredWorker, /scheduleNext\(applicationContext\)[\s\S]*Result\.success\(\)/)
+
+    assert.match(configuredWorker, /ExistingWorkPolicy\.APPEND_OR_REPLACE/)
+    assert.match(configuredWorker, /scheduled\.get\(\)/)
+    assert.match(configuredWorker, /scheduleNext\(applicationContext, recordSuccess = false\)/)
+    assert.match(configuredWorker, /if \(!inputData\.getBoolean\(MANUAL_REFRESH, false\)/)
+    assert.match(configuredWorker, /override fun getForegroundInfo\(\): ForegroundInfo/)
+    assert.match(configuredWorker, /if \(expedited\) \{/)
+    assert.doesNotMatch(configuredWorker, /expedited && Build\.VERSION/)
+    assert.match(configuredWorker, /val pending = goAsync\(\)/)
+    assert.match(configuredWorker, /onAlarm\(context\) \{ pending\.finish\(\) \}/)
+    assert.match(configuredWorker, /operation\.result\.addListener[\s\S]*nativeFinishScheduling\(\)[\s\S]*finished\?\.invoke\(\)/)
+    assert.match(configuredWorker, /onBootOrUpdate[\s\S]*ExistingWorkPolicy\.KEEP/)
 
     const configuredManifest = await readFile(manifest, 'utf8')
     assert.equal((configuredManifest.match(/RECEIVE_BOOT_COMPLETED/g) ?? []).length, 1)
+    assert.equal((configuredManifest.match(/android.permission.FOREGROUND_SERVICE/g) ?? []).length, 1)
     assert.equal((configuredManifest.match(/BalanceSyncAlarmReceiver" android:exported="false"/g) ?? []).length, 1)
     assert.match(configuredManifest, /BalanceSyncAlarmReceiver[\s\S]*BOOT_COMPLETED[\s\S]*MY_PACKAGE_REPLACED/)
     assert.doesNotMatch(configuredWorker, /PeriodicWorkRequestBuilder|15, TimeUnit\.MINUTES/)
@@ -67,6 +79,16 @@ test('schedules Doze-safe five-minute and immediate relay sync while the activit
       1,
     )
     assert.doesNotMatch(configuredActivity, /BalanceSyncWorker\.schedule\(this\)/)
+
+    // Exercise the actual generator order, including reruns over existing hooks.
+    const widgets = resolve('.github/scripts/configure-android-widgets.mjs')
+    const root = dirname(manifest)
+    await execute(process.execPath, [widgets, root, activity, worker])
+    await execute(process.execPath, [widgets, root, activity, worker])
+    const integratedWorker = await readFile(worker, 'utf8')
+    assert.equal((integratedWorker.match(/BalanceWidgets\.refreshAll\(applicationContext\)/g) ?? []).length, 1)
+    assert.doesNotMatch(integratedWorker, /refreshAllAsync\(applicationContext\)/)
+    assert.match(integratedWorker, /refreshAll\(applicationContext\)[\s\S]*scheduleNext\(applicationContext\)[\s\S]*Result\.success\(\)/)
   } finally {
     await rm(fixture, { recursive: true, force: true })
   }

@@ -121,14 +121,15 @@ class BalanceSyncWorker {
     assert.match(configuredActivity, /BalanceSyncWorker\.enterBackground\(this\)/)
 
     const configuredWorker = await readFile(worker, 'utf8')
+    assert.doesNotMatch(configuredWorker, /refreshAllAsync\(applicationContext\)/)
     assert.equal(
-      (configuredWorker.match(/BalanceWidgets\.refreshAllAsync\(applicationContext\)/g) ?? [])
+      (configuredWorker.match(/BalanceWidgets\.refreshAll\(applicationContext\)/g) ?? [])
         .length,
       1,
     )
     assert.match(
       configuredWorker,
-      /BalanceWidgets\.refreshAllAsync\(applicationContext\)[\s\S]*scheduleNext\(applicationContext\)/,
+      /BalanceWidgets\.refreshAll\(applicationContext\)[\s\S]*scheduleNext\(applicationContext\)/,
     )
 
     const kotlin = await readFile(
@@ -136,7 +137,7 @@ class BalanceSyncWorker {
       'utf8',
     )
     assert.match(kotlin, /external fun nativeSnapshot/)
-    assert.match(kotlin, /BalanceSyncWorker\.refreshNow\(context\)/)
+    assert.match(kotlin, /BalanceSyncWorker\.refreshNow\(context\) \{ pending\.finish\(\) \}/)
     assert.match(kotlin, /Intent\.FLAG_RECEIVER_FOREGROUND/)
     assert.match(kotlin, /R\.id\.widget_refresh_touch_target/)
     assert.match(kotlin, /setTextViewText\(R\.id\.widget_brand, brandText\(context, snapshot\.themeId\)\)/)
@@ -145,7 +146,7 @@ class BalanceSyncWorker {
     assert.match(kotlin, /0xFFEF77BC\.toInt\(\)/)
     assert.match(
       kotlin,
-      /BalanceWidgets\.refreshAllAsync\(context\) \{[\s\S]*BalanceSyncWorker\.refreshNow\(context\)[\s\S]*pending\.finish\(\)/,
+      /BalanceWidgets\.refreshAllAsync\(context\) \{[\s\S]*BalanceSyncWorker\.refreshNow\(context\) \{ pending\.finish\(\) \}[\s\S]*pending\.finish\(\)/,
     )
     assert.doesNotMatch(kotlin, /SharedPreferences|openFileOutput|writeText/)
     assert.doesNotMatch(kotlin, /BalanceLockWidgetProvider|renderLock|balance_lock_widget/)

@@ -166,6 +166,8 @@ if [ "$BACKGROUND_JOB_OK" != 1 ]; then
 fi
 echo "[background-sync] WorkManager relay sync and its idle alarm are registered only after backgrounding."
 
+node .github/scripts/android-background-sync-test.mjs
+
 adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null
 assert_running "foreground-after-background-registration" logcat.txt
 FOREGROUND_DEFERRED=0
