@@ -343,14 +343,14 @@ try {
       launchApp()
       client?.close()
       client = await connectDevTools(await waitFor(appPid, 'Balance process'))
-      const scripts = await client.evaluate(`Promise.all([...document.scripts].filter(s => s.src).map(async s => ({url: s.src, source: await (await fetch(s.src)).text()})))`)
-      await writeFile('android-lifecycle-script-sources.json', JSON.stringify(scripts))
       await client.send('Profiler.enable')
       await client.send('Profiler.start')
       await waitForDatabaseReady(client)
       const coldReadyMs = Math.round(performance.now() - coldStart)
       await sleep(3000) // Include post-hydration launch sync and maintenance.
       await writeFile(`android-lifecycle-history-${days}-cold.cpuprofile`, JSON.stringify((await client.send('Profiler.stop')).profile))
+      const scripts = await client.evaluate(`Promise.all([...document.scripts].filter(s => s.src).map(async s => ({url: s.src, source: await (await fetch(s.src)).text()})))`)
+      await writeFile('android-lifecycle-script-sources.json', JSON.stringify(scripts))
       report.cases.push({days, phase: 'cold', readyMs: coldReadyMs, ...await responsive()})
       // Reload only for controlled CPU comparisons; the cold launch above is
       // separately measured and the resume below keeps the actual activity.
