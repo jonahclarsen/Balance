@@ -6,7 +6,7 @@
     running=true
     try {
       const result=await chrome.runtime.sendMessage({type:'check'})
-      if(!result?.blocked?.length) { gate?.remove(); gate=null; last=''; document.documentElement?.removeAttribute('data-situate-blocked'); if(bodyState) { const {body,inert,visibility,priority}=bodyState; if(!inert) body.removeAttribute('inert'); body.style.setProperty('visibility',visibility,priority); bodyState=null } return }
+      if(!result?.blocked?.length) { gate?.remove(); gate=null; last=''; document.documentElement?.removeAttribute('data-situate-blocked'); if(bodyState) { const {body,inert,visibility,priority,display,displayPriority}=bodyState; if(!inert) body.removeAttribute('inert'); body.style.setProperty('visibility',visibility,priority); body.style.setProperty('display',display,displayPriority); bodyState=null } return }
       const signature=JSON.stringify(result.blocked)
       if(gate?.isConnected && signature===last) return
       last=signature; gate?.remove()
@@ -23,16 +23,19 @@
       }
       const hide=document.createElement('style');hide.textContent='html[data-situate-blocked] body{visibility:hidden!important}';root.append(hide)
       document.documentElement.setAttribute('data-situate-blocked','')
-      if(document.body) { if(!bodyState) bodyState={body:document.body,inert:document.body.hasAttribute('inert'),visibility:document.body.style.getPropertyValue('visibility'),priority:document.body.style.getPropertyPriority('visibility')}; document.body.setAttribute('inert',''); document.body.style.setProperty('visibility','hidden','important') }
+      if(document.body) { if(!bodyState) bodyState={body:document.body,inert:document.body.hasAttribute('inert'),visibility:document.body.style.getPropertyValue('visibility'),priority:document.body.style.getPropertyPriority('visibility'),display:document.body.style.getPropertyValue('display'),displayPriority:document.body.style.getPropertyPriority('display')}; document.body.setAttribute('inert',''); document.body.style.setProperty('visibility','hidden','important'); document.body.style.setProperty('display','none','important') }
       ;(document.documentElement || document).appendChild(gate)
       // Pause playback without inspecting media URLs or message text.
       document.querySelectorAll('video,audio').forEach(media => media.pause())
+      if(document.fullscreenElement) void document.exitFullscreen().catch(()=>{})
     } catch { /* Browser disconnection leaves an existing gate in place. */ }
     finally { running=false }
   }
   // A local status check also handles Discord client-side navigation.
   void check()
   setInterval(check,1000)
+  document.addEventListener('play',event => { if(gate?.isConnected && event.target instanceof HTMLMediaElement) event.target.pause() },true)
+  document.addEventListener('fullscreenchange',() => { if(gate?.isConnected && document.fullscreenElement) void document.exitFullscreen().catch(()=>{}) })
   window.addEventListener('pageshow',check)
   window.addEventListener('popstate',check)
   document.addEventListener('keydown',event => { if(gate?.isConnected && !event.composedPath().includes(gate)) { event.preventDefault();event.stopImmediatePropagation() } },true)
