@@ -59,7 +59,6 @@
   import SearchModal from './lib/SearchModal.svelte'
   import KeyboardShortcutsModal from './lib/KeyboardShortcutsModal.svelte'
   import ThemeTaskPreview from './lib/ThemeTaskPreview.svelte'
-  import InterfaceStylePreview from './lib/InterfaceStylePreview.svelte'
   import DocumentFindBar from './lib/DocumentFindBar.svelte'
   import Celebration from './lib/Celebration.svelte'
   import CelebrationSettings from './lib/CelebrationSettings.svelte'
@@ -101,7 +100,7 @@
     runDatabaseMaintenanceIfNeeded,
   } from './lib/store'
   import type { DatabaseHistoryEntry, DatabaseInspection, DatabaseMaintenanceStatus, DatabaseOperationEntry, MetadataEntry, RecoveryEntry, RecoveryKeyStatus } from './lib/store'
-  import type { ArchivedListTemplateItem, ColorSchemePreference, DailyPlan, InterfaceStylePreference, DailyTemplate, DeviceAppearancePreferences, Goal, Id, IridescentGradientPreferences, ListInstance, ListTemplate, ListTemplateItem, Metric, MetricEntry, MetricQuestion, MoveDirection, MovePlacement, Note, NoteViewState, PlanItem, TemplateItem, TemplateQuizAnswers } from './lib/types'
+  import type { ArchivedListTemplateItem, ColorSchemePreference, DailyPlan, DailyTemplate, DeviceAppearancePreferences, Goal, Id, IridescentGradientPreferences, ListInstance, ListTemplate, ListTemplateItem, Metric, MetricEntry, MetricQuestion, MoveDirection, MovePlacement, Note, NoteViewState, PlanItem, TemplateItem, TemplateQuizAnswers } from './lib/types'
   import { historyDestination, type HistoryDestination } from './lib/historyNavigation'
   import { captureTreeEditorSelection, restoreTreeEditorSelection } from './lib/treeEditorSelection'
   import type { SearchResult } from './lib/search'
@@ -165,14 +164,6 @@
     { id: 'system', name: 'System', description: 'Match this device' },
     { id: 'light', name: 'Light', description: 'Always use light mode' },
     { id: 'dark', name: 'Dark', description: 'Always use dark mode' },
-  ]
-  const INTERFACE_STYLE_OPTIONS: ReadonlyArray<{
-    id: InterfaceStylePreference
-    name: string
-    description: string
-  }> = [
-    { id: 'new', name: 'New', description: 'Geist type and a calm, flat sidebar' },
-    { id: 'classic', name: 'Classic', description: 'Rounded type and boxed sidebar rows' },
   ]
 
   type View = 'next' | 'today' | 'templates' | 'listTemplates' | 'lists' | 'notes' | 'projects' | 'prioritize' | 'buckets' | 'metrics' | 'goals' | 'settings' | 'admin'
@@ -913,8 +904,6 @@ return rows`
     systemPrefersDark,
   )
   $: document.documentElement.dataset.theme = displayedThemeId
-  $: classicInterface = deviceAppearance.interfaceStyle === 'classic'
-  $: document.documentElement.dataset.interfaceStyle = deviceAppearance.interfaceStyle
   $: observeCurrentTodayTheme(
     preferencesReady
       && view === 'today'
@@ -2824,11 +2813,6 @@ return rows`
     })
   }
 
-  function updateInterfaceStyle(interfaceStyle: InterfaceStylePreference) {
-    if (interfaceStyle === deviceAppearance.interfaceStyle) return
-    commitDeviceAppearance({ interfaceStyle })
-  }
-
   function toggleSystemColorSchemeSchedule() {
     commitDeviceAppearance({
       systemColorSchemeStartDate: systemColorSchemeScheduled ? '' : shiftISODate(currentDay, 1),
@@ -3867,18 +3851,6 @@ return rows`
       event.preventDefault()
       event.stopPropagation()
       if (!event.repeat) toggleGoalRhythm()
-      return
-    }
-
-    if (
-      event.code === 'KeyU' &&
-      event.altKey &&
-      !primaryModifier &&
-      !event.shiftKey
-    ) {
-      event.preventDefault()
-      event.stopPropagation()
-      if (!event.repeat) updateInterfaceStyle(deviceAppearance.interfaceStyle === 'classic' ? 'new' : 'classic')
       return
     }
 
@@ -7142,7 +7114,7 @@ return rows`
             <h2>
               {activePlan?.title ?? formatPlanTitle(displayedPlanDate)}
               {#if editingReminderPlanId && activePlan && editingReminderPlanId === activePlan.id}
-                {#if classicInterface}<span class="daily-reminder-prefix">—</span>{/if}
+                <span class="daily-reminder-prefix">—</span>
                 <input
                   bind:this={dailyReminderInput}
                   class="daily-reminder-input"
@@ -7159,7 +7131,7 @@ return rows`
                   title={activePlan ? 'Edit daily reminder' : 'Generate a day before editing the reminder'}
                   on:click={() => { void startDailyReminderEdit(activePlan) }}
                 >
-                  {classicInterface ? '— ' : ''}{activePlan?.dailyReminder ?? DEFAULT_DAILY_REMINDER}
+                  — {activePlan?.dailyReminder ?? DEFAULT_DAILY_REMINDER}
                 </button>
               {/if}
             </h2>
@@ -8235,32 +8207,6 @@ return rows`
                   </button>
                 {/if}
               </div>
-            {/each}
-          </div>
-        </section>
-
-        <section class="settings-section">
-          <div>
-            <h3>Interface style</h3>
-            <p>Keep the new look, or go back to the classic one, on this device. {altShortcutLabel('U')} switches between them.</p>
-          </div>
-
-          <div class="interface-style-grid" role="group" aria-label="Interface style">
-            {#each INTERFACE_STYLE_OPTIONS as option (option.id)}
-              <button
-                type="button"
-                class="interface-style-option"
-                class:active={deviceAppearance.interfaceStyle === option.id}
-                aria-pressed={deviceAppearance.interfaceStyle === option.id}
-                on:click={() => updateInterfaceStyle(option.id)}
-              >
-                <InterfaceStylePreview interfaceStyle={option.id} />
-                <span class="interface-style-option-copy">
-                  <strong>{option.name}</strong>
-                  <small>{option.description}</small>
-                </span>
-                <span class="theme-selected-mark" aria-hidden="true">✓</span>
-              </button>
             {/each}
           </div>
         </section>

@@ -287,13 +287,7 @@
     background: transparent;
     text-align: left;
     color: var(--muted);
-    font-size: 13px;
-    font-weight: 600;
-  }
-
-  :global(:root[data-interface-style='classic']) .search-group-toggle {
     font-size: 12px;
-    font-weight: inherit;
     letter-spacing: 0.06em;
     text-transform: uppercase;
   }

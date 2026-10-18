@@ -54,7 +54,6 @@
         { keys: ['alt', 'A'], label: 'Hide goal rhythm for 6 hours, or show it again' },
         { keys: ['alt', 'K'], label: 'Add an idea to Proposition Party' },
         { keys: ['alt', 'I'], label: 'Toggle IMAX mode' },
-        { keys: ['alt', 'U'], label: 'Switch between the new and classic interface style' },
         { keys: ['?'], label: 'Show this shortcuts reference' },
         { keys: ['esc'], label: 'Close overlay / clear selection' },
       ],
@@ -202,13 +201,7 @@
   .shortcut-group h4 {
     margin: 0 0 10px;
     color: var(--muted);
-    font-size: 13px;
-    font-weight: 600;
-  }
-
-  :global(:root[data-interface-style='classic']) .shortcut-group h4 {
     font-size: 12px;
-    font-weight: bold;
     letter-spacing: 0.06em;
     text-transform: uppercase;
   }

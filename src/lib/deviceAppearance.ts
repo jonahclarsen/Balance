@@ -11,12 +11,7 @@ import {
   type PresetThemeId,
   type ThemeId,
 } from './themes'
-import type {
-  ColorSchemePreference,
-  DeviceAppearancePreferences,
-  InterfaceStylePreference,
-  ReplicatedPreferences,
-} from './types'
+import type { ColorSchemePreference, DeviceAppearancePreferences, ReplicatedPreferences } from './types'
 
 // This deliberately contains appearance data only. It is the sole state needed
 // before SQLCipher opens, so the loading screen can render the device's theme
@@ -36,7 +31,6 @@ export function createDefaultDeviceAppearance(): DeviceAppearancePreferences {
     doneTintColor: '',
     checkboxColor: '',
     iridescentGradient: createDefaultIridescentGradient(),
-    interfaceStyle: 'new',
   }
 }
 
@@ -53,7 +47,6 @@ export function normalizeDeviceAppearance(value: unknown): DeviceAppearancePrefe
     doneTintColor: normalizeColorOverride(appearance.doneTintColor),
     checkboxColor: normalizeColorOverride(appearance.checkboxColor),
     iridescentGradient: normalizeIridescentGradient(appearance.iridescentGradient),
-    interfaceStyle: normalizeInterfaceStyle(appearance.interfaceStyle),
   }
 }
 
@@ -63,10 +56,6 @@ function normalizeStartDate(value: unknown): string {
 
 export function normalizeColorScheme(value: unknown): ColorSchemePreference {
   return value === 'light' || value === 'dark' ? value : 'system'
-}
-
-export function normalizeInterfaceStyle(value: unknown): InterfaceStylePreference {
-  return value === 'classic' ? 'classic' : 'new'
 }
 
 // A scheduled return to the system scheme takes effect on its start day even

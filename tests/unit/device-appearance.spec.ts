@@ -28,10 +28,3 @@ test('a scheduled return to the system scheme starts on its day', () => {
   expect(normalizeDeviceAppearance({ colorScheme: 'dark', systemColorSchemeStartDate: 'soon' }).systemColorSchemeStartDate).toBe('')
   expect(selectedColorSchemeForDate(normalizeDeviceAppearance({ colorScheme: 'light' }), '2026-08-18')).toBe('light')
 })
-
-test('the new interface style is the default and classic is kept when chosen', () => {
-  expect(createDefaultDeviceAppearance().interfaceStyle).toBe('new')
-  expect(normalizeDeviceAppearance({ version: 1, themeId: 'graphite' }).interfaceStyle).toBe('new')
-  expect(normalizeDeviceAppearance({ interfaceStyle: 'retro' }).interfaceStyle).toBe('new')
-  expect(normalizeDeviceAppearance({ interfaceStyle: 'classic' }).interfaceStyle).toBe('classic')
-})

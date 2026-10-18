@@ -1,6 +1,5 @@
 import { mount } from 'svelte'
 import './app.css'
-import './classicInterface.css'
 import App from './App.svelte'
 import {
   applyIridescentHueShift,
@@ -24,7 +23,6 @@ document.documentElement.dataset.colorScheme = effectiveColorScheme(
   window.matchMedia(COLOR_SCHEME_QUERY).matches,
 )
 document.documentElement.dataset.theme = effectiveThemeForDate(startupAppearance, startupDay)
-document.documentElement.dataset.interfaceStyle = startupAppearance.interfaceStyle
 applyIridescentHueShift()
 performance.measure('balance-device-theme-bootstrap', {
   start: deviceThemeBootstrapStartedAt,

@@ -236,58 +236,6 @@ test('appearance can follow the system or stay light or dark on this device', as
   })).toBe('system')
 })
 
-test('the classic interface style can be chosen on this device and kept after reload', async ({ page }) => {
-  await page.goto('/')
-  await page.evaluate(() => localStorage.clear())
-  await page.reload()
-
-  const root = page.locator('html')
-  await expect(root).toHaveAttribute('data-interface-style', 'new')
-  await openView(page, 'Settings')
-
-  const styleGroup = page.getByRole('group', { name: 'Interface style' })
-  const newStyle = styleGroup.getByRole('button', { name: /^New/ })
-  const classic = styleGroup.getByRole('button', { name: /^Classic/ })
-  await expect(newStyle).toHaveAttribute('aria-pressed', 'true')
-
-  await classic.click()
-  await expect(root).toHaveAttribute('data-interface-style', 'classic')
-  await expect(classic).toHaveAttribute('aria-pressed', 'true')
-  await expect.poll(() => page.evaluate(() => {
-    const appearance = JSON.parse(localStorage.getItem('balance:deviceAppearance.v1') ?? 'null')
-    return appearance?.interfaceStyle
-  })).toBe('classic')
-
-  await page.reload()
-  await expect(root).toHaveAttribute('data-interface-style', 'classic')
-  await openView(page, 'Settings')
-  await page.getByRole('group', { name: 'Interface style' }).getByRole('button', { name: /^New/ }).click()
-  await expect(root).toHaveAttribute('data-interface-style', 'new')
-})
-
-test('Alt+U switches the interface style from any page, even while typing', async ({ page }) => {
-  await page.goto('/')
-  await page.evaluate(() => localStorage.clear())
-  await page.reload()
-
-  const root = page.locator('html')
-  await expect(root).toHaveAttribute('data-interface-style', 'new')
-  await openView(page, 'Notes')
-  await page.keyboard.press('Alt+KeyU')
-  await expect(root).toHaveAttribute('data-interface-style', 'classic')
-
-  await openView(page, 'Settings')
-  await page.getByRole('textbox', { name: 'Database opening messages' }).focus()
-  await page.keyboard.press('Alt+KeyU')
-  await expect(root).toHaveAttribute('data-interface-style', 'new')
-  await expect(page.getByRole('group', { name: 'Interface style' }).getByRole('button', { name: /^New/ }))
-    .toHaveAttribute('aria-pressed', 'true')
-  await expect.poll(() => page.evaluate(() => {
-    const appearance = JSON.parse(localStorage.getItem('balance:deviceAppearance.v1') ?? 'null')
-    return appearance?.interfaceStyle
-  })).toBe('new')
-})
-
 test('the system appearance can be scheduled for the next day boundary', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-08-18T04:59:00') })
   await page.emulateMedia({ colorScheme: 'dark' })
