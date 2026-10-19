@@ -2117,3 +2117,23 @@ test('quote blocks support Markdown, continuation, exit, clipboard, and persiste
   await expect(page.locator('.note-quote')).toHaveCount(3)
   await expect(editors.first()).toHaveText('A quoted passage')
 })
+
+test('Enter right after a Shift-Enter line break replaces the break with a paragraph break', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await openNotesView(page)
+  await page.getByRole('button', { name: '+ New note' }).click()
+
+  const editors = page.locator('.note-text')
+  await editors.first().fill('Alpha')
+  await placeCaretAtEnd(editors.first())
+  await page.keyboard.press('Shift+Enter')
+  await page.keyboard.press('Enter')
+  await page.keyboard.type('Beta')
+
+  await expect(editors).toHaveCount(2)
+  await expect(editors.first().locator('br')).toHaveCount(0)
+  await expect(editors.first()).toHaveText('Alpha')
+  await expect(editors.nth(1)).toHaveText('Beta')
+})

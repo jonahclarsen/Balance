@@ -1049,10 +1049,9 @@ h3 {
 
 /* The macOS title bar overlays the webview, so reserve the first row of the
    sidebar for the native traffic lights instead of showing a separate header.
-   The lights end 27px down; at the sidebar's 1.1 zoom this leaves the same
-   gap above the quick actions as between them and the Balance heading. */
+   The lights end 27px down, leaving a little air above the quick actions. */
 .app-shell.macos-titlebar-overlay .sidebar {
-  padding-top: 40px;
+  padding-top: 48px;
 }
 
 .macos-titlebar-drag-region {
@@ -1155,7 +1154,7 @@ nav button.active {
   align-items: center;
   align-self: flex-start;
   gap: 4px;
-  margin-bottom: -16px;
+  margin-bottom: -6px;
 }
 
 .sidebar-search-button,
@@ -1192,6 +1191,10 @@ nav button.active {
   display: flex;
   align-items: center;
   gap: 9px;
+}
+
+.sidebar-brand-heading + p {
+  margin-top: 6px;
 }
 
 .sidebar-brand-heading h1 {

@@ -227,6 +227,22 @@ function stripAnchors(html: string): string {
   return template.innerHTML
 }
 
+// Enter right after a soft line break turns that break into the paragraph
+// break instead of leaving a trailing blank line on the block above.
+function $removeLineBreakBeforeCaret(selection: RangeSelection): void {
+  if (!selection.isCollapsed()) return
+  const { key, offset, type } = selection.anchor
+  const anchor = $getNodeByKey(key)
+  if (!anchor) return
+  let previous: LexicalNode | null = null
+  if (type === 'text') {
+    if (offset === 0) previous = anchor.getPreviousSibling()
+  } else if ($isElementNode(anchor)) {
+    previous = offset > 0 ? anchor.getChildAtIndex(offset - 1) : null
+  }
+  if (previous && $isLineBreakNode(previous)) previous.remove()
+}
+
 class LexicalNoteEditorView implements NoteEditorView {
   readonly name = 'lexical' as const
 
@@ -1383,6 +1399,7 @@ class LexicalNoteEditorView implements NoteEditorView {
       $selectOffset(block, 0)
       return true
     }
+    $removeLineBreakBeforeCaret(current)
     current.insertParagraph()
     return true
   }
