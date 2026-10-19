@@ -183,6 +183,42 @@ test('deeply nested wrapped parents past the five-line budget keep one line each
   expect(result.linesShown).toEqual({ Level1: 3, Level2: 2, Level3: 1, Level4: 1 })
 })
 
+test('a clipped parent leaves only once its last child reaches what it still shows', async ({ page }) => {
+  test.setTimeout(60_000)
+  await seed(page, familyTree(words('Long parent', 60)))
+  const workspace = page.locator('.workspace')
+  await expect(row(workspace, 'Filler 24')).toBeAttached()
+  const problems = await row(workspace, words('Long parent', 60)).evaluate(async (parent: HTMLElement) => {
+    let scroller: HTMLElement | null = parent.parentElement
+    while (scroller && !(/(auto|scroll)/.test(getComputedStyle(scroller).overflowY) && scroller.scrollHeight > scroller.clientHeight)) {
+      scroller = scroller.parentElement
+    }
+    const target = scroller ?? document.scrollingElement as HTMLElement
+    const shell = parent.parentElement!
+    const problems: string[] = []
+    let pinnedTop: number | null = null
+    const step = Math.max(8, Math.floor(target.clientHeight / 60))
+    for (let scrollTop = 0; scrollTop < target.scrollHeight; scrollTop += step) {
+      target.scrollTop = scrollTop
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+      const rect = parent.getBoundingClientRect()
+      const shellRect = shell.getBoundingClientRect()
+      if (rect.top <= shellRect.top + 1) continue
+      pinnedTop ??= rect.top
+      // Once pushed up by the end of its subtree, nothing of the subtree may
+      // remain below what the parent still shows.
+      const clip = parseFloat(parent.style.getPropertyValue('--tree-sticky-clip')) || 0
+      const visibleBottom = rect.bottom - clip * rect.height / parent.offsetHeight
+      if (rect.top < pinnedTop - 1 && visibleBottom < shellRect.bottom - 1.5) {
+        problems.push(`${scrollTop}: left ${Math.round(shellRect.bottom - visibleBottom)}px early`)
+      }
+    }
+    if (pinnedTop === null) problems.push('never pinned')
+    return problems.slice(0, 5)
+  })
+  expect(problems).toEqual([])
+})
+
 test('editing a clipped parent shows all of its text', async ({ page }) => {
   await seed(page, familyTree('Parent'))
   const workspace = page.locator('.workspace')

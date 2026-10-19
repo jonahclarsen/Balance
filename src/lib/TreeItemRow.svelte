@@ -221,6 +221,7 @@
   bind:this={shellElement}
   class:item-shell={kind === 'plan'}
   class:template-item={kind !== 'plan'}
+  class:sticky-shell={stickyParent}
   style={`--depth: ${depth}; --tree-sticky-top: ${stickyTop}`}
 >
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
