@@ -137,7 +137,7 @@
       <ul>
         <li><strong>Example:</strong> Exercise, every 2 days, matches <code>run, swim, yoga</code>. Checking “Run 5k” counts.</li>
         <li>Single words match whole words. Phrases match anywhere. Case doesn’t matter.</li>
-        <li><strong>Goal Rhythm</strong>, under Today, shows each goal’s days and what’s due. Toggle it with <kbd>Alt</kbd>+<kbd>A</kbd>.</li>
+        <li><strong>Goal Rhythm</strong>, under Today, shows each goal’s days and what’s due. Drag a goal onto a task to add its name. <kbd>Alt</kbd>+<kbd>A</kbd> hides it for 6 hours.</li>
         <li><strong>Stats</strong> charts completions over time.</li>
         <li>Today and the two days before recalculate; older days are kept as recorded.</li>
       </ul>
@@ -147,7 +147,7 @@
       <figure>
         <div class="mac"><div class="bar"><i></i><i></i><i></i></div><picture><source srcset="/images/mac-quizzes-dark.webp" media="(prefers-color-scheme: dark)"><img src="/images/mac-quizzes.webp" width="1920" height="1200" alt="Daily check-in quiz with charts" loading="lazy"></picture></div>
       </figure>
-      <p>A task naming a quiz opens it. <strong>Import past data</strong> brings in earlier answers.</p>
+      <p>A task naming a quiz opens it. <strong>Import past data</strong> brings in earlier answers. <strong>Archive quiz</strong> moves it out of the rail and <kbd>Alt</kbd>+<kbd>Q</kbd>/<kbd>W</kbd>; its answers and links keep working.</p>
 
       <h2 id="projects">Projects</h2>
       <p>Check in on long efforts: how complete, and how much your heart is in it. Both chart over time.</p>
@@ -187,7 +187,7 @@
 
       <h2 id="buckets">Buckets</h2>
       <p>Capture ideas with <kbd>Alt</kbd>+<kbd>K</kbd>. They land in <strong>Proposition Party</strong>.</p>
-      <p><strong>Sort</strong> asks one question per idea: worth the time and attention? Yes offers <strong>Genuinely Worth Doing</strong>, <strong>Possibly Worth Doing</strong>, or <strong>Add to new note</strong> (N), which moves the idea and its nested items into a new note. Others go to <strong>Idea Afterlife</strong> or <strong>Trash</strong>, which empties after 30 days.</p>
+      <p><strong>Sort</strong> asks one question per idea: worth the time and attention? Yes offers <strong>Genuinely Worth Doing</strong>, <strong>Possibly Worth Doing</strong>, <strong>Add to new note</strong> (N), which moves the idea and its nested items into a new note, or <strong>Cut</strong> (X), which puts it on the clipboard to paste anywhere. While a day is being generated, <strong>Add to day</strong> (D) puts it at the top of that day. <strong>Back</strong> (B) undoes the previous card. Others go to <strong>Idea Afterlife</strong> or <strong>Trash</strong>, which empties after 30 days.</p>
       <figure>
         <div class="mac"><div class="bar"><i></i><i></i><i></i></div><picture><source srcset="/images/mac-buckets-dark.webp" media="(prefers-color-scheme: dark)"><img src="/images/mac-buckets.webp" width="1920" height="1200" alt="Idea buckets" loading="lazy"></picture></div>
       </figure>
@@ -249,9 +249,9 @@ npx wrangler secret put RELAY_SECRET</code></pre>
       <div class="table-scroll"><table>
         <tr><th>Keys</th><th>Does</th></tr>
         <tr><td><kbd>Alt</kbd>+<kbd>T</kbd></td><td>Today; again jumps to the next unchecked task</td></tr>
-        <tr><td><kbd>Alt</kbd>+<kbd>X</kbd> <kbd>D</kbd> <kbd>E</kbd> <kbd>N</kbd> <kbd>V</kbd> <kbd>G</kbd> <kbd>P</kbd> <kbd>R</kbd> <kbd>B</kbd> <kbd>S</kbd></td><td>Next, Days, Lists, Notes, Quizzes, Goals, Projects, Prioritize, Buckets, Settings</td></tr>
+        <tr><td><kbd>Alt</kbd>+<kbd>X</kbd> <kbd>D</kbd> <kbd>E</kbd> <kbd>N</kbd> <kbd>V</kbd> <kbd>G</kbd> <kbd>P</kbd> <kbd>R</kbd> <kbd>B</kbd> <kbd>Z</kbd> <kbd>S</kbd></td><td>Next, Days, Lists, Notes, Quizzes, Goals, Projects, Prioritize, Buckets, Situate, Settings</td></tr>
         <tr><td><kbd>Alt</kbd>+<kbd>Q</kbd> / <kbd>W</kbd></td><td>Previous / next day, template or quiz</td></tr>
-        <tr><td><kbd>⌘</kbd><kbd>K</kbd></td><td>Search everything</td></tr>
+        <tr><td><kbd>⌘</kbd><kbd>K</kbd> or <kbd>Alt</kbd>+<kbd>C</kbd></td><td>Search everything</td></tr>
         <tr><td><kbd>⌘</kbd><kbd>F</kbd></td><td>Find in view</td></tr>
         <tr><td><kbd>⌘</kbd><kbd>D</kbd></td><td>Toggle done</td></tr>
         <tr><td><kbd>⌘</kbd><kbd>R</kbd></td><td>Hide / show subtasks</td></tr>
@@ -261,7 +261,7 @@ npx wrangler secret put RELAY_SECRET</code></pre>
         <tr><td><kbd>⌘</kbd><kbd>A</kbd></td><td>Select all items</td></tr>
         <tr><td><kbd>⌘</kbd><kbd>⇧</kbd><kbd>G</kbd></td><td>Generate selected day (while Find is closed)</td></tr>
         <tr><td><kbd>Alt</kbd>+<kbd>K</kbd></td><td>Capture an idea</td></tr>
-        <tr><td><kbd>Alt</kbd>+<kbd>A</kbd></td><td>Toggle Goal Rhythm</td></tr>
+        <tr><td><kbd>Alt</kbd>+<kbd>A</kbd></td><td>Hide Goal Rhythm for 6 hours, or show it again</td></tr>
         <tr><td><kbd>Alt</kbd>+<kbd>I</kbd></td><td>IMAX mode: content fills the window</td></tr>
         <tr><td><kbd>⌘</kbd><kbd>Z</kbd> / <kbd>⌘</kbd><kbd>⇧</kbd><kbd>Z</kbd></td><td>Undo / redo</td></tr>
       </table></div>
