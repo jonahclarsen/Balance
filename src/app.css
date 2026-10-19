@@ -1969,6 +1969,12 @@ body.mobile-checkbox-dragging {
   z-index: 0;
 }
 
+/* Outside selection mode the mobile task menu button has no tap layer to
+   clear, so it must not draw over the parent pinned above it. */
+.sticky-shell .plan-row:not(.sticky-parent, .whole-row-selection) > .mobile-task-actions {
+  z-index: auto;
+}
+
 /* Keyboard navigation lands rows below the parents pinned above them. */
 [data-plan-text-focus-target],
 [data-template-option-text-input],

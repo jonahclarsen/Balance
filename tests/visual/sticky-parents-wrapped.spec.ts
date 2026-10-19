@@ -183,7 +183,7 @@ test('deeply nested wrapped parents past the five-line budget keep one line each
   expect(result.linesShown).toEqual({ Level1: 3, Level2: 2, Level3: 1, Level4: 1 })
 })
 
-test('a clipped parent leaves only once its last child reaches what it still shows', async ({ page }) => {
+test('a clipped parent stays on top and leaves only once its last child reaches what it still shows', async ({ page }) => {
   test.setTimeout(60_000)
   await seed(page, familyTree(words('Long parent', 60)))
   const workspace = page.locator('.workspace')
@@ -211,6 +211,11 @@ test('a clipped parent leaves only once its last child reaches what it still sho
       const visibleBottom = rect.bottom - clip * rect.height / parent.offsetHeight
       if (rect.top < pinnedTop - 1 && visibleBottom < shellRect.bottom - 1.5) {
         problems.push(`${scrollTop}: left ${Math.round(shellRect.bottom - visibleBottom)}px early`)
+      }
+      // Controls of rows scrolling underneath stay under the pinned parent.
+      for (const x of [rect.left + 12, (rect.left + rect.right) / 2, rect.right - 20]) {
+        const hit = document.elementFromPoint(x, visibleBottom - 3)?.closest('[role="listitem"]')
+        if (hit && hit !== parent) problems.push(`${scrollTop}: ${hit.getAttribute('aria-label')?.slice(11, 30)} drawn over the parent`)
       }
     }
     if (pinnedTop === null) problems.push('never pinned')
