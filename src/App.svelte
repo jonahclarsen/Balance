@@ -1889,6 +1889,10 @@ return rows`
       if (!metrics.some(metric => metric.id === target.id)) return unavailableLink()
       selectedMetricId = target.id
       view = 'metrics'
+      if (target.date) {
+        metricOverlay = { metricId: target.id, date: target.date, opener: null, questionId: target.itemId }
+        return
+      }
       if (target.itemId) selector = `[data-metric-question-id="${CSS.escape(target.itemId)}"]`
     } else if (target.kind === 'goal') {
       if (!goals.some(goal => goal.id === target.id)) return unavailableLink()
@@ -8682,7 +8686,7 @@ return rows`
 
     {#if metricOverlay && metricOverlayMetric}
       {@const overlay = metricOverlay}
-      <OverlayModal linkURL={navigationURL('quiz', metricOverlayMetric.id)} title={`${metricOverlayMetric.name} · ${overlay.date}`} z={70} onClose={() => (metricOverlay = null)}>
+      <OverlayModal linkURL={navigationURL('quiz', metricOverlayMetric.id, undefined, overlay.date)} title={`${metricOverlayMetric.name} · ${overlay.date}`} z={70} onClose={() => (metricOverlay = null)}>
         <!-- Each opening starts fresh, including one that replaces an open quiz. -->
         {#key overlay}
           <MetricQuiz

@@ -4,11 +4,20 @@ export type LinkableView = typeof LINKABLE_VIEWS[number]
 export type NavigationTarget =
   | { kind: 'page'; view: LinkableView }
   | { kind: 'day'; date: string }
-  | { kind: 'task' | 'day-template' | 'list-template' | 'list' | 'quiz' | 'goal' | 'bucket' | 'note' | 'prioritize'; id: string; itemId?: string }
+  | { kind: 'task' | 'day-template' | 'list-template' | 'list' | 'quiz' | 'goal' | 'bucket' | 'note' | 'prioritize'; id: string; itemId?: string; date?: string }
 
 const ID = /^[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)*$/
-export function navigationURL(kind: NavigationTarget['kind'], id: string, itemId?: string): string {
-  return `balance://${kind}/${encodeURIComponent(id)}${itemId ? `?item=${encodeURIComponent(itemId)}` : ''}`
+export function navigationURL(kind: NavigationTarget['kind'], id: string, itemId?: string, date?: string): string {
+  const query = new URLSearchParams()
+  if (itemId) query.set('item', itemId)
+  if (date) query.set('date', date)
+  return `balance://${kind}/${encodeURIComponent(id)}${query.size ? `?${query}` : ''}`
+}
+
+function isCalendarDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  const date = new Date(`${value}T12:00:00Z`)
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value
 }
 
 export function parseNavigationURL(raw: string): NavigationTarget | null {
@@ -22,15 +31,15 @@ export function parseNavigationURL(raw: string): NavigationTarget | null {
   const kind = url.hostname
   if (kind === 'page') return !url.search && LINKABLE_VIEWS.includes(id as LinkableView) ? { kind, view: id as LinkableView } : null
   if (kind === 'day') {
-    if (url.search || !/^\d{4}-\d{2}-\d{2}$/.test(id)) return null
-    const date = new Date(`${id}T12:00:00Z`)
-    return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === id ? { kind, date: id } : null
+    return !url.search && isCalendarDate(id) ? { kind, date: id } : null
   }
   if (!['task', 'day-template', 'list-template', 'list', 'quiz', 'goal', 'bucket', 'note', 'prioritize'].includes(kind) || !ID.test(id)) return null
   const itemId = url.searchParams.get('item') ?? undefined
-  if ([...url.searchParams.keys()].some(key => key !== 'item') || url.searchParams.getAll('item').length > 1 || (itemId !== undefined && !ID.test(itemId))) return null
+  const date = url.searchParams.get('date') ?? undefined
+  if (date !== undefined && (kind !== 'quiz' || !isCalendarDate(date) || url.searchParams.getAll('date').length > 1)) return null
+  if ([...url.searchParams.keys()].some(key => key !== 'item' && key !== 'date') || url.searchParams.getAll('item').length > 1 || (itemId !== undefined && !ID.test(itemId))) return null
   if (itemId && ['task', 'goal', 'bucket'].includes(kind)) return null
-  return { kind: kind as Exclude<NavigationTarget['kind'], 'page' | 'day'>, id, ...(itemId ? { itemId } : {}) }
+  return { kind: kind as Exclude<NavigationTarget['kind'], 'page' | 'day'>, id, ...(itemId ? { itemId } : {}), ...(date ? { date } : {}) }
 }
 
 // Scan complete tokens so malformed paths never turn into links to a prefix.

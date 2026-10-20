@@ -326,6 +326,7 @@ fn deliver_balance_deep_link(app: &tauri::AppHandle, url: String) {
         }
     }
     let _ = app.emit(BALANCE_DEEP_LINK_EVENT, url);
+    #[cfg(target_os = "macos")]
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
         let _ = window.unminimize();

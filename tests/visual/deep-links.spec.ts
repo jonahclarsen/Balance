@@ -160,4 +160,6 @@ test('native launch queue routes navigation after loading the workspace', async 
   await expect.poll(() => page.evaluate(() => (window as any).__acknowledged)).toContain('balance://note/destination?item=paragraph')
   await page.evaluate(() => (window as any).__deliverLink('balance://page/settings'))
   await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible()
+  await page.evaluate(({ id, date }) => (window as any).__deliverLink(`balance://quiz/${id}?date=${date}`), { id: state.metrics[0].id, date })
+  await expect(page.getByRole('dialog', { name: `Synthetic quiz · ${date}`, exact: true })).toBeVisible()
 })

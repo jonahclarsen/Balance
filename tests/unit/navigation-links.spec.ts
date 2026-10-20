@@ -4,6 +4,7 @@ import { internalLinkId, itemLinkFromURL, linkifyItemText, resolveItemLinks } fr
 
 test('navigation routes round trip dates, page names and generated row IDs', () => {
   for (const view of LINKABLE_VIEWS) expect(parseNavigationURL(navigationURL('page', view))).toEqual({ kind: 'page', view })
+  expect(parseNavigationURL(navigationURL('quiz', 'quiz_id', 'question_id', '2026-10-20'))).toEqual({ kind: 'quiz', id: 'quiz_id', itemId: 'question_id', date: '2026-10-20' })
   expect(parseNavigationURL('balance://day/2028-02-29')).toEqual({ kind: 'day', date: '2028-02-29' })
   for (const kind of ['day-template', 'list-template', 'note', 'list', 'quiz', 'prioritize'] as const) {
     expect(parseNavigationURL(navigationURL(kind, 'synthetic_id', 'row_123.generated-456'))).toEqual({ kind, id: 'synthetic_id', itemId: 'row_123.generated-456' })
@@ -12,7 +13,7 @@ test('navigation routes round trip dates, page names and generated row IDs', () 
 })
 
 test('malformed navigation URLs cannot navigate to an accepted prefix', () => {
-  for (const url of ['balance://page/unknown', 'balance://day/2026-02-29', 'balance://day/2026-13-01', 'balance://task/a/more', 'balance://task/a#more', 'balance://task/a?other=1', 'balance://note/a?item=', 'balance://note/a?item=b&item=c', 'balance://user@task/a', 'balance://task:99/a', 'balance://task/a/', 'balance://task/../a', 'balance://task/%2Fa', 'https://task/a']) {
+  for (const url of ['balance://page/unknown', 'balance://day/2026-02-29', 'balance://day/2026-13-01', 'balance://task/a/more', 'balance://task/a#more', 'balance://task/a?other=1', 'balance://note/a?item=', 'balance://note/a?item=b&item=c', 'balance://user@task/a', 'balance://task:99/a', 'balance://task/a/', 'balance://task/../a', 'balance://task/%2Fa', 'https://task/a', 'balance://quiz/q?date=2026-02-29', 'balance://note/n?date=2026-10-20']) {
     expect(parseNavigationURL(url), url).toBeNull()
   }
 })
