@@ -120,6 +120,10 @@ test('plan and list backspace use the last nested descendant as the previous vis
     expect(result?.focusOffset).toBe(4)
     expect(result?.items[0].children[0].children[0].text).toBe('deepnext')
     expect(result?.items).toHaveLength(1)
+    expect(result?.items[0]).not.toBe(items[0])
+    expect(result?.items[0].children[0].children[0]).not.toBe(items[0].children[0].children[0])
+    expect((result?.items[0] as Item).futureField).toBe(items[0].futureField)
+    expect(items[0].children[0].children[0].text).toBe('deep')
     expect(backspace(items, 'parent')).toBeNull()
     expect(backspace(items, 'missing')).toBeNull()
   }

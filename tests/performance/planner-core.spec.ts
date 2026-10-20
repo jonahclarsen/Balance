@@ -136,9 +136,47 @@ test('planner helpers retain behavior across wide and deep synthetic trees', asy
     }
   }
 
+  // A normal editing operation includes lookup, merge, and immutable tree
+  // rebuilding; measure it as well as the flatten-only stress cases above.
+  const editingItems = [
+    ...Array.from({ length: 4 }, (_, root) => item(`root-${root}`,
+      Array.from({ length: 3 }, (_, child) => item(`child-${root}-${child}`,
+        Array.from({ length: 3 }, (_, leaf) => item(`leaf-${root}-${child}-${leaf}`)),
+      )),
+    )),
+    item('next'),
+  ]
+  const editingBefore = structuredClone(editingItems)
+  for (const [helper, operation] of [
+    ['backspacePlanItemAtStart:merge', () => backspacePlanItemAtStart(editingItems, 'next')],
+    ['backspaceListTemplateItemAtStart:merge', () => backspaceListTemplateItemAtStart(editingItems, 'next')],
+  ] as const) {
+    const result = operation()!
+    expect(result.focusItemId).toBe('leaf-3-2-2')
+    expect(result.items[3].children[2].children[2].text).toBe('leaf-3-2-2next')
+    expect(result.items).toHaveLength(4)
+    results.push({ helper, depth: 3, leaves: 37, ...measure(operation) })
+  }
+  const mergeOption = () => backspaceTemplateOptionAtStart(editingItems, 'next', 'next-option')
+  const mergedOption = mergeOption()!
+  expect(mergedOption.focusOptionId).toBe('leaf-3-2-2-option')
+  expect(mergedOption.items[3].children[2].children[2].options[0].text).toBe('leaf-3-2-2next')
+  expect(mergedOption.items).toHaveLength(4)
+  results.push({ helper: 'backspaceTemplateOptionAtStart:merge', depth: 3, leaves: 37, ...measure(mergeOption) })
+  expect(editingItems).toEqual(editingBefore)
+
   const now = new Date(2026, 8, 5, 14, 38)
   const timed = { ...item('timed'), startMinutes: 600, endMinutes: 660 }
   const task = item('task')
+  const smallRanges: Array<{ name: string; items: PlanItem[]; expectedStart: number }> = [
+    { name: 'untimed-small', items: [item('parent', [task]), item('untimed')], expectedStart: 870 },
+    { name: 'timed-small', items: [timed, task], expectedStart: 660 },
+  ]
+  for (const { name, items, expectedStart } of smallRanges) {
+    const range = () => defaultPlanItemTimeRange(items, task.id, '2026-09-05', now)
+    expect(range()).toEqual({ startMinutes: expectedStart, endMinutes: expectedStart + 60 })
+    results.push({ helper: `defaultPlanItemTimeRange:${name}`, depth: 1, leaves: 2, ...measure(range) })
+  }
   const timedItems = [timed, task, ...spine(128, Array.from({ length: 1024 }, (_, index) => item(`later-${index}`)))]
   const defaultRange = () => defaultPlanItemTimeRange(timedItems, task.id, '2026-09-05', now)
   expect(defaultRange()).toEqual({ startMinutes: 660, endMinutes: 720 })
