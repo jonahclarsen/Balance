@@ -15,6 +15,8 @@ const clipLimitProperty = '--tree-sticky-clip-limit'
 const heightProperty = '--tree-sticky-height'
 const fadeTopProperty = '--tree-sticky-fade-top'
 const fadeEndProperty = '--tree-sticky-fade-end'
+const tailShiftProperty = '--tree-sticky-tail-shift'
+const tailSelector = ':scope > .plan-goal-badges, :scope > .option-stack > .option-row:first-child > *, :scope > .option-stack > .alternative-row'
 
 type StickyRow = {
   shell: HTMLElement
@@ -32,7 +34,7 @@ type StickyRow = {
   textLineRights: number[]
   fadeLine: number
   belowText: number
-  tail: HTMLElement | null
+  tails: HTMLElement[]
   textClip: number
   published: number | null
   clipLimit: number
@@ -97,13 +99,17 @@ function measure(entry: StickyRow) {
   const minimumHeight = controlHeight + parseFloat(rowStyle.paddingTop) + parseFloat(rowStyle.paddingBottom)
     + parseFloat(rowStyle.borderTopWidth) + parseFloat(rowStyle.borderBottomWidth)
   const below = parseFloat(getComputedStyle(text).paddingBottom) * scale + Math.max(0, rowRect.bottom - textRect.bottom)
-  // Narrow rows wrap goal badges below the editor. Keep that trailing content
-  // with the shrinking text instead of leaving its reserved space empty.
-  const tail = row.querySelector<HTMLElement>(':scope > .plan-goal-badges')
-  const belowTextTail = tail && tail.offsetTop >= (textRect.bottom - rowRect.top) / scale - 0.5 ? tail : null
-  if (entry.tail !== belowTextTail) entry.tail?.style.removeProperty('--tree-sticky-tail-shift')
-  entry.tail = belowTextTail
-  entry.tail?.style.setProperty('--tree-sticky-tail-shift', `${entry.clip}px`)
+  // Narrow rows wrap goal badges, or a list item's probability controls and
+  // alternatives, below the editor. Keep that trailing content with the
+  // shrinking text instead of leaving its reserved space empty.
+  const tails = Array.from(row.querySelectorAll<HTMLElement>(tailSelector)).filter((tail) => (
+    // Measure where each tail sits before its current shift.
+    !tail.contains(text) && tail.getBoundingClientRect().top
+      + (parseFloat(tail.style.getPropertyValue(tailShiftProperty)) || 0) * scale >= textRect.bottom - 0.5 * scale
+  ))
+  for (const tail of entry.tails) if (!tails.includes(tail)) tail.style.removeProperty(tailShiftProperty)
+  entry.tails = tails
+  setTailShift(entry)
   entry.textBottom = (textRect.bottom - rowRect.top) / scale
   entry.textLineBottoms = bottoms.map((bottom) => (bottom - rowRect.top) / scale)
   entry.textLineTops = lines.map((line) => (line.top - textRect.top) / scale)
@@ -179,7 +185,7 @@ function scheduleClipUpdate() {
 function setClip(entry: StickyRow, clip: number) {
   if (clip !== entry.clip) {
     entry.clip = clip
-    entry.tail?.style.setProperty('--tree-sticky-tail-shift', `${clip}px`)
+    setTailShift(entry)
     if (clip > 0) entry.row.style.setProperty(clipProperty, `${clip}px`)
     else entry.row.style.removeProperty(clipProperty)
   }
@@ -212,6 +218,10 @@ function setFadeLine(entry: StickyRow, line: number) {
   }
   style.setProperty(fadeTopProperty, `${entry.textLineTops[line]}px`)
   style.setProperty(fadeEndProperty, `${entry.textLineRights[line]}px`)
+}
+
+function setTailShift(entry: StickyRow) {
+  for (const tail of entry.tails) tail.style.setProperty(tailShiftProperty, `${entry.clip}px`)
 }
 
 function setWrapped(entry: StickyRow, wrapped: boolean) {
@@ -260,7 +270,7 @@ export function trackStickyParentRow(shell: HTMLElement, row: HTMLElement, prope
   const entry: StickyRow = {
     shell, row, property, fullHeight: 0, lineHeights: [], lineCount: 0, published: null, clipLimit: 0, clip: 0,
     text: null, textBottom: 0, textLineBottoms: [], textLineTops: [], textLineRights: [], fadeLine: -1,
-    belowText: 0, tail: null, textClip: 0,
+    belowText: 0, tails: [], textClip: 0,
   }
   shell.style.setProperty(clipLimitProperty, '0px')
   stickyRows.set(shell, entry)
@@ -272,7 +282,7 @@ export function trackStickyParentRow(shell: HTMLElement, row: HTMLElement, prope
     stickyRows.delete(shell)
     entriesByRow.delete(row)
     setWrapped(entry, false)
-    entry.tail?.style.removeProperty('--tree-sticky-tail-shift')
+    for (const tail of entry.tails) tail.style.removeProperty(tailShiftProperty)
     shell.style.removeProperty(clipLimitProperty)
     shell.style.removeProperty(property)
     shell.style.removeProperty(heightProperty)

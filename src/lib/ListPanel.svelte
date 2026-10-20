@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
   import PlanItemEditor from './PlanItemEditor.svelte'
+  import { pinnedParentsLine } from './itemScroll'
   import { buildItemTimeWarnings, findPlanItem, isURL, itemLinkFromAnchor, itemMetricLink, linkifyItemText, renderItemDisplayHTML, type ItemLink } from './planner'
   import { openExternalURLFromShortcut } from './externalLinks'
   import { plannerStore } from './store'
@@ -186,8 +187,12 @@
     if (scrollContainer) {
       const effectiveZoom = row.currentCSSZoom || 1
       const containerRect = scrollContainer.getBoundingClientRect()
-      // Keep the target below the header and stable while the modal bottom collapses.
-      const selectionTop = containerRect.top + (containerRect.height + bottomCollapse * effectiveZoom) * 0.08
+      // Keep the target below the header and stable while the modal bottom
+      // collapses, and clear of the parents that will pin above it.
+      const selectionTop = Math.max(
+        containerRect.top + (containerRect.height + bottomCollapse * effectiveZoom) * 0.08,
+        (pinnedParentsLine(row) ?? -Infinity) + 8 * effectiveZoom,
+      )
       const targetTop = Math.max(
         0,
         scrollContainer.scrollTop + (rowRect.top - selectionTop) / effectiveZoom,

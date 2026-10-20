@@ -108,7 +108,7 @@
   import { historyDestination, type HistoryDestination } from './lib/historyNavigation'
   import { captureTreeEditorSelection, restoreTreeEditorSelection } from './lib/treeEditorSelection'
   import type { SearchResult } from './lib/search'
-  import { revealCaret, scrollMovedItemsIntoView, type ItemRowKind } from './lib/itemScroll'
+  import { keepBelowPinnedParents, revealCaret, scrollMovedItemsIntoView, type ItemRowKind } from './lib/itemScroll'
   import { focusTaskBelow, focusTaskById, TASK_COMPLETION_FOCUS_EVENT, type TaskCaretOffsets, type TaskCompletionFocusDetail } from './lib/taskCompletionFocus'
   import { rememberFocusReturn, type FocusReturn } from './lib/focusReturn'
   import { buildItemTimeWarnings, createPlanItem, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatMinutes, formatPlanTitle, hasActiveTimeRange, hasIncompletePlanItems, isURL, itemLinkFromAnchor, linkifyItemText, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, sanitizeInlineHTML, templateQuizSteps, templateReviewURL, todayISO, totalWordCount, type ItemLink, type TemplateQuizStep, type TemplateReviewKind } from './lib/planner'
@@ -1158,6 +1158,7 @@ return rows`
     )
     if (!row) return
     row.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' })
+    keepBelowPinnedParents(row)
     // Focusing a task on mobile would raise the keyboard, so only scroll there.
     if (!isMobile) await focusTaskById(plan.id, next.item.id)
   }
@@ -1325,6 +1326,7 @@ return rows`
     const bounds = scroller?.getBoundingClientRect()
     if (rect.top < Math.max(bounds?.top ?? 0, isMobile ? 64 : 0) || rect.bottom > Math.min(bounds?.bottom ?? innerHeight, innerHeight)) {
       target.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' })
+      keepBelowPinnedParents(target)
     }
   }
 
@@ -1931,7 +1933,10 @@ return rows`
 
     // Scroll last (after focus, on the next frame) so the browser's own
     // focus-scroll doesn't override the centering and the layout has settled.
-    requestAnimationFrame(() => input.scrollIntoView({ block: 'center' }))
+    requestAnimationFrame(() => {
+      input.scrollIntoView({ block: 'center' })
+      keepBelowPinnedParents(input.closest<HTMLElement>('[data-list-template-item-id]') ?? input)
+    })
   }
 
   async function waitForListTemplateInput(itemId: Id, attempts = 10): Promise<HTMLElement | null> {

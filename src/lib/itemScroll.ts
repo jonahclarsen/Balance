@@ -37,6 +37,43 @@ function pinnedParentsBottom(element: Element): number | null {
   return rowRect.top > parentShell.getBoundingClientRect().top + 0.5 ? stickyRowVisibleBottom(parentRow) : null
 }
 
+// The viewport line an element must stay below to clear the parents that pin
+// above it once it nears the top: where the outermost of them pins plus every
+// pinned height below that. Null when no parent pins above it. Rows not yet
+// measured count at full height. Sticky offsets count from the scroll
+// container's padding edge and already include headers and rails pinned above
+// the tree.
+export function pinnedParentsLine(element: Element): number | null {
+  let outermost: HTMLElement | null = null
+  let heights = 0
+  for (let shell = element.closest(treeShellSelector)?.parentElement?.closest<HTMLElement>(treeShellSelector); shell; shell = shell.parentElement?.closest<HTMLElement>(treeShellSelector)) {
+    const parentRow = shell.firstElementChild
+    if (!(parentRow instanceof HTMLElement) || !parentRow.classList.contains('sticky-parent')) continue
+    outermost = parentRow
+    heights += parseFloat(shell.style.getPropertyValue('--tree-sticky-height')) || parentRow.offsetHeight
+  }
+  if (!outermost) return null
+  const rowRect = outermost.getBoundingClientRect()
+  const scale = outermost.offsetHeight ? rowRect.height / outermost.offsetHeight : 1
+  const scroller = scrollContainerFor(outermost)
+  const edge = scroller
+    ? scroller.getBoundingClientRect().top + (scroller.clientTop + parseFloat(getComputedStyle(scroller).paddingTop)) * scale
+    : 0
+  return edge + (parseFloat(getComputedStyle(outermost).top) + heights) * scale
+}
+
+// Nudges a just-revealed element out from behind the parents pinned above it.
+export function keepBelowPinnedParents(element: HTMLElement, gap = 8) {
+  const line = pinnedParentsLine(element)
+  if (line === null) return
+  const delta = element.getBoundingClientRect().top - (line + gap)
+  if (delta >= 0) return
+  const scroller = scrollContainerFor(element)
+  const zoom = element.currentCSSZoom || 1
+  if (scroller) scroller.scrollBy({ top: delta / zoom })
+  else window.scrollBy({ top: delta })
+}
+
 // Keep a moved row (or selected block of rows) away from the viewport edges.
 // Two surrounding rows are included in the required visible region whenever
 // they exist, so repeated Option+Arrow moves retain useful visual context.
