@@ -110,3 +110,19 @@ test('empty and single-goal sorting still returns an independent array', () => {
     expect(sorted).not.toBe(input)
   }
 })
+
+test('inactive goals and unrelated completion histories retain urgency order', () => {
+  const { goals, completions } = fixture()
+  const date = '2024-06-01'
+  const inactive = goals.map((goal, index) => ({
+    ...goal,
+    activityPeriods: index % 2
+      ? [{ startDate: '2024-07-01', endDate: null }]
+      : [{ startDate: '2024-01-01', endDate: '2024-05-31' }],
+  }))
+  expect(sortGoalsByUrgency(inactive, completions, date)).toEqual(referenceOrder(inactive, completions, date))
+  const subset = [goals[3], inactive[4], goals[2], inactive[0]]
+  expect(sortGoalsByUrgency(subset, completions, date)).toEqual(referenceOrder(subset, completions, date))
+  expect(sortGoalsByUrgency(subset, completions.map(entry => ({ ...entry, goalId: 'unknown' })), date))
+    .toEqual(referenceOrder(subset, [], date))
+})

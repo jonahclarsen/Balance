@@ -56,6 +56,23 @@ for (const { size, goals: count, days } of [
     expect(new Set(sorted.map(goal => goal.id))).toEqual(new Set(goals.map(goal => goal.id)))
     const byGoal = new Map(goals.map(goal => [goal.id, completions.filter(entry => entry.goalId === goal.id)]))
     measure(`goals-urgency-${size}`, () => sortGoalsByUrgency(goals, completions, date))
+    const inactive = goals.map(goal => ({
+      ...goal, activityPeriods: [{ ...goal.activityPeriods[0], endDate: shiftISODate(date, -1) }],
+    }))
+    expect(sortGoalsByUrgency(inactive, completions, date)).toEqual(
+      [...inactive].sort((left, right) => left.cadenceDays - right.cadenceDays),
+    )
+    measure(`goals-urgency-inactive-${size}`, () => sortGoalsByUrgency(inactive, completions, date))
+
+    const subset = goals.slice(0, Math.max(2, Math.ceil(goals.length / 10)))
+    const deadlines = new Map(subset.map(goal => [goal.id, goalDaysUntilLapse(goal, completions, date)]))
+    const expectedSubset = [...subset].sort((left, right) =>
+      Number(right.cadenceDays === 1) - Number(left.cadenceDays === 1)
+      || (deadlines.get(left.id) ?? Infinity) - (deadlines.get(right.id) ?? Infinity)
+      || left.cadenceDays - right.cadenceDays,
+    )
+    expect(sortGoalsByUrgency(subset, completions, date)).toEqual(expectedSubset)
+    measure(`goals-urgency-unrelated-${size}`, () => sortGoalsByUrgency(subset, completions, date))
     for (const range of [180, 30, 1]) {
       const stats = buildGoalStats(goals, completions, date, range)
       expect(stats.daily).toHaveLength(range)

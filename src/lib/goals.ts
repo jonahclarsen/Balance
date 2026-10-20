@@ -634,11 +634,20 @@ export function sortGoalsByUrgency(goals: Goal[], completions: GoalCompletion[],
   // Only the latest completion can anchor a goal's current deadline. If it
   // predates the current activity period, every earlier completion does too.
   // Index once rather than scanning the entire history for every goal.
-  const latestByGoal = new Map<Id, GoalCompletion>()
-  for (const completion of completions) {
-    if (completion.date > currentDate) continue
-    const latest = latestByGoal.get(completion.goalId)
-    if (!latest || completion.date > latest.date) latestByGoal.set(completion.goalId, completion)
+  const latestByGoal = new Map<Id, GoalCompletion | null>()
+  if (completions.length > 0) {
+    for (const goal of goals) {
+      if (isGoalActiveOnDate(goal, currentDate)) latestByGoal.set(goal.id, null)
+    }
+    // Archived/future goals need no completion scan. Keep the index bounded
+    // to active goals even when history includes unrelated or removed goals.
+    if (latestByGoal.size > 0) {
+      for (const completion of completions) {
+        const latest = latestByGoal.get(completion.goalId)
+        if (latest === undefined || completion.date > currentDate) continue
+        if (latest === null || completion.date > latest.date) latestByGoal.set(completion.goalId, completion)
+      }
+    }
   }
   const urgency = new Map(goals.map((goal) => {
     const latest = latestByGoal.get(goal.id)
