@@ -52,6 +52,9 @@ export function buildGoalStats(
     goalCompletions.push(completion)
     completionsByGoal.set(completion.goalId, goalCompletions)
   }
+  for (const goalCompletions of completionsByGoal.values()) {
+    goalCompletions.sort((left, right) => left.date < right.date ? -1 : left.date > right.date ? 1 : 0)
+  }
   const dates = Array.from(
     { length: normalizedRangeDays },
     (_, index) => shiftISODate(rangeStart, index),
@@ -61,7 +64,7 @@ export function buildGoalStats(
   const daily = dates.map((date) => ({
     date,
     overdueGoals: goals.filter(
-      (goal) => (goalDaysUntilLapse(goal, completionsByGoal.get(goal.id) ?? [], date) ?? 0) < 0,
+      (goal) => (goalDaysUntilLapse(goal, latestCompletionOnDate(completionsByGoal.get(goal.id) ?? [], date), date) ?? 0) < 0,
     ).length,
     completedGoals: completionsByDate.get(date)?.size ?? 0,
   }))
@@ -101,6 +104,21 @@ export function buildGoalStats(
     deadlineOutlook,
     weekdayCompletions,
   }
+}
+
+// Historical chart dates only need their latest completion. The deadline
+// helper still applies activity/cadence rules, including rejecting a completion
+// before a restarted activity period. Search sorted local copies, never saved
+// completion arrays, so opening statistics cannot reorder persisted history.
+function latestCompletionOnDate(completions: GoalCompletion[], date: string): GoalCompletion[] {
+  let lower = 0
+  let upper = completions.length
+  while (lower < upper) {
+    const middle = lower + Math.floor((upper - lower) / 2)
+    if (completions[middle].date <= date) lower = middle + 1
+    else upper = middle
+  }
+  return lower > 0 ? [completions[lower - 1]] : []
 }
 
 function weekdayIndex(date: string): number {

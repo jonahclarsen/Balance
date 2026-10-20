@@ -630,7 +630,20 @@ export function goalsNeedingDoabilityReview(
  * override. Remaining ties fall back to the original order for stability.
  */
 export function sortGoalsByUrgency(goals: Goal[], completions: GoalCompletion[], currentDate = todayISO()): Goal[] {
-  const urgency = new Map(goals.map((goal) => [goal.id, goalDaysUntilLapse(goal, completions, currentDate)]))
+  if (goals.length < 2) return [...goals]
+  // Only the latest completion can anchor a goal's current deadline. If it
+  // predates the current activity period, every earlier completion does too.
+  // Index once rather than scanning the entire history for every goal.
+  const latestByGoal = new Map<Id, GoalCompletion>()
+  for (const completion of completions) {
+    if (completion.date > currentDate) continue
+    const latest = latestByGoal.get(completion.goalId)
+    if (!latest || completion.date > latest.date) latestByGoal.set(completion.goalId, completion)
+  }
+  const urgency = new Map(goals.map((goal) => {
+    const latest = latestByGoal.get(goal.id)
+    return [goal.id, goalDaysUntilLapse(goal, latest ? [latest] : [], currentDate)]
+  }))
   const order = new Map(goals.map((goal, index) => [goal.id, index]))
 
   return [...goals].sort((left, right) => {
