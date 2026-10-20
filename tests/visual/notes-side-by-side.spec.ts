@@ -20,7 +20,16 @@ test('notes open and edit independently beside each other, including in IMAX', a
   await expect(open).toHaveCSS('opacity', '0')
   await card.hover()
   await expect(open).toHaveCSS('opacity', '1')
+  async function expectSplitBelowDate() {
+    const dateBounds = await card.locator('time').boundingBox()
+    const splitBounds = await open.boundingBox()
+    expect(dateBounds).not.toBeNull()
+    expect(splitBounds).not.toBeNull()
+    expect(splitBounds!.y).toBeGreaterThan(dateBounds!.y + dateBounds!.height)
+  }
+  await expectSplitBelowDate()
   await open.click()
+  await expectSplitBelowDate()
   await expect(main.getByRole('textbox', { name: 'Note title', exact: true })).toHaveValue('Draft')
   await expect(right.getByRole('textbox', { name: 'Note title', exact: true })).toHaveValue('Reference')
   await right.getByRole('textbox', { name: 'Note title', exact: true }).fill('Reference edited')

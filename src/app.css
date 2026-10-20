@@ -6508,6 +6508,13 @@ body.mobile-checkbox-dragging {
   right: 0;
 }
 
+@media (min-width: 761px) {
+  /* Keep a separate space below the date even for a one-line, empty note. */
+  .note-card-row:has(.note-open-beside) .note-card {
+    min-height: 72px;
+  }
+}
+
 @media (max-width: 760px) {
   .note-open-beside,
   .notes-side-pane {
