@@ -1,6 +1,7 @@
 <script lang="ts">
   import { externalNotePaste } from './externalNotePaste'
   import { onDestroy, onMount, tick } from 'svelte'
+  import NotesPanel from './NotesPanel.svelte'
   import ReadOnlyNoteItem from './ReadOnlyNoteItem.svelte'
   import NoteEditorHost from './noteEditor/NoteEditorHost.svelte'
   import type { ItemLink } from './planner'
@@ -45,6 +46,25 @@
   export let trashOpen = false
   export let viewStatesByNote: ReadonlyMap<Id, NoteViewState> = new Map()
   export let onViewStateChange: (noteId: Id, state: NoteViewState) => void = () => {}
+
+  // The right pane reuses the complete note editor without another sidebar.
+  export let sidePane = false
+  export let onClose: () => void = () => {}
+
+  let sideNoteId: Id | null = null
+  let sidePanel: { rememberBeforeLeaving: () => void } | null = null
+  let titleElement: HTMLTextAreaElement | null = null
+  let documentElement: HTMLElement | null = null
+  $: sideNote = activeNotes.find((note) => note.id === sideNoteId) ?? null
+  $: if (sideNoteId && (!sideNote || trashOpen)) closeSidePane()
+
+  function closeSidePane() {
+    sideNoteId = null
+  }
+
+  function openBeside(noteId: Id) {
+    sideNoteId = noteId
+  }
 
   let filter = ''
   let lastActiveNoteId: Id | null = null
@@ -160,7 +180,7 @@
     event.preventDefault()
     const next = selectedVersions[(index + (event.key === 'ArrowRight' ? 1 : -1) + selectedVersions.length) % selectedVersions.length]
     onSelect(next.id)
-    void tick().then(() => document.querySelector<HTMLButtonElement>(`[data-note-version-tab="${next.id}"]`)?.focus())
+    void tick().then(() => documentElement?.querySelector<HTMLButtonElement>(`[data-note-version-tab="${next.id}"]`)?.focus())
   }
 
   function selectVersionInput(node: HTMLInputElement) {
@@ -177,7 +197,7 @@
     trashOpen = false
     const id = onCreate()
     onSelect(id)
-    void tick().then(() => document.querySelector<HTMLTextAreaElement>('#note-title')?.select())
+    void tick().then(() => titleElement?.select())
   }
 
   export function showNotes() {
@@ -199,7 +219,10 @@
     const index = groups.findIndex((versions) => versions.some((note) => note.id === noteId))
     const nextGroup = groups[index + 1] ?? groups[index - 1]
     const nextNoteId = nextGroup ? cardNote(nextGroup, null).id : ''
-    if (await onTrash(noteId)) onSelect(nextNoteId)
+    if (await onTrash(noteId)) {
+      if (sidePane) onClose()
+      else onSelect(nextNoteId)
+    }
   }
 
   async function restoreFromTrash(noteId: Id) {
@@ -209,7 +232,7 @@
     filter = ''
     onSelect(noteId)
     await tick()
-    document.querySelector<HTMLTextAreaElement>('#note-title')?.focus()
+    titleElement?.focus()
   }
 
   async function permanentlyDelete(noteId: Id) {
@@ -304,7 +327,7 @@
   }
 
   function focusTitle() {
-    const title = document.querySelector<HTMLTextAreaElement>('#note-title')
+    const title = titleElement
     if (!title) return
     title.focus()
     title.setSelectionRange(title.value.length, title.value.length)
@@ -544,14 +567,20 @@
   }
 
   onMount(() => {
+    const mobile = window.matchMedia('(max-width: 760px)')
+    const closeOnMobile = () => { if (mobile.matches) sideNoteId = null }
+    mobile.addEventListener('change', closeOnMobile)
+    closeOnMobile()
     const storedPercent = localStorage.getItem(NOTE_SCROLL_SPACE_PERCENT_KEY)
     noteScrollSpacePercent = storedPercent === null
       ? DEFAULT_NOTE_SCROLL_SPACE_PERCENT
       : normalizeNoteScrollSpacePercent(Number(storedPercent))
+    return () => mobile.removeEventListener('change', closeOnMobile)
   })
 
   export function rememberBeforeLeaving() {
     noteEditorHost?.rememberBeforeLeaving()
+    sidePanel?.rememberBeforeLeaving()
   }
 
   onDestroy(() => {
@@ -566,52 +595,68 @@
   on:pointercancel={finishNoteScrollSpaceAdjustment}
 />
 
-<div class="notes-workspace">
-  <aside class="notes-sidebar" class:notes-trash-open={trashOpen} aria-label="Notes">
-    {#if trashOpen}
-      <div class="notes-sidebar-head">
-        <h3>Bin</h3>
-        {#if trashedNotes.length > 0}<button class="ghost danger note-empty-trash" type="button" aria-label="Empty Bin" on:click={emptyTrash}>Empty</button>{/if}
-      </div>
-    {/if}
-    <div class="notes-filter-row">
-      {#if !trashOpen}
-        <button
-          class="note-new"
-          type="button"
-          title={`New note (${newNoteShortcutLabel})`}
-          aria-keyshortcuts="Control+N Meta+N"
-          on:click={createNote}
-        >
-          <span>New</span><kbd class="note-new-shortcut" aria-hidden="true">{newNoteShortcutLabel}</kbd>
-        </button>
+<div class="notes-workspace" class:notes-split={Boolean(sideNote)} class:notes-side-pane={sidePane}>
+  {#if !sidePane}
+    <aside class="notes-sidebar" class:notes-trash-open={trashOpen} aria-label="Notes">
+      {#if trashOpen}
+        <div class="notes-sidebar-head">
+          <h3>Bin</h3>
+          {#if trashedNotes.length > 0}<button class="ghost danger note-empty-trash" type="button" aria-label="Empty Bin" on:click={emptyTrash}>Empty</button>{/if}
+        </div>
       {/if}
-      <input class="notes-filter" type="search" bind:value={filter} placeholder={trashOpen ? 'Filter Bin' : 'Filter notes'} aria-label={trashOpen ? 'Filter Bin' : 'Filter notes'} />
-    </div>
-    <div class="notes-list">
-      {#each filteredCards as versions (noteVersionGroupId(versions[0]) + (trashOpen ? `:${versions[0].id}` : ''))}
-        {@const note = trashOpen ? versions[0] : cardNote(versions, selectedNote)}
-        {@const versionLabel = trashOpen ? binnedVersionLabel(note) : ''}
-        {@const updatedAt = trashOpen ? note.deletedAt ?? note.updatedAt : latestUpdate(versions)}
-        <button type="button" class="note-card" class:active={note.id === selectedNote?.id} on:click={() => onSelect(note.id)}>
-          <strong>{note.title.trim() || 'Untitled note'}{#if versionLabel}<small class="note-card-version"> · {versionLabel}</small>{/if}</strong>
-          <span>{flattenText(note).trim().replace(/\s+/g, ' ').slice(0, 90) || 'Empty note'}</span>
-          {#if versions.length > 1}<small class="note-card-versions">{versions.length} versions</small>{/if}
-          <time datetime={updatedAt}>{readableDate(updatedAt)}</time>
-        </button>
-      {/each}
-      {#if visibleNotes.length > 0 && filteredCards.length === 0}<p class="notes-no-match">No matching notes.</p>{/if}
-    </div>
-    {#if trashOpen}<button class="notes-back-link" type="button" on:click={showNotes}><span aria-hidden="true">←</span> Back to Notes</button>{/if}
-  </aside>
+      <div class="notes-filter-row">
+        {#if !trashOpen}
+          <button
+            class="note-new"
+            type="button"
+            title={`New note (${newNoteShortcutLabel})`}
+            aria-keyshortcuts="Control+N Meta+N"
+            on:click={createNote}
+          >
+            <span>New</span><kbd class="note-new-shortcut" aria-hidden="true">{newNoteShortcutLabel}</kbd>
+          </button>
+        {/if}
+        <input class="notes-filter" type="search" bind:value={filter} placeholder={trashOpen ? 'Filter Bin' : 'Filter notes'} aria-label={trashOpen ? 'Filter Bin' : 'Filter notes'} />
+      </div>
+      <div class="notes-list">
+        {#each filteredCards as versions (noteVersionGroupId(versions[0]) + (trashOpen ? `:${versions[0].id}` : ''))}
+          {@const note = trashOpen ? versions[0] : cardNote(versions, selectedNote)}
+          {@const versionLabel = trashOpen ? binnedVersionLabel(note) : ''}
+          {@const updatedAt = trashOpen ? note.deletedAt ?? note.updatedAt : latestUpdate(versions)}
+          <div class="note-card-row">
+            <button type="button" class="note-card" class:active={note.id === selectedNote?.id} on:click={() => onSelect(note.id)}>
+              <strong>{note.title.trim() || 'Untitled note'}{#if versionLabel}<small class="note-card-version"> · {versionLabel}</small>{/if}</strong>
+              <span>{flattenText(note).trim().replace(/\s+/g, ' ').slice(0, 90) || 'Empty note'}</span>
+              {#if versions.length > 1}<small class="note-card-versions">{versions.length} versions</small>{/if}
+              <time datetime={updatedAt}>{readableDate(updatedAt)}</time>
+            </button>
+            {#if !trashOpen}
+              <button
+                type="button"
+                class="note-open-beside"
+                aria-label={`Open ${note.title.trim() || 'Untitled note'} on the right`}
+                title="Open on the right"
+                on:click={() => openBeside(note.id)}
+              ><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M12 4v16M15 9l3 3-3 3M14 12h4" /></svg></button>
+            {/if}
+          </div>
+        {/each}
+        {#if visibleNotes.length > 0 && filteredCards.length === 0}<p class="notes-no-match">No matching notes.</p>{/if}
+      </div>
+      {#if trashOpen}<button class="notes-back-link" type="button" on:click={showNotes}><span aria-hidden="true">←</span> Back to Notes</button>{/if}
+    </aside>
+  {/if}
 
-  <section class="note-document" use:externalNotePaste={`${selectedNoteId}:${trashOpen}`}>
+  <section bind:this={documentElement} class="note-document" aria-label={sidePane ? 'Right note' : 'Main note'} use:externalNotePaste={`${selectedNoteId}:${trashOpen}`}>
     {#if selectedNote}
       <header class="note-document-head">
+        {#if sidePane}
+          <button class="note-side-close" type="button" aria-label="Close right note" title="Close" on:click={onClose}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg></button>
+        {/if}
         {#if trashOpen}
           <h1 class="note-title note-trashed-title">{selectedNote.title.trim() || 'Untitled note'}</h1>
         {:else}
-          <textarea id="note-title" class="note-title" rows="1" value={selectedNote.title} use:autoSizeTitle={selectedNote.title} placeholder="Untitled note" aria-label="Note title" on:input={(event) => onRename(selectedNote!.id, event.currentTarget.value)} on:keydown={handleTitleKeydown}></textarea>
+          <textarea bind:this={titleElement} id={sidePane ? 'note-side-title' : 'note-title'} class="note-title" rows="1" value={selectedNote.title} use:autoSizeTitle={selectedNote.title} placeholder="Untitled note" aria-label="Note title" on:input={(event) => onRename(selectedNote!.id, event.currentTarget.value)} on:keydown={handleTitleKeydown}></textarea>
         {/if}
         <div class="note-actions">
           {#if trashOpen}
@@ -752,4 +797,33 @@
       </div>
     {/if}
   </section>
+  {#if !sidePane && sideNote}
+    <NotesPanel
+      bind:this={sidePanel}
+      sidePane
+      onClose={closeSidePane}
+      {notes}
+      selectedNoteId={sideNote.id}
+      {listTemplates}
+      {metrics}
+      {historyRevision}
+      {viewStatesByNote}
+      {onViewStateChange}
+      onSelect={(noteId) => { sideNoteId = noteId }}
+      {onCreate}
+      {onTrash}
+      {onAddVersion}
+      {onRenameVersion}
+      {onTrashVersion}
+      {onRestore}
+      {onPermanentlyDelete}
+      {onEmptyTrash}
+      {onRename}
+      {onAddItem}
+      {patchItem}
+      {patchItemsDone}
+      {replaceItems}
+      {onOpenLink}
+    />
+  {/if}
 </div>

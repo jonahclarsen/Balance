@@ -367,7 +367,7 @@ test('note titles wrap fully in the document and stop at two lines in the sideba
   await openNotesView(page)
   await page.locator('.notes-sidebar .note-new').click()
 
-  const title = page.getByLabel('Note title')
+  const title = page.getByRole('textbox', { name: 'Note title', exact: true })
   const longTitle = 'A long note title with enough detail to wrap across several lines in the document '.repeat(4)
   await title.fill(longTitle)
   const sidebarTitle = page.locator('.note-card.active strong')

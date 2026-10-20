@@ -80,6 +80,10 @@ test.describe('desktop', () => {
       ['Situate', 'mac-situate'],
     ]) {
       await openView(page, view)
+      if (view === 'Notes') {
+        await page.locator('.note-card-row').filter({ hasText: 'Reading list' }).hover()
+        await page.getByRole('button', { name: 'Open Reading list on the right' }).click()
+      }
       await shot(page, scheme, name)
     }
     await openView(page, 'Prioritize')
