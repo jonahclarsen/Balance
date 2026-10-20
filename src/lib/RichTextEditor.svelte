@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { bucketsLinkFromURL } from './bucketLinks'
   import { isQuoteKey, wrapRangeInQuotes } from './quoteSelection'
   import { insertTextAroundCode, isBacktickKey, toggleSelectionCode } from './inlineCode'
   import { imageEditing } from './imageEditing'
@@ -12,7 +13,6 @@
     isURL,
     itemLinkFromAnchor,
     linkifyExternalURLs,
-    bucketsLinkFromURL,
     isGoalStatsURL,
     templateReviewFromURL,
     noteIdFromURL,

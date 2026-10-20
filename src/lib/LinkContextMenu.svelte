@@ -3,6 +3,7 @@
   import { invoke, isTauri } from '@tauri-apps/api/core'
   import { Menu } from '@tauri-apps/api/menu'
   import { linkAtElement, parseNavigationURL } from './navigationLinks'
+  import { bucketsLinkFromURL } from './bucketLinks'
 
   let nativeMenu: Menu | undefined
   let menu: HTMLDivElement
@@ -67,6 +68,9 @@
       entries.push({ label: 'Copy review link', url: `balance://review/${target.kind === 'day-template' ? 'day' : 'list'}/${target.id}` })
     } else if (url === 'balance://page/buckets' || url === 'balance://buckets') {
       entries.push({ label: 'Copy review link', url: 'balance://buckets/review' })
+    } else if (target?.kind === 'bucket') {
+      const reviewURL = `balance://buckets/review/${target.id}`
+      if (bucketsLinkFromURL(reviewURL)) entries.push({ label: 'Copy review link', url: reviewURL })
     }
     if (isTauri() && !/Android|iPhone|iPad/.test(navigator.userAgent)) {
       try {

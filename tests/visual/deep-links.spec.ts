@@ -19,6 +19,9 @@ function fixture() {
     ['Paragraph', 'balance://note/destination?item=paragraph'],
     ['Empty bucket', 'balance://bucket/trash'],
     ['Binned note', 'balance://note/binned'],
+    ['Review genuine', 'balance://buckets/review/genuine'],
+    ['Review possible', 'balance://buckets/review/possible'],
+    ['Review afterlife', 'balance://buckets/review/afterlife'],
   ].map(([label, url]) => ({ ...createNoteItem(label), html: `<a href="${url}">${label}</a>` }))
   const destination = { ...createNote('Destination'), id: 'destination', items: [{ ...createNoteItem('A stable paragraph'), id: 'paragraph' }] }
   state.notes = [links, destination, { ...createNote('Binned destination'), id: 'binned', deletedAt: `${date}T17:00:00Z` }]
@@ -26,6 +29,10 @@ function fixture() {
   state.activePlanDate = date
   state.listTemplates = [createListTemplate('Synthetic list')]
   state.metrics = [createMetric('Synthetic quiz')]
+  state.ideaBuckets = (['genuine', 'possible', 'afterlife'] as const).map(kind => ({
+    id: `bucket_${kind}`, kind, items: [createPlanItem(`Synthetic ${kind} idea`)],
+  }))
+  state.plans[0].items.push(createPlanItem('balance://buckets/review/possible'))
   return state
 }
 
@@ -162,4 +169,40 @@ test('native launch queue routes navigation after loading the workspace', async 
   await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible()
   await page.evaluate(({ id, date }) => (window as any).__deliverLink(`balance://quiz/${id}?date=${date}`), { id: state.metrics[0].id, date })
   await expect(page.getByRole('dialog', { name: `Synthetic quiz · ${date}`, exact: true })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await page.evaluate(() => (window as any).__deliverLink('balance://buckets/review/afterlife'))
+  await expect(page.locator('.idea-sort[role="dialog"]')).toContainText('Synthetic afterlife idea')
+})
+
+test('each bucket copies a review link that reviews only its own ideas', async ({ page }) => {
+  await seed(page)
+  const dialog = page.locator('.idea-sort[role="dialog"]')
+  for (const kind of ['possible', 'afterlife', 'genuine'] as const) {
+    await openView(page, 'Buckets')
+    await page.locator(`[data-bucket="${kind}"] h3`).click({ button: 'right' })
+    await page.getByRole('menuitem', { name: 'Copy review link' }).click()
+    expect(await page.evaluate(() => (window as any).__copiedLink)).toBe(`balance://buckets/review/${kind}`)
+    if (kind === 'possible') {
+      await openView(page, 'Today')
+      await page.locator('.day-pane a').filter({ hasText: 'balance://buckets/review/possible' }).click()
+    } else {
+      await index(page)
+      await page.locator('.note-document a').filter({ hasText: `Review ${kind}` }).click()
+    }
+    await expect(dialog.locator('.idea-sort-card')).toContainText(`Synthetic ${kind} idea`)
+    await expect(dialog.getByRole('progressbar')).toHaveAttribute('aria-valuemax', '1')
+    await page.keyboard.press('n')
+    await page.keyboard.press('t')
+    await expect(dialog).toBeHidden()
+    await expect.poll(() => page.evaluate(() => {
+      const state = JSON.parse(localStorage.getItem('balance.appState.v1')!)
+      return state.plans[0].items.filter((item: any) => item.done && item.text === 'Filter Genuinely Worth Doing').length
+    })).toBe(kind === 'genuine' ? 1 : 0)
+  }
+  // Sorting and trash stay separate from the three reviewable buckets.
+  for (const kind of ['proposition', 'trash']) {
+    await page.locator(`[data-bucket="${kind}"] h3`).click({ button: 'right' })
+    await expect(page.getByRole('menuitem', { name: 'Copy review link' })).toHaveCount(0)
+    await page.keyboard.press('Escape')
+  }
 })

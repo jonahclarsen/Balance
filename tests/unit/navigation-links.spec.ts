@@ -1,6 +1,24 @@
 import { expect, test } from '@playwright/test'
 import { LINKABLE_VIEWS, navigationURL, parseNavigationURL } from '../../src/lib/navigationLinks'
 import { internalLinkId, itemLinkFromURL, linkifyItemText, resolveItemLinks } from '../../src/lib/planner'
+import { BUCKET_REVIEW_LABELS, bucketsLinkFromURL } from '../../src/lib/bucketLinks'
+
+test('bucket review links preserve the selected bucket in plain text and internal anchors', () => {
+  for (const kind of ['genuine', 'possible', 'afterlife'] as const) {
+    const url = `balance://buckets/review/${kind}`
+    const link = { kind: 'buckets', review: kind, label: BUCKET_REVIEW_LABELS[kind] } as const
+    expect(bucketsLinkFromURL(url)).toBe(kind)
+    expect(itemLinkFromURL(url)).toEqual(link)
+    expect(resolveItemLinks(`Review (${url}).`, [], [])).toEqual([link])
+    expect(linkifyItemText(url, [], [])).toEqual([{ text: url, link }])
+    expect(itemLinkFromURL(`balance://buckets/${internalLinkId(link)}`)).toEqual(link)
+  }
+  expect(itemLinkFromURL('balance://buckets/review')).toEqual(itemLinkFromURL('balance://buckets/review/genuine'))
+  expect(itemLinkFromURL('balance://buckets')).toEqual({ kind: 'buckets', review: null, label: 'Buckets' })
+  for (const suffix of ['trash', 'proposition', 'unknown', 'possible/more', 'possible?other=1', 'afterlife#more']) {
+    expect(itemLinkFromURL(`balance://buckets/review/${suffix}`)).toBeNull()
+  }
+})
 
 test('navigation routes round trip dates, page names and generated row IDs', () => {
   for (const view of LINKABLE_VIEWS) expect(parseNavigationURL(navigationURL('page', view))).toEqual({ kind: 'page', view })

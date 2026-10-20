@@ -49,6 +49,7 @@
   import IdeaSortModal from './lib/IdeaSortModal.svelte'
   import IdeaImportModal from './lib/IdeaImportModal.svelte'
   import { bucketItems, findIdea, IDEA_BUCKETS, IDEA_REVIEW_GOAL_NAME } from './lib/ideaBuckets'
+  import { BUCKET_REVIEW_LABELS, type BucketReviewKind } from './lib/bucketLinks'
   import { prioritizeReveal } from './lib/prioritize'
   import NotesPanel from './lib/NotesPanel.svelte'
   import ImaxButton from './lib/ImaxButton.svelte'
@@ -1770,7 +1771,7 @@ return rows`
       void tick().then(() => linkedProjectId = link.projectId)
     } else if (link.kind === 'buckets') {
       view = 'buckets'
-      if (link.review) void startIdeaReview()
+      if (link.review) void startIdeaReview(link.review)
     } else if (link.kind === 'note') {
       const note = allNotes.find(note => note.id === link.noteId)
       if (note) {
@@ -3351,13 +3352,12 @@ return rows`
     plannerStore.moveIdeaToBucket(itemId, 'trash')
   }
 
-  // Runs the key question over Genuinely Worth Doing. Finishing it logs a done
-  // task so the seeded weekly goal counts the review.
-  async function startIdeaReview() {
-    const queue = bucketItems($plannerStore.ideaBuckets, 'genuine')
+  // Only Genuinely Worth Doing counts toward the seeded weekly review goal.
+  async function startIdeaReview(kind: BucketReviewKind = 'genuine') {
+    const queue = bucketItems($plannerStore.ideaBuckets, kind)
     if (queue.length === 0) return
-    const completed = await askIdeaSort(queue, 'Review Genuinely Worth Doing')
-    if (!completed) return
+    const completed = await askIdeaSort(queue, BUCKET_REVIEW_LABELS[kind])
+    if (!completed || kind !== 'genuine') return
     const plan = $plannerStore.plans.find((candidate) => candidate.date === todayISO())
     if (plan) plannerStore.addCompletedPlanItem(plan.id, IDEA_REVIEW_GOAL_NAME)
   }

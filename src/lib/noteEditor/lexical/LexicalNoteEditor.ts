@@ -64,7 +64,6 @@ import { imageEditing } from '../../imageEditing'
 import { imageClipboardHTML } from '../../imageService'
 import { parseTaskClipboardAsNoteBlocks } from '../../taskClipboard'
 import {
-  bucketsLinkFromURL,
   escapeHTML,
   isGoalStatsURL,
   itemLinkFromURL,
@@ -1679,8 +1678,6 @@ class LexicalNoteEditorView implements NoteEditorView {
     if (isGoalStatsURL(href)) return { kind: 'goalStats', label: 'Goal stats' }
     const review = templateReviewFromURL(href)
     if (review) return { kind: 'templateReview', templateKind: review.kind, templateId: review.templateId, label: templateReviewLabel(review.kind) }
-    const buckets = bucketsLinkFromURL(href)
-    if (buckets) return { kind: 'buckets', review: buckets === 'review', label: buckets === 'review' ? 'Review ideas' : 'Buckets' }
     return itemLinkFromURL(href, this.context.notes)
   }
 
