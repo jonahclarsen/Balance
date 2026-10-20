@@ -3229,7 +3229,7 @@ return rows`
     if (!found) return
     const { bucketedAt: _bucketedAt, dayAssignmentDate: _dayAssignmentDate, ...item } = found.item
     writePlanItemsToSystemClipboard({ items: [item], cut: true, sourceDate: todayISO() })
-    plannerStore.deleteIdeaItem(found.bucket.id, itemId)
+    plannerStore.moveIdeaToBucket(itemId, 'trash')
   }
 
   // Runs the key question over Genuinely Worth Doing. Finishing it logs a done
@@ -3653,7 +3653,7 @@ return rows`
     if (found.length === 0) return
     const items = found.map(({ item: { bucketedAt: _bucketedAt, dayAssignmentDate: _dayAssignmentDate, ...item } }) => item)
     plannerStore.pastePlanItems(plan.id, items, plan.items[0]?.id ?? null, 'before')
-    for (const { bucket, item } of found) plannerStore.deleteIdeaItem(bucket.id, item.id)
+    for (const { bucket, item } of found) plannerStore.removeIdeaAfterTransfer(bucket.id, item.id)
   }
 
   function askDayQuiz(templateName: string, steps: TemplateQuizStep[]): Promise<TemplateQuizAnswers | null> {
