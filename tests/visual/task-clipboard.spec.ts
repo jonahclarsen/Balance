@@ -1,6 +1,39 @@
 import { expect, test } from '@playwright/test'
 import { openView } from '../helpers/navigation'
 
+test('a single task copied from Today keeps its line breaks when pasted into Notes', async ({ page }, info) => {
+  test.skip(info.project.name === 'mobile', 'desktop keyboard clipboard')
+  await page.goto('/')
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+  await page.evaluate(() => {
+    localStorage.clear()
+    const date = new Date().toISOString().slice(0, 10)
+    localStorage.setItem('balance.appState.v1', JSON.stringify({
+      schemaVersion: 1, deviceId: 'clipboard-test', localSequence: 0, historyRevision: 0,
+      activePlanDate: date, templates: [], goals: [], goalCompletions: [], operations: [],
+      plans: [{ id: 'clipboard-plan', date, dailyReminder: '', items: [
+        { id: 'multiline', text: 'FirstSecondThird', html: 'First<br>Second<br><br>Third',
+          children: [], done: false, startMinutes: null, endMinutes: null },
+      ] }],
+    }))
+  })
+  await page.reload()
+  await page.locator('[data-plan-text-input]').first().focus()
+  await page.keyboard.press('Escape')
+  await page.keyboard.press('Meta+A')
+  await page.keyboard.press('Meta+C')
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('First\nSecond\n\nThird')
+
+  await openView(page, 'Notes')
+  await page.getByRole('button', { name: '+ New note' }).click()
+  await page.locator('[data-note-text-input]').focus()
+  await page.keyboard.press('Meta+V')
+  await expect(page.locator('.note-text')).toHaveText(['First', 'Second', '', 'Third'])
+  await page.reload()
+  await openView(page, 'Notes')
+  await expect(page.locator('.note-text')).toHaveText(['First', 'Second', '', 'Third'])
+})
+
 test('multiple tasks round-trip through plain text with hierarchy and links', async ({ page }) => {
   await page.goto('/')
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
@@ -66,7 +99,7 @@ test('marked text handles tabs, escaped content, blank tasks and unsafe links', 
   expect(result.parsed[1].html).not.toContain('<a')
   expect(result.parsed[2].text).toBe('')
   expect(result.again.map((item: any) => item.text)).toEqual(result.parsed.map((item: any) => item.text))
-  expect(result.single).toBe('Parent\n  Childnext\tpart')
+  expect(result.single).toBe('Parent\n  Child\nnext\tpart')
   expect(result.ordinary).toBeNull()
   expect(result.partial).toBeNull()
 })

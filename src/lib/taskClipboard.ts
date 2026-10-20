@@ -1,4 +1,4 @@
-import { createListTemplateItem, createTemplateItem, escapeHTML, htmlToPlainText, sanitizeInlineHTML } from './planner'
+import { createListTemplateItem, createTemplateItem, escapeHTML, htmlToPlainText, htmlToPlainTextWithBreaks, sanitizeInlineHTML } from './planner'
 import type { ListTemplateItem, NoteItemKind, PlanItem, TemplateItem } from './types'
 
 // A marked block avoids interpreting ordinary multiline prose as planner rows.
@@ -31,7 +31,8 @@ export function planItemsClipboardText(items: PlanItem[], portable = false): str
   function visit(nodes: PlanItem[], depth: number) {
     for (const item of nodes) {
       if (!portable) {
-        lines.push(`${'  '.repeat(depth)}${item.text}`)
+        const text = item.html ? htmlToPlainTextWithBreaks(item.html) : item.text
+        lines.push(`${'  '.repeat(depth)}${text}`)
       } else {
         const marker = `${'  '.repeat(depth)}- `
         const continuation = ' '.repeat(marker.length)
