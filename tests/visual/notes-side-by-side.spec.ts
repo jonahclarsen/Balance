@@ -21,6 +21,8 @@ test('notes open and edit independently beside each other, including in IMAX', a
   await card.hover()
   await expect(open).toHaveCSS('opacity', '1')
   async function expectSplitBelowDate() {
+    // A short card must stay compact as well as keeping its date unobscured.
+    expect(await card.locator('.note-card').evaluate((element) => element.clientHeight)).toBeLessThanOrEqual(64)
     const dateBounds = await card.locator('time').boundingBox()
     const splitBounds = await open.boundingBox()
     expect(dateBounds).not.toBeNull()
