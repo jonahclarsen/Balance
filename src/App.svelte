@@ -8515,7 +8515,8 @@ return rows`
     {/if}
     </section>
 
-    <RecentPage retained={$recentPages.includes('today') && (goalRhythmVisible || viewMaximized)} active={view === 'today'}>
+    <!-- The native startup store contains seed goals until hydration succeeds. -->
+    <RecentPage retained={!$databaseLoadPending && !$databaseLoadError && $recentPages.includes('today') && (goalRhythmVisible || viewMaximized)} active={view === 'today'}>
       <GoalHistoryPanel
         goals={renderedRhythmGoals}
         completions={renderedRhythmCompletions}

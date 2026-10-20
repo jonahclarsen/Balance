@@ -1,5 +1,66 @@
 import { expect, test } from '@playwright/test'
 
+for (const outcome of ['saved', 'new', 'error'] as const) {
+  test(`Goal Rhythm waits for database startup: ${outcome}`, async ({ page }) => {
+    await page.addInitScript(() => {
+      const runtime = window as any
+      runtime.isTauri = true
+      runtime.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => undefined }
+      runtime.__TAURI_INTERNALS__ = {
+        metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main' } },
+        transformCallback: () => 1,
+        invoke: async (command: string) => {
+          if (command === 'read_app_state') {
+            return new Promise((resolve, reject) => {
+              runtime.__finishStartup = resolve
+              runtime.__failStartup = reject
+            })
+          }
+          if (command === 'get_recovery_key_status') return { confirmed: true, recoveryKey: null }
+          if (command === 'get_sync_settings') return { enabled: false }
+          if (command === 'get_database_maintenance_status') return { due: false }
+          if (command === 'pending_deep_links') return []
+          return null
+        },
+      }
+    })
+    await page.goto('/')
+    await expect(page.getByRole('progressbar', { name: 'Database loading progress' })).toBeVisible()
+    await expect(page.locator('.goal-history-panel')).toHaveCount(0)
+
+    await page.evaluate(async (outcome) => {
+      const runtime = window as any
+      if (outcome === 'error') {
+        runtime.__failStartup('Synthetic database opening failure')
+        return
+      }
+      if (outcome === 'new') {
+        runtime.__finishStartup(null)
+        return
+      }
+      const plannerPath = '/src/lib/planner.ts'
+      const goalsPath = '/src/lib/goals.ts'
+      const { createInitialState } = await import(/* @vite-ignore */ plannerPath)
+      const { createGoal } = await import(/* @vite-ignore */ goalsPath)
+      const state = createInitialState()
+      state.goals = [createGoal('Synthetic saved goal', 1, [], 180, 50, undefined, 'synthetic-goal')]
+      runtime.__finishStartup(JSON.stringify(state))
+    }, outcome)
+
+    await expect(page.getByRole('progressbar', { name: 'Database loading progress' })).toHaveCount(0)
+    if (outcome === 'error') {
+      await expect(page.getByRole('alertdialog', { name: /couldn.t open your encrypted database/i })).toBeVisible()
+      await expect(page.locator('.goal-history-panel')).toHaveCount(0)
+    } else {
+      await expect(page.locator('.goal-history-panel')).toBeVisible()
+      if (outcome === 'saved') {
+        await expect(page.locator('.goal-history-name')).toHaveCount(1)
+        await expect(page.locator('.goal-history-name')).toContainText('Synthetic saved goal')
+      }
+    }
+  })
+}
+
 test('the Android loading card is horizontally centered', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'mobile', 'The startup layout regression is Android-only')
 
