@@ -1,4 +1,4 @@
-import type { AppState, Id, ListTemplateItem, PlanItem, TemplateItem } from './types'
+import type { AppState, Id, ListTemplateItem, Note, PlanItem, TemplateItem } from './types'
 import { isNoteTrashed } from './noteTrash'
 import { noteVersionGroupId, noteVersionLabel, noteVersionsOf } from './noteVersions'
 import type { RecoverySearchMatch } from './store'
@@ -64,6 +64,21 @@ type SearchLine = { itemId: Id; text: string }
 export function searchBalanceState(state: AppState, query: string): SearchResult[] {
   const terms = normalizedTerms(query)
   if (terms.length === 0) return []
+
+  // Keep this cache within one search so locale and timezone changes take
+  // effect on the next search, without constructing a formatter for every day.
+  let dateFormatter: Intl.DateTimeFormat | undefined
+  function formatDate(date: string): string {
+    const parsed = new Date(`${date}T12:00:00`)
+    if (Number.isNaN(parsed.getTime())) return date
+    dateFormatter ??= new Intl.DateTimeFormat(undefined, {
+      weekday: 'short',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    })
+    return dateFormatter.format(parsed)
+  }
 
   const dayResults: SearchResult[] = [...state.plans]
     .sort((a, b) => b.date.localeCompare(a.date))
@@ -143,6 +158,16 @@ export function searchBalanceState(state: AppState, query: string): SearchResult
 
   const activeNotes = state.notes.filter((note) => !isNoteTrashed(note))
   const versionedGroups = new Set(activeNotes.filter((note) => note.versionOf).map((note) => note.versionOf))
+  const versionsByGroup = new Map<Id, Note[]>()
+  function versionLabel(note: Note): string {
+    const groupId = noteVersionGroupId(note)
+    let versions = versionsByGroup.get(groupId)
+    if (!versions) {
+      versions = noteVersionsOf(activeNotes, groupId)
+      versionsByGroup.set(groupId, versions)
+    }
+    return noteVersionLabel(note, versions)
+  }
   const noteResults: SearchResult[] = activeNotes
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
     .flatMap((note) => {
@@ -154,7 +179,7 @@ export function searchBalanceState(state: AppState, query: string): SearchResult
         id: note.id,
         title: note.title || 'Untitled note',
         meta: versionedGroups.has(noteVersionGroupId(note))
-          ? `Note · ${noteVersionLabel(note, noteVersionsOf(activeNotes, noteVersionGroupId(note)))}`
+          ? `Note · ${versionLabel(note)}`
           : 'Note',
         preview: previewText(match?.text || lines[0]?.text || 'Empty note'),
         noteId: note.id,
@@ -166,6 +191,17 @@ export function searchBalanceState(state: AppState, query: string): SearchResult
 }
 
 export function recoveryMatchesToSearchResults(entries: RecoverySearchMatch[]): SearchResult[] {
+  let dateFormatter: Intl.DateTimeFormat | undefined
+  function formatHistoryDate(entry: RecoverySearchMatch): string {
+    const timestamp = entry.timestamp ? Date.parse(entry.timestamp) : entry.createdAtMs
+    if (!Number.isFinite(timestamp)) return 'unknown time'
+    dateFormatter ??= new Intl.DateTimeFormat(undefined, {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    })
+    return dateFormatter.format(new Date(timestamp))
+  }
+
   return entries.map((entry) => ({
     kind: 'history' as const,
     id: entry.historyId,
@@ -182,15 +218,6 @@ function historyTitle(operationType: string | null): string {
   if (operationType.includes('patch') || operationType.includes('rename')) return 'Earlier text'
   if (operationType.includes('generate')) return 'Replaced content'
   return 'Earlier saved state'
-}
-
-function formatHistoryDate(entry: RecoverySearchMatch): string {
-  const timestamp = entry.timestamp ? Date.parse(entry.timestamp) : entry.createdAtMs
-  if (!Number.isFinite(timestamp)) return 'unknown time'
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(new Date(timestamp))
 }
 
 function normalizedTerms(query: string): string[] {
@@ -237,15 +264,4 @@ function flattenListTemplateItems(items: ListTemplateItem[]): SearchLine[] {
 function previewText(value: string): string {
   const compact = value.replace(/\s+/g, ' ').trim()
   return compact.length > 180 ? `${compact.slice(0, 177)}…` : compact
-}
-
-function formatDate(date: string): string {
-  const parsed = new Date(`${date}T12:00:00`)
-  if (Number.isNaN(parsed.getTime())) return date
-  return new Intl.DateTimeFormat(undefined, {
-    weekday: 'short',
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  }).format(parsed)
 }
