@@ -679,7 +679,7 @@ test('mobile task options copy and cut whole task trees and remove tasks', async
   const parentText = 'Parent task with a scheduled time'
   const parentRow = page.getByRole('listitem', { name: `Plan item: ${parentText}` })
   await parentRow.getByRole('button', { name: `Task options for ${parentText}` }).click()
-  await page.getByRole('menuitem', { name: 'Copy' }).click()
+  await page.getByRole('menuitem', { name: 'Copy', exact: true }).click()
 
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe([
     parentText,
