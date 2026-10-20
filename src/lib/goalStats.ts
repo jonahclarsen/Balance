@@ -52,8 +52,11 @@ export function buildGoalStats(
     goalCompletions.push(completion)
     completionsByGoal.set(completion.goalId, goalCompletions)
   }
-  for (const goalCompletions of completionsByGoal.values()) {
-    goalCompletions.sort((left, right) => left.date < right.date ? -1 : left.date > right.date ? 1 : 0)
+  // Sorting pays off across chart dates; a single date only needs one scan.
+  if (normalizedRangeDays > 1) {
+    for (const goalCompletions of completionsByGoal.values()) {
+      goalCompletions.sort((left, right) => left.date < right.date ? -1 : left.date > right.date ? 1 : 0)
+    }
   }
   const dates = Array.from(
     { length: normalizedRangeDays },
@@ -64,7 +67,11 @@ export function buildGoalStats(
   const daily = dates.map((date) => ({
     date,
     overdueGoals: goals.filter(
-      (goal) => (goalDaysUntilLapse(goal, latestCompletionOnDate(completionsByGoal.get(goal.id) ?? [], date), date) ?? 0) < 0,
+      (goal) => {
+        const history = completionsByGoal.get(goal.id) ?? []
+        const asOfDate = normalizedRangeDays === 1 ? history : latestCompletionOnDate(history, date)
+        return (goalDaysUntilLapse(goal, asOfDate, date) ?? 0) < 0
+      },
     ).length,
     completedGoals: completionsByDate.get(date)?.size ?? 0,
   }))
