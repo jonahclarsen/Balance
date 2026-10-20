@@ -51,6 +51,43 @@ async function seed(page: Page) {
 }
 
 async function copyLink(page: Page, target: Locator) {
+  // Right-click focuses a note card, which can reveal it in the horizontal
+  // mobile strip. Finish that scroll before opening a menu that dismisses on
+  // scroll; focusing the card does not select or open its note.
+  if (await target.evaluate(element => element.matches('.note-card'))) await target.focus()
+  await target.scrollIntoViewIfNeeded()
+  await target.evaluate(element => new Promise<void>((resolve, reject) => {
+    let previous = ''
+    let stableFrames = 0
+    let frame = 0
+    const reset = () => { stableFrames = 0 }
+    const finish = (error?: Error) => {
+      cancelAnimationFrame(frame)
+      clearTimeout(timeout)
+      document.removeEventListener('scroll', reset, true)
+      window.removeEventListener('resize', reset)
+      if (error) reject(error)
+      else resolve()
+    }
+    const sample = () => {
+      if (!element.isConnected) return finish(new Error('Link target detached while settling'))
+      const rect = element.getBoundingClientRect()
+      const positions = [rect.x, rect.y, rect.width, rect.height]
+      for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
+        positions.push(ancestor.scrollLeft, ancestor.scrollTop, ancestor.scrollWidth, ancestor.scrollHeight,
+          ancestor.clientWidth, ancestor.clientHeight)
+      }
+      const current = positions.join(',')
+      stableFrames = current === previous ? stableFrames + 1 : 0
+      previous = current
+      if (stableFrames >= 6) return finish()
+      frame = requestAnimationFrame(sample)
+    }
+    const timeout = setTimeout(() => finish(new Error('Link target scrolling did not settle')), 5000)
+    document.addEventListener('scroll', reset, true)
+    window.addEventListener('resize', reset)
+    frame = requestAnimationFrame(sample)
+  }))
   await target.click({ button: 'right' })
   await page.getByRole('menuitem', { name: 'Copy link', exact: true }).click()
   return page.evaluate(() => (window as any).__copiedLink as string)
@@ -81,6 +118,9 @@ test('context links choose the nearest object and return to tasks and note parag
   await index(page)
   await page.locator('.note-document a').filter({ hasText: 'Paragraph' }).click()
   await expect(page.locator('[data-note-item-id="paragraph"]')).toBeVisible()
+  // Establish the caret first so the editor's bottom-follow scroll finishes
+  // before the context menu opens.
+  await page.locator('[data-note-item-id="paragraph"] .note-text').click()
   expect(await copyLink(page, page.locator('[data-note-item-id="paragraph"]'))).toBe('balance://note/destination?item=paragraph')
   await page.locator('[data-note-item-id="paragraph"] .note-text').evaluate(element => {
     element.closest<HTMLElement>('[contenteditable="true"]')?.focus()
