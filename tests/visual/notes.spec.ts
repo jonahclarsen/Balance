@@ -1,4 +1,5 @@
 import { openView } from '../helpers/navigation'
+import { settleContextMenuTarget } from '../helpers/contextMenu'
 import { expect, test, type Locator, type Page } from '@playwright/test'
 
 async function typeNoteText(block: Locator, text: string) {
@@ -1213,7 +1214,10 @@ test('notes support a seamless editor, natural formatting, persistence, search, 
   await expectCaretIn(emptyChecklistItem.locator('.note-text'))
   await expect(page.locator('.note-text').nth(1)).toContainText('Formatted ideas')
 
-  await page.locator('.note-document').first().click({ button: 'right', position: { x: 8, y: 8 } })
+  const noteDocument = page.locator('.note-document').first()
+  const contextPosition = { x: 8, y: 8 }
+  await settleContextMenuTarget(noteDocument, contextPosition)
+  await noteDocument.click({ button: 'right', position: contextPosition })
   await page.getByRole('menuitem', { name: 'Copy link', exact: true }).click()
   await expect(page.getByRole('status').filter({ hasText: 'Link copied' })).toBeVisible()
   const noteLink = await page.evaluate(() => {
