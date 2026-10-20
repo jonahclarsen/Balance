@@ -54,10 +54,18 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p artifacts/core-performance
+          resolve_ref() {
+            if git rev-parse --verify --end-of-options "${1}^{commit}" >/dev/null 2>&1; then
+              git rev-parse --verify --end-of-options "${1}^{commit}"
+            else
+              git fetch --no-tags origin "$1"
+              git rev-parse --verify 'FETCH_HEAD^{commit}'
+            fi
+          }
           for variant in baseline candidate; do
             ref="$BASELINE_REF"
             if [[ "$variant" == candidate ]]; then ref="$CANDIDATE_REF"; fi
-            sha="$(git rev-parse --verify "${ref}^{commit}")"
+            sha="$(resolve_ref "$ref")"
             directory="$RUNNER_TEMP/balance-core-$variant"
             git worktree add --detach "$directory" "$sha"
             mkdir -p "$directory/tests/performance"
