@@ -7,6 +7,8 @@ on:
       - 'src/lib/search.ts'
       - 'src/lib/goals.ts'
       - 'src/lib/goalStats.ts'
+      - 'src/lib/noteVersions.ts'
+      - 'src/lib/historyNavigation.ts'
       - 'tests/performance/*-core.spec.ts'
       - 'playwright.core-performance.config.ts'
       - '.github/workflows/core-performance.yml'
