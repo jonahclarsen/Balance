@@ -6460,6 +6460,9 @@ body.mobile-checkbox-dragging {
 }
 
 .note-open-beside {
+  width: 24px;
+  height: 20px;
+  padding: 0;
   position: absolute;
   right: 8px;
   bottom: 7px;
@@ -6506,13 +6509,6 @@ body.mobile-checkbox-dragging {
   position: absolute;
   top: 12px;
   right: 0;
-}
-
-@media (min-width: 761px) {
-  /* Keep a separate space below the date even for a one-line, empty note. */
-  .note-card-row:has(.note-open-beside) .note-card {
-    min-height: 72px;
-  }
 }
 
 @media (max-width: 760px) {
