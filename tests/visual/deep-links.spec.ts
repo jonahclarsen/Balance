@@ -17,9 +17,11 @@ function fixture() {
     ['Missing task', 'balance://task/missing'],
     ['Settings page', 'balance://page/settings'],
     ['Paragraph', 'balance://note/destination?item=paragraph'],
+    ['Empty bucket', 'balance://bucket/trash'],
+    ['Binned note', 'balance://note/binned'],
   ].map(([label, url]) => ({ ...createNoteItem(label), html: `<a href="${url}">${label}</a>` }))
   const destination = { ...createNote('Destination'), id: 'destination', items: [{ ...createNoteItem('A stable paragraph'), id: 'paragraph' }] }
-  state.notes = [links, destination]
+  state.notes = [links, destination, { ...createNote('Binned destination'), id: 'binned', deletedAt: `${date}T17:00:00Z` }]
   state.plans = [{ id: 'synthetic_plan', date, title: 'Synthetic day', dailyReminder: '', generatedFromTemplateId: null, createdAt: `${date}T17:00:00Z`, items: [parent, createPlanItem('balance://note/link_index')] }]
   state.activePlanDate = date
   state.listTemplates = [createListTemplate('Synthetic list')]
@@ -98,6 +100,13 @@ test('context links choose the nearest object and return to tasks and note parag
   await expect(page.getByRole('status').filter({ hasText: 'Link destination unavailable' })).toBeVisible()
   await page.locator('.note-document a').filter({ hasText: 'Settings page' }).click()
   await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible()
+  await index(page)
+  await page.locator('.note-document a').filter({ hasText: 'Empty bucket' }).click()
+  await expect(page.locator('[data-bucket="trash"]')).toBeVisible()
+  await index(page)
+  await page.locator('.note-document a').filter({ hasText: 'Binned note' }).click()
+  await expect(page.getByLabel('Note title', { exact: true })).toHaveValue('Binned destination')
+  await expect(page.locator('.notes-trash-open')).toBeVisible()
 })
 
 test('page menus dismiss with Escape and preserve review links', async ({ page }) => {

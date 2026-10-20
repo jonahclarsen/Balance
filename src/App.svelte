@@ -48,7 +48,7 @@
   import BucketsPanel from './lib/BucketsPanel.svelte'
   import IdeaSortModal from './lib/IdeaSortModal.svelte'
   import IdeaImportModal from './lib/IdeaImportModal.svelte'
-  import { bucketItems, findIdea, IDEA_REVIEW_GOAL_NAME } from './lib/ideaBuckets'
+  import { bucketItems, findIdea, IDEA_BUCKETS, IDEA_REVIEW_GOAL_NAME } from './lib/ideaBuckets'
   import { prioritizeReveal } from './lib/prioritize'
   import NotesPanel from './lib/NotesPanel.svelte'
   import ImaxButton from './lib/ImaxButton.svelte'
@@ -1772,9 +1772,10 @@ return rows`
       view = 'buckets'
       if (link.review) void startIdeaReview()
     } else if (link.kind === 'note') {
-      if (notes.some((note) => note.id === link.noteId)) {
+      const note = allNotes.find(note => note.id === link.noteId)
+      if (note) {
         selectedNoteId = link.noteId
-        notesTrashOpen = false
+        notesTrashOpen = isNoteTrashed(note)
         view = 'notes'
       } else unavailableLink()
     } else if (link.kind === 'list') {
@@ -1857,9 +1858,10 @@ return rows`
       else return unavailableLink()
       selector = `[data-plan-item-id="${CSS.escape(target.id)}"]`
     } else if (target.kind === 'note') {
-      if (!notes.some(note => note.id === target.id && !note.deletedAt)) return unavailableLink()
+      const note = allNotes.find(note => note.id === target.id)
+      if (!note) return unavailableLink()
       selectedNoteId = target.id
-      notesTrashOpen = false
+      notesTrashOpen = isNoteTrashed(note)
       view = 'notes'
       if (target.itemId) selector = `[data-note-item-id="${CSS.escape(target.itemId)}"]`
     } else if (target.kind === 'day-template') {
@@ -1898,7 +1900,7 @@ return rows`
       await tick()
       prioritizeReveal.set({ sessionId: target.id, itemId: target.itemId })
     } else if (target.kind === 'bucket') {
-      if (!$plannerStore.ideaBuckets.some(bucket => bucket.kind === target.id)) return unavailableLink()
+      if (!IDEA_BUCKETS.some(bucket => bucket.kind === target.id)) return unavailableLink()
       view = 'buckets'
       selector = `[data-bucket="${CSS.escape(target.id)}"]`
     }
