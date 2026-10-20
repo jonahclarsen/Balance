@@ -105,7 +105,7 @@ test('context links choose the nearest object and return to tasks and note parag
   await expect(page.locator('[data-bucket="trash"]')).toBeVisible()
   await index(page)
   await page.locator('.note-document a').filter({ hasText: 'Binned note' }).click()
-  await expect(page.getByLabel('Note title', { exact: true })).toHaveValue('Binned destination')
+  await expect(page.getByRole('heading', { name: 'Binned destination', exact: true })).toBeVisible()
   await expect(page.locator('.notes-trash-open')).toBeVisible()
 })
 
