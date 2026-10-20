@@ -27,16 +27,30 @@ for (const count of [3, 500]) {
         itemId: position === 'removed' ? undefined : `row-${target}-0`,
       })
       const run = () => historyDestination(before, after)
-      for (let index = 0; index < 3; index++) run()
+      // Three calls left the short cases measuring JIT compilation instead of
+      // steady work. Give both revisions enough time and calls to warm up.
+      const warmupStart = performance.now()
+      let warmupIterations = 0
+      do {
+        run()
+        warmupIterations++
+      } while (warmupIterations < 100 || performance.now() - warmupStart < 300)
       const samples: number[] = []
       for (let sample = 0; sample < 9; sample++) {
         const start = performance.now()
-        for (let iteration = 0; iteration < 3; iteration++) run()
-        samples.push((performance.now() - start) / 3)
+        let iterations = 0
+        let elapsed = 0
+        do {
+          run()
+          iterations++
+          elapsed = performance.now() - start
+        } while (elapsed < 80)
+        samples.push(elapsed / iterations)
       }
       samples.sort((a, b) => a - b)
       console.log(`PERF ${JSON.stringify({
         scenario: `history-notes-${count}-${position}`, medianMs: samples[Math.floor(samples.length / 2)],
+        minMs: samples[0], maxMs: samples.at(-1), warmupIterations,
       })}`)
     })
   }
