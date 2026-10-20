@@ -38,3 +38,35 @@ test('copying a version gives every nested item a fresh ID without touching the 
   copy[0].children[0].text = 'edited'
   expect(source[0].children[0].text).toBe('child')
 })
+
+test('copying deep notes preserves and isolates unknown nested fields at every level', () => {
+  type FutureItem = NoteItem & { future: { references: string[]; metadata: { enabled: boolean } } }
+  let source: FutureItem[] = []
+  for (let depth = 79; depth >= 0; depth--) {
+    source = [{
+      ...item(`level-${depth}`, source),
+      future: { references: [`opaque-${depth}`], metadata: { enabled: true } },
+    }]
+  }
+  const before = structuredClone(source)
+  const copy = copyNoteItemsWithNewIds(source) as FutureItem[]
+  const ids = new Set<string>()
+  let original = source
+  let cloned = copy
+  for (let depth = 0; depth < 80; depth++) {
+    const a = original[0]
+    const b = cloned[0]
+    expect(b.id).not.toBe(a.id)
+    expect(ids.has(b.id)).toBe(false)
+    ids.add(b.id)
+    expect({ ...b, id: a.id, children: [] }).toEqual({ ...a, children: [] })
+    expect(b.future).not.toBe(a.future)
+    expect(b.future.references).not.toBe(a.future.references)
+    b.future.references.push('copy-only')
+    b.future.metadata.enabled = false
+    original = a.children as FutureItem[]
+    cloned = b.children as FutureItem[]
+  }
+  expect(cloned).toEqual([])
+  expect(source).toEqual(before)
+})

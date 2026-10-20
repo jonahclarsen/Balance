@@ -21,7 +21,9 @@ export function noteVersionLabel(note: Note, versions: readonly Note[]): string 
 
 export function copyNoteItemsWithNewIds(items: readonly NoteItem[]): NoteItem[] {
   return items.map((item) => ({
-    ...structuredClone(item),
+    // Descendants are copied below; cloning them here too repeats the entire
+    // remaining subtree at every level of an indented note.
+    ...structuredClone(item.children.length ? { ...item, children: [] } : item),
     id: createId('note_item'),
     children: copyNoteItemsWithNewIds(item.children),
   }))
