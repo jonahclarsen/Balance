@@ -955,7 +955,7 @@ export function defaultPlanItemTimeRange(
   now = new Date(),
 ): { startMinutes: number; endMinutes: number } {
   let fallbackStartMinutes = DEFAULT_TIME_START_MINUTES
-  if (planDate === todayISO(now) && !flattenPlanItems(items).some(hasActiveTimeRange)) {
+  if (planDate === todayISO(now) && !containsActiveTimeRange(items)) {
     // Before the 5 a.m. rollover, today's plan represents the previous calendar day.
     const elapsedMinutes = now.getHours() * 60 + now.getMinutes()
       + (planDate === calendarDateISO(now) ? 0 : 24 * 60)
@@ -979,7 +979,11 @@ function containsPlanItem(items: PlanItem[], itemId: Id): boolean {
 }
 
 function flattenPlanItems(items: PlanItem[]): PlanItem[] {
-  return items.flatMap((item) => [item, ...flattenPlanItems(item.children)])
+  return flattenTreeNodes(items)
+}
+
+function containsActiveTimeRange(items: PlanItem[]): boolean {
+  return items.some((item) => hasActiveTimeRange(item) || containsActiveTimeRange(item.children))
 }
 
 function isPlanItemTextEmpty(item: PlanItem): boolean {
@@ -1218,10 +1222,15 @@ export function backspaceTemplateOptionAtStart(
 }
 
 function flattenTemplateOptions(items: TemplateItem[]): Array<{ item: TemplateItem; option: TemplateOption }> {
-  return items.flatMap((item) => [
-    ...item.options.map((option) => ({ item, option })),
-    ...flattenTemplateOptions(item.children),
-  ])
+  const flattened: Array<{ item: TemplateItem; option: TemplateOption }> = []
+  const visit = (nodes: TemplateItem[]) => {
+    for (const item of nodes) {
+      for (const option of item.options) flattened.push({ item, option })
+      visit(item.children)
+    }
+  }
+  visit(items)
+  return flattened
 }
 
 function isTemplateOptionTextEmpty(option: TemplateOption): boolean {
@@ -1400,11 +1409,18 @@ function indentSelectedItems<T extends { id: Id; children: T[] }>(items: T[], se
   })
 
   const result: T[] = []
-  for (const item of recursed) {
+  for (let index = 0; index < recursed.length; index += 1) {
+    const item = recursed[index]
     const previous = result[result.length - 1]
 
     if (selectedIds.has(item.id) && previous && !selectedIds.has(previous.id)) {
-      result[result.length - 1] = { ...previous, children: [...previous.children, item] }
+      // A consecutive selection moves into the same parent. Copy its children
+      // once, rather than copying the growing array for every selected sibling.
+      const children = [...previous.children, item]
+      while (index + 1 < recursed.length && selectedIds.has(recursed[index + 1].id)) {
+        children.push(recursed[++index])
+      }
+      result[result.length - 1] = { ...previous, children }
       changed = true
     } else {
       result.push(item)
@@ -1914,20 +1930,31 @@ function sanitizeNode(node: Node): string {
 type TreeNode<T> = { id: Id; children: T[] }
 
 function flattenTreeNodes<T extends TreeNode<T>>(items: T[]): T[] {
-  return items.flatMap((item) => [item, ...flattenTreeNodes(item.children)])
+  const flattened: T[] = []
+  const visit = (nodes: T[]) => {
+    for (const item of nodes) {
+      flattened.push(item)
+      visit(item.children)
+    }
+  }
+  visit(items)
+  return flattened
 }
 
 function copyTreeNodes<T extends TreeNode<T>>(items: T[], selectedIds: Set<Id>): T[] {
   if (selectedIds.size === 0) return []
 
   const copied: T[] = []
-  for (const item of items) {
-    if (selectedIds.has(item.id)) {
-      copied.push(item)
-      continue
+  const visit = (nodes: T[]) => {
+    for (const item of nodes) {
+      if (selectedIds.has(item.id)) {
+        copied.push(item)
+      } else {
+        visit(item.children)
+      }
     }
-    copied.push(...copyTreeNodes(item.children, selectedIds))
   }
+  visit(items)
   return copied
 }
 
