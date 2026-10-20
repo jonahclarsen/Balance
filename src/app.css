@@ -1922,8 +1922,9 @@ body.mobile-checkbox-dragging {
     var(--tree-sticky-fade) 0 var(--tree-sticky-fade-top) / var(--tree-sticky-fade-end) 100% no-repeat;
 }
 
-/* Wrapped badges occupy the space reserved below the retained text. */
-.sticky-parent:not(:has([data-rich-text-input]:focus)) > .plan-goal-badges {
+/* Content wrapped below the text occupies the space reserved below the
+   retained lines. */
+.sticky-parent:not(:has([data-rich-text-input]:focus)) [style*="--tree-sticky-tail-shift"] {
   translate: 0 calc(var(--tree-sticky-tail-shift, 0px) * -1);
 }
 
