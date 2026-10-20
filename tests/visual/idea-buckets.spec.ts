@@ -244,12 +244,15 @@ test('the Proposition Party Sort button opens the sorter on demand', async ({ pa
   expect(await buckets(page)).toMatchObject({ proposition: ['Synthetic sort two'], trash: ['Synthetic sort one'] })
 })
 
-test('the sorter stays with its page and cuts ideas to the clipboard', async ({ page }, testInfo) => {
+test('the sorter stays with its page and cuts ideas to Trash and the clipboard', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'The sidebar is a drawer on phones')
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
   await open(page)
   await openView(page, 'Buckets')
   await storeCall(page, `
-    plannerStore.addIdea('Synthetic cut me')
+    const id = plannerStore.addIdea('Synthetic cut me', 'proposition', '<strong>Synthetic cut me</strong>')
+    const child = plannerStore.addIdea('Synthetic cut child')
+    plannerStore.moveIdeaItem('bucket_proposition', child, id, 'inside')
     plannerStore.addIdea('Synthetic stay')
   `)
   await card(page, 'proposition').getByRole('button', { name: 'Sort', exact: true }).click()
@@ -266,7 +269,22 @@ test('the sorter stays with its page and cuts ideas to the clipboard', async ({ 
   await page.keyboard.press('x')
   await expectIdea(page, 1, 1)
   await expect(sorter(page).locator('.idea-sort-card')).toContainText('Synthetic stay')
-  expect(await buckets(page)).toMatchObject({ proposition: ['Synthetic stay'] })
+  expect(await buckets(page)).toMatchObject({ proposition: ['Synthetic stay'], trash: ['Synthetic cut me'] })
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain('Synthetic cut child')
+  const cutIdea = await storeCall(page, `
+    let state
+    plannerStore.subscribe(value => { state = value })()
+    return state.ideaBuckets.find(b => b.kind === 'trash').items[0]
+  `)
+  expect(cutIdea).toMatchObject({ html: '<strong>Synthetic cut me</strong>', children: [{ text: 'Synthetic cut child' }], bucketedAt: expect.any(String) })
+
+  await page.keyboard.press('b')
+  await expectIdea(page, 1, 2)
+  expect(await buckets(page)).toMatchObject({ proposition: ['Synthetic cut me', 'Synthetic stay'], trash: [] })
+  await page.keyboard.press('y')
+  await page.keyboard.press('x')
+  await page.reload()
+  expect(await buckets(page)).toMatchObject({ proposition: ['Synthetic stay'], trash: ['Synthetic cut me'] })
 })
 
 test('sorting moves ideas into new notes with their formatting and children, and supports undo', async ({ page }) => {
@@ -535,3 +553,37 @@ for (const method of ['click', 'shortcut']) {
     await expect(page.getByRole('heading', { name: 'Goal stats', exact: true })).toBeVisible()
   })
 }
+
+test('idea deletion keeps content in Trash until it is deleted there', async ({ page }) => {
+  await open(page)
+  await storeCall(page, `
+    const parent = plannerStore.addIdea('Synthetic parent', 'genuine', '<strong>Synthetic parent</strong>')
+    const child = plannerStore.addIdea('Synthetic child', 'genuine')
+    plannerStore.moveIdeaItem('bucket_genuine', child, parent, 'inside')
+    plannerStore.deleteIdeaItem('bucket_genuine', child)
+  `)
+  expect(await buckets(page)).toMatchObject({ genuine: ['Synthetic parent'], trash: ['Synthetic child'] })
+  await storeCall(page, `
+    let state
+    plannerStore.subscribe(value => { state = value })()
+    const child = state.ideaBuckets.find(b => b.kind === 'trash').items[0]
+    plannerStore.deleteIdeaItem('bucket_trash', child.id)
+  `)
+  expect(await buckets(page)).toMatchObject({ trash: [] })
+  await storeCall(page, `
+    let state
+    plannerStore.subscribe(value => { state = value })()
+    const parent = state.ideaBuckets.find(b => b.kind === 'genuine').items[0]
+    const child = plannerStore.addIdea('Synthetic retained child', 'genuine')
+    plannerStore.moveIdeaItem('bucket_genuine', child, parent.id, 'inside')
+    plannerStore.deleteIdeaItemPreservingChildren('bucket_genuine', parent.id)
+  `)
+  expect(await buckets(page)).toMatchObject({ genuine: ['Synthetic retained child'], trash: ['Synthetic parent'] })
+  await page.reload()
+  const trashed = await storeCall(page, `
+    let state
+    plannerStore.subscribe(value => { state = value })()
+    return state.ideaBuckets.find(b => b.kind === 'trash').items[0]
+  `)
+  expect(trashed).toMatchObject({ html: '<strong>Synthetic parent</strong>', children: [], bucketedAt: expect.any(String) })
+})

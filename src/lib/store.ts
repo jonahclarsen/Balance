@@ -2317,12 +2317,18 @@ function createPlannerStore() {
 
     deleteIdeaItem(bucketId: Id, itemId: Id) {
       commitEntities('delete_idea_item', { bucketId, itemId }, (state) =>
-        updateBucketById(state, bucketId, (bucket) => ({ ...bucket, items: deletePlanItem(bucket.items, itemId) })))
+        deleteOrTrashIdea(state, bucketId, itemId, false))
     },
 
     deleteIdeaItemPreservingChildren(bucketId: Id, itemId: Id) {
       commitEntities('delete_idea_item_preserving_children', { bucketId, itemId }, (state) =>
-        updateBucketById(state, bucketId, (bucket) => ({ ...bucket, items: deletePlanItemPreservingChildren(bucket.items, itemId) })))
+        deleteOrTrashIdea(state, bucketId, itemId, true))
+    },
+
+    // Transfer callers have already inserted this content at its destination.
+    removeIdeaAfterTransfer(bucketId: Id, itemId: Id) {
+      commitEntities('remove_transferred_idea', { bucketId, itemId }, (state) =>
+        updateBucketById(state, bucketId, (bucket) => ({ ...bucket, items: deletePlanItem(bucket.items, itemId) })))
     },
 
     backspaceIdeaItemAtStart(bucketId: Id, itemId: Id) {
@@ -3694,6 +3700,20 @@ function updateNote(state: AppState, noteId: Id, updater: (note: Note) => Note):
     return nextNote
   })
   return changed ? { ...state, notes } : state
+}
+
+// Only Trash can discard an idea. Row deletion elsewhere retains its content,
+// including nested ideas; preserving children leaves them at their original level.
+function deleteOrTrashIdea(state: AppState, bucketId: Id, itemId: Id, preserveChildren: boolean): AppState {
+  const bucket = state.ideaBuckets.find((candidate) => candidate.id === bucketId)
+  const item = bucket && findPlanItem(bucket.items, itemId)
+  if (!bucket || !item) return state
+  const remove = preserveChildren ? deletePlanItemPreservingChildren : deletePlanItem
+  const removed = updateBucketById(state, bucketId, (candidate) => ({ ...candidate, items: remove(candidate.items, itemId) }))
+  if (bucket.kind === 'trash') return removed
+  const { dayAssignmentDate: _dayAssignmentDate, ...unassigned } = item as IdeaItem
+  const trashed: IdeaItem = { ...unassigned, children: preserveChildren ? [] : item.children, bucketedAt: nowISO() }
+  return updateBucket(removed, 'trash', (trash) => ({ ...trash, items: [...trash.items, trashed] }))
 }
 
 // Buckets are fixed records created on first write, so missing ones are
