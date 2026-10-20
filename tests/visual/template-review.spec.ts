@@ -180,6 +180,7 @@ test('the starter goal links to the default day review and template pages offer 
   await expect(dialog).toBeHidden()
 
   await openView(page, 'Days')
-  await page.getByRole('button', { name: 'Copy review link' }).click()
-  await expect(page.getByRole('status').filter({ hasText: /Review link copied|Copy this link: balance:\/\/review\/day\// })).toBeVisible()
+  await page.getByRole('heading', { name: 'Days', exact: true }).click({ button: 'right' })
+  await page.getByRole('menuitem', { name: 'Copy review link' }).click()
+  await expect(page.getByRole('status').filter({ hasText: /Link copied|Copy this link/ })).toBeVisible()
 })

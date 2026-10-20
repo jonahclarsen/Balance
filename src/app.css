@@ -3868,12 +3868,6 @@ body.mobile-checkbox-dragging {
   font-size: 0.8em;
 }
 
-.template-review-copy-status {
-  margin: -8px 0 0;
-  font-size: 13px;
-  overflow-wrap: anywhere;
-}
-
 .recovery-key {
   overflow-wrap: anywhere;
   border: 1px solid var(--line);
@@ -7627,3 +7621,5 @@ textarea.note-title {
   font-family: var(--font-mono);
   font-size: 0.9em;
 }
+
+.navigation-link-status { position: fixed; z-index: 1000; bottom: 20px; left: 50%; transform: translateX(-50%); margin: 0; padding: 10px 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink); }

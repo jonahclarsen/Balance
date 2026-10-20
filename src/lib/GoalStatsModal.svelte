@@ -19,17 +19,6 @@
   }
 
   let rangeDays: GoalStatsRangeDays = 90
-  let copyStatus = ''
-
-  async function copyLink() {
-    try {
-      await navigator.clipboard.writeText(GOAL_STATS_URL)
-      copyStatus = 'Link copied!'
-    } catch {
-      copyStatus = `Copy this link: ${GOAL_STATS_URL}`
-    }
-  }
-
   $: stats = buildGoalStats(goals, completions, currentDate, rangeDays)
   $: overduePeak = Math.max(0, ...stats.daily.map((day) => day.overdueGoals))
   $: completionItems = stats.daily.map<GoalStatsBarItem>((day) => ({
@@ -77,17 +66,12 @@
   }
 </script>
 
-<OverlayModal title="Goal stats" ariaLabel="Goal statistics" maxWidth={1060} height={700} z={72} {onClose}>
+<OverlayModal linkURL={GOAL_STATS_URL} title="Goal stats" ariaLabel="Goal statistics" maxWidth={1060} height={700} z={72} {onClose}>
   <div class="goal-stats">
     <div class="stats-toolbar">
-      <button class="copy-link" type="button" on:click={copyLink}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4" /></svg>
-        Copy stats link
-      </button>
       <StatsRangeSwitcher ranges={GOAL_STATS_RANGES} bind:rangeDays />
     </div>
 
-    {#if copyStatus}<p class="copy-status" role="status">{copyStatus}</p>{/if}
 
     <StatsChartCard title="Overdue goals by day" description={`Average ${stats.averageOverdueGoals.toFixed(1)} overdue across this period`}>
       <strong slot="aside" class:warning-text={stats.overdueGoals > 0}>{stats.overdueGoals} today</strong>
@@ -145,18 +129,6 @@
     align-items: center;
     justify-content: space-between;
     gap: 14px;
-  }
-
-  .copy-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .copy-status {
-    margin: 0;
-    color: var(--muted);
-    overflow-wrap: anywhere;
   }
 
   .warning-text {

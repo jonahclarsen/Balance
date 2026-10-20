@@ -396,7 +396,7 @@
     <ul class="prioritize-past">
       {#each pastSessions as past (past.id)}
         <li>
-          <button type="button" on:click={() => openSession(past.id)}>
+          <button type="button" data-balance-link={`balance://prioritize/${past.id}`} on:click={() => openSession(past.id)}>
             <strong>{formatTime(past.createdAt)}</strong>
             <span class="prioritize-past-edited">Last edited: {formatTime(past.updatedAt)}</span>
             <span class="prioritize-past-top">
@@ -413,7 +413,7 @@
       {/each}
     </ul>
   {:else if session}
-    <div class="prioritize-session" style:--prioritize-bar-height={`${barHeight}px`}>
+    <div class="prioritize-session" data-balance-link={`balance://prioritize/${session.id}`} style:--prioritize-bar-height={`${barHeight}px`}>
       <div class="prioritize-toolbar">
         <button class="ghost prioritize-back" type="button" on:click={goHome}>Back</button>
         <ImaxButton active={maximized} onToggle={onToggleMaximized} />

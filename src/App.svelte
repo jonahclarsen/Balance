@@ -111,7 +111,7 @@
   import { revealCaret, scrollMovedItemsIntoView, type ItemRowKind } from './lib/itemScroll'
   import { focusTaskBelow, focusTaskById, TASK_COMPLETION_FOCUS_EVENT, type TaskCaretOffsets, type TaskCompletionFocusDetail } from './lib/taskCompletionFocus'
   import { rememberFocusReturn, type FocusReturn } from './lib/focusReturn'
-  import { buildItemTimeWarnings, createPlanItem, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatMinutes, formatPlanTitle, hasActiveTimeRange, hasIncompletePlanItems, isURL, itemLinkFromAnchor, linkifyItemText, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, sanitizeInlineHTML, templateQuizSteps, templateReviewURL, todayISO, totalWordCount, type ItemLink, type TemplateQuizStep, type TemplateReviewKind } from './lib/planner'
+  import { buildItemTimeWarnings, createPlanItem, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatMinutes, formatPlanTitle, hasActiveTimeRange, hasIncompletePlanItems, isURL, itemLinkFromURL, itemLinkFromAnchor, linkifyItemText, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, sanitizeInlineHTML, templateQuizSteps, todayISO, totalWordCount, type ItemLink, type TemplateQuizStep, type TemplateReviewKind } from './lib/planner'
   import { hexToPickerColor, pickerColorToHex, type PickerColor } from './lib/colors'
   import { automaticSyncStatus, requestSync, startAutomaticSync } from './lib/syncScheduler'
   import { createDefaultIridescentGradient, DEFAULT_DATABASE_LOADING_MESSAGES, normalizeIridescentGradient, replicatedDayTheme } from './lib/preferences'
@@ -141,6 +141,8 @@
   } from './lib/themes'
   import { isNoteTrashed } from './lib/noteTrash'
   import { noteVersionGroupId } from './lib/noteVersions'
+  import LinkContextMenu from './lib/LinkContextMenu.svelte'
+  import { navigationURL, parseNavigationURL } from './lib/navigationLinks'
   import { BALANCE_DEEP_LINK_EVENT, parseBalanceDeepLink } from './lib/deepLinks'
   import { captureRenderedPlanSnapshot } from './lib/renderedPlanDiagnostics'
   import { openClickedLink, openExternalURLFromShortcut } from './lib/externalLinks'
@@ -703,8 +705,6 @@ return rows`
   // Discarded cards sweep off before collapsing, without blocking the next decision.
   let templateReviewSweeping: number[] = []
   let templateReviewList: HTMLDivElement | null = null
-  let templateReviewCopyStatus = ''
-  let templateReviewCopyTimer: ReturnType<typeof setTimeout> | undefined
   let itemTextDragOrigin: { itemId: Id; input: HTMLElement } | null = null
   let preserveSelectionFocusUntil = 0
   $: syncAndroidBackListener(isAndroid && isTauri())
@@ -1757,22 +1757,26 @@ return rows`
   }
 
   function openLink(link: ItemLink, opener: Opener | null, date = $plannerStore.activePlanDate) {
-    if (link.kind === 'goalStats') {
+    if (link.kind === 'navigation') {
+      void openNavigationLink(link.url)
+    } else if (link.kind === 'goalStats') {
       view = 'goals'
       goalStatsOpen = true
     } else if (link.kind === 'templateReview') {
       startTemplateReview(link.templateKind, link.templateId)
     } else if (link.kind === 'projects') {
-      linkedProjectId = link.projectId
+      linkedProjectId = ''
       view = 'projects'
+      void tick().then(() => linkedProjectId = link.projectId)
     } else if (link.kind === 'buckets') {
       view = 'buckets'
       if (link.review) void startIdeaReview()
     } else if (link.kind === 'note') {
       if (notes.some((note) => note.id === link.noteId)) {
         selectedNoteId = link.noteId
+        notesTrashOpen = false
         view = 'notes'
-      }
+      } else unavailableLink()
     } else if (link.kind === 'list') {
       const listId = plannerStore.ensureListForDate(link.listTemplateId, date)
       if (listId) {
@@ -1796,6 +1800,116 @@ return rows`
     } else {
       metricOverlay = { metricId: link.metricId, date, opener }
     }
+  }
+
+  let navigationMessage = ''
+  let navigationMessageTimer: ReturnType<typeof setTimeout>
+  function unavailableLink() {
+    navigationMessage = 'Link destination unavailable'
+    clearTimeout(navigationMessageTimer)
+    navigationMessageTimer = setTimeout(() => navigationMessage = '', 4000)
+  }
+
+  function revealTaskParents(items: PlanItem[], id: string): boolean {
+    for (const item of items) {
+      if (item.id === id) return true
+      if (revealTaskParents(item.children, id)) {
+        setPlanItemCollapsed(item.id, false)
+        return true
+      }
+    }
+    return false
+  }
+
+  async function openNavigationLink(url: string) {
+    explicitTodayReveals += 1
+    try { await revealNavigationLink(url) }
+    finally { explicitTodayReveals -= 1 }
+  }
+
+  async function revealNavigationLink(url: string) {
+    const target = parseNavigationURL(url)
+    if (!target) return
+    navigationMessage = ''
+    searchOpen = false
+    documentFindOpen = false
+    closeMobileDrawer()
+    listOverlay = null
+    metricOverlay = null
+    goalStatsOpen = false
+    clearItemSelection()
+    let selector = ''
+    if (target.kind === 'page') {
+      view = target.view
+    } else if (target.kind === 'day') {
+      openDateInToday(target.date)
+    } else if (target.kind === 'task') {
+      const plan = $plannerStore.plans.find(plan => findPlanItem(plan.items, target.id))
+      const list = !plan && $plannerStore.lists.find(list => findPlanItem(list.items, target.id))
+      const idea = !plan && !list && $plannerStore.ideaBuckets.find(bucket => findPlanItem(bucket.items, target.id))
+      if (plan) { revealTaskParents(plan.items, target.id); openDateInToday(plan.date) }
+      else if (list) {
+        revealTaskParents(list.items, target.id)
+        plannerStore.setActivePlanDate(list.date)
+        listViewTemplateId = list.listTemplateId
+        openListHistory()
+      } else if (idea) { revealTaskParents(idea.items, target.id); view = 'buckets' }
+      else return unavailableLink()
+      selector = `[data-plan-item-id="${CSS.escape(target.id)}"]`
+    } else if (target.kind === 'note') {
+      if (!notes.some(note => note.id === target.id && !note.deletedAt)) return unavailableLink()
+      selectedNoteId = target.id
+      notesTrashOpen = false
+      view = 'notes'
+      if (target.itemId) selector = `[data-note-item-id="${CSS.escape(target.itemId)}"]`
+    } else if (target.kind === 'day-template') {
+      if (!templates.some(template => template.id === target.id)) return unavailableLink()
+      selectedTemplateId = target.id
+      view = 'templates'
+      if (target.itemId) selector = `[data-template-item-id="${CSS.escape(target.itemId)}"]`
+    } else if (target.kind === 'list-template') {
+      if (!activeListTemplates.some(template => template.id === target.id)) return unavailableLink()
+      selectedListTemplateId = target.id
+      listArchiveOpen = false
+      openLists()
+      if (target.itemId) selector = `[data-list-template-item-id="${CSS.escape(target.itemId)}"]`
+    } else if (target.kind === 'list') {
+      const list = $plannerStore.lists.find(list => list.id === target.id)
+      if (!list) return unavailableLink()
+      plannerStore.setActivePlanDate(list.date)
+      listViewTemplateId = list.listTemplateId
+      openListHistory()
+      if (target.itemId) {
+        if (!revealTaskParents(list.items, target.itemId)) return unavailableLink()
+        selector = `[data-plan-item-id="${CSS.escape(target.itemId)}"]`
+      }
+    } else if (target.kind === 'quiz') {
+      if (!metrics.some(metric => metric.id === target.id)) return unavailableLink()
+      selectedMetricId = target.id
+      view = 'metrics'
+      if (target.itemId) selector = `[data-metric-question-id="${CSS.escape(target.itemId)}"]`
+    } else if (target.kind === 'goal') {
+      if (!goals.some(goal => goal.id === target.id)) return unavailableLink()
+      goalSearch = ''
+      await openGoals(target.id)
+    } else if (target.kind === 'prioritize') {
+      if (!$plannerStore.prioritySessions.some(session => session.id === target.id)) return unavailableLink()
+      view = 'prioritize'
+      await tick()
+      prioritizeReveal.set({ sessionId: target.id, itemId: target.itemId })
+    } else if (target.kind === 'bucket') {
+      if (!$plannerStore.ideaBuckets.some(bucket => bucket.kind === target.id)) return unavailableLink()
+      view = 'buckets'
+      selector = `[data-bucket="${CSS.escape(target.id)}"]`
+    }
+    if (!selector) return
+    await tick()
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    const row = workspaceEl?.querySelector<HTMLElement>(selector)
+    if (!row) return unavailableLink()
+    scrollElementToCenter(row)
+    row.classList.add('search-result-target')
+    setTimeout(() => row.classList.remove('search-result-target'), 1800)
   }
 
   function openLinkedDestinationForActiveTask(): boolean {
@@ -2276,6 +2390,19 @@ return rows`
           if (situateDeepLink(raw)) {
             view = 'situate'
             closeMobileDrawer()
+            await invoke('acknowledge_deep_link', { url: raw })
+            pendingDeepLinks.shift()
+            continue
+          }
+          const destination = itemLinkFromURL(raw, notes)
+          if (destination) {
+            listOverlay = null
+            metricOverlay = null
+            goalStatsOpen = false
+            searchOpen = false
+            closeMobileDrawer()
+            if (destination.kind === 'navigation') await openNavigationLink(destination.url)
+            else openLink(destination, null)
             await invoke('acknowledge_deep_link', { url: raw })
             pendingDeepLinks.shift()
             continue
@@ -5887,18 +6014,6 @@ return rows`
     templateReviewSweeping = []
   }
 
-  async function copyTemplateReviewLink(kind: TemplateReviewKind, templateId: Id) {
-    const link = templateReviewURL(kind, templateId)
-    try {
-      await navigator.clipboard.writeText(link)
-      templateReviewCopyStatus = 'Review link copied. Paste it into a task, note, or goal name.'
-    } catch {
-      templateReviewCopyStatus = `Copy this link: ${link}`
-    }
-    clearTimeout(templateReviewCopyTimer)
-    templateReviewCopyTimer = setTimeout(() => (templateReviewCopyStatus = ''), 6000)
-  }
-
   function startPasteReviewEdit() {
     if (!pasteReview) return
 
@@ -6826,6 +6941,8 @@ return rows`
   </OverlayModal>
 {/if}
 
+<LinkContextMenu />
+
 <main
   class="app-shell"
   class:android={isAndroid}
@@ -7094,8 +7211,10 @@ return rows`
   ></button>
 
   <div class="content-shell" style={contentShellStyle}>
+    {#if navigationMessage}<p class="navigation-link-status" role="status">{navigationMessage}</p>{/if}
     <section
       class="workspace"
+      data-balance-link={view === 'templates' && selectedTemplate ? navigationURL('day-template', selectedTemplate.id) : view === 'listTemplates' && selectedListTemplate ? navigationURL('list-template', selectedListTemplate.id) : view === 'metrics' && selectedMetric ? navigationURL('quiz', selectedMetric.id) : navigationURL('page', view)}
       class:notes-view-workspace={view === 'notes'}
       class:list-template-workspace={view === 'templates' || view === 'listTemplates'}
       class:prioritize-workspace={view === 'prioritize'}
@@ -7123,6 +7242,7 @@ return rows`
     <RecentPage retained={$recentPages.includes('today')} active={view === 'today'}>
       <section
         class="day-pane"
+        data-balance-link={navigationURL('day', displayedPlanDate)}
         class:before-current-day-pane={displayedPlanDate < currentDay}
         class:current-day-pane={displayedPlanDate === currentDay}
         class:after-current-day-pane={displayedPlanDate > currentDay}
@@ -7267,13 +7387,7 @@ return rows`
         <div>
           <h2>Days</h2>
         </div>
-        {#if selectedTemplate}
-          <div class="template-panel-actions">
-            <button type="button" title="Copy a link that opens a keep-or-discard review of this day" on:click={() => copyTemplateReviewLink('day', selectedTemplate.id)}>Copy review link</button>
-          </div>
-        {/if}
       </header>
-      {#if templateReviewCopyStatus}<p class="template-review-copy-status muted" role="status">{templateReviewCopyStatus}</p>{/if}
 
       {#if templates.length > 0}
         <nav class="template-rail list-template-rail" aria-label="Select day template">
@@ -7367,13 +7481,9 @@ return rows`
           <h2>Lists</h2>
         </div>
         <div class="template-panel-actions">
-          {#if selectedListTemplate}
-            <button type="button" title="Copy a link that opens a keep-or-discard review of this list" on:click={() => copyTemplateReviewLink('list', selectedListTemplate.id)}>Copy review link</button>
-          {/if}
           <button class="primary outlined" type="button" on:click={openListHistory}>View List History →</button>
         </div>
       </header>
-      {#if templateReviewCopyStatus}<p class="template-review-copy-status muted" role="status">{templateReviewCopyStatus}</p>{/if}
 
       {#if activeListTemplates.length > 0}
         <nav class="template-rail list-template-rail" aria-label="Select list">
@@ -8537,7 +8647,7 @@ return rows`
       {@const instance = listOverlayInstance}
       {@const template = listTemplates.find((candidate) => candidate.id === instance.listTemplateId)}
       {@const completion = planItemCompletion(instance.items)}
-      <OverlayModal active={listOverlayVisible} title={template?.name ?? 'List'} z={60} onClose={() => (listOverlay = null)}>
+      <OverlayModal linkURL={navigationURL('list', instance.id)} active={listOverlayVisible} title={template?.name ?? 'List'} z={60} onClose={() => (listOverlay = null)}>
         <div slot="header-middle" class="list-overlay-status">
           <ProgressBar done={completion.done} total={completion.total} label="List completion" />
           {#if template?.idealMinutes}
@@ -8584,7 +8694,7 @@ return rows`
 
     {#if metricOverlay && metricOverlayMetric}
       {@const overlay = metricOverlay}
-      <OverlayModal title={`${metricOverlayMetric.name} · ${overlay.date}`} z={70} onClose={() => (metricOverlay = null)}>
+      <OverlayModal linkURL={navigationURL('quiz', metricOverlayMetric.id)} title={`${metricOverlayMetric.name} · ${overlay.date}`} z={70} onClose={() => (metricOverlay = null)}>
         <!-- Each opening starts fresh, including one that replaces an open quiz. -->
         {#key overlay}
           <MetricQuiz

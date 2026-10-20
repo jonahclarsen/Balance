@@ -20,7 +20,6 @@
   let archiveOpen = false
   let archivedDetailId = ''
   let initialCheckInProjectId = ''
-  let message = ''
   $: active = projects.filter((project) => !project.archived && histories.get(project.id)?.at(-1)?.progress !== 100)
   $: completed = projects.filter((project) => !project.archived && histories.get(project.id)?.at(-1)?.progress === 100)
   $: archived = projects.filter((project) => project.archived)
@@ -63,11 +62,7 @@
       : window.confirm(prompt)
     if (confirmed) plannerStore.permanentlyDeleteArchivedProject(project.id)
   }
-  async function copyLink() {
-    const link = 'balance://projects'
-    try { await navigator.clipboard.writeText(link); message = 'Link copied' }
-    catch { message = `Copy this link: ${link}` }
-  }
+
 </script>
 
 <section class="projects-panel" aria-label="Project vibes">
@@ -75,10 +70,8 @@
     <h2>Projects</h2>
     <div class="template-panel-actions">
       <button class="ghost" class:active={archiveOpen} type="button" aria-haspopup="dialog" aria-expanded={archiveOpen} aria-controls="project-archive" on:click={() => archiveOpen = true}>View Archive</button>
-      <button type="button" on:click={() => copyLink()}>Copy page link</button>
     </div>
   </header>
-  {#if message}<p class="status muted" role="status">{message}</p>{/if}
   {#if linkedProjectId && !projects.some((project) => project.id === linkedProjectId)}<p class="muted">Project unavailable.</p>{/if}
   <form class="project-add" aria-label="Add a new project" on:submit|preventDefault={add}>
     <span class="project-add-label">New project</span>
@@ -156,5 +149,4 @@
   .project-grid :global(.project-drop-indicator) { position: absolute; background: var(--accent); border-radius: 2px; pointer-events: none; z-index: 1; }
   .completed-projects { margin-top: 24px; }
   .completed-projects h3 { margin: 0 0 12px; font-size: 16px; }
-  .status { overflow-wrap: anywhere; }
 </style>

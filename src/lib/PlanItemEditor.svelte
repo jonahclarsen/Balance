@@ -1115,6 +1115,10 @@
             {:else}
               <button type="button" role="menuitem" on:click|stopPropagation={addTimeAndOpenEditor}>Add time</button>
             {/if}
+            <button type="button" role="menuitem" on:click|stopPropagation={() => {
+              mobileMenuOpen = false
+              window.dispatchEvent(new CustomEvent('balance-copy-link', { detail: `balance://task/${item.id}` }))
+            }}>Copy link</button>
             <button type="button" role="menuitem" on:click|stopPropagation={copyTask}>Copy</button>
             <button type="button" role="menuitem" on:click|stopPropagation={pasteTask}>Paste</button>
             <button type="button" role="menuitem" on:click|stopPropagation={cutTask}>Cut</button>

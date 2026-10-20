@@ -69,8 +69,6 @@
   let filter = ''
   let lastActiveNoteId: Id | null = null
   let lastTrashNoteId: Id | null = null
-  let copyButtonText = 'Copy note link'
-  let copyButtonResetTimer: number | undefined
   let noteEditorHostElement: HTMLDivElement | null = null
   let noteEditorHost: NoteEditorHost | null = null
   let bottomFollowFrame: number | null = null
@@ -243,29 +241,6 @@
 
   async function emptyTrash() {
     if (await onEmptyTrash()) onSelect('')
-  }
-
-  async function copyLink() {
-    if (!selectedNote) return
-    const link = `balance://note/${selectedNote.id}`
-    let copied = false
-    try {
-      await navigator.clipboard.writeText(link)
-      copied = true
-    } catch {
-      const fallback = document.createElement('textarea')
-      fallback.value = link
-      fallback.setAttribute('readonly', '')
-      fallback.style.position = 'fixed'
-      fallback.style.opacity = '0'
-      document.body.append(fallback)
-      fallback.select()
-      copied = document.execCommand('copy')
-      fallback.remove()
-    }
-    window.clearTimeout(copyButtonResetTimer)
-    copyButtonText = copied ? 'Link copied!' : 'Copy failed'
-    copyButtonResetTimer = window.setTimeout(() => (copyButtonText = 'Copy note link'), 1000)
   }
 
   function readableDate(value: string) {
@@ -623,7 +598,7 @@
           {@const note = trashOpen ? versions[0] : cardNote(versions, selectedNote)}
           {@const versionLabel = trashOpen ? binnedVersionLabel(note) : ''}
           {@const updatedAt = trashOpen ? note.deletedAt ?? note.updatedAt : latestUpdate(versions)}
-          <div class="note-card-row">
+          <div class="note-card-row" data-balance-link={`balance://note/${note.id}`}>
             <button type="button" class="note-card" class:active={note.id === selectedNote?.id} on:click={() => onSelect(note.id)}>
               <strong>{note.title.trim() || 'Untitled note'}{#if versionLabel}<small class="note-card-version"> · {versionLabel}</small>{/if}</strong>
               <span>{flattenText(note).trim().replace(/\s+/g, ' ').slice(0, 90) || 'Empty note'}</span>
@@ -647,7 +622,7 @@
     </aside>
   {/if}
 
-  <section bind:this={documentElement} class="note-document" aria-label={sidePane ? 'Right note' : 'Main note'} use:externalNotePaste={`${selectedNoteId}:${trashOpen}`}>
+  <section data-balance-link={selectedNote ? `balance://note/${selectedNote.id}` : undefined} bind:this={documentElement} class="note-document" aria-label={sidePane ? 'Right note' : 'Main note'} use:externalNotePaste={`${selectedNoteId}:${trashOpen}`}>
     {#if selectedNote}
       <header class="note-document-head">
         {#if sidePane}
@@ -664,7 +639,6 @@
             <button class="ghost danger" type="button" on:click={() => permanentlyDelete(selectedNote!.id)}>Delete now</button>
           {:else}
             <button type="button" title="Start another version from a copy of this one" on:click={addVersion}>New version</button>
-            <button type="button" title="Copy an app link to this note" aria-live="polite" on:click={copyLink}>{copyButtonText}</button>
             <button class="ghost danger" type="button" title={selectedVersions.length > 1 ? 'Move every version of this note to the Bin' : undefined} on:click={() => moveToTrash(selectedNote!.id)}>Bin it</button>
           {/if}
         </div>
@@ -693,6 +667,7 @@
                   tabindex={version.id === selectedNote.id ? 0 : -1}
                   title="Double-click to rename"
                   data-note-version-tab={version.id}
+                  data-balance-link={`balance://note/${version.id}`}
                   on:click={() => onSelect(version.id)}
                   on:dblclick={() => startRenamingVersion(version)}
                   on:keydown={(event) => handleVersionTabKeydown(event, index)}

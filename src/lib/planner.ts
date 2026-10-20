@@ -1,3 +1,4 @@
+import { balanceURLMatches, parseNavigationURL } from './navigationLinks'
 import { sanitizeImage } from './imageMarkup'
 import { isUnboldedBold, textStyleTags } from './textStyleTags'
 import type {
@@ -1901,7 +1902,7 @@ function sanitizeNode(node: Node): string {
     // An empty anchor is invisible but would still be the first link Alt+F opens.
     if (!children) return ''
     const href = element.getAttribute('href') ?? ''
-    if (isGoalStatsURL(href) || noteIdFromURL(href) || projectIdFromURL(href) !== null || templateReviewFromURL(href) || bucketsLinkFromURL(href)) return `<a href="${escapeHTML(href.trim())}">${children}</a>`
+    if (itemLinkFromURL(href)) return `<a href="${escapeHTML(href.trim())}">${children}</a>`
     if (!isURL(href)) return children
     return `<a href="${escapeHTML(href.trim())}" target="_blank" rel="noreferrer">${children}</a>`
   }
@@ -2562,6 +2563,7 @@ export function createMetricEntry(metricId: Id, date: string): MetricEntry {
 // ---------------------------------------------------------------------------
 
 export type ItemLink =
+  | { kind: 'navigation'; url: string; label: string }
   | { kind: 'goalStats'; label: string }
   | { kind: 'list'; listTemplateId: Id; label: string }
   | { kind: 'metric'; metricId: Id; label: string }
@@ -2570,11 +2572,19 @@ export type ItemLink =
   | { kind: 'buckets'; review: boolean; label: string }
   | { kind: 'templateReview'; templateKind: TemplateReviewKind; templateId: Id; label: string }
 
-const TEMPLATE_REVIEW_URL_PATTERN = /balance:\/\/review\/(day|list)\/([a-zA-Z0-9_-]+)(?![a-zA-Z0-9_/?#-])/g
-
-function templateReviewLinkFromMatch(match: RegExpMatchArray): Extract<ItemLink, { kind: 'templateReview' }> {
-  const templateKind = match[1] as TemplateReviewKind
-  return { kind: 'templateReview', templateKind, templateId: match[2], label: templateReviewLabel(templateKind) }
+export function itemLinkFromURL(value: string, notes: import('./types').Note[] = []): ItemLink | null {
+  const url = value.trim()
+  const noteId = noteIdFromURL(url)
+  if (noteId) return { kind: 'note', noteId, label: notes.find(note => note.id === noteId)?.title.trim() || 'Note' }
+  const projectId = projectIdFromURL(url)
+  if (projectId !== null) return { kind: 'projects', projectId, label: 'Project vibes' }
+  if (isGoalStatsURL(url)) return { kind: 'goalStats', label: 'Goal stats' }
+  const buckets = bucketsLinkFromURL(url)
+  if (buckets) return { kind: 'buckets', review: buckets === 'review', label: buckets === 'review' ? 'Review ideas' : 'Buckets' }
+  const review = templateReviewFromURL(url)
+  if (review) return { kind: 'templateReview', templateKind: review.kind, templateId: review.templateId, label: templateReviewLabel(review.kind) }
+  const target = parseNavigationURL(url)
+  return target ? { kind: 'navigation', url, label: target.kind === 'page' ? target.view : target.kind } : null
 }
 
 export function resolveItemLinks(text: string, listTemplates: ListTemplate[], metrics: Metric[], notes: import('./types').Note[] = []): ItemLink[] {
@@ -2598,22 +2608,9 @@ export function resolveItemLinks(text: string, listTemplates: ListTemplate[], me
     }
   }
 
-  for (const match of trimmed.matchAll(/balance:\/\/note\/([a-zA-Z0-9_-]+)/g)) {
-    const note = notes.find((candidate) => candidate.id === match[1])
-    if (note) links.push({ kind: 'note', noteId: note.id, label: note.title.trim() || 'Untitled note' })
-  }
-
-  for (const match of trimmed.matchAll(/balance:\/\/projects(?:\/([a-zA-Z0-9_-]+))?(?![a-zA-Z0-9_/-])/g)) {
-    links.push({ kind: 'projects', projectId: match[1] ?? '', label: 'Project vibes' })
-  }
-  for (const _match of trimmed.matchAll(/balance:\/\/goals\/stats(?![a-zA-Z0-9_/?#-])/g)) {
-    links.push({ kind: 'goalStats', label: 'Goal stats' })
-  }
-  for (const match of trimmed.matchAll(/balance:\/\/buckets(?:\/(review))?(?![a-zA-Z0-9_/?#-])/g)) {
-    links.push({ kind: 'buckets', review: Boolean(match[1]), label: match[1] ? 'Review ideas' : 'Buckets' })
-  }
-  for (const match of trimmed.matchAll(TEMPLATE_REVIEW_URL_PATTERN)) {
-    links.push(templateReviewLinkFromMatch(match))
+  for (const match of balanceURLMatches(trimmed)) {
+    const link = itemLinkFromURL(match.url, notes)
+    if (link) links.push(link)
   }
   return links
 }
@@ -2662,27 +2659,9 @@ export function linkifyItemText(text: string, listTemplates: ListTemplate[], met
     if (!name) continue
     collect(name, { kind: 'metric', metricId: metric.id, label: name })
   }
-  for (const match of text.matchAll(/balance:\/\/note\/([a-zA-Z0-9_-]+)/g)) {
-    const note = notes.find((candidate) => candidate.id === match[1])
-    if (!note || match.index === undefined) continue
-    matches.push({
-      start: match.index,
-      end: match.index + match[0].length,
-      link: { kind: 'note', noteId: note.id, label: note.title.trim() || 'Untitled note' },
-    })
-  }
-
-  for (const match of text.matchAll(/balance:\/\/projects(?:\/([a-zA-Z0-9_-]+))?(?![a-zA-Z0-9_/-])/g)) {
-    matches.push({ start: match.index!, end: match.index! + match[0].length, link: { kind: 'projects', projectId: match[1] ?? '', label: 'Project vibes' } })
-  }
-  for (const match of text.matchAll(/balance:\/\/goals\/stats(?![a-zA-Z0-9_/?#-])/g)) {
-    matches.push({ start: match.index!, end: match.index! + match[0].length, link: { kind: 'goalStats', label: 'Goal stats' } })
-  }
-  for (const match of text.matchAll(/balance:\/\/buckets(?:\/(review))?(?![a-zA-Z0-9_/?#-])/g)) {
-    matches.push({ start: match.index!, end: match.index! + match[0].length, link: { kind: 'buckets', review: Boolean(match[1]), label: match[1] ? 'Review ideas' : 'Buckets' } })
-  }
-  for (const match of text.matchAll(TEMPLATE_REVIEW_URL_PATTERN)) {
-    matches.push({ start: match.index!, end: match.index! + match[0].length, link: templateReviewLinkFromMatch(match) })
+  for (const match of balanceURLMatches(text)) {
+    const link = itemLinkFromURL(match.url, notes)
+    if (link) matches.push({ start: match.start, end: match.end, link })
   }
   if (matches.length === 0) return [{ text, link: null }]
 
@@ -2707,6 +2686,7 @@ export function detectedTemplateLists(text: string, listTemplates: ListTemplate[
 }
 
 export function internalLinkId(link: ItemLink): string {
+  if (link.kind === 'navigation') return link.url
   if (link.kind === 'goalStats') return 'stats'
   if (link.kind === 'buckets') return link.review ? 'review' : 'page'
   if (link.kind === 'templateReview') return `${link.templateKind}:${link.templateId}`
@@ -2775,21 +2755,18 @@ export function itemLinkFromAnchor(anchor: HTMLElement): ItemLink | null {
   const id = anchor.dataset.internalLinkId
   const label = anchor.dataset.internalLinkLabel ?? anchor.textContent ?? ''
 
-  if (kind === 'goalStats' || isGoalStatsURL(anchor.getAttribute('href') ?? '')) return { kind: 'goalStats', label }
+  if (kind === 'navigation' && id) return itemLinkFromURL(id)
+  const direct = itemLinkFromURL(anchor.getAttribute('href') ?? '')
+  if (direct) return { ...direct, label: label || direct.label }
+  if (kind === 'goalStats') return { kind: 'goalStats', label }
   if (kind === 'projects') return { kind, projectId: id === 'all' ? '' : id ?? '', label }
   if (kind === 'buckets') return { kind, review: id === 'review', label }
-  const bucketsLink = bucketsLinkFromURL(anchor.getAttribute('href') ?? '')
-  if (bucketsLink) return { kind: 'buckets', review: bucketsLink === 'review', label }
-  const projectId = projectIdFromURL(anchor.getAttribute('href') ?? '')
-  if (projectId !== null) return { kind: 'projects', projectId, label }
   if (kind === 'list' && id) return { kind, listTemplateId: id, label }
   if (kind === 'metric' && id) return { kind, metricId: id, label }
   if (kind === 'note' && id) return { kind, noteId: id, label }
-  const noteId = noteIdFromURL(anchor.getAttribute('href') ?? '')
-  if (noteId) return { kind: 'note', noteId, label }
   const review = kind === 'templateReview' && id
     ? templateReviewFromURL(`balance://review/${id.replace(':', '/')}`)
-    : templateReviewFromURL(anchor.getAttribute('href') ?? '')
+    : null
   if (review) return { kind: 'templateReview', templateKind: review.kind, templateId: review.templateId, label }
   return null
 }

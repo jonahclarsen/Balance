@@ -2645,8 +2645,9 @@ test('goal stats survive navigation and their copied link opens the modal from a
   await openGoalsFromRhythm(page)
   await page.getByRole('button', { name: 'Stats', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: 'Goal statistics' })
-  await dialog.getByRole('button', { name: 'Copy stats link' }).click()
-  await expect(dialog.getByRole('status')).toHaveText('Link copied!')
+  await dialog.getByRole('heading', { name: 'Goal stats', exact: true }).click({ button: 'right' })
+  await page.getByRole('menuitem', { name: 'Copy link', exact: true }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Link copied' })).toBeVisible()
   const link = await page.evaluate(() => (window as any).__copiedStatsLink as string)
   expect(link).toBe('balance://goals/stats')
 

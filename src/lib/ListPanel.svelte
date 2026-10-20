@@ -439,7 +439,7 @@
 </script>
 
 <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-<div class="list-panel checklist-panel" role="list" bind:this={panel} on:keydown={handleKeydown}>
+<div class="list-panel checklist-panel" data-balance-link={`balance://list/${instance.id}`} role="list" bind:this={panel} on:keydown={handleKeydown}>
   {#if instance.items.length === 0}
     <p class="empty">This list generated no items.</p>
   {/if}

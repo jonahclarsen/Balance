@@ -1213,8 +1213,9 @@ test('notes support a seamless editor, natural formatting, persistence, search, 
   await expectCaretIn(emptyChecklistItem.locator('.note-text'))
   await expect(page.locator('.note-text').nth(1)).toContainText('Formatted ideas')
 
-  await page.getByRole('button', { name: 'Copy note link' }).click()
-  await expect(page.getByText('Link copied!')).toBeVisible()
+  await page.locator('.note-document').first().click({ button: 'right', position: { x: 8, y: 8 } })
+  await page.getByRole('menuitem', { name: 'Copy link', exact: true }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Link copied' })).toBeVisible()
   const noteLink = await page.evaluate(() => {
     const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
     return `balance://note/${state.notes[0].id}`

@@ -83,7 +83,7 @@
   }
 </script>
 
-<article class="project-card metric-card" id={'project-' + project.id} style:--project-color={project.color}>
+<article data-balance-link={`balance://projects/${project.id}`} class="project-card metric-card" id={'project-' + project.id} style:--project-color={project.color}>
   <header>
     <svg class="project-visual" viewBox="0 0 100 100" role="img" aria-label={latest ? `${latest.progress}% work complete; ${latest.heart}% heart in it` : 'No check-in yet'}>
       <defs>
@@ -128,7 +128,7 @@
   </footer>
   {#if detailsOpen}
     <div class="details-overlay" use:mountInContentShell>
-    <OverlayModal title={project.name} ariaLabel={`${project.name} details`} z={65} onClose={closeDetails}>
+    <OverlayModal linkURL={`balance://projects/${project.id}`} title={project.name} ariaLabel={`${project.name} details`} z={65} onClose={closeDetails}>
     <div class="edit-details project-card-details" id={'project-details-' + project.id} style:--project-color={project.color}>
       {#if checkingIn}
         {@render checkInForm_()}

@@ -33,9 +33,12 @@ if (!manifest.includes('.SituateNotifications')) {
     </intent-filter></receiver>
   </application>`)
   // Tauri's existing activity remains the only exported UI entry point.
-  manifest = manifest.replace(/(<activity\b[^>]*android:name="\.MainActivity"[^>]*>)/, '$1\n<intent-filter><action android:name="android.intent.action.VIEW" /><category android:name="android.intent.category.DEFAULT" /><category android:name="android.intent.category.BROWSABLE" /><data android:scheme="balance" android:host="situate" /></intent-filter>')
+  manifest = manifest.replace(/(<activity\b[^>]*android:name="\.MainActivity"[^>]*>)/, '$1\n<intent-filter><action android:name="android.intent.action.VIEW" /><category android:name="android.intent.category.DEFAULT" /><category android:name="android.intent.category.BROWSABLE" /><data android:scheme="balance" /></intent-filter>')
   await writeFile(manifestPath,manifest)
 }
+// Upgrade previously generated projects as well as fresh CI builds.
+manifest = manifest.replace(/android:scheme="balance" android:host="situate"/g, 'android:scheme="balance"')
+await writeFile(manifestPath, manifest)
 await mkdir(join(root,'res/xml'),{recursive:true})
 await writeFile(join(root,'res/xml/situate_accessibility.xml'), `<?xml version="1.0" encoding="utf-8"?>
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"

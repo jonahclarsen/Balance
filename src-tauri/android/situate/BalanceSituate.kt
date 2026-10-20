@@ -25,7 +25,7 @@ object BalanceSituate {
     fun initialize(context: Context) { nativeInitialize(context.applicationContext); executor.execute { SituateSelfTest.runIfRequested(context); refresh(context) } }
     fun resume(activity: Activity) {
         initialize(activity)
-        activity.intent?.data?.toString()?.let { if (it.startsWith("balance://situate")) { nativeDeepLink(it); activity.intent.data = null } }
+        activity.intent?.data?.toString()?.let { if (it.startsWith("balance://")) { nativeDeepLink(it); activity.intent.data = null } }
     }
     fun status(context: Context): JSONObject {
         val file = rules(context)

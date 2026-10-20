@@ -370,7 +370,7 @@ mod android {
     ) {
         if let Ok(url) = env.get_string(&url) {
             let raw: String = url.into();
-            if raw.len() <= 4096 && raw.starts_with("balance://situate") {
+            if raw.len() <= 4096 && raw.starts_with("balance://") {
                 if let Some(app) = super::APP.get() {
                     crate::deliver_balance_deep_link(app, raw);
                 } else if let Ok(mut links) = crate::PENDING_DEEP_LINKS.lock() {

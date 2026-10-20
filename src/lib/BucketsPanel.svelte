@@ -146,7 +146,7 @@
 
   {#each IDEA_BUCKETS as meta (meta.kind)}
     {@const bucket = bucketsByKind[meta.kind]}
-    <section class="bucket-card" data-bucket={meta.kind} aria-label={meta.label}>
+    <section class="bucket-card" data-bucket={meta.kind} data-balance-link={`balance://bucket/${meta.kind}`} aria-label={meta.label}>
       <header class="bucket-card-header">
         <h3>{meta.label}</h3>
         <span class="bucket-count">{bucket.items.length}</span>

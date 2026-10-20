@@ -56,7 +56,7 @@
       <ol class="next-task-card next-task-rows">
         {#each rows as row, depth (row.id)}
           <li
-            class="next-task-row"
+            class="next-task-row" data-balance-link={`balance://task/${row.id}`}
             class:selected={row === next.item}
             style:--depth={depth}
             data-next-task-id={row.id}

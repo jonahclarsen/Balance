@@ -17,6 +17,7 @@
   // backdrop press), for prompts that must be answered.
   export let onClose: (() => void) | null = null
   export let title = ''
+  export let linkURL: string | undefined = undefined
   export let eyebrow = ''
   export let ariaLabel = ''
   export let role: 'dialog' | 'alertdialog' = 'dialog'
@@ -126,6 +127,7 @@
 >
   <div
     class="overlay-card {className}"
+    data-balance-link={linkURL}
     class:headerless
     class:fixed-height={height !== null}
     {role}
