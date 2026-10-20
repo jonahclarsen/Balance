@@ -111,7 +111,7 @@
   import { revealCaret, scrollMovedItemsIntoView, type ItemRowKind } from './lib/itemScroll'
   import { focusTaskBelow, focusTaskById, TASK_COMPLETION_FOCUS_EVENT, type TaskCaretOffsets, type TaskCompletionFocusDetail } from './lib/taskCompletionFocus'
   import { rememberFocusReturn, type FocusReturn } from './lib/focusReturn'
-  import { buildItemTimeWarnings, createPlanItem, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatMinutes, formatPlanTitle, hasActiveTimeRange, hasIncompletePlanItems, isURL, itemLinkFromAnchor, linkifyItemText, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, sanitizeInlineHTML, templateQuizSteps, templateReviewURL, todayISO, totalWordCount, type ItemLink, type TemplateQuizStep, type TemplateReviewKind } from './lib/planner'
+  import { buildItemTimeWarnings, createPlanItem, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatMinutes, formatPlanTitle, hasActiveTimeRange, hasIncompletePlanItems, linkifyItemText, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, sanitizeInlineHTML, templateQuizSteps, templateReviewURL, todayISO, totalWordCount, type ItemLink, type TemplateQuizStep, type TemplateReviewKind } from './lib/planner'
   import { hexToPickerColor, pickerColorToHex, type PickerColor } from './lib/colors'
   import { automaticSyncStatus, requestSync, startAutomaticSync } from './lib/syncScheduler'
   import { createDefaultIridescentGradient, DEFAULT_DATABASE_LOADING_MESSAGES, normalizeIridescentGradient, replicatedDayTheme } from './lib/preferences'
@@ -143,7 +143,7 @@
   import { noteVersionGroupId } from './lib/noteVersions'
   import { BALANCE_DEEP_LINK_EVENT, parseBalanceDeepLink } from './lib/deepLinks'
   import { captureRenderedPlanSnapshot } from './lib/renderedPlanDiagnostics'
-  import { openClickedLink, openExternalURLFromShortcut } from './lib/externalLinks'
+  import { openClickedLink, openRenderedLinkFromShortcut } from './lib/externalLinks'
   import {
     DEFAULT_COMPLETION_CELEBRATION_ID,
     getCompletionCelebration,
@@ -1815,24 +1815,10 @@ return rows`
   }
 
   function openItemLinkFromShortcut(plan: DailyPlan, item: PlanItem, date?: string): boolean {
-
-    const template = document.createElement('template')
-    template.innerHTML = renderItemDisplayHTML(
-      item.html, item.text, linkifyItemText(item.text, listTemplates, metrics, notes),
+    return openRenderedLinkFromShortcut(
+      renderItemDisplayHTML(item.html, item.text, linkifyItemText(item.text, listTemplates, metrics, notes)),
+      (link) => openLink(link, { container: 'plan', containerId: plan.id, itemId: item.id }, date),
     )
-    const anchors = Array.from(template.content.querySelectorAll<HTMLAnchorElement>('a[href]'))
-    const externalURL = anchors
-      .map((anchor) => anchor.getAttribute('href')?.trim() ?? '')
-      .find(isURL)
-    if (externalURL) {
-      openExternalURLFromShortcut(externalURL)
-      return true
-    }
-    const internalLink = anchors.map(itemLinkFromAnchor).find((link) => link !== null)
-    if (!internalLink) return false
-
-    openLink(internalLink, { container: 'plan', containerId: plan.id, itemId: item.id }, date)
-    return true
   }
 
   function binNote(noteId: Id): boolean {
@@ -8678,6 +8664,8 @@ return rows`
           queue={ideaSort.queue}
           buckets={$plannerStore.ideaBuckets}
           title={ideaSort.title}
+          renderIdeaHTML={(item) => renderItemDisplayHTML(item.html, item.text, linkifyItemText(item.text, listTemplates, metrics, notes))}
+          onOpenLink={(link) => openLink(link, null)}
           active={ideaSortVisible}
           onDecide={(itemId, kind) => plannerStore.moveIdeaToBucket(itemId, kind)}
           onAppendToPrevious={(itemId, previousId) => plannerStore.appendIdeaToPrevious(itemId, previousId)}

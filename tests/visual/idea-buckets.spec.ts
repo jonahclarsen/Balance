@@ -486,3 +486,52 @@ test('the review goal seeds once with a link that runs the Genuinely review', as
   const todayTasks = await page.evaluate(() => JSON.parse(localStorage.getItem('balance.appState.v1')!).plans[0].items.map((item: any) => [item.text, item.done]))
   expect(todayTasks).toContainEqual(['Filter Genuinely Worth Doing', true])
 })
+
+test('sort new ideas opens web links by click and Option-F without advancing', async ({ page }) => {
+  await open(page)
+  await storeCall(page, `
+    const id = plannerStore.addIdea('Synthetic first and second')
+    let state
+    plannerStore.subscribe(value => { state = value })()
+    const bucket = state.ideaBuckets.find(bucket => bucket.kind === 'proposition')
+    plannerStore.patchIdeaItem(bucket.id, id, {
+      html: 'Synthetic <a href="https://example.com/first">first</a> and <a href="https://example.com/second">second</a>',
+    })
+  `)
+  await page.evaluate(() => {
+    ;(window as any).openedURLs = []
+    window.open = ((url?: string | URL) => {
+      ;(window as any).openedURLs.push(String(url))
+      return null
+    }) as typeof window.open
+  })
+  await generateDay(page)
+  await expect(sorter(page)).toBeVisible()
+  await sorter(page).getByRole('link', { name: 'second', exact: true }).click()
+  await expect.poll(() => page.evaluate(() => (window as any).openedURLs)).toEqual(['https://example.com/second'])
+  await page.evaluate(() => {
+    const shortcut = { key: 'ƒ', code: 'KeyF', altKey: true, bubbles: true, cancelable: true }
+    window.dispatchEvent(new KeyboardEvent('keydown', shortcut))
+    window.dispatchEvent(new KeyboardEvent('keydown', shortcut))
+  })
+  await expect.poll(() => page.evaluate(() => (window as any).openedURLs))
+    .toEqual(['https://example.com/second', 'https://example.com/first'])
+  await expectIdea(page, 1, 1)
+  await page.keyboard.press('e')
+  await page.clock.fastForward(600)
+  await page.keyboard.press('Alt+f')
+  expect(await page.evaluate(() => (window as any).openedURLs)).toHaveLength(2)
+  await expect(sorter(page).getByRole('textbox', { name: 'Edit idea' })).toBeFocused()
+})
+
+for (const method of ['click', 'shortcut']) {
+  test(`sort new ideas follows a Balance link by ${method}`, async ({ page }) => {
+    await open(page)
+    await storeCall(page, `plannerStore.addIdea('balance://goals/stats')`)
+    await generateDay(page)
+    await expect(sorter(page).getByRole('link', { name: 'Goal stats', exact: true })).toBeVisible()
+    if (method === 'click') await sorter(page).getByRole('link', { name: 'Goal stats', exact: true }).click()
+    else await page.keyboard.press('Alt+f')
+    await expect(page.getByRole('heading', { name: 'Goal stats', exact: true })).toBeVisible()
+  })
+}

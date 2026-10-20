@@ -4,7 +4,8 @@
   import TaskCheckbox from './TaskCheckbox.svelte'
   import OverlayModal from './OverlayModal.svelte'
   import { BUCKET_UNLOCK_MS, findIdea, ideaBucketMeta, IDEA_SORT_QUESTION } from './ideaBuckets'
-  import { renderItemDisplayHTML } from './planner'
+  import type { ItemLink } from './planner'
+  import { openClickedLink, openRenderedLinkFromShortcut } from './externalLinks'
   import type { Id, IdeaBucket, IdeaBucketKind, IdeaItem, IdeaSnapshot } from './types'
 
   // Ideas are sorted one card at a time in their original order. Each card asks
@@ -12,6 +13,8 @@
   export let queue: IdeaItem[]
   export let buckets: IdeaBucket[]
   export let title: string
+  export let renderIdeaHTML: (item: IdeaItem) => string
+  export let onOpenLink: (link: ItemLink) => void
   // Hidden while another page is open; the sort resumes where it left off.
   export let active = true
   export let onDecide: (itemId: Id, kind: IdeaBucketKind) => void
@@ -181,7 +184,15 @@
   }
 
   function handleKeydown(event: KeyboardEvent) {
-    if (!active || event.metaKey || event.ctrlKey || event.altKey || event.repeat) return
+    if (!active || event.metaKey || event.ctrlKey || event.repeat) return
+    if (event.altKey) {
+      if (!event.shiftKey && event.code === 'KeyF' && !editing && current &&
+          openRenderedLinkFromShortcut(renderIdeaHTML(current), onOpenLink)) {
+        event.preventDefault()
+        event.stopPropagation()
+      }
+      return
+    }
     if (editing) {
       if (event.key === 'Enter' && !event.shiftKey) {
         event.preventDefault()
@@ -259,11 +270,14 @@
                   checked={current.done}
                   onChange={(event) => onToggleDone(current.id, event.currentTarget.checked)}
                 />
+                <!-- Delegates clicks from native, keyboard-accessible anchors in the rendered HTML. -->
+                <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
                 <div
+                  on:click={(event) => openClickedLink(event, onOpenLink)}
                   class="paste-review-text item-text item-text-display"
                   class:done={current.done}
                   class:empty={!current.text?.trim()}
-                >{@html current.text?.trim() ? renderItemDisplayHTML(current.html, current.text, []) : '(empty idea)'}</div>
+                >{@html current.text?.trim() ? renderIdeaHTML(current) : '(empty idea)'}</div>
               </div>
               {#if current.children.length > 0}
                 <ul class="idea-sort-children">
