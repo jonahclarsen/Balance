@@ -1,0 +1,88 @@
+name: Compare core algorithm performance
+
+on:
+  pull_request:
+    paths:
+      - 'src/lib/planner.ts'
+      - 'src/lib/search.ts'
+      - 'src/lib/goals.ts'
+      - 'src/lib/goalStats.ts'
+      - 'tests/performance/*-core.spec.ts'
+      - 'playwright.core-performance.config.ts'
+      - '.github/workflows/core-performance.yml'
+      - '.github/scripts/summarize-core-performance.mjs'
+  workflow_dispatch:
+    inputs:
+      baseline_ref:
+        description: Baseline revision
+        required: true
+        default: main
+      candidate_ref:
+        description: Candidate revision
+        required: true
+        default: main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: core-performance-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      BASELINE_REF: ${{ inputs.baseline_ref || github.event.pull_request.base.sha }}
+      CANDIDATE_REF: ${{ inputs.candidate_ref || github.event.pull_request.head.sha }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Prepare the same synthetic benchmark for both revisions
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/core-performance
+          for variant in baseline candidate; do
+            ref="$BASELINE_REF"
+            if [[ "$variant" == candidate ]]; then ref="$CANDIDATE_REF"; fi
+            sha="$(git rev-parse --verify "${ref}^{commit}")"
+            directory="$RUNNER_TEMP/balance-core-$variant"
+            git worktree add --detach "$directory" "$sha"
+            mkdir -p "$directory/tests/performance"
+            cp tests/performance/*-core.spec.ts "$directory/tests/performance/"
+            cp playwright.core-performance.config.ts "$directory/"
+            (cd "$directory" && pnpm install --frozen-lockfile --offline)
+            printf '%s %s\n' "$variant" "$sha" >> artifacts/core-performance/revisions.txt
+          done
+      - name: Alternate five measured runs on one runner
+        run: |
+          set -euo pipefail
+          output="$PWD/artifacts/core-performance"
+          for round in 1 2 3 4 5; do
+            variants="baseline candidate"
+            if (( round % 2 == 0 )); then variants="candidate baseline"; fi
+            for variant in $variants; do
+              (
+                cd "$RUNNER_TEMP/balance-core-$variant"
+                pnpm exec playwright test --config playwright.core-performance.config.ts
+              ) 2>&1 | tee "$output/$variant-$round.log"
+            done
+          done
+      - name: Summarize measurements
+        run: node .github/scripts/summarize-core-performance.mjs artifacts/core-performance >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: core-performance
+          path: artifacts/core-performance
+          if-no-files-found: error
