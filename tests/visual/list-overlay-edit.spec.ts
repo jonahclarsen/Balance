@@ -947,7 +947,15 @@ test('reopening a list overlay selects the first unchecked item near 8% from the
 })
 
 test('list runs are timed against the ideal time set on the template', async ({ page }) => {
-  await page.clock.install()
+  let fixedTime = new Date('2026-10-20T12:00:00').getTime()
+  await page.clock.setFixedTime(fixedTime)
+  const advanceRunTime = async (milliseconds: number) => {
+    fixedTime += milliseconds
+    await page.clock.setFixedTime(fixedTime)
+    // The one-minute ideal redraws every second. Date stays fixed while the
+    // interval and animation callbacks run, so CI/screenshot delays add no time.
+    await page.clock.runFor(1000)
+  }
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -974,23 +982,23 @@ test('list runs are timed against the ideal time set on the template', async ({ 
   await expect(clock).toHaveAccessibleName(/starts when you check off the first task/)
 
   await dialog.getByRole('listitem', { name: 'Plan item: Milk' }).getByRole('checkbox').check()
-  await page.clock.fastForward(30_000)
-  await expect(clock).toContainText(/5\d%/)
+  await advanceRunTime(30_000)
+  await expect(clock).toHaveText('50%')
 
-  await page.clock.fastForward(60_000)
-  await expect(clock).toContainText(/15\d%/)
+  await advanceRunTime(60_000)
+  await expect(clock).toHaveText('150%')
   await expect(clock).toHaveClass(/over/)
   await page.screenshot({ path: 'artifacts/list-timing-overlay.png' })
 
   // Finishing the list closes the overlay; the clock stops at the run's length.
-  await page.clock.fastForward(30_000)
+  await advanceRunTime(30_000)
   await dialog.getByRole('listitem', { name: 'Plan item: Eggs' }).getByRole('checkbox').click()
   await expect(dialog).toHaveCount(0)
   await openView(page, 'Lists')
   await page.getByRole('button', { name: 'View List History →' }).click()
-  await expect(page.getByRole('timer')).toContainText(/20\d%/)
-  await page.clock.fastForward(60_000)
-  await expect(page.getByRole('timer')).toContainText(/20\d%/)
+  await expect(page.getByRole('timer')).toHaveText('200%')
+  await advanceRunTime(60_000)
+  await expect(page.getByRole('timer')).toHaveText('200%')
 
   await page.getByRole('button', { name: '← Back to Lists' }).click()
   await expect(page.getByText('Expected to take 2 min')).toBeVisible()
