@@ -240,6 +240,15 @@ async function installSyntheticWorkspace(page: Page) {
 
       localStorage.setItem('balance.appState.v1', JSON.stringify(state))
       localStorage.setItem('balance:activePlanDate', activeDate)
+      // Appearance now bootstraps separately from planner hydration. Seed both
+      // contracts so a Graphite run cannot briefly measure default Iridescent.
+      localStorage.setItem('balance:deviceAppearance.v1', JSON.stringify({
+        version: 1,
+        themeId,
+        randomThemeStartDate: '',
+        doneTintColor: '',
+        checkboxColor: '',
+      }))
 
       // Hydrate through a synthetic native bridge so edits use the desktop
       // operation queue, without serializing a browser snapshot per keystroke.
@@ -452,6 +461,11 @@ test.beforeEach(async ({ page }, testInfo) => {
     await page.addStyleTag({ content: `${DISABLE_IRIDESCENT_MOTION}\n${selectedMotion}` })
   }
   await expect(page.locator(EDITOR_SELECTOR)).toBeVisible()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', THEME_ID)
+  // Let the selected theme reach a painted frame before collecting timings.
+  await page.evaluate(() => new Promise<void>(resolve => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+  }))
 })
 
 test('profiles common typing and backspacing paths', async ({ page }, testInfo) => {
@@ -469,6 +483,7 @@ test('profiles common typing and backspacing paths', async ({ page }, testInfo) 
       }
     }
     return {
+      appliedThemeId: document.documentElement.dataset.theme,
       background: getComputedStyle(document.body, '::before').animationName,
       sidebar: getComputedStyle(document.querySelector<HTMLElement>('.sidebar')!).animationName,
       border: getComputedStyle(focusedEditor, '::after').animationName,
@@ -479,6 +494,7 @@ test('profiles common typing and backspacing paths', async ({ page }, testInfo) 
       brand: getComputedStyle(brand).animationName,
     }
   })
+  expect(motionAnimations.appliedThemeId).toBe(THEME_ID)
   if (THEME_ID === 'iridescent' && IRIDESCENT_MOTION_PROFILE === 'full') {
     expect(motionAnimations.sidebarBorder).toEqual({
       name: 'iridescent-border-turn',
@@ -526,6 +542,7 @@ test('profiles common typing and backspacing paths', async ({ page }, testInfo) 
       goals: GOAL_COUNT,
       existingOperations: EXISTING_OPERATION_COUNT,
       themeId: THEME_ID,
+      appliedThemeId: motionAnimations.appliedThemeId,
       iridescentMotionProfile: IRIDESCENT_MOTION_PROFILE,
       motionAnimations,
     },
@@ -536,6 +553,7 @@ test('profiles common typing and backspacing paths', async ({ page }, testInfo) 
     typing: summarize(typing),
     backspacing: summarize(backspacing),
   }
+  await expect(page.locator('html')).toHaveAttribute('data-theme', THEME_ID)
 
   console.log(`INTERACTION_PERF ${JSON.stringify(profile)}`)
   await testInfo.attach(`interaction-performance-${testInfo.project.name}.json`, {
