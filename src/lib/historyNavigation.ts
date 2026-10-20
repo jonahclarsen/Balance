@@ -77,7 +77,7 @@ export function historyDestination(before: AppState, after: AppState): HistoryDe
     const next = new Map<string, { id: string }>(after[collection].map((entity) => [entity.id, entity]))
     const movedId = previous.size === next.size && [...next.keys()].every((id) => previous.has(id))
       ? [...next.keys()].find((id, index) => before[collection][index].id !== id) : undefined
-    const destinations: HistoryDestination[] = []
+    let removedDestination: HistoryDestination | undefined
     for (const id of new Set([...next.keys(), ...previous.keys()])) {
       const a = previous.get(id)
       const b = next.get(id)
@@ -92,15 +92,19 @@ export function historyDestination(before: AppState, after: AppState): HistoryDe
       const name = entity.title || entity.name
       const subject = change?.completion ? 'completion' : change ? 'item change' : 'change'
       const context = entity.date ? null : name ?? ({ today: 'Today', templates: 'Days', listTemplates: 'Lists', lists: 'List History', notes: 'Notes', projects: 'Projects', prioritize: 'Prioritize', buckets: 'Buckets', metrics: 'Quizzes', goals: 'Goals' }[view])
-      destinations.push({
+      const destination: HistoryDestination = {
         // A Prioritize reveal selects its row, so whole-list changes like Spread select nothing.
         view, entityId: id, itemId: view === 'prioritize' && change?.bulk ? undefined : change?.itemId, date: entity.date,
         listTemplateId: entity.listTemplateId,
         label: context ? `${subject} · ${context}` : subject,
         removed: !b || (change?.removed ?? false),
-      })
+      }
+      // The first surviving destination always wins. Avoid comparing the rest
+      // of a restored collection once it has been found.
+      if (!destination.removed) return destination
+      removedDestination ??= destination
     }
-    if (destinations.length) return destinations.find((target) => !target.removed) ?? destinations[0]
+    if (removedDestination) return removedDestination
   }
   if (before.metricEntries !== after.metricEntries) {
     const previous = new Map(before.metricEntries.map((entry) => [entry.id, entry]))

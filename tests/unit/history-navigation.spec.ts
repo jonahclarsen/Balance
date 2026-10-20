@@ -88,3 +88,46 @@ test('skips unchanged metric history and ignores timestamp-only changes after re
   Object.defineProperty(before.metricEntries[0], 'id', { get() { throw Error('Unchanged history was scanned') } })
   expect(historyDestination(before, { ...before, activePlanDate: '2026-09-15' })).toBeNull()
 })
+
+test('a surviving destination wins over an earlier removed item and later surviving edits', () => {
+  const before = fixture()
+  before.plans.push(
+    { ...structuredClone(before.plans[0]), id: 'second', date: '2026-08-21' },
+    { ...structuredClone(before.plans[0]), id: 'third', date: '2026-08-22' },
+  )
+  const after = structuredClone(before)
+  after.plans[0].items[0].children = []
+  after.plans[1].items[0].text = 'First surviving edit'
+  after.plans[2].items[0].done = true
+  expect(historyDestination(before, after)).toEqual({
+    view: 'today', entityId: 'second', itemId: 'parent', date: '2026-08-21',
+    listTemplateId: undefined, label: 'item change', removed: false,
+  })
+})
+
+test('all removals reveal the first changed destination in the first changed collection', () => {
+  const before = fixture()
+  before.plans.push({ ...structuredClone(before.plans[0]), id: 'second', date: '2026-08-21' })
+  before.notes = [{ id: 'note', title: 'Note', items: [], createdAt: '', updatedAt: '' }]
+  const after = structuredClone(before)
+  after.plans[0].items[0].children = []
+  after.plans[1].items = []
+  after.notes[0].title = 'Changed note'
+  expect(historyDestination(before, after)).toMatchObject({
+    view: 'today', entityId: 'plan', itemId: 'parent', removed: true,
+  })
+})
+
+test('a bulk prioritize change still reveals the session without selecting a row', () => {
+  const before = fixture()
+  before.prioritySessions = [{
+    id: 'session', createdAt: '', updatedAt: '',
+    items: [{ id: 'a', text: 'A', priority: 1 }, { id: 'b', text: 'B', priority: 2 }],
+  }]
+  const after = structuredClone(before)
+  after.prioritySessions[0].items[0].priority = 2
+  after.prioritySessions[0].items[1].priority = 3
+  expect(historyDestination(before, after)).toMatchObject({
+    view: 'prioritize', entityId: 'session', itemId: undefined, label: 'item change · Prioritize', removed: false,
+  })
+})
