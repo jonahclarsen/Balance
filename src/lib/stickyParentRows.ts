@@ -3,13 +3,18 @@
 // (every pinned row keeps at least one). A row's height in the stack is those
 // lines, and while it is pinned the rest of a wrapped row is clipped away just
 // above its first child, so the children scroll up into view instead of
-// passing under the parent's remaining text.
+// passing under the parent's remaining text. A pinned row whose text goes on
+// past its retained lines fades out the end of the last one.
 
 const maxRowLines = 3
 const maxStackLines = 5
 const shellSelector = '.item-shell, .template-item'
 const textClipProperty = '--tree-sticky-text-clip'
 const clipProperty = '--tree-sticky-clip'
+const clipLimitProperty = '--tree-sticky-clip-limit'
+const heightProperty = '--tree-sticky-height'
+const fadeTopProperty = '--tree-sticky-fade-top'
+const fadeEndProperty = '--tree-sticky-fade-end'
 
 type StickyRow = {
   shell: HTMLElement
@@ -22,6 +27,10 @@ type StickyRow = {
   text: HTMLElement | null
   textBottom: number
   textLineBottoms: number[]
+  // Each line's top and right end, relative to the text box.
+  textLineTops: number[]
+  textLineRights: number[]
+  fadeLine: number
   belowText: number
   tail: HTMLElement | null
   textClip: number
@@ -40,22 +49,24 @@ function rowScale(row: HTMLElement, rowRect = row.getBoundingClientRect()) {
   return row.offsetHeight ? rowRect.height / row.offsetHeight : 1
 }
 
-// The bottom edge of each text line. Only text boxes count, so
+// The extent of each text line. Only text boxes count, so
 // block wrappers inside the editor do not merge lines.
-function textLineBottoms(text: HTMLElement) {
-  const bottoms: number[] = []
+function textLines(text: HTMLElement) {
+  const lines: { top: number; bottom: number; right: number }[] = []
   const walker = document.createTreeWalker(text, NodeFilter.SHOW_TEXT)
   const range = document.createRange()
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
     range.selectNodeContents(node)
     for (const rect of range.getClientRects()) {
       if (rect.height === 0) continue
-      const last = bottoms.length - 1
-      if (last >= 0 && rect.top < bottoms[last] - 1) bottoms[last] = Math.max(bottoms[last], rect.bottom)
-      else bottoms.push(rect.bottom)
+      const last = lines.at(-1)
+      if (last && rect.top < last.bottom - 1) {
+        last.bottom = Math.max(last.bottom, rect.bottom)
+        last.right = Math.max(last.right, rect.right)
+      } else lines.push({ top: rect.top, bottom: rect.bottom, right: rect.right })
     }
   }
-  return bottoms
+  return lines
 }
 
 // Generated list rows show static text instead of an editor.
@@ -64,9 +75,14 @@ function measure(entry: StickyRow) {
   entry.fullHeight = row.offsetHeight
   entry.lineHeights = []
   entry.lineCount = 0
-  const text = entry.text = row.querySelector<HTMLElement>('[data-rich-text-input], .item-text-display')
+  const text = row.querySelector<HTMLElement>('[data-rich-text-input], .item-text-display')
+  if (text !== entry.text) {
+    setFadeLine(entry, -1)
+    entry.text = text
+  }
   if (!text) return
-  const bottoms = textLineBottoms(text)
+  const lines = textLines(text)
+  const bottoms = lines.map((line) => line.bottom)
   // Keep the text's bottom padding and any row chrome below the text.
   const rowRect = row.getBoundingClientRect()
   const scale = rowScale(row, rowRect)
@@ -90,6 +106,10 @@ function measure(entry: StickyRow) {
   entry.tail?.style.setProperty('--tree-sticky-tail-shift', `${entry.clip}px`)
   entry.textBottom = (textRect.bottom - rowRect.top) / scale
   entry.textLineBottoms = bottoms.map((bottom) => (bottom - rowRect.top) / scale)
+  entry.textLineTops = lines.map((line) => (line.top - textRect.top) / scale)
+  entry.textLineRights = lines.map((line) => (line.right - textRect.left) / scale)
+  // Line positions moved, so the next clip update rewrites the fade.
+  entry.fadeLine = -2
   entry.belowText = below / scale
   entry.lineCount = bottoms.length
   entry.lineHeights = bottoms.slice(0, maxRowLines).map((bottom) => (
@@ -127,8 +147,14 @@ function layoutStack() {
     if (height !== entry.published) {
       entry.published = height
       entry.shell.style.setProperty(entry.property, `${height}px`)
+      entry.shell.style.setProperty(heightProperty, `${height}px`)
     }
-    entry.clipLimit = entry.fullHeight - height
+    if (entry.fullHeight - height !== entry.clipLimit) {
+      entry.clipLimit = entry.fullHeight - height
+      // Set on the shell for both the row and its children, and set even when
+      // zero so nested rows do not inherit an ancestor's limit.
+      entry.shell.style.setProperty(clipLimitProperty, `${entry.clipLimit}px`)
+    }
     setWrapped(entry, entry.clipLimit > 0)
   }
   if (wrappedRows.size) scheduleClipUpdate()
@@ -161,13 +187,31 @@ function setClip(entry: StickyRow, clip: number) {
   // one complete line at a time. Padding below the final retained line must
   // never expose the top of the next line (even when fully pinned).
   const available = entry.fullHeight - clip - entry.belowText
-  const lastLine = entry.textLineBottoms.findLast((bottom) => bottom <= available + 0.5) ?? 0
+  const lastIndex = entry.textLineBottoms.findLastIndex((bottom) => bottom <= available + 0.5)
+  const lastLine = entry.textLineBottoms[lastIndex] ?? 0
   const textClip = clip > 0 ? Math.max(0, entry.textBottom - lastLine) : 0
   if (textClip !== entry.textClip) {
     entry.textClip = textClip
     if (textClip > 0) entry.text?.style.setProperty(textClipProperty, `${textClip}px`)
     else entry.text?.style.removeProperty(textClipProperty)
   }
+  setFadeLine(entry, clip > 0 && lastIndex >= 0 && lastIndex < entry.lineCount - 1 ? lastIndex : -1)
+}
+
+// Fades the end of the last retained line so a cut-off parent reads as
+// continuing rather than ending mid-sentence.
+function setFadeLine(entry: StickyRow, line: number) {
+  if (line === entry.fadeLine) return
+  entry.fadeLine = line
+  const style = entry.text?.style
+  if (!style) return
+  if (line < 0) {
+    style.removeProperty(fadeTopProperty)
+    style.removeProperty(fadeEndProperty)
+    return
+  }
+  style.setProperty(fadeTopProperty, `${entry.textLineTops[line]}px`)
+  style.setProperty(fadeEndProperty, `${entry.textLineRights[line]}px`)
 }
 
 function setWrapped(entry: StickyRow, wrapped: boolean) {
@@ -215,8 +259,10 @@ export function stickyRowVisibleBottom(row: Element) {
 export function trackStickyParentRow(shell: HTMLElement, row: HTMLElement, property: string) {
   const entry: StickyRow = {
     shell, row, property, fullHeight: 0, lineHeights: [], lineCount: 0, published: null, clipLimit: 0, clip: 0,
-    text: null, textBottom: 0, textLineBottoms: [], belowText: 0, tail: null, textClip: 0,
+    text: null, textBottom: 0, textLineBottoms: [], textLineTops: [], textLineRights: [], fadeLine: -1,
+    belowText: 0, tail: null, textClip: 0,
   }
+  shell.style.setProperty(clipLimitProperty, '0px')
   stickyRows.set(shell, entry)
   entriesByRow.set(row, entry)
   observer ??= new ResizeObserver(rowsResized)
@@ -227,7 +273,9 @@ export function trackStickyParentRow(shell: HTMLElement, row: HTMLElement, prope
     entriesByRow.delete(row)
     setWrapped(entry, false)
     entry.tail?.style.removeProperty('--tree-sticky-tail-shift')
+    shell.style.removeProperty(clipLimitProperty)
     shell.style.removeProperty(property)
+    shell.style.removeProperty(heightProperty)
     // Rows below this one may now have more lines to show.
     queueLayoutStack()
   }
