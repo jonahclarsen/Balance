@@ -1879,11 +1879,47 @@ body.mobile-checkbox-dragging {
   clip-path: inset(-100vmax -100vmax var(--tree-sticky-clip) -100vmax);
 }
 
+/* A pinned row leaves with its last child. Its margin box ends at its pinned
+   height, so sticky positioning pushes it out only once the last child
+   reaches what it still shows, instead of sliding its first lines away while
+   children remain. The children keep their place. */
+.sticky-parent:not(:has([data-rich-text-input]:focus)) {
+  margin-bottom: calc(var(--tree-sticky-clip-limit, 0px) * -1);
+}
+
+.sticky-parent:not(:has([data-rich-text-input]:focus)) + .children {
+  margin-top: var(--tree-sticky-clip-limit, 0px);
+}
+
+/* A soft edge under the pinned stack separates it from the rows scrolling
+   beneath. It sticks at the row's pinned height, so it stays hidden behind
+   the row until the row is pinned and fully shrunk. */
+.sticky-shell::before {
+  content: '';
+  display: block;
+  position: sticky;
+  top: calc(var(--tree-sticky-top, 0px) + var(--tree-sticky-height, 0px));
+  z-index: 1;
+  height: 8px;
+  margin-bottom: -8px;
+  background: linear-gradient(color-mix(in srgb, var(--ink) 12%, transparent), transparent);
+  pointer-events: none;
+}
+
 /* Keep partial glyphs out of the shrinking paper edge. The text clip is
    measured separately so row padding cannot reveal a sliver of the next line. */
 .sticky-parent [data-rich-text-input],
 .sticky-parent .item-text-display {
   clip-path: inset(0 0 var(--tree-sticky-text-clip) 0);
+}
+
+/* The last retained line of a cut-off parent fades out toward its end. */
+.sticky-parent:not(:has([data-rich-text-input]:focus)) :is([data-rich-text-input], .item-text-display)[style*="--tree-sticky-fade-top"] {
+  --tree-sticky-fade: linear-gradient(to right, #000 calc(100% - 3em), transparent);
+  -webkit-mask: linear-gradient(#000, #000) 0 0 / 100% var(--tree-sticky-fade-top) no-repeat,
+    var(--tree-sticky-fade) 0 var(--tree-sticky-fade-top) / var(--tree-sticky-fade-end) 100% no-repeat;
+  mask: linear-gradient(#000, #000) 0 0 / 100% var(--tree-sticky-fade-top) no-repeat,
+    var(--tree-sticky-fade) 0 var(--tree-sticky-fade-top) / var(--tree-sticky-fade-end) 100% no-repeat;
 }
 
 /* Wrapped badges occupy the space reserved below the retained text. */
@@ -1893,7 +1929,8 @@ body.mobile-checkbox-dragging {
 
 /* Center the controls in the visible row, including very long parents whose
    original center would otherwise scroll behind the clip. */
-.sticky-parent:not(:has([data-rich-text-input]:focus)) > :is(button, .check-target, .row-actions) {
+.sticky-parent:not(:has([data-rich-text-input]:focus)) > :is(button, .check-target, .row-actions, .mobile-task-actions),
+.sticky-parent:not(:has([data-rich-text-input]:focus)) > .plan-item-main > :is(.add-time, .children-toggle) {
   translate: 0 calc(var(--tree-sticky-clip) / -2);
 }
 
@@ -1930,6 +1967,12 @@ body.mobile-checkbox-dragging {
 .plan-row.whole-row-selection:not(.sticky-parent),
 .template-main.whole-row-selection:not(.sticky-parent) {
   z-index: 0;
+}
+
+/* Outside selection mode the mobile task menu button has no tap layer to
+   clear, so it must not draw over the parent pinned above it. */
+.sticky-shell .plan-row:not(.sticky-parent, .whole-row-selection) > .mobile-task-actions {
+  z-index: auto;
 }
 
 /* Keyboard navigation lands rows below the parents pinned above them. */
