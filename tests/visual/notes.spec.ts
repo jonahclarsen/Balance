@@ -1381,6 +1381,48 @@ test('note formatting toolbar stays visible in a wide centered workspace while s
   await page.screenshot({ path: testInfo.outputPath('notes-toolbar-sticky.png'), fullPage: false })
 })
 
+for (const kind of ['Text', 'Heading']) {
+  test(`typing in ${kind.toLowerCase()} hidden behind the note toolbar reveals the caret`, async ({ page }) => {
+    await page.goto('/')
+    await page.evaluate(() => localStorage.clear())
+    await page.reload()
+    await openView(page, 'Notes')
+    await page.getByRole('button', { name: '+ New note' }).click()
+
+    const blocks = page.locator('.note-text')
+    await blocks.first().fill('Before the target\n'.repeat(30))
+    await placeCaretAtEnd(blocks.first())
+    await pressNoteKey(blocks.first(), 'Enter')
+    const target = blocks.nth(1)
+    await target.fill('Keep this visible')
+    await page.getByRole('button', { name: kind, exact: true }).click()
+    await placeCaretAtEnd(target)
+    await pressNoteKey(target, 'Enter')
+    await blocks.nth(2).fill('After the target\n'.repeat(60))
+    await placeCaretAtEnd(target)
+    // Finish selection reconciliation before reproducing a manual scroll that
+    // leaves the caret inside the scroller but covered by its sticky toolbar.
+    await expectCaretIn(target)
+    await page.waitForTimeout(100)
+    await target.evaluate(element => {
+      const noteDocument = element.closest<HTMLElement>('.note-document')!
+      const scroller = ['auto', 'scroll'].includes(getComputedStyle(noteDocument).overflowY)
+        ? noteDocument : document.scrollingElement!
+      const toolbar = noteDocument.querySelector('[data-note-editor-toolbar]')!
+      scroller.scrollTop += element.getBoundingClientRect().top - toolbar.getBoundingClientRect().top - 12
+    })
+    const clearance = () => page.evaluate(() => {
+      const range = document.getSelection()!.getRangeAt(0)
+      return range.getBoundingClientRect().top
+        - document.querySelector('[data-note-editor-toolbar]')!.getBoundingClientRect().bottom
+    })
+    expect(await clearance()).toBeLessThan(0)
+    await page.keyboard.type('x')
+    await expect(target).toHaveText('Keep this visiblex')
+    await expect.poll(clearance).toBeGreaterThanOrEqual(4)
+  })
+}
+
 test('note formatting toolbar uses a complete static pink stroke on Iridescent', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'desktop toolbar styling is covered here')
   await page.goto('/')

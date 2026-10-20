@@ -48,6 +48,7 @@ import {
   SELECT_ALL_COMMAND,
   SELECTION_CHANGE_COMMAND,
   SKIP_DOM_SELECTION_TAG,
+  SKIP_SCROLL_INTO_VIEW_TAG,
   UNDO_COMMAND,
   type EditorState,
   type LexicalEditor,
@@ -926,6 +927,34 @@ class LexicalNoteEditorView implements NoteEditorView {
       this.$updateSlashMenu()
       this.$emitSelectionState()
     })
+    if (!silent && !tags.has(SKIP_SCROLL_INTO_VIEW_TAG)) this.revealCaretBelowToolbar()
+  }
+
+  private revealCaretBelowToolbar() {
+    const root = this.root
+    const selection = document.getSelection()
+    if (!root || document.activeElement !== root || !selection?.isCollapsed
+      || !selection.rangeCount || !root.contains(selection.focusNode)) return
+    const toolbar = root.closest('.note-document')?.querySelector<HTMLElement>('[data-note-editor-toolbar]')
+    // The mobile keyboard toolbar is portalled below the editor instead.
+    if (!toolbar || getComputedStyle(toolbar).position !== 'sticky') return
+    const range = selection.getRangeAt(0)
+    const caret = range.getBoundingClientRect()
+    if (!caret.height) return
+    const visibleTop = toolbar.getBoundingClientRect().bottom + 8
+    if (caret.top >= visibleTop) return
+
+    // Lexical already reveals the caret at the scroller's edges. Its top edge
+    // excludes the sticky toolbar, so finish that scroll using the live bar
+    // height and caret rectangle (including the larger heading typography).
+    let scroller = root.parentElement
+    while (scroller && scroller !== document.scrollingElement) {
+      if (['auto', 'scroll'].includes(getComputedStyle(scroller).overflowY)
+        && scroller.scrollHeight > scroller.clientHeight) break
+      scroller = scroller.parentElement
+    }
+    scroller ??= document.scrollingElement as HTMLElement | null
+    if (scroller) scroller.scrollTop -= (visibleTop - caret.top) / (scroller.currentCSSZoom || 1)
   }
 
   // Derived attributes that depend on neighbours (depth, numbering), text
