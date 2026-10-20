@@ -20,6 +20,7 @@
     (typeof navigator !== 'undefined' && (navigator.platform || navigator.userAgent)) || '',
   )
   const newNoteShortcutLabel = `${isMac ? '⌘' : 'Ctrl+'}N`
+  const wordSegmenter = new Intl.Segmenter(undefined, { granularity: 'word' })
 
   export let notes: Note[]
   export let selectedNoteId: Id
@@ -70,6 +71,9 @@
     .sort((a, b) => (b.deletedAt ?? '').localeCompare(a.deletedAt ?? ''))
   $: visibleNotes = trashOpen ? trashedNotes : activeNotes
   $: selectedNote = visibleNotes.find((note) => note.id === selectedNoteId) ?? visibleNotes[0] ?? null
+  $: wordCount = selectedNote
+    ? Array.from(wordSegmenter.segment(flattenText(selectedNote))).filter((segment) => segment.isWordLike).length
+    : 0
   $: if (!trashOpen && selectedNote) lastActiveNoteId = selectedNote.id
   $: if (trashOpen && selectedNote) lastTrashNoteId = selectedNote.id
   $: selectedVersions = selectedNote && !trashOpen ? noteVersionsOf(activeNotes, noteVersionGroupId(selectedNote)) : []
@@ -596,6 +600,7 @@
             <button class="ghost danger" type="button" title={selectedVersions.length > 1 ? 'Move every version of this note to the Bin' : undefined} on:click={() => moveToTrash(selectedNote!.id)}>Bin it</button>
           {/if}
         </div>
+        <span class="note-word-count" title="Words in the note body">{wordCount.toLocaleString()} {wordCount === 1 ? 'word' : 'words'}</span>
       </header>
 
       {#if !trashOpen && selectedVersions.length > 1}
