@@ -33,3 +33,21 @@ export function openClickedLink(event: MouseEvent, onInternalLink: (link: ItemLi
   if (link) onInternalLink(link)
   else if (isURL(anchor.href)) void openExternalURL(anchor.href)
 }
+
+// Use the same destination priority for task rows and idea-sort cards.
+export function openRenderedLinkFromShortcut(html: string, onInternalLink: (link: ItemLink) => void): boolean {
+  const template = document.createElement('template')
+  template.innerHTML = html
+  const anchors = Array.from(template.content.querySelectorAll<HTMLAnchorElement>('a[href]'))
+  const externalURL = anchors
+    .map((anchor) => anchor.getAttribute('href')?.trim() ?? '')
+    .find(isURL)
+  if (externalURL) {
+    openExternalURLFromShortcut(externalURL)
+    return true
+  }
+  const internalLink = anchors.map(itemLinkFromAnchor).find((link) => link !== null)
+  if (!internalLink) return false
+  onInternalLink(internalLink)
+  return true
+}
