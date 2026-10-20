@@ -54,12 +54,25 @@ for (const { size, goals: count, days } of [
     const sorted = sortGoalsByUrgency(goals, completions, date)
     expect(sorted).toHaveLength(goals.length)
     expect(new Set(sorted.map(goal => goal.id))).toEqual(new Set(goals.map(goal => goal.id)))
-    const stats = buildGoalStats(goals, completions, date, 180)
     const byGoal = new Map(goals.map(goal => [goal.id, completions.filter(entry => entry.goalId === goal.id)]))
-    expect(stats.daily.map(day => day.overdueGoals)).toEqual(stats.daily.map(day =>
-      goals.filter(goal => (goalDaysUntilLapse(goal, byGoal.get(goal.id) ?? [], day.date) ?? 0) < 0).length,
-    ))
     measure(`goals-urgency-${size}`, () => sortGoalsByUrgency(goals, completions, date))
-    measure(`goals-stats-${size}`, () => buildGoalStats(goals, completions, date, 180))
+    for (const range of [180, 30, 1]) {
+      const stats = buildGoalStats(goals, completions, date, range)
+      expect(stats.daily).toHaveLength(range)
+      expect(stats.rangeStart).toBe(shiftISODate(date, 1 - range))
+      expect(stats.daily.map(day => day.overdueGoals)).toEqual(stats.daily.map(day =>
+        goals.filter(goal => (goalDaysUntilLapse(goal, byGoal.get(goal.id) ?? [], day.date) ?? 0) < 0).length,
+      ))
+      const inRange = completions.filter(entry => entry.date >= stats.rangeStart && entry.date <= date)
+      expect(stats.completionsInRange).toBe(inRange.length)
+      expect(stats.completionDays).toBe(new Set(inRange.map(entry => entry.date)).size)
+      measure(range === 180 ? `goals-stats-${size}` : `goals-stats-${size}-range${range}`,
+        () => buildGoalStats(goals, completions, date, range))
+    }
+    if (size === 'small') {
+      // This fixture starts every goal together in increasing cadence order.
+      expect(sortGoalsByUrgency(goals, [], date)).toEqual(goals)
+      measure('goals-urgency-empty-small', () => sortGoalsByUrgency(goals, [], date))
+    }
   })
 }
