@@ -335,16 +335,33 @@
   }
 
   function trackNoteScrollSpace(node: HTMLDivElement) {
-    const scroller = noteScrollContainer()
-    if (!scroller) return {}
+    const initialScroller = noteScrollContainer()
+    if (!initialScroller) return {}
+    let scroller: HTMLElement = initialScroller
     noteScrollViewportHeight = scroller.clientHeight
 
     let frame: number | null = null
     let remeasure = true
     let measured = false
-    const scrollEventTarget: HTMLElement | Document = scroller === document.scrollingElement ? document : scroller
+    let scrollEventTarget: HTMLElement | Document = scroller === document.scrollingElement ? document : scroller
     const updateVisibility = () => {
       frame = null
+      // Crossing the narrow-layout breakpoint moves scrolling between the note
+      // pane and the page. The old pane then grows with its content; measuring
+      // it as a viewport would grow the writing space on every edit.
+      const nextScroller = noteScrollContainer()
+      if (nextScroller && nextScroller !== scroller) {
+        cancelNoteBottomFollow()
+        scrollEventTarget.removeEventListener('scroll', handleScroll)
+        resizeObserver.unobserve(scroller)
+        scroller = nextScroller
+        scrollEventTarget = scroller === document.scrollingElement ? document : scroller
+        scrollEventTarget.addEventListener('scroll', handleScroll, { passive: true })
+        resizeObserver.observe(scroller)
+        noteRestsAtBottom = isAtNoteBottom(scroller)
+        remeasure = true
+        measured = false
+      }
       noteScrollViewportHeight = scroller.clientHeight
       // Hold the maximum steady while dragging; it follows the drag's own layout.
       if (remeasure && !noteScrollSpaceAdjustmentActive) {
@@ -377,6 +394,11 @@
     })
 
     scrollEventTarget.addEventListener('scroll', handleScroll, { passive: true })
+    const handleResize = () => {
+      remeasure = true
+      scheduleVisibilityUpdate()
+    }
+    window.addEventListener('resize', handleResize)
     resizeObserver.observe(scroller)
     resizeObserver.observe(node)
     if (noteEditorHostElement) resizeObserver.observe(noteEditorHostElement)
@@ -386,6 +408,7 @@
       destroy() {
         scrollEventTarget.removeEventListener('scroll', handleScroll)
         resizeObserver.disconnect()
+        window.removeEventListener('resize', handleResize)
         if (frame !== null) window.cancelAnimationFrame(frame)
         noteScrollSpaceControlVisible = false
       },

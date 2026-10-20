@@ -2137,3 +2137,39 @@ test('Enter right after a Shift-Enter line break replaces the break with a parag
   await expect(editors.first()).toHaveText('Alpha')
   await expect(editors.nth(1)).toHaveText('Beta')
 })
+
+
+test('note writing space stays bounded when a desktop window becomes narrow', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'resizes a desktop window across the mobile breakpoint')
+  test.setTimeout(60_000)
+  await page.setViewportSize({ width: 1280, height: 820 })
+  await page.goto('/')
+  await openView(page, 'Notes')
+  await page.getByRole('button', { name: '+ New note' }).click()
+  const editor = page.locator('[data-note-text-input]')
+  await typeNoteText(page.locator('.note-text').first(), '- First item')
+  await page.setViewportSize({ width: 650, height: 820 })
+
+  for (let index = 0; index < 35; index += 1) {
+    await page.keyboard.press('Enter')
+    await page.keyboard.insertText(`List item ${index + 1}`)
+  }
+  await expect(editor.locator('.note-item')).toHaveCount(36)
+  const space = page.locator('.note-scroll-space')
+  await expect.poll(() => space.evaluate(element => element.getBoundingClientRect().height)).toBeLessThan(820)
+  const narrowSpace = await space.evaluate(element => element.getBoundingClientRect().height)
+  for (let index = 0; index < 5; index += 1) {
+    await page.keyboard.press('Enter')
+    await page.keyboard.insertText('Another item')
+  }
+  await expect.poll(() => space.evaluate(element => element.getBoundingClientRect().height)).toBeCloseTo(narrowSpace, 0)
+
+  // Rebind in both directions, including a viewport resize while page scrolling.
+  await page.setViewportSize({ width: 650, height: 600 })
+  await expect.poll(() => space.evaluate(element => element.getBoundingClientRect().height)).toBeLessThan(narrowSpace)
+  await page.setViewportSize({ width: 1280, height: 820 })
+  await expect.poll(() => space.evaluate(element => {
+    const scroller = element.closest<HTMLElement>('.note-document')!
+    return element.getBoundingClientRect().height / scroller.getBoundingClientRect().height
+  })).toBeCloseTo(0.312, 2)
+})
