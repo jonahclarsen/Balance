@@ -338,6 +338,9 @@ const redoAvailableState = writable(false)
 // years of unchanged history; rebuilding DOM for each field blocks the WebView.
 let storedHTMLCache = new Map<string, string>()
 let persistenceTarget: 'tauri' | 'localStorage' | null = null
+// The raw native snapshot the store was last loaded from. An identical reread
+// holds nothing the store lacks, so it is not parsed again.
+let lastAppliedNativeState: string | null = null
 let persistenceReady = false
 let pendingOperations = new Map<string, Operation>()
 let operationFlushActive = false
@@ -444,6 +447,7 @@ async function hydratePersistence(store: Writable<AppState>): Promise<void> {
 
     if (parsed) {
       store.set(parsed)
+      lastAppliedNativeState = stored
     } else {
       await invoke('initialize_app_state', { stateJson: JSON.stringify({ ...get(store), activePlanDate: '' }) })
     }
@@ -622,6 +626,7 @@ async function flushOperationsNow(): Promise<void> {
           const accepted = await invoke<boolean | undefined>('persist_operation', { operationJson: JSON.stringify(operation) })
           // A second frontend can race the preflight check. Native persistence
           // rejects it atomically; reconcile the optimistic state after flushing.
+          if (accepted === false) lastAppliedNativeState = null
           if (accepted === false) void plannerStore.reloadFromBackend().catch((error) => {
             console.error('Could not reload after duplicate Siri delivery', error)
           })
@@ -736,6 +741,11 @@ function createPlannerStore() {
       const stored = await invoke<string | null>('read_app_state')
       const mutationChanged = mutationRevisionBeforeRead !== localMutationRevision
 
+      // Nothing was persisted since the store was loaded, so edits made during
+      // the read are still newer than it. Parsing years of history blocks input.
+      if (stored !== null && stored === lastAppliedNativeState &&
+        requestRevisionBeforeRead === backendReloadRequestRevision) return
+
       if (mutationChanged || requestRevisionBeforeRead !== backendReloadRequestRevision) {
         // The backend result predates an edit or a newer refresh request. Never
         // replace the live workspace with it. A quiet period prevents a slow
@@ -759,6 +769,7 @@ function createPlannerStore() {
       redoAvailableState.set(snapshot.canRedo)
 
       lastOperationMergeKey = null
+      lastAppliedNativeState = stored
       store.update((current) => {
         // Focus/resume can refresh an unchanged database. Keep the validated
         // history snapshots and their shared collection references in that case;

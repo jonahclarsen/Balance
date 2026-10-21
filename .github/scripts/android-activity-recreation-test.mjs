@@ -301,6 +301,7 @@ try {
     adb(['shell', 'am', 'force-stop', packageName])
     launchApp()
     await connect()
+    await sleep(3000) // Measure resume, not post-hydration launch sync and maintenance.
     for (let i = 0; i < repeats; i++) {
       // read_app_state republishes native reminders. Start a burst, then resume
       // while a real native scheduling pass may hold its monitor.
