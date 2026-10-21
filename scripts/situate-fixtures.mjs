@@ -3,6 +3,7 @@ import { defaults, regenerate, grant, enableMode, isActive } from '../src/lib/si
 const now = new Date(2026,9,17,12).getTime()
 let base = regenerate(defaults(now), now, null)
 base.epochs = base.epochs.filter(e => e.end >= now-86400000 && e.at < now+2*86400000)
+base.windows = base.windows.filter(w => w.end >= now-86400000 && w.at < now+2*86400000)
 const cases=[]
 const documents=[base,grant(base,'dolo',{thrust:true},now,now),grant(base,'dolo',{visual:false},now,now,'domain:youtube.com'),enableMode(base,'discord',now)]
 for(const platform of ['mac','android']) for(const hours of [0,9.5,11,14.5,19,24,36]) {

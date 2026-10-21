@@ -7,6 +7,8 @@ export const situateError = writable('')
 export const situateReady = writable(false)
 export const situateNow = writable(Date.now())
 export const quizRequest = writable<{ mode: string; target: string; startedAt: number; revision: number } | null>(null)
+/** A reminder mode whose description is showing. */
+export const reminderRequest = writable<string | null>(null)
 export const situatePlatform: Platform = /Android/i.test(navigator.userAgent) ? 'android' : /Win/i.test(navigator.userAgent) ? 'windows' : 'mac'
 let queue = Promise.resolve()
 export function mutateSituate(change: (current: Document) => Document): Promise<void> {
@@ -45,7 +47,10 @@ export async function startSituate(): Promise<() => void> {
   }, 1000)
   return () => { window.clearInterval(timer); stopListening() }
 }
-export function requestQuiz(mode: string, target = '') { quizRequest.set({ mode, target, startedAt: Date.now(), revision: get(situate).revision }) }
+export function requestQuiz(mode: string, target = '') {
+  if (get(situate).modes.find(m => m.id === mode)?.reminder) { reminderRequest.set(mode); return }
+  quizRequest.set({ mode, target, startedAt: Date.now(), revision: get(situate).revision })
+}
 export function activateMode(mode: string) { return mutateSituate(current => enableMode(current, mode)) }
 export function answerQuiz(answers: Answers) {
   const request = get(quizRequest)

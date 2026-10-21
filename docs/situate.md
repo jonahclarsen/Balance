@@ -16,8 +16,12 @@ not turn it off on another. Planner data is never shared with integrations.
   a minute in bed with the lights off and Herdr muted. Passes last 60 minutes,
   shortened to 30 minutes for passes started after the late-night boundary.
 - **Discord:** mobile only, manually enabled.
+- **Active Projects** (7 a.m.–8 p.m.) and **No Active Project** (9 p.m.–7 a.m.):
+  reminder modes. They block nothing, have no quiz and can't be turned off; they
+  appear in the sidebar only while on, and clicking one shows its description.
 
-Each mode has a color used across Balance and a device list (desktop, mobile, or
+Each mode has a description, shown on its card and in the notification when it
+turns on, a color used across Balance while it is on, and a device list (desktop, mobile, or
 both). A mode appears only on the devices it covers, and edits save as you make them.
 
 Evening is the later of 9:30 p.m. and sunset + 4 hours. The late-night boundary is
@@ -79,9 +83,10 @@ account needs read access to those indexes; the helper never elevates privileges
 If an instance is unavailable, it retains the previous combined list. Different
 hosts can instead export a combined ID list into the same private
 `frank-threads.json` contract. A channel ID can also be added as a **Discord**
-target; that blocks only threads opened inside the channel (its
-`/channels/<server>/<channel>/threads/<thread>` view), not the channel itself.
-A thread opened on its own page isn't recognized unless it is a Frank thread.
+target; that blocks only threads opened inside the channel, not the channel itself.
+For a thread opened on its own page, the extension reads the thread's parent channel
+from the element IDs in Discord's channel list; a thread missing from that list is
+not recognized unless it is a Frank thread.
 
 ## Herdr and Cactus
 

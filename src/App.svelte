@@ -8,6 +8,7 @@
   import { onBackButtonPress } from '@tauri-apps/api/app'
   import SituatePanel from './lib/SituatePanel.svelte'
   import SituateQuiz from './lib/SituateQuiz.svelte'
+  import SituateReminder from './lib/SituateReminder.svelte'
   import SituatePills from './lib/SituatePills.svelte'
   import SituateExtensionSetup from './lib/SituateExtensionSetup.svelte'
   import { watchExtension } from './lib/situate/extension'
@@ -8274,6 +8275,7 @@ return rows`
 
     {#if view === 'situate'}<SituatePanel />{/if}
     <SituateQuiz />
+    <SituateReminder />
     <SituateExtensionSetup />
     {#if view === 'settings'}
       <header class="page-header">

@@ -6,6 +6,8 @@ export type Target = { id: string; category: Category; kind: 'domain' | 'app' | 
 export type Mode = {
   id: string; name: string; description: string; color: string; platforms: Platform[]; scheduled: boolean
   dayQuiz: Question[]; nightQuiz: Question[]; accessQuiz: Question[]; targets: Target[]
+  /** A reminder mode blocks nothing and has no quiz: it is on daily between these clock minutes. */
+  reminder?: { from: number; until: number }
 }
 export type Settings = {
   wakeMinutes: number; eveningMinutes: number; sunsetOffset: number; lateOffset: number
@@ -13,10 +15,11 @@ export type Settings = {
   nightMinutes: number; lateNightMinutes: number; accessMinutes: number
 }
 export type Epoch = { at: number; end: number; phase: 'day' | 'night'; late: number }
+export type Window = { mode: string; at: number; end: number }
 /** target is '' for the whole mode or an entertainment target's ID for access to that one site. */
 export type Grant = { mode: string; target: string; epoch: number; until: number }
 export type Document = {
-  version: 1; revision: number; settings: Settings; modes: Mode[]; epochs: Epoch[]
+  version: 1; revision: number; settings: Settings; modes: Mode[]; epochs: Epoch[]; windows: Window[]
   manual: Record<string, number>; grants: Grant[]; generatedAt: number
   /** Preset revision, so new default targets reach existing rules once. */
   presets?: number
@@ -36,10 +39,12 @@ export const CATEGORIES: { id: Category; label: string; color: string }[] = [
   { id: 'custom', label: 'Other', color: '#5f7d8c' },
 ]
 const target = (category: Category, kind: Target['kind'], value: string): Target => ({ id: `${kind}:${value}`, category, kind, value })
-const PRESETS = 6
+const PRESETS = 7
 // Google Messages, WhatsApp, Messenger, Instagram, the Feurstagram clone and Signal on Android and Mac.
 const messagingApps = ['com.google.android.apps.messaging', 'com.whatsapp', 'net.whatsapp.WhatsApp', 'com.facebook.orca', 'com.facebook.archon', 'com.facebook.archon.developerID', 'com.burbn.instagram', 'com.instagram.android.feurstagram', 'org.thoughtcrime.securesms', 'org.whispersystems.signal-desktop']
   .map(v => target('social', 'app', v))
+const reminder = (id: string, name: string, description: string, color: string, from: number, until: number): Mode =>
+  ({ id, name, description, color, platforms: ['mac', 'android'], scheduled: false, dayQuiz: [], nightQuiz: [], accessQuiz: [], targets: [], reminder: { from, until } })
 export function defaults(now = Date.now()): Document {
   const targets: Target[] = [
     ...['instagram.com', 'facebook.com', 'tiktok.com', 'reddit.com', 'x.com', 'twitter.com', 'threads.net', 'bsky.app', 'snapchat.com'].map(v => target('social', 'domain', v)),
@@ -52,11 +57,13 @@ export function defaults(now = Date.now()): Document {
   ]
   const thrust = [q('thrust', 'Did you do one thrust? Get up and thrust your chosen object in and out of your bag.')]
   const doc: Document = {
-    version: 1, revision: 0, presets: PRESETS, generatedAt: now, manual: {}, grants: [], epochs: [],
+    version: 1, revision: 0, presets: PRESETS, generatedAt: now, manual: {}, grants: [], epochs: [], windows: [],
     settings: { wakeMinutes: 420, eveningMinutes: 1290, sunsetOffset: 240, lateOffset: 480, lateMinutes: 150, nightMinutes: 60, lateNightMinutes: 30, accessMinutes: 15 },
     modes: [
       { id: 'dolo', name: 'Dolo', description: 'Social and messaging apps, plus entertainment.', color: PRESET_COLORS.dolo, platforms: ['mac', 'android'], scheduled: true, dayQuiz: thrust, nightQuiz: thrust, accessQuiz: entertainment, targets: targets.filter(t => t.category !== 'ai') },
       { id: 'touch-grass', name: 'Touch grass', description: 'AI chats and entertainment.', color: PRESET_COLORS['touch-grass'], platforms: ['mac', 'android'], scheduled: true, dayQuiz: [q('planned', 'Have you planned tomorrow?')], nightQuiz: [q('peed', 'Have you just peed?'), q('bed', 'Have you spent one minute in bed with the lights off and Herdr muted?')], accessQuiz: entertainment, targets: targets.filter(t => t.category !== 'social') },
+      reminder('active-projects', 'Active Projects', 'Time for your active projects.', MODE_COLORS[5], 420, 1200),
+      reminder('no-active-project', 'No Active Project', 'Leave projects for tomorrow.', MODE_COLORS[6], 1260, 420),
       { id: 'discord', name: 'Discord', description: 'Discord on your phone.', color: PRESET_COLORS.discord, platforms: ['android'], scheduled: false, dayQuiz: [q('intentional', 'Do you have a specific reason to open Discord now?')], nightQuiz: [q('intentional', 'Do you have a specific reason to open Discord now?')], accessQuiz: [], targets: [target('custom', 'app', 'com.discord'), target('custom', 'domain', 'discord.com')] },
     ],
   }
@@ -68,7 +75,8 @@ export function upgradePresets(doc: Document): Document {
   if (version >= PRESETS) return doc
   // v2 added messaging apps to Dolo and v3 mode colors. v3 briefly dropped entertainment
   // access, which v4 restores, and the global switch gave way to per-mode control. v5 takes
-  // the sunset location from the time zone instead of entered coordinates; v6 adds descriptions.
+  // the sunset location from the time zone instead of entered coordinates; v6 adds descriptions
+  // and v7 the reminder modes.
   const preset = defaults(doc.generatedAt).modes
   const modes = doc.modes.map((m: Partial<Mode> & Mode & Legacy, i) => {
     const { categories: _categories, ...mode } = m
@@ -80,7 +88,8 @@ export function upgradePresets(doc: Document): Document {
   const { latitude: _latitude, longitude: _longitude, ...kept } = doc.settings as Settings & Legacy
   const settings = { ...kept, accessMinutes: kept.accessMinutes ?? 15 }
   const grants = doc.grants.map(g => ({ ...g, target: g.target ?? '' }))
-  return { ...rest, presets: PRESETS, settings, modes, grants }
+  const reminders = version < 7 ? preset.filter(p => p.reminder && !modes.some(m => m.id === p.id)) : []
+  return { ...rest, presets: PRESETS, settings, modes: [...modes, ...reminders], grants, windows: doc.windows ?? [] }
 }
 // NOAA solar geometry. Calculate locally; coordinates never leave this device.
 export function sunset(date: Date, latitude: number, longitude: number): number | null {
@@ -149,11 +158,22 @@ export function regenerate(doc: Document, now = Date.now(), location = timeZoneL
     const late = Math.max(evening, Math.min(end, localLate.getTime()))
     epochs.push({ at: wake, end: evening, phase: 'day', late }, { at: evening, end, phase: 'night', late })
   }
-  return { ...doc, generatedAt: now, epochs, grants: doc.grants.filter(g => g.until > now) }
+  const windows: Window[] = []
+  for (const mode of doc.modes) {
+    if (!mode.reminder) continue
+    const { from, until } = mode.reminder
+    for (let i = -2; i < 400; i++) {
+      const day = new Date(now); day.setDate(day.getDate() + i)
+      const endDay = new Date(day); if (until <= from) endDay.setDate(endDay.getDate() + 1)
+      windows.push({ mode: mode.id, at: clock(day, from), end: clock(endDay, until) })
+    }
+  }
+  return { ...doc, generatedAt: now, epochs, windows, grants: doc.grants.filter(g => g.until > now) }
 }
 export function epoch(doc: Document, now: number): Epoch | undefined { return doc.epochs.find(e => e.at <= now && now < e.end) }
 export function isActive(doc: Document, mode: Mode, platform: Platform, now = Date.now(), targetId = ''): boolean {
   if (!mode.platforms.includes(platform)) return false
+  if (mode.reminder) return doc.windows.some(w => w.mode === mode.id && w.at <= now && now < w.end)
   const e = epoch(doc, now)
   const activation = Math.max(mode.scheduled ? e?.at ?? doc.generatedAt : 0, doc.manual[mode.id] ?? 0)
   if (!activation) return false
@@ -201,7 +221,9 @@ export function grant(doc: Document, modeId: string, answers: Answers, startedAt
   return { ...doc, revision: doc.revision + 1, grants: [...doc.grants.filter(g => !(g.mode === modeId && g.target === entry.target)), entry] }
 }
 export function enableMode(doc: Document, mode: string, now = Date.now()): Document {
-  if (!doc.modes.some(m => m.id === mode)) throw new Error('Unknown mode')
+  const found = doc.modes.find(m => m.id === mode)
+  if (!found) throw new Error('Unknown mode')
+  if (found.reminder) throw new Error('Reminder modes follow their hours')
   return { ...doc, revision: doc.revision + 1, manual: { ...doc.manual, [mode]: now }, grants: doc.grants.filter(g => g.mode !== mode) }
 }
 export function matches(target: Target, kind: Target['kind'], value: string): boolean {
@@ -232,6 +254,7 @@ export function validate(doc: Document): void {
         seen.add(q.id)
       }
     }
+    if (m.reminder && (![m.reminder.from, m.reminder.until].every(t => Number.isInteger(t) && t >= 0 && t < 1440) || m.reminder.from === m.reminder.until || m.targets.length)) throw new Error('Reminder modes need different start and end times')
     if (m.targets.length > 300) throw new Error('Use at most 300 targets per mode')
     for (const t of m.targets) {
       if (!t.value || t.value.length > 255 || /[\s/\\]/.test(t.value) || !['domain', 'app', 'discord'].includes(t.kind)) throw new Error('Targets use a domain, bundle/package ID, or Discord channel ID')

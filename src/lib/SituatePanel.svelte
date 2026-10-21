@@ -3,6 +3,7 @@
   import { situate, situateNow, situatePlatform, situateError, requestQuiz, activateMode } from './situate/store'
   import { isActive, epoch, backOn, scheduleToday, type Mode } from './situate/core'
   import { DEVICES, clockTime } from './situate/ui'
+  import { formatMinutes as minutesTime } from './planner'
   import { browsersMissingExtension, extensionSetupOpen } from './situate/extension'
   import SituateModeEditor from './SituateModeEditor.svelte'
   import SituateSchedule from './SituateSchedule.svelte'
@@ -19,6 +20,7 @@
     return $situateNow >= currentEpoch.late ? $situate.settings.lateNightMinutes : $situate.settings.nightMinutes
   }
   function summary(mode: Mode, active: boolean) {
+    if (mode.reminder) return `${minutesTime(mode.reminder.from)}–${minutesTime(mode.reminder.until)}`
     if (!active) {
       const until = backOn($situate, mode, $situateNow)
       return until ? `Back on at ${clockTime(until)}` : 'Off until you turn it on'
@@ -56,7 +58,7 @@
           </p>
           <p class="when">{summary(mode, active)}</p>
           <div class="actions">
-            <button type="button" aria-label={`${active ? 'Turn off' : 'Turn on'} ${mode.name}`} on:click={() => active ? requestQuiz(mode.id) : activateMode(mode.id).catch(() => {})}>{active ? 'Turn off' : 'Turn on'}</button>
+            {#if !mode.reminder}<button type="button" aria-label={`${active ? 'Turn off' : 'Turn on'} ${mode.name}`} on:click={() => active ? requestQuiz(mode.id) : activateMode(mode.id).catch(() => {})}>{active ? 'Turn off' : 'Turn on'}</button>{/if}
             <button type="button" aria-label={`Edit ${mode.name}`} on:click={() => editing = structuredClone(mode)}>Edit</button>
           </div>
         </article>

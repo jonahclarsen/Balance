@@ -6,7 +6,8 @@
   import SituateTargets from './SituateTargets.svelte'
   import SituateIcon from './SituateIcon.svelte'
   import { situate, situateNow, mutateSituate } from './situate/store'
-  import { MODE_COLORS, scheduleToday, validate, type Mode } from './situate/core'
+  import { MODE_COLORS, regenerate, scheduleToday, validate, type Mode } from './situate/core'
+  import SituateDragValue from './SituateDragValue.svelte'
   import { DEVICES, clockTime } from './situate/ui'
   export let mode: Mode
   export let onClose: () => void
@@ -30,7 +31,7 @@
     const current = get(situate)
     try { validate({ ...current, modes: current.modes.map(m => m.id === value.id ? value : m) }); error = '' } catch (e) { error = e instanceof Error ? e.message : String(e); return }
     saved = raw
-    mutateSituate(d => ({ ...d, modes: d.modes.map(m => m.id === value.id ? value : m) })).catch(e => { error = String(e); saved = '' })
+    mutateSituate(d => regenerate({ ...d, modes: d.modes.map(m => m.id === value.id ? value : m) })).catch(e => { error = String(e); saved = '' })
   }
   onDestroy(flush)
   function toggleDevice(id: Mode['platforms'][number]) {
@@ -50,6 +51,16 @@
         <div class="field"><span>Devices</span><div class="devices" role="group" aria-label="Devices">{#each DEVICES as device}{@const on = draft.platforms.includes(device.id)}<button type="button" aria-pressed={on} disabled={on && draft.platforms.length === 1} title={on && draft.platforms.length === 1 ? 'A mode needs at least one device' : undefined} on:click={() => toggleDevice(device.id)}><SituateIcon name={device.id} />{device.label}</button>{/each}</div></div>
       </div>
     </section>
+    {#if draft.reminder}
+      <section>
+        <h3>On</h3>
+        <div class="hours">
+          <SituateDragValue kind="clock" label="Reminder starts" value={draft.reminder.from} onChange={v => { if (draft.reminder) draft.reminder = { ...draft.reminder, from: v } }} /><span>to</span>
+          <SituateDragValue kind="clock" label="Reminder ends" value={draft.reminder.until} onChange={v => { if (draft.reminder) draft.reminder = { ...draft.reminder, until: v } }} />
+        </div>
+        <p class="muted">Blocks nothing. Clicking it shows the description.</p>
+      </section>
+    {:else}
     <section>
       <h3>Turns on</h3>
       <div class="devices" role="group" aria-label="Turns on">
@@ -70,6 +81,7 @@
       <h3>Blocked <span class="count">{draft.targets.length}</span></h3>
       <SituateTargets bind:targets={draft.targets} />
     </section>
+    {/if}
     {#if error}<p class="error" role="alert">{error}</p>{/if}
   </div>
 </OverlayModal>
@@ -93,6 +105,7 @@
   .devices button[aria-pressed='true'] { color:var(--ink); border-color:var(--mode); background:color-mix(in srgb, var(--mode) 12%, transparent); font-weight:600; }
   .devices button:disabled { cursor:default; opacity:1; }
   p.muted { margin:0; font-size:13px; }
+  .hours { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--muted); }
   .quizzes { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
   .error { margin:0; color:var(--danger); }
   @media (max-width:640px) { .quizzes, .basics { grid-template-columns:1fr; } }

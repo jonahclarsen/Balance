@@ -89,6 +89,21 @@ pub(crate) fn status(doc: &Value, platform: &str, now: i64) -> Value {
             continue;
         }
         let id = mode["id"].as_str().unwrap_or("");
+        // Reminder modes block nothing; they are on inside their generated daily windows.
+        if mode["reminder"].is_object() {
+            let mut active = false;
+            for window in doc["windows"].as_array().into_iter().flatten().filter(|w| w["mode"] == id) {
+                let (start, stop) = (number(&window["at"]), number(&window["end"]));
+                active |= start <= now && now < stop;
+                if start > now {
+                    refresh = refresh.min(start);
+                } else if stop > now {
+                    refresh = refresh.min(stop);
+                }
+            }
+            modes.push(json!({"id":id,"name":mode["name"],"description":mode["description"],"color":mode["color"],"active":active,"reminder":true,"targets":[],"allTargets":[]}));
+            continue;
+        }
         let activation =
             if mode["scheduled"] == true { at } else { 0 }.max(number(&doc["manual"][id]));
         let enabled = activation > 0;

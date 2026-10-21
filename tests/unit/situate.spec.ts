@@ -7,9 +7,9 @@ test('default modes, reset clocks and device scope', () => {
   const d=fixture();validate(d)
   expect(d.settings.wakeMinutes).toBe(420)
   expect(isActive(d,d.modes[0],'mac',date(0,12))).toBe(true)
-  expect(isActive(d,d.modes[2],'android',date(0,12))).toBe(false)
-  expect(isActive(enableMode(d,'discord',date(0,12)),d.modes[2],'android',date(0,12))).toBe(true)
-  expect(isActive(enableMode(d,'discord',date(0,12)),d.modes[2],'mac',date(0,12))).toBe(false)
+  expect(isActive(d,d.modes.find(m=>m.id==='discord')!,'android',date(0,12))).toBe(false)
+  expect(isActive(enableMode(d,'discord',date(0,12)),d.modes.find(m=>m.id==='discord')!,'android',date(0,12))).toBe(true)
+  expect(isActive(enableMode(d,'discord',date(0,12)),d.modes.find(m=>m.id==='discord')!,'mac',date(0,12))).toBe(false)
 })
 test('dolo requires a yes and cannot bypass missing answers', () => {
   const d=fixture();const now=date(0,12)
@@ -62,9 +62,9 @@ test('manual reactivation invalidates a quiz in progress and old grants', () => 
 test('manual-only mode stays off until explicitly turned on again', () => {
   const now=date(0,12);let d=enableMode(fixture(),'discord',now)
   d=grant(d,'discord',{intentional:true},now,now)
-  expect(isActive(d,d.modes[2],'android',date(1,12))).toBe(false)
+  expect(isActive(d,d.modes.find(m=>m.id==='discord')!,'android',date(1,12))).toBe(false)
   d=enableMode(d,'discord',date(1,12))
-  expect(isActive(d,d.modes[2],'android',date(1,12))).toBe(true)
+  expect(isActive(d,d.modes.find(m=>m.id==='discord')!,'android',date(1,12))).toBe(true)
 })
 test('conditions may refer only to earlier questions and required no is honored', () => {
   const d=fixture();d.modes[0].dayQuiz=[{id:'a',text:'Working?',required:false},{id:'b',text:'Ready?',required:true,when:{id:'a',answer:false}}]
@@ -141,4 +141,19 @@ test('older rules gain messaging apps and colors once, keeping entertainment acc
   expect(upgraded.settings).not.toHaveProperty('latitude')
   expect(upgraded.grants).toEqual([{ mode:'dolo', target:'', epoch:1, until:2 }])
   expect(upgradePresets(upgraded)).toBe(upgraded)
+})
+test('reminder modes follow their daily hours, block nothing and cannot be passed or turned on', () => {
+  const d=fixture();const active=d.modes.find(m=>m.id==='active-projects')!;const none=d.modes.find(m=>m.id==='no-active-project')!
+  expect(isActive(d,active,'mac',date(0,12))).toBe(true)
+  expect(isActive(d,active,'mac',date(0,20,30))).toBe(false)
+  expect(isActive(d,none,'mac',date(0,20,30))).toBe(false)
+  expect(isActive(d,none,'mac',date(0,23))).toBe(true)
+  expect(isActive(d,none,'mac',date(1,6,59))).toBe(true)
+  expect(isActive(d,none,'mac',date(1,7))).toBe(false)
+  expect(active.targets).toEqual([])
+  expect(() => enableMode(d,'active-projects')).toThrow('hours')
+  const legacy={ ...d, presets:6, modes:d.modes.filter(m=>!m.reminder) }
+  const upgraded=upgradePresets(legacy)
+  expect(upgraded.modes.filter(m=>m.reminder).map(m=>m.id)).toEqual(['active-projects','no-active-project'])
+  expect(upgradePresets({ ...upgraded, presets:6 }).modes.filter(m=>m.reminder)).toHaveLength(2)
 })

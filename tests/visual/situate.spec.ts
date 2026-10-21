@@ -109,6 +109,17 @@ test('entertainment access passes one site and leaves the mode on', async ({page
   expect(doc.grants).toEqual([expect.objectContaining({mode:'touch-grass',target:'domain:youtube.com'})])
 })
 
+test('reminder modes show only while on and open their description', async ({page}) => {
+  const sidebar=page.getByLabel('Situate modes')
+  await expect(sidebar.getByRole('button',{name:'No Active Project',exact:true})).toHaveCount(0)
+  await sidebar.getByRole('button',{name:'Active Projects',exact:true}).click()
+  const reminder=page.getByRole('dialog',{name:'Active Projects',exact:true})
+  await expect(reminder.getByText('Time for your active projects.')).toBeVisible()
+  await expect(reminder.getByRole('button',{name:'Yes',exact:true})).toHaveCount(0)
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('button',{name:'Turn off Active Projects',exact:true})).toHaveCount(0)
+})
+
 test('compact widget opens a quiz without loading planner storage', async ({page}) => {
   await page.addInitScript(() => {
     const original=Storage.prototype.getItem
