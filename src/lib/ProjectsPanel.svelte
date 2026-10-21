@@ -43,16 +43,19 @@
     return new Date(iso).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })
   }
 
-  $: if (linkedProjectId) void reveal(linkedProjectId, true)
-  async function reveal(id: string, openDetails: boolean) {
+  $: if (linkedProjectId) void reveal(linkedProjectId)
+  async function reveal(id: string) {
     await tick()
     document.getElementById(`project-${id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    await highlight(id)
+    if (projects.some((project) => project.id === id)) openProject(id)
+  }
+  async function highlight(id: string) {
     highlightedId = ''
     await tick()
     highlightedId = id
     clearTimeout(highlightTimer)
     highlightTimer = setTimeout(() => highlightedId = '', 1700)
-    if (openDetails && projects.some((project) => project.id === id)) openProject(id)
   }
   onDestroy(() => clearTimeout(highlightTimer))
 
@@ -70,8 +73,29 @@
       name = ''
       nameHtml = ''
       formResets += 1
-      void reveal(id, false)
+      void highlight(id)
     }
+    // Stay in the field (an Add click moves focus to the button) to add the next one.
+    await tick()
+    focusAtEnd(document.querySelector<HTMLElement>('[data-rich-text-input-id="new-project-name"]'))
+  }
+  function focusAtEnd(field: HTMLElement | null) {
+    if (!field) return
+    field.focus({ preventScroll: true })
+    const range = document.createRange()
+    range.selectNodeContents(field)
+    range.collapse(false)
+    const selection = document.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+  }
+  function focusNameAtEnd(node: HTMLElement, _projectId: string) {
+    const focus = () => void tick().then(() => {
+      // Leave focus alone if a click already landed in another field.
+      if (!node.parentElement?.contains(document.activeElement)) focusAtEnd(node.querySelector<HTMLElement>('[contenteditable]'))
+    })
+    focus()
+    return { update: focus }
   }
   function activate(project: Project, days: number) {
     plannerStore.setProjectActiveDays(project.id, days)
@@ -115,7 +139,7 @@
     <button class="primary" type="submit" disabled={!name.trim()}>Add</button>
   </form>
   <section class="project-section" aria-labelledby="open-projects-title">
-    <h3 id="open-projects-title">Open</h3>
+    <h3 id="open-projects-title">Open <span class="count">{open.length}</span></h3>
     {#if active.length}
       <div class="project-list" aria-label="Active projects" use:projectReordering={openProject}>{#each active as project (project.id)}<ProjectCard {project} active note={`until ${weekday(project.activeUntil!)}`} highlighted={highlightedId === project.id} onOpen={openProject} />{/each}</div>
     {/if}
@@ -124,13 +148,13 @@
   </section>
   {#if completed.length}
     <section class="project-section" aria-labelledby="completed-projects-title">
-      <h3 id="completed-projects-title">Completed</h3>
+      <h3 id="completed-projects-title">Completed <span class="count">{completed.length}</span></h3>
       <div class="project-list">{#each completed as project (project.id)}<ProjectCard {project} note={shortDate(project.completedAt!)} highlighted={highlightedId === project.id} onOpen={openProject} />{/each}</div>
     </section>
   {/if}
   {#if archived.length}
     <section class="project-section" aria-labelledby="archived-projects-title">
-      <h3 id="archived-projects-title">Archived</h3>
+      <h3 id="archived-projects-title">Archived <span class="count">{archived.length}</span></h3>
       <div class="project-list">{#each archived as project (project.id)}<ProjectCard {project} note={project.archivedAt ? shortDate(project.archivedAt) : ''} highlighted={highlightedId === project.id} onOpen={openProject} />{/each}</div>
     </section>
   {/if}
@@ -139,7 +163,7 @@
     <div class="details-overlay" use:mountInContentShell>
     <OverlayModal linkURL={`balance://projects/${project.id}`} title={project.name} ariaLabel={`${project.name} details`} z={65} onClose={closeDetails}>
     <div class="project-details" id={'project-details-' + project.id} style:--project-color={project.color}>
-      <div class="name-field"><span>Name</span><RichTextEditor
+      <div class="name-field" use:focusNameAtEnd={project.id}><span>Name</span><RichTextEditor
         className="rich-text-field"
         kind="project-name"
         inputId={`project-name:${project.id}`}
@@ -148,6 +172,11 @@
         ariaLabel="Project name"
         revision={$plannerStore.historyRevision}
         singleLine
+        onKeyDown={(_editor, event) => {
+          if (event.key !== 'Enter' || event.isComposing) return
+          event.preventDefault()
+          closeDetails()
+        }}
         onChange={(html, text) => { if (text.trim()) plannerStore.updateProject(project.id, { name: text.trim(), nameHtml: html }) }}
       /></div>
       <label>Description<textarea value={project.description} on:change={(event) => plannerStore.updateProject(project.id, { description: event.currentTarget.value })}></textarea></label>
@@ -194,6 +223,7 @@
   .project-add button { font-size: 14px; padding: 8px 12px; }
   .project-section + .project-section { margin-top: 24px; }
   .project-section h3 { margin: 0 0 8px; font-size: 13px; font-weight: 600; color: var(--muted); }
+  .project-section h3 .count { margin-left: 4px; font-weight: 400; font-variant-numeric: tabular-nums; }
   .project-list { position: relative; display: grid; gap: 6px; }
   .project-list + .project-list:not(:empty) { margin-top: 6px; }
   .project-list :global(.project-card) { cursor: pointer; touch-action: pan-y; }
