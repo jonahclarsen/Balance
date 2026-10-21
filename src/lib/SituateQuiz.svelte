@@ -37,11 +37,11 @@
       {:else if progress.next}
         <p class="muted">Question {quiz.indexOf(progress.next) + 1} of {quiz.length}</p>
         <h2>{progress.next.text}</h2>
-        <div class="answers"><button disabled={busy} type="button" on:click={() => answer(false)}>No</button><button class="yes" disabled={busy} type="button" on:click={() => answer(true)}>Yes</button></div>
+        <div class="answers"><button disabled={busy} type="button" on:click={() => answer(false)}>No</button><button disabled={busy} type="button" on:click={() => answer(true)}>Yes</button></div>
       {:else}<button disabled={busy} type="button" on:click={finish}>Continue</button>{/if}
     </div>
   </OverlayModal>
 {/if}
 <style>
-  .quiz { padding: 18px 4px 28px; } h2 { font-size: 1.5rem; line-height: 1.5; font-weight: 550; } .answers { display: flex; gap: 16px; margin-top: 30px; } .answers button { flex: 1; min-height: 64px; font-size: 1.2rem; border-radius: 18px; } .quiz { border-top: 4px solid var(--mode); margin-top: -4px; } .muted { color: color-mix(in srgb, var(--mode) 65%, var(--muted)); font-weight: 600; } .yes { border-color: var(--mode); background: color-mix(in srgb, var(--mode) 14%, var(--paper-strong)); }
+  .quiz { padding: 18px 4px 28px; } h2 { font-size: 1.5rem; line-height: 1.5; font-weight: 550; } .answers { display: flex; gap: 16px; margin-top: 30px; } .answers button { flex: 1; min-height: 64px; font-size: 1.2rem; border-radius: 18px; } .quiz { border-top: 4px solid var(--mode); margin-top: -4px; } .muted { color: color-mix(in srgb, var(--mode) 65%, var(--muted)); font-weight: 600; }
 </style>

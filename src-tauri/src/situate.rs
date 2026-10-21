@@ -188,13 +188,17 @@ pub(crate) async fn situate_notifications(action: String, query: Value) -> Resul
     }
 }
 const EXTENSION_ID: &str = "ffookcmhbhdhicpdijnanfjifepgkkon";
-const EXTENSION_FILES: [(&str, &str); 6] = [
-    ("manifest.json", include_str!("../../integrations/situate/chrome/manifest.json")),
-    ("background.js", include_str!("../../integrations/situate/chrome/background.js")),
-    ("content.js", include_str!("../../integrations/situate/chrome/content.js")),
-    ("policy.js", include_str!("../../integrations/situate/chrome/policy.js")),
-    ("popup.html", include_str!("../../integrations/situate/chrome/popup.html")),
-    ("popup.js", include_str!("../../integrations/situate/chrome/popup.js")),
+const EXTENSION_FILES: [(&str, &[u8]); 10] = [
+    ("manifest.json", include_bytes!("../../integrations/situate/chrome/manifest.json")),
+    ("background.js", include_bytes!("../../integrations/situate/chrome/background.js")),
+    ("content.js", include_bytes!("../../integrations/situate/chrome/content.js")),
+    ("policy.js", include_bytes!("../../integrations/situate/chrome/policy.js")),
+    ("popup.html", include_bytes!("../../integrations/situate/chrome/popup.html")),
+    ("popup.js", include_bytes!("../../integrations/situate/chrome/popup.js")),
+    ("icons/icon-16.png", include_bytes!("../../integrations/situate/chrome/icons/icon-16.png")),
+    ("icons/icon-32.png", include_bytes!("../../integrations/situate/chrome/icons/icon-32.png")),
+    ("icons/icon-48.png", include_bytes!("../../integrations/situate/chrome/icons/icon-48.png")),
+    ("icons/icon-128.png", include_bytes!("../../integrations/situate/chrome/icons/icon-128.png")),
 ];
 const NATIVE_HOST: &str = include_str!("../../integrations/situate/native-host.py");
 /// Browsers that load the Situate extension, with their macOS profile roots.
@@ -249,19 +253,19 @@ pub(crate) fn situate_extension(app: tauri::AppHandle, action: String) -> Result
     // Keep an installed copy current so a browser reload picks up new rules.
     let stale = EXTENSION_FILES
         .iter()
-        .any(|(name, contents)| fs::read_to_string(folder.join(name)).ok().as_deref() != Some(*contents));
+        .any(|(name, contents)| fs::read(folder.join(name)).ok().as_deref() != Some(*contents));
     if action == "install" || (folder.exists() && stale) {
         for (name, contents) in EXTENSION_FILES {
-            write_text(&folder.join(name), contents, 0o600)?;
+            write_file(&folder.join(name), contents, 0o600)?;
         }
         let host = root.join("native-host.py");
-        write_text(&host, NATIVE_HOST, 0o700)?;
+        write_file(&host, NATIVE_HOST.as_bytes(), 0o700)?;
         let manifest = json!({"name":"app.balance.situate","description":"Read-only Balance Situate status","path":host,"type":"stdio","allowed_origins":[format!("chrome-extension://{EXTENSION_ID}/")]});
         for (_, _, browser, _) in browsers(&home) {
             if browser.exists() {
-                write_text(
+                write_file(
                     &browser.join("NativeMessagingHosts/app.balance.situate.json"),
-                    &format!("{manifest:#}\n"),
+                    format!("{manifest:#}\n").as_bytes(),
                     0o600,
                 )?;
             }
@@ -274,7 +278,7 @@ pub(crate) fn situate_extension(app: tauri::AppHandle, action: String) -> Result
         .collect();
     Ok(json!({"browsers":list,"folder":folder}))
 }
-fn write_text(path: &Path, contents: &str, mode: u32) -> Result<(), String> {
+fn write_file(path: &Path, contents: &[u8], mode: u32) -> Result<(), String> {
     fs::create_dir_all(path.parent().ok_or("Missing directory")?).map_err(|e| e.to_string())?;
     fs::write(path, contents).map_err(|e| e.to_string())?;
     #[cfg(unix)]
