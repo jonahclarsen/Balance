@@ -185,6 +185,7 @@
     font-size: 20px;
     font-weight: 600;
     overflow-wrap: anywhere;
+    white-space: pre-wrap;
   }
 
   .metric-prompt :global(a) {

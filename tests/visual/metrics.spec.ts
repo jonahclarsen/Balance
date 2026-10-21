@@ -104,3 +104,24 @@ test('archiving a quiz hides it from the rail and it can be unarchived', async (
   await expect(page.getByLabel('Quiz name')).toHaveValue('Plank')
   await expect(page.getByRole('button', { name: /^Archived \(/ })).toHaveCount(0)
 })
+
+test('typed line breaks in a quiz question show in its graph heading', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'The phone layout is covered by mobile-metrics.spec.ts')
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  await page.getByRole('button', { name: 'Quizzes', exact: true }).click()
+  await page.getByRole('button', { name: '+ New quiz' }).first().click()
+
+  const prompt = page.locator('[data-metric-question-text-input]').first()
+  await prompt.fill('Did you')
+  await prompt.press('End')
+  await prompt.press('Shift+Enter')
+  await prompt.pressSequentially('go outside?')
+  await page.locator('[data-metric-question-id]').first().getByRole('group', { name: 'Question type' })
+    .getByRole('button', { name: 'Yes / no' }).click()
+
+  await expect.poll(() => page.locator('.metric-graph-block h4').first().evaluate((heading) => (heading as HTMLElement).innerText))
+    .toBe('Did you\ngo outside?')
+})

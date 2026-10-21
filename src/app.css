@@ -6098,6 +6098,7 @@ body.mobile-checkbox-dragging {
   margin: 0;
   font-size: 14px;
   overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .metric-graph-block h4 a {
