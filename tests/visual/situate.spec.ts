@@ -40,7 +40,11 @@ test('blocked targets can be added, edited, recategorized and removed', async ({
   const table=dialog.getByRole('table',{name:'Blocked apps and websites'})
   await dialog.getByLabel('App ID or website to block').fill('com.example.chat')
   await expect(dialog.getByRole('group',{name:'Type'}).getByRole('button',{name:'App'})).toHaveAttribute('aria-pressed','true')
-  await dialog.getByRole('button',{name:'Add',exact:true}).click()
+  const add=dialog.getByRole('button',{name:'Add',exact:true})
+  await expect(add).toBeDisabled()
+  await dialog.getByRole('group',{name:'Category'}).getByRole('button',{name:'Social',exact:true}).click()
+  await add.click()
+  await expect(dialog.getByRole('group',{name:'Category'}).getByRole('button',{name:'Social',exact:true})).toHaveAttribute('aria-pressed','false')
   await table.getByLabel('Edit com.example.chat').fill('com.example.messages')
   await table.getByLabel('Edit com.example.chat').press('Enter')
   const row=table.getByRole('row').filter({has:page.getByLabel('Edit com.example.messages')})
@@ -65,6 +69,18 @@ test('a mode keeps at least one device and leaves devices it no longer covers', 
   await page.keyboard.press('Escape')
   await expect(page.getByRole('heading',{name:'Dolo',exact:true})).toHaveCount(0)
   await expect(page.getByRole('heading',{name:'Discord',exact:true})).toHaveCount(0)
+})
+
+test('schedule values step by five minutes and save', async ({page}) => {
+  const night=page.getByRole('spinbutton',{name:'Night pass',exact:true})
+  await night.focus();await night.press('ArrowUp')
+  await expect(night).toHaveText('65 min')
+  const morning=page.getByRole('spinbutton',{name:'Morning',exact:true})
+  await morning.focus();await morning.press('ArrowDown')
+  await expect(morning).toHaveText('6:55am')
+  await page.reload();await openView(page,'Situate')
+  const settings=await page.evaluate(()=>JSON.parse(localStorage.getItem('balance-situate-v1')!).settings)
+  expect(settings).toMatchObject({nightMinutes:65,wakeMinutes:415})
 })
 
 test('night passes show a countdown and automatically restore the boundary', async ({page}) => {

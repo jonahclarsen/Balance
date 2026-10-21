@@ -55,7 +55,7 @@
         <button type="button" aria-pressed={draft.scheduled} on:click={() => draft.scheduled = true}>Morning and evening</button>
         <button type="button" aria-pressed={!draft.scheduled} on:click={() => draft.scheduled = false}>Only by hand</button>
       </div>
-      <p class="muted">{draft.scheduled && today ? `Today at ${clockTime(today.wake)} and ${clockTime(today.evening)}. A quiz turns it off until the next one.` : 'Stays on until a quiz turns it off.'}</p>
+      <p class="muted">{draft.scheduled && today ? `Today at ${clockTime(today.wake)} and ${clockTime(today.evening)}.` : 'Stays on until a quiz turns it off.'}</p>
     </section>
     <section>
       <h3>Quiz to turn off</h3>

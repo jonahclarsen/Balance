@@ -8,9 +8,11 @@
   let menu: { id: string; field: 'kind' | 'category' } | null = null
   let draft = ''
   let draftKind: Target['kind'] | null = null
-  let draftCategory: Category = 'social'
+  let draftCategory: Category | null = null
   let error = ''
-  $: shown = targets.filter(t => (!filter || t.category === filter) && t.value.toLowerCase().includes(query.trim().toLowerCase()))
+  // Grouped by category, oldest first within each; new targets are appended.
+  $: shown = targets.map((t, i) => ({ t, i })).filter(({ t }) => (!filter || t.category === filter) && t.value.toLowerCase().includes(query.trim().toLowerCase()))
+    .sort((a, b) => CATEGORIES.findIndex(c => c.id === a.t.category) - CATEGORIES.findIndex(c => c.id === b.t.category) || a.i - b.i).map(({ t }) => t)
   $: addKind = draftKind ?? guessKind(draft.trim())
   const id = (kind: Target['kind'], value: string) => `${kind}:${value}`
   function change(target: Target, patch: Partial<Target>) {
@@ -24,12 +26,12 @@
   }
   function add() {
     const value = draft.trim().replace(/^https?:\/\//i, '').replace(/\/.*$/, '')
-    if (!value) return
+    if (!value || !draftCategory) return
     const target: Target = { id: id(addKind, addKind === 'domain' ? value.toLowerCase() : value), kind: addKind, category: draftCategory, value: addKind === 'domain' ? value.toLowerCase() : value }
     if (targets.some(t => t.id === target.id)) { error = `${value} is already blocked`; return }
     error = ''
-    targets = [target, ...targets]
-    draft = ''; draftKind = null
+    targets = [...targets, target]
+    draft = ''; draftKind = null; draftCategory = null
   }
   function closeMenu(event: MouseEvent) {
     if (menu && !(event.target as Element).closest?.('.chip-cell')) menu = null
@@ -51,7 +53,7 @@
     <input placeholder="Add app ID or website" aria-label="App ID or website to block" bind:value={draft} />
     <div class="choice" role="group" aria-label="Type">{#each KINDS as kind}<button type="button" aria-pressed={addKind === kind.id} title={kind.label} on:click={() => draftKind = kind.id}><SituateIcon name={kind.id} size={14} /><span>{kind.label}</span></button>{/each}</div>
     <div class="choice" role="group" aria-label="Category">{#each CATEGORIES as category}<button type="button" style:--c={category.color} aria-pressed={draftCategory === category.id} on:click={() => draftCategory = category.id}><i></i><span>{category.label}</span></button>{/each}</div>
-    <button class="primary" type="submit" disabled={!draft.trim()}>Add</button>
+    <button class="primary" type="submit" disabled={!draft.trim() || !draftCategory}>Add</button>
   </form>
   {#if error}<p class="error" role="alert">{error}</p>{/if}
   <div class="table" role="table" aria-label="Blocked apps and websites">

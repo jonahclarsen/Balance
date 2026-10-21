@@ -52,7 +52,6 @@
           <div class="mode-heading"><h4>{mode.name}</h4><span class="status">{active ? 'On' : 'Off'}</span></div>
           <p class="meta">
             {#each DEVICES.filter(d => mode.platforms.includes(d.id)) as device}<span title={device.label}><SituateIcon name={device.id} size={14} /><span class="sr-only">{device.label}</span></span>{/each}
-            <span>{mode.targets.length} blocked</span>
           </p>
           <p class="when">{summary(mode, active)}</p>
           <div class="actions">
