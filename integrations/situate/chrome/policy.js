@@ -15,8 +15,8 @@ export function blockedBy(status, rawURL) {
   const channels = url.hostname === 'discord.com' || url.hostname.endsWith('.discord.com') ? url.pathname.split('/').slice(2).filter(s => /^\d+$/.test(s)) : []
   const current=effectiveStatus(status)
   return (current?.modes ?? []).flatMap(mode => [
-    ...(mode.id === 'touch-grass' && mode.active && (current.frankThreads ?? []).some(id => channels.includes(id)) ? [{ mode:mode.id,name:mode.name,target:'' }] : []),
+    ...(mode.id === 'touch-grass' && mode.active && (current.frankThreads ?? []).some(id => channels.includes(id)) ? [{ mode:mode.id,name:mode.name }] : []),
     ...(mode.targets ?? []).filter(t =>
     t.kind === 'domain' ? domainMatches(url.hostname,t.value) : t.kind === 'discord' && channels.includes(t.value)
-  ).map(target => ({ mode: mode.id, name: mode.name, target: target.category === 'entertainment' ? target.id : '' }))])
+  ).map(() => ({ mode: mode.id, name: mode.name }))])
 }

@@ -92,36 +92,31 @@ pub(crate) fn status(doc: &Value, platform: &str, now: i64) -> Value {
         let activation =
             if mode["scheduled"] == true { at } else { 0 }.max(number(&doc["manual"][id]));
         let enabled = doc["enabled"] == true && activation > 0;
-        let allowed = |target: &str| {
-            grants.iter().find(|g| {
-                g["mode"] == id
-                    && (g["target"] == "" || g["target"] == target)
-                    && number(&g["epoch"]) >= activation
-                    && number(&g["until"]) > now
-            })
-        };
+        let pass = grants.iter().find(|g| {
+            g["mode"] == id && number(&g["epoch"]) >= activation && number(&g["until"]) > now
+        });
         for grant in &grants {
             let until = number(&grant["until"]);
             if until > now {
                 refresh = refresh.min(until);
             }
         }
-        let active = enabled && allowed("").is_none();
-        let mut targets = Vec::new();
-        for target in mode["targets"].as_array().into_iter().flatten() {
-            if enabled && allowed(target["id"].as_str().unwrap_or("")).is_none() {
-                targets.push(public_target(target));
-            }
-        }
+        let active = enabled && pass.is_none();
+        let all: Vec<Value> = mode["targets"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(public_target)
+            .collect();
         if id == "touch-grass" {
             ai_blocked = active;
             if enabled && epoch.is_some_and(|e| e["phase"] == "night") {
-                if let Some(g) = allowed("") {
+                if let Some(g) = pass {
                     countdown = g["until"].clone();
                 }
             }
         }
-        modes.push(json!({"id":id,"name":mode["name"],"active":active,"targets":targets,"allTargets":mode["targets"].as_array().into_iter().flatten().map(public_target).collect::<Vec<_>>()}));
+        modes.push(json!({"id":id,"name":mode["name"],"color":mode["color"],"active":active,"targets":if active { all.clone() } else { Vec::new() },"allTargets":all}));
     }
     json!({"version":1,"modes":modes,"aiBlocked":ai_blocked,"countdownUntil":countdown,"refreshAt":refresh,"enabled":doc["enabled"],"quizUrl":"balance://situate?mode=touch-grass"})
 }
@@ -165,10 +160,8 @@ pub(crate) fn situate_permissions(action: String) -> Result<String, String> {
     }
     #[cfg(not(target_os = "android"))]
     {
-        if action != "status" {
-            return Err("Unsupported setup action".into());
-        }
-        Ok("App blocking runs while Balance is open. Websites require the Situate Chrome extension. Integrations read ~/.local/share/balance-situate/status.json; this contains only Situate rules/status.".into())
+        let _ = action;
+        Err("Unsupported setup action".into())
     }
 }
 #[tauri::command]
@@ -187,6 +180,101 @@ pub(crate) async fn situate_notifications(action: String, query: Value) -> Resul
         let _ = (action, query);
         Err("Notification history is Android-only".into())
     }
+}
+const EXTENSION_ID: &str = "ffookcmhbhdhicpdijnanfjifepgkkon";
+const EXTENSION_FILES: [(&str, &str); 6] = [
+    ("manifest.json", include_str!("../../integrations/situate/chrome/manifest.json")),
+    ("background.js", include_str!("../../integrations/situate/chrome/background.js")),
+    ("content.js", include_str!("../../integrations/situate/chrome/content.js")),
+    ("policy.js", include_str!("../../integrations/situate/chrome/policy.js")),
+    ("popup.html", include_str!("../../integrations/situate/chrome/popup.html")),
+    ("popup.js", include_str!("../../integrations/situate/chrome/popup.js")),
+];
+const NATIVE_HOST: &str = include_str!("../../integrations/situate/native-host.py");
+/// Browsers that load the Situate extension, with their macOS profile roots.
+fn browsers(home: &Path) -> [(&'static str, &'static str, PathBuf, &'static str); 2] {
+    let support = home.join("Library/Application Support");
+    [
+        ("chrome", "Chrome", support.join("Google/Chrome"), "com.google.Chrome"),
+        ("brave", "Brave", support.join("BraveSoftware/Brave-Browser"), "com.brave.Browser"),
+    ]
+}
+/// Looks up only the Situate extension's entry in each profile's preferences.
+fn extension_loaded(root: &Path) -> bool {
+    let Ok(entries) = fs::read_dir(root) else {
+        return false;
+    };
+    entries.flatten().any(|entry| {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        (name == "Default" || name.starts_with("Profile "))
+            && ["Secure Preferences", "Preferences"].iter().any(|file| {
+                fs::read(entry.path().join(file))
+                    .ok()
+                    .and_then(|raw| serde_json::from_slice::<Value>(&raw).ok())
+                    .is_some_and(|prefs| {
+                        let entry = &prefs["extensions"]["settings"][EXTENSION_ID];
+                        entry.is_object()
+                            && entry["disable_reasons"]
+                                .as_array()
+                                .is_none_or(|reasons| reasons.is_empty())
+                            && entry["state"] != 0
+                    })
+            })
+    })
+}
+#[tauri::command]
+pub(crate) fn situate_extension(app: tauri::AppHandle, action: String) -> Result<Value, String> {
+    let home = app.path().home_dir().map_err(|e| e.to_string())?;
+    let root = home.join(".local/share/balance-situate");
+    let folder = root.join("extension");
+    // Opens the browser's extensions page, which pages and links cannot do.
+    #[cfg(target_os = "macos")]
+    if let Some((id, _, _, bundle)) = browsers(&home)
+        .into_iter()
+        .find(|(id, ..)| action == format!("open-{id}"))
+    {
+        let page = if id == "brave" { "brave://extensions" } else { "chrome://extensions" };
+        std::process::Command::new("open")
+            .args(["-b", bundle, page])
+            .status()
+            .map_err(|e| e.to_string())?;
+    }
+    if action == "install" {
+        for (name, contents) in EXTENSION_FILES {
+            write_text(&folder.join(name), contents, 0o600)?;
+        }
+        let host = root.join("native-host.py");
+        write_text(&host, NATIVE_HOST, 0o700)?;
+        let manifest = json!({"name":"app.balance.situate","description":"Read-only Balance Situate status","path":host,"type":"stdio","allowed_origins":[format!("chrome-extension://{EXTENSION_ID}/")]});
+        for (_, _, browser, _) in browsers(&home) {
+            if browser.exists() {
+                write_text(
+                    &browser.join("NativeMessagingHosts/app.balance.situate.json"),
+                    &format!("{manifest:#}\n"),
+                    0o600,
+                )?;
+            }
+        }
+    }
+    let list: Vec<Value> = browsers(&home)
+        .into_iter()
+        .filter(|(_, _, browser, _)| browser.exists())
+        .map(|(id, name, browser, _)| json!({"id":id,"name":name,"extension":extension_loaded(&browser),"host":browser.join("NativeMessagingHosts/app.balance.situate.json").exists()}))
+        .collect();
+    Ok(json!({"browsers":list,"folder":folder}))
+}
+fn write_text(path: &Path, contents: &str, mode: u32) -> Result<(), String> {
+    fs::create_dir_all(path.parent().ok_or("Missing directory")?).map_err(|e| e.to_string())?;
+    fs::write(path, contents).map_err(|e| e.to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(path, fs::Permissions::from_mode(mode)).map_err(|e| e.to_string())?;
+    }
+    #[cfg(not(unix))]
+    let _ = mode;
+    Ok(())
 }
 pub(crate) fn open_widget(app: &tauri::AppHandle, raw: &str) -> bool {
     #[cfg(not(target_os = "android"))]
@@ -308,7 +396,7 @@ pub(crate) fn widget_modes() -> Vec<Value> {
                 .as_array()
                 .into_iter()
                 .flatten()
-                .map(|m| json!({"id":m["id"],"name":m["name"],"active":m["active"]}))
+                .map(|m| json!({"id":m["id"],"name":m["name"],"color":m["color"],"active":m["active"]}))
                 .collect()
         })
         .unwrap_or_default()
@@ -457,7 +545,7 @@ mod tests {
         d["secretPlanner"] = json!("not public");
         d["settings"] = json!({"latitude":1});
         assert_eq!(status(&d, "mac", 200)["aiBlocked"], true);
-        d["grants"] = json!([{"mode":"touch-grass","target":"","epoch":100,"until":500}]);
+        d["grants"] = json!([{"mode":"touch-grass","epoch":100,"until":500}]);
         let s = status(&d, "mac", 200);
         assert_eq!(s["aiBlocked"], false);
         assert_eq!(s["countdownUntil"], 500);
@@ -467,19 +555,13 @@ mod tests {
         assert_eq!(status(&d, "android", 200)["modes"], json!([]));
     }
     #[test]
-    fn target_grant_never_unlocks_mode_and_manual_reactivation_revokes_pass() {
+    fn manual_reactivation_revokes_pass() {
         let mut d = fixture();
-        d["grants"] = json!([{"mode":"touch-grass","target":"yt","epoch":100,"until":500}]);
-        let s = status(&d, "mac", 200);
-        assert_eq!(s["aiBlocked"], true);
-        assert_eq!(s["modes"][0]["targets"], json!([]));
+        d["grants"] = json!([{"mode":"touch-grass","epoch":100,"until":500}]);
+        assert_eq!(status(&d, "mac", 200)["modes"][0]["targets"], json!([]));
         d["manual"] = json!({"touch-grass":201});
-        assert_eq!(
-            status(&d, "mac", 202)["modes"][0]["targets"]
-                .as_array()
-                .unwrap()
-                .len(),
-            1
-        );
+        let s = status(&d, "mac", 202);
+        assert_eq!(s["modes"][0]["active"], true);
+        assert_eq!(s["modes"][0]["targets"].as_array().unwrap().len(), 1);
     }
 }

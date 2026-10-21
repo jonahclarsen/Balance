@@ -34,18 +34,16 @@ test('night passes last 60 minutes, late passes 30, and never cross wake time', 
     expect(isActive(allowed,d.modes[1],'mac',now+duration*60000)).toBe(true)
   }
 })
-test('entertainment branches allow work or permitted care only, scoped to one target and mode', () => {
-  const d=fixture();const now=date(0,12);const target='domain:youtube.com'
-  expect(quizProgress(questions(d,d.modes[0],now,target),{visual:true}).next?.id).toBe('care')
-  expect(() => grant(d,'dolo',{visual:true,care:false},now,now,target)).toThrow('Complete')
-  for(const answers of [{visual:false},{visual:true,care:true}]) {
-    const allowed=grant(d,'dolo',answers,now,now,target)
-    expect(isActive(allowed,d.modes[0],'mac',now,target)).toBe(false)
-    expect(isActive(allowed,d.modes[0],'mac',now,'domain:reddit.com')).toBe(true)
-    expect(isActive(allowed,d.modes[1],'mac',now,target)).toBe(true)
-    expect(isActive(allowed,d.modes[0],'mac',now+15*60000,target)).toBe(true)
-  }
-  expect(() => questions(d,d.modes[0],now,'domain:reddit.com')).toThrow('mode quiz')
+test('a pass covers the whole mode and every one of its targets', () => {
+  const d=fixture();const now=date(0,12)
+  const allowed=grant(d,'dolo',{thrust:true},now,now)
+  expect(allowed.grants).toEqual([{ mode:'dolo', epoch:allowed.grants[0].epoch, until:allowed.grants[0].until }])
+  expect(isActive(allowed,d.modes[1],'mac',now)).toBe(true)
+})
+test('modes need a color and at least one device', () => {
+  const d=fixture()
+  expect(() => validate({ ...d, modes:[{ ...d.modes[0], platforms:[] }] })).toThrow('device')
+  expect(() => validate({ ...d, modes:[{ ...d.modes[0], color:'red' }] })).toThrow('color')
 })
 test('manual reactivation invalidates a quiz in progress and old grants', () => {
   const now=date(0,12);const d=fixture();const allowed=grant(d,'dolo',{thrust:true},now,now)
@@ -110,13 +108,19 @@ test('DST wake resets use local clock dates rather than fixed 24-hour intervals'
     expect(springNight.end-springNight.at).toBe(8.5*3600000)
   } finally { if(previous===undefined) delete process.env.TZ;else process.env.TZ=previous }
 })
-test('messaging presets reach existing Dolo rules once', () => {
+test('older rules gain messaging apps and colors once, and lose entertainment passes', () => {
   const d=fixture();const dolo=d.modes[0]
-  const old={ ...d, presets:undefined, modes:[{ ...dolo, targets:dolo.targets.filter(t=>t.value!=='com.whatsapp'&&t.value!=='org.thoughtcrime.securesms') }, ...d.modes.slice(1)] }
-  const upgraded=upgradePresets(old)
+  const legacy={ ...d, presets:undefined, settings:{ ...d.settings, accessMinutes:15 }, grants:[{ mode:'dolo', target:'domain:youtube.com', epoch:1, until:2 }, { mode:'dolo', target:'', epoch:1, until:2 }],
+    modes:[{ ...dolo, color:undefined, accessQuiz:[], categories:['social'], targets:dolo.targets.filter(t=>t.value!=='com.whatsapp'&&t.value!=='org.thoughtcrime.securesms') }, ...d.modes.slice(1)] } as unknown as typeof d
+  const upgraded=upgradePresets(legacy)
+  validate(upgraded)
   expect(upgraded.modes[0].targets.filter(t=>t.value==='com.whatsapp')).toHaveLength(1)
   expect(upgraded.modes[0].targets).toHaveLength(dolo.targets.length)
   expect(upgraded.modes[1].targets.some(t=>t.value==='com.whatsapp')).toBe(false)
+  expect(upgraded.modes[0].color).toBe(dolo.color)
+  expect(upgraded.modes[0]).not.toHaveProperty('accessQuiz')
+  expect(upgraded.settings).not.toHaveProperty('accessMinutes')
+  expect(upgraded.grants).toEqual([{ mode:'dolo', epoch:1, until:2 }])
   const pruned={ ...upgraded, modes:[{ ...upgraded.modes[0], targets:upgraded.modes[0].targets.filter(t=>t.value!=='com.whatsapp') }, ...upgraded.modes.slice(1)] }
   expect(upgradePresets(pruned)).toBe(pruned)
 })

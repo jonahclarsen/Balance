@@ -4,16 +4,16 @@ export type Category = 'social' | 'entertainment' | 'ai' | 'custom'
 export type Question = { id: string; text: string; required: boolean | null; when?: { id: string; answer: boolean } }
 export type Target = { id: string; category: Category; kind: 'domain' | 'app' | 'discord'; value: string }
 export type Mode = {
-  id: string; name: string; platforms: Platform[]; categories: Category[]; scheduled: boolean
-  dayQuiz: Question[]; nightQuiz: Question[]; accessQuiz: Question[]; targets: Target[]
+  id: string; name: string; color: string; platforms: Platform[]; scheduled: boolean
+  dayQuiz: Question[]; nightQuiz: Question[]; targets: Target[]
 }
 export type Settings = {
   wakeMinutes: number; eveningMinutes: number; sunsetOffset: number; lateOffset: number
   lateMinutes: number; latitude: number | null; longitude: number | null
-  nightMinutes: number; lateNightMinutes: number; accessMinutes: number
+  nightMinutes: number; lateNightMinutes: number
 }
 export type Epoch = { at: number; end: number; phase: 'day' | 'night'; late: number }
-export type Grant = { mode: string; target: string; epoch: number; until: number }
+export type Grant = { mode: string; epoch: number; until: number }
 export type Document = {
   version: 1; revision: number; settings: Settings; modes: Mode[]; epochs: Epoch[]
   enabled: boolean; manual: Record<string, number>; grants: Grant[]; generatedAt: number
@@ -23,11 +23,16 @@ export type Document = {
 export type Answers = Record<string, boolean>
 const minute = 60_000
 const q = (id: string, text: string, required: boolean | null = true): Question => ({ id, text, required })
-const entertainment: Question[] = [q('visual', 'Is this visual entertainment?', null), {
-  ...q('care', 'Are you eating a meal, doing the dishes, taking a bath, or brushing your teeth?'), when: { id: 'visual', answer: true },
-}]
+export const MODE_COLORS = ['#d9643a', '#3f9d54', '#5865f2', '#c2418a', '#c9961c', '#2f8fb0', '#8a5cc7', '#6b7b85']
+const PRESET_COLORS: Record<string, string> = { dolo: MODE_COLORS[0], 'touch-grass': MODE_COLORS[1], discord: MODE_COLORS[2] }
+export const CATEGORIES: { id: Category; label: string; color: string }[] = [
+  { id: 'social', label: 'Social', color: '#d0458b' },
+  { id: 'entertainment', label: 'Entertainment', color: '#d08a12' },
+  { id: 'ai', label: 'AI', color: '#7b5cd6' },
+  { id: 'custom', label: 'Other', color: '#5f7d8c' },
+]
 const target = (category: Category, kind: Target['kind'], value: string): Target => ({ id: `${kind}:${value}`, category, kind, value })
-const PRESETS = 2
+const PRESETS = 3
 // Google Messages, WhatsApp, Messenger, Instagram, the Feurstagram clone and Signal on Android and Mac.
 const messagingApps = ['com.google.android.apps.messaging', 'com.whatsapp', 'net.whatsapp.WhatsApp', 'com.facebook.orca', 'com.facebook.archon', 'com.facebook.archon.developerID', 'com.burbn.instagram', 'com.instagram.android.feurstagram', 'org.thoughtcrime.securesms', 'org.whispersystems.signal-desktop']
   .map(v => target('social', 'app', v))
@@ -44,19 +49,28 @@ export function defaults(now = Date.now()): Document {
   const thrust = [q('thrust', 'Did you do one thrust? Get up and thrust your chosen object in and out of your bag.')]
   const doc: Document = {
     version: 1, revision: 0, presets: PRESETS, enabled: false, generatedAt: now, manual: {}, grants: [], epochs: [],
-    settings: { wakeMinutes: 420, eveningMinutes: 1290, sunsetOffset: 240, lateOffset: 480, lateMinutes: 150, latitude: null, longitude: null, nightMinutes: 60, lateNightMinutes: 30, accessMinutes: 15 },
+    settings: { wakeMinutes: 420, eveningMinutes: 1290, sunsetOffset: 240, lateOffset: 480, lateMinutes: 150, latitude: null, longitude: null, nightMinutes: 60, lateNightMinutes: 30 },
     modes: [
-      { id: 'dolo', name: 'Dolo', platforms: ['mac', 'android'], categories: ['social', 'entertainment'], scheduled: true, dayQuiz: thrust, nightQuiz: thrust, accessQuiz: entertainment, targets: targets.filter(t => t.category !== 'ai') },
-      { id: 'touch-grass', name: 'Touch grass', platforms: ['mac', 'android'], categories: ['ai', 'entertainment'], scheduled: true, dayQuiz: [q('planned', 'Have you planned tomorrow?')], nightQuiz: [q('peed', 'Have you just peed?'), q('bed', 'Have you spent one minute in bed with the lights off and Herdr muted?')], accessQuiz: entertainment, targets: targets.filter(t => t.category !== 'social') },
-      { id: 'discord', name: 'Discord', platforms: ['android'], categories: ['custom'], scheduled: false, dayQuiz: [q('intentional', 'Do you have a specific reason to open Discord now?')], nightQuiz: [q('intentional', 'Do you have a specific reason to open Discord now?')], accessQuiz: [], targets: [target('custom', 'app', 'com.discord'), target('custom', 'domain', 'discord.com')] },
+      { id: 'dolo', name: 'Dolo', color: PRESET_COLORS.dolo, platforms: ['mac', 'android'], scheduled: true, dayQuiz: thrust, nightQuiz: thrust, targets: targets.filter(t => t.category !== 'ai') },
+      { id: 'touch-grass', name: 'Touch grass', color: PRESET_COLORS['touch-grass'], platforms: ['mac', 'android'], scheduled: true, dayQuiz: [q('planned', 'Have you planned tomorrow?')], nightQuiz: [q('peed', 'Have you just peed?'), q('bed', 'Have you spent one minute in bed with the lights off and Herdr muted?')], targets: targets.filter(t => t.category !== 'social') },
+      { id: 'discord', name: 'Discord', color: PRESET_COLORS.discord, platforms: ['android'], scheduled: false, dayQuiz: [q('intentional', 'Do you have a specific reason to open Discord now?')], nightQuiz: [q('intentional', 'Do you have a specific reason to open Discord now?')], targets: [target('custom', 'app', 'com.discord'), target('custom', 'domain', 'discord.com')] },
     ],
   }
   return regenerate(doc, now)
 }
+type Legacy = { accessQuiz?: unknown; categories?: unknown; accessMinutes?: unknown; target?: string }
 export function upgradePresets(doc: Document): Document {
-  if ((doc.presets ?? 1) >= PRESETS) return doc
-  const modes = doc.modes.map(m => m.id !== 'dolo' ? m : { ...m, targets: [...m.targets, ...messagingApps.filter(t => !m.targets.some(x => x.id === t.id))] })
-  return { ...doc, presets: PRESETS, modes }
+  const version = doc.presets ?? 1
+  if (version >= PRESETS) return doc
+  // v2 added messaging apps to Dolo; v3 retired entertainment passes and added mode colors.
+  const modes = doc.modes.map((m: Mode & Legacy, i) => {
+    const { accessQuiz: _quiz, categories: _categories, ...mode } = m
+    const targets = version < 2 && m.id === 'dolo' ? [...m.targets, ...messagingApps.filter(t => !m.targets.some(x => x.id === t.id))] : m.targets
+    return { ...mode, color: m.color ?? PRESET_COLORS[m.id] ?? MODE_COLORS[i % MODE_COLORS.length], targets }
+  })
+  const { accessMinutes: _minutes, ...settings } = doc.settings as Settings & Legacy
+  const grants = (doc.grants as (Grant & Legacy)[]).filter(g => !g.target).map(({ mode, epoch, until }) => ({ mode, epoch, until }))
+  return { ...doc, presets: PRESETS, settings, modes, grants }
 }
 // NOAA solar geometry. Calculate locally; coordinates never leave this device.
 export function sunset(date: Date, latitude: number, longitude: number): number | null {
@@ -99,19 +113,26 @@ export function regenerate(doc: Document, now = Date.now()): Document {
   return { ...doc, generatedAt: now, epochs, grants: doc.grants.filter(g => g.until > now) }
 }
 export function epoch(doc: Document, now: number): Epoch | undefined { return doc.epochs.find(e => e.at <= now && now < e.end) }
-export function isActive(doc: Document, mode: Mode, platform: Platform, now = Date.now(), targetId = ''): boolean {
+export function isActive(doc: Document, mode: Mode, platform: Platform, now = Date.now()): boolean {
   if (!doc.enabled || !mode.platforms.includes(platform)) return false
   const e = epoch(doc, now)
   const activation = Math.max(mode.scheduled ? e?.at ?? doc.generatedAt : 0, doc.manual[mode.id] ?? 0)
   if (!activation) return false
-  return !doc.grants.some(g => g.mode === mode.id && (g.target === '' || g.target === targetId) && g.epoch >= activation && g.until > now)
+  return !doc.grants.some(g => g.mode === mode.id && g.epoch >= activation && g.until > now)
 }
-export function questions(doc: Document, mode: Mode, now: number, targetId = ''): Question[] {
-  if (targetId) {
-    const t = mode.targets.find(t => t.id === targetId)
-    if (!t || t.category !== 'entertainment') throw new Error('This target requires the mode quiz.')
-    return mode.accessQuiz
-  }
+/** The day (wake to evening) that the current moment belongs to, plus the next wake. */
+export function scheduleToday(doc: Document, now: number): { wake: number; evening: number; late: number; nextWake: number } | undefined {
+  const i = doc.epochs.findIndex(e => e.at <= now && now < e.end)
+  const day = doc.epochs[doc.epochs[i]?.phase === 'night' ? i - 1 : i]
+  const night = doc.epochs[doc.epochs.indexOf(day!) + 1]
+  return day && night && { wake: day.at, evening: day.end, late: day.late, nextWake: night.end }
+}
+/** When a mode that was turned off by a quiz comes back on, or null if it stays off until turned on. */
+export function backOn(doc: Document, mode: Mode, now: number): number | null {
+  const pass = doc.grants.find(g => g.mode === mode.id && g.until > now)
+  return pass && pass.until < Number.MAX_SAFE_INTEGER ? pass.until : null
+}
+export function questions(doc: Document, mode: Mode, now: number): Question[] {
   return epoch(doc, now)?.phase === 'night' ? mode.nightQuiz : mode.dayQuiz
 }
 export function quizProgress(quiz: Question[], answers: Answers): { next?: Question; denied: boolean } {
@@ -122,17 +143,17 @@ export function quizProgress(quiz: Question[], answers: Answers): { next?: Quest
   }
   return { denied: false }
 }
-export function grant(doc: Document, modeId: string, answers: Answers, startedAt: number, now = Date.now(), targetId = ''): Document {
+export function grant(doc: Document, modeId: string, answers: Answers, startedAt: number, now = Date.now()): Document {
   const mode = doc.modes.find(m => m.id === modeId)
   const e = epoch(doc, now)
   if (!mode || !e || epoch(doc, startedAt)?.at !== e.at || startedAt < (doc.manual[modeId] ?? 0)) throw new Error('The rules changed. Please start the quiz again.')
-  const progress = quizProgress(questions(doc, mode, now, targetId), answers)
+  const progress = quizProgress(questions(doc, mode, now), answers)
   if (progress.denied || progress.next) throw new Error('Complete the quiz before continuing.')
   const s = doc.settings
-  const minutes = targetId ? s.accessMinutes : mode.id === 'touch-grass' && e.phase === 'night' ? now >= e.late ? s.lateNightMinutes : s.nightMinutes : Infinity
-  const until = !mode.scheduled && !targetId && minutes === Infinity ? Number.MAX_SAFE_INTEGER : Math.min(e.end, now + minutes * minute)
-  const entry = { mode: modeId, target: targetId, epoch: Math.max(e.at, doc.manual[modeId] ?? 0), until }
-  return { ...doc, revision: doc.revision + 1, grants: [...doc.grants.filter(g => !(g.mode === modeId && g.target === targetId)), entry] }
+  const minutes = mode.id === 'touch-grass' && e.phase === 'night' ? now >= e.late ? s.lateNightMinutes : s.nightMinutes : Infinity
+  const until = !mode.scheduled && minutes === Infinity ? Number.MAX_SAFE_INTEGER : Math.min(e.end, now + minutes * minute)
+  const entry = { mode: modeId, epoch: Math.max(e.at, doc.manual[modeId] ?? 0), until }
+  return { ...doc, revision: doc.revision + 1, grants: [...doc.grants.filter(g => g.mode !== modeId), entry] }
 }
 export function enableMode(doc: Document, mode: string, now = Date.now()): Document {
   if (!doc.modes.some(m => m.id === mode)) throw new Error('Unknown mode')
@@ -149,14 +170,16 @@ export function validate(doc: Document): void {
   if (doc.version !== 1 || !Array.isArray(doc.modes) || doc.modes.length > 30) throw new Error('Unsupported Situate rules')
   const s = doc.settings
   for (const k of ['wakeMinutes', 'eveningMinutes', 'lateMinutes'] as const) if (!Number.isInteger(s[k]) || s[k] < 0 || s[k] >= 1440) throw new Error('Choose a valid clock time')
-  for (const k of ['nightMinutes', 'lateNightMinutes', 'accessMinutes'] as const) if (!Number.isFinite(s[k]) || s[k] < 1 || s[k] > 240) throw new Error('Allow between 1 and 240 minutes')
+  for (const k of ['nightMinutes', 'lateNightMinutes'] as const) if (!Number.isFinite(s[k]) || s[k] < 1 || s[k] > 240) throw new Error('Allow between 1 and 240 minutes')
   for (const k of ['sunsetOffset', 'lateOffset'] as const) if (!Number.isFinite(s[k]) || s[k] < 0 || s[k] > 1440) throw new Error('Sunset offsets must be between 0 and 24 hours')
   if ((s.latitude === null) !== (s.longitude === null) || (s.latitude !== null && (!Number.isFinite(s.latitude) || Math.abs(s.latitude) > 90)) || (s.longitude !== null && (!Number.isFinite(s.longitude) || Math.abs(s.longitude) > 180))) throw new Error('Enter both latitude and longitude')
   const ids = new Set<string>()
   for (const m of doc.modes) {
     if (!/^[a-z0-9-]{1,64}$/.test(m.id) || ids.has(m.id) || !m.name.trim() || m.name.length > 100) throw new Error('Modes need unique IDs and a name')
     ids.add(m.id)
-    for (const quiz of [m.dayQuiz, m.nightQuiz, m.accessQuiz]) {
+    if (!/^#[0-9a-f]{6}$/i.test(m.color)) throw new Error('Choose a mode color')
+    if (!m.platforms.length || m.platforms.some(p => !['mac', 'android', 'windows'].includes(p))) throw new Error('Choose at least one device')
+    for (const quiz of [m.dayQuiz, m.nightQuiz]) {
       const seen = new Set<string>()
       if (quiz.length > 50) throw new Error('Use at most 50 questions')
       for (const q of quiz) {

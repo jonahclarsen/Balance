@@ -10910,6 +10910,7 @@ pub fn run() {
             situate::situate_save,
             situate::situate_permissions,
             situate::situate_notifications,
+            situate::situate_extension,
             read_app_state,
             pending_deep_links,
             acknowledge_deep_link,

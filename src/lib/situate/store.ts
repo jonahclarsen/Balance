@@ -6,7 +6,7 @@ export const situate = writable<Document>(defaults())
 export const situateError = writable('')
 export const situateReady = writable(false)
 export const situateNow = writable(Date.now())
-export const quizRequest = writable<{ mode: string; target: string; startedAt: number; revision: number } | null>(null)
+export const quizRequest = writable<{ mode: string; startedAt: number; revision: number } | null>(null)
 export const situatePlatform: Platform = /Android/i.test(navigator.userAgent) ? 'android' : /Win/i.test(navigator.userAgent) ? 'windows' : 'mac'
 let queue = Promise.resolve()
 export function mutateSituate(change: (current: Document) => Document): Promise<void> {
@@ -44,14 +44,14 @@ export async function startSituate(): Promise<() => void> {
   }, 1000)
   return () => { window.clearInterval(timer); stopListening() }
 }
-export function requestQuiz(mode: string, target = '') { quizRequest.set({ mode, target, startedAt: Date.now(), revision: get(situate).revision }) }
+export function requestQuiz(mode: string) { quizRequest.set({ mode, startedAt: Date.now(), revision: get(situate).revision }) }
 export function activateMode(mode: string) { return mutateSituate(current => enableMode(current, mode)) }
 export function answerQuiz(answers: Answers) {
   const request = get(quizRequest)
   if (!request) return Promise.resolve()
   return mutateSituate(current => {
     if(current.revision !== request.revision) throw new Error('Rules changed. Reopen the quiz.')
-    return grant(current, request.mode, answers, request.startedAt, Date.now(), request.target)
+    return grant(current, request.mode, answers, request.startedAt, Date.now())
   }).then(() => quizRequest.set(null))
 }
 export function situateDeepLink(raw: string): boolean {
@@ -59,7 +59,7 @@ export function situateDeepLink(raw: string): boolean {
     const url = new URL(raw)
     if (url.protocol !== 'balance:' || url.hostname !== 'situate') return false
     const mode = url.searchParams.get('mode')
-    if (mode && get(situate).modes.some(m => m.id === mode)) requestQuiz(mode, url.searchParams.get('target') ?? '')
+    if (mode && get(situate).modes.some(m => m.id === mode)) requestQuiz(mode)
     return true
   } catch { return false }
 }

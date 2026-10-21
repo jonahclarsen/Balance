@@ -15,20 +15,21 @@ not turn it off on another. Planner data is never shared with integrations.
   tomorrow and ends at evening. At night, confirm that you just peed and spent
   a minute in bed with the lights off and Herdr muted. Passes last 60 minutes,
   shortened to 30 minutes for passes started after the late-night boundary.
-- **Discord:** Android only, manually enabled. Add more modes and choose which
-  devices they apply to.
+- **Discord:** mobile only, manually enabled.
+
+Each mode has a color used across Balance and a device list (desktop, mobile, or
+both). A mode appears only on the devices it covers, and edits save as you make them.
 
 Evening is the later of 9:30 p.m. and sunset + 4 hours. The late-night boundary is
 sunset + 8 hours, rounded to the nearest half hour. Enter an approximate latitude
-and longitude in **Schedule**; calculation is offline. Without coordinates, or
+and longitude under **Schedule** on the Situate page; calculation is offline. Without coordinates, or
 when there is no sunset, the fallback times are 9:30 p.m. and 2:30 a.m.
 The 7 a.m. Situate reset does not change the planner's day boundary.
 
-Entertainment has a separate 15-minute pass. Answer no to “Is this visual
-entertainment?” for work use. Answering yes requires confirming a meal, dishes,
-bath, or toothbrushing. A pass applies to one target in one mode; overlapping modes
-must each permit access. Mode quizzes, required yes/no answers, and conditions
-on earlier answers can be edited independently.
+Scheduled modes turn on at morning and evening; passing a mode's quiz turns it
+off until the next one. A pass covers the whole mode; overlapping modes must each
+be passed. Day and night quizzes, required answers, and conditions on earlier
+answers can be edited independently.
 
 ## Mac and Chrome
 
@@ -39,12 +40,12 @@ monitoring. Add Balance to macOS Login Items if it should start after login.
 Activation notices use macOS notification permission and obey system Focus settings.
 They announce scheduled changes and expired passes, not modes you switch by hand.
 
-1. Download the `situate-chrome` artifact from the Situate workflow, or use
-   `integrations/situate/chrome` in this repository.
-2. Open `chrome://extensions`, enable Developer mode, and choose **Load unpacked**.
-3. Select the `chrome` directory. Its public manifest key keeps the ID stable.
-4. Run `python3 integrations/situate/install-chrome.py`.
-5. Open the extension popup to verify its connection to Balance.
+Balance checks Chrome and Brave for the extension (reading only its entry in each
+profile's preferences) and shows a warning until every installed browser has it.
+**Set up** copies the extension to `~/.local/share/balance-situate/extension`,
+installs the native messaging host for each browser, and lists the steps:
+open the extensions page, enable Developer mode, then **Load unpacked** that folder.
+Its public manifest key keeps the ID stable.
 
 The extension reads only a small local Situate status file through Chrome native
 messaging. No web server, Discord token, message content, browsing-history log,

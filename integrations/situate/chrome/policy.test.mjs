@@ -4,7 +4,7 @@ import { blockedBy, effectiveStatus } from './policy.js'
 const target={id:'yt',kind:'domain',value:'youtube.com',category:'entertainment'}
 const fixture=()=>({version:1,enabled:true,refreshAt:Date.now()+100000,modes:[{id:'dolo',name:'Dolo',active:true,targets:[target],allTargets:[target]}]})
 test('domain matching prevents suffix bypasses without blocking unrelated domains',()=>{
- const d=fixture();assert.equal(blockedBy(d,'https://www.youtube.com/watch?v=private')[0].target,'yt')
+ const d=fixture();assert.equal(blockedBy(d,'https://www.youtube.com/watch?v=private')[0].mode,'dolo')
  for(const url of ['https://notyoutube.com/','https://youtube.com.evil.test/','https://example.com/?url=youtube.com','file:///youtube.com']) assert.deepEqual(blockedBy(d,url),[])
 })
 test('a stale unlocked snapshot restores targets instead of extending a pass',()=>{

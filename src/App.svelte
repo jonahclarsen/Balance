@@ -9,6 +9,8 @@
   import SituatePanel from './lib/SituatePanel.svelte'
   import SituateQuiz from './lib/SituateQuiz.svelte'
   import SituatePills from './lib/SituatePills.svelte'
+  import SituateExtensionSetup from './lib/SituateExtensionSetup.svelte'
+  import { watchExtension } from './lib/situate/extension'
   import { startSituate, situateDeepLink } from './lib/situate/store'
   import { Channel, invoke, isTauri } from '@tauri-apps/api/core'
   import { listen } from '@tauri-apps/api/event'
@@ -2355,6 +2357,7 @@ return rows`
     const stopFreezeDiagnostics = startFreezeDiagnostics()
     let stopSituate: (() => void) | undefined
     const situateStarted = startSituate().then(stop => { if (mounted) stopSituate = stop; else stop() })
+    const stopExtensionWatch = watchExtension()
     const stopMobileKeyboardScroll = installMobileKeyboardScroll()
     let mounted = true
     let stopAutomaticSync: (() => void) | null = null
@@ -2634,6 +2637,7 @@ return rows`
       stopFreezeDiagnostics()
       stopMobileKeyboardScroll()
       stopSituate?.()
+      stopExtensionWatch()
       stopKeyboardScroll()
       clearTimeout(historyNoticeTimer)
       rememberWorkspaceScroll()
@@ -7114,6 +7118,7 @@ return rows`
         {/if}
       </div>
       <p class="muted">Focus on what matters today</p>
+      <SituatePills all />
     </div>
 
     <button
@@ -7164,7 +7169,6 @@ return rows`
       {/if}
     </nav>
 
-    <SituatePills />
     <div class="sidebar-footer">
       {#if selectedTemplate && view === 'today'}
         <label class="generation-template-field">
@@ -8240,6 +8244,7 @@ return rows`
 
     {#if view === 'situate'}<SituatePanel />{/if}
     <SituateQuiz />
+    <SituateExtensionSetup />
     {#if view === 'settings'}
       <header class="page-header">
         <div>

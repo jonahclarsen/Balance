@@ -2,19 +2,54 @@
   import type { Question } from './situate/core'
   export let questions: Question[]
   export let label: string
+  export let hint = ''
+  const answers: { value: boolean | null; label: string }[] = [{ value: true, label: 'Yes' }, { value: false, label: 'No' }, { value: null, label: 'Any' }]
   function add() { questions = [...questions, { id: crypto.randomUUID(), text: '', required: true }] }
   function remove(id: string) { questions = questions.filter(q => q.id !== id).map(q => q.when?.id === id ? { ...q, when: undefined } : q) }
+  function update(id: string, patch: Partial<Question>) { questions = questions.map(q => q.id === id ? { ...q, ...patch } : q) }
 </script>
-<fieldset><legend>{label}</legend>
-{#each questions as question, i (question.id)}
-  <div class="question-row">
-    <label>Question {i + 1}<input bind:value={question.text} maxlength="2000" /></label>
-    <label>Required answer<select bind:value={question.required}><option value={true}>Yes</option><option value={false}>No</option><option value={null}>Either (branch only)</option></select></label>
-    {#if i > 0}<label>Ask when<select value={question.when?.id ?? ''} on:change={e => { question.when = e.currentTarget.value ? { id: e.currentTarget.value, answer: true } : undefined; questions = [...questions] }}><option value="">Always</option>{#each questions.slice(0,i) as earlier}<option value={earlier.id}>{earlier.text || 'Untitled question'}</option>{/each}</select></label>{/if}
-    {#if question.when}<label>Was answered<select bind:value={question.when.answer}><option value={true}>Yes</option><option value={false}>No</option></select></label>{/if}
-    <button type="button" aria-label={`Remove question ${i + 1}`} on:click={() => remove(question.id)}><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="2"/></svg></button>
-  </div>
-{/each}
-<button type="button" on:click={add}>Add question</button>
-</fieldset>
-<style>fieldset { border:1px solid var(--border); border-radius:12px; margin:16px 0; padding:12px; } .question-row { display:flex; gap:10px; align-items:end; flex-wrap:wrap; padding:10px 0; } label { display:grid; gap:5px; flex:1; min-width:130px; } input, select { width:100%; } </style>
+<div class="quiz-editor" role="group" aria-label={label}>
+  <div class="quiz-heading"><h4>{label}</h4>{#if hint}<span>{hint}</span>{/if}</div>
+  <ol>
+    {#each questions as question, i (question.id)}
+      <li>
+        <span class="number">{i + 1}</span>
+        <div class="body">
+          <input value={question.text} maxlength="2000" placeholder="Question" aria-label={`${label} question ${i + 1}`} on:input={e => update(question.id, { text: e.currentTarget.value })} />
+          <div class="rules">
+            <span class="rule-label">Pass on</span>
+            <div class="choice" role="group" aria-label="Answer that passes">{#each answers as answer}<button type="button" aria-pressed={question.required === answer.value} on:click={() => update(question.id, { required: answer.value })}>{answer.label}</button>{/each}</div>
+            {#if i > 0}
+              <select aria-label="Ask when" value={question.when ? `${question.when.id}:${question.when.answer}` : ''} on:change={e => { const [id, answer] = e.currentTarget.value.split(':'); update(question.id, { when: id ? { id, answer: answer === 'true' } : undefined }) }}>
+                <option value="">Always ask</option>
+                {#each questions.slice(0, i) as earlier, j}<option value={`${earlier.id}:true`}>If {j + 1} is yes</option><option value={`${earlier.id}:false`}>If {j + 1} is no</option>{/each}
+              </select>
+            {/if}
+          </div>
+        </div>
+        <button type="button" class="icon-button quiet" title="Remove" aria-label={`Remove question ${i + 1}`} on:click={() => remove(question.id)}>✕</button>
+      </li>
+    {/each}
+  </ol>
+  <button type="button" class="add" on:click={add}>+ Question</button>
+</div>
+<style>
+  .quiz-editor { display:grid; gap:8px; }
+  .quiz-heading { display:flex; align-items:baseline; gap:8px; }
+  h4 { margin:0; font-size:14px; }
+  .quiz-heading span { color:var(--muted); font-size:12px; }
+  ol { list-style:none; margin:0; padding:0; border:1px solid var(--line); border-radius:10px; background:var(--paper-strong); }
+  ol:empty { display:none; }
+  li { display:grid; grid-template-columns:24px minmax(0,1fr) 30px; gap:8px; align-items:start; padding:10px; }
+  li + li { border-top:1px solid var(--row-border); }
+  .number { display:grid; place-items:center; width:22px; height:22px; margin-top:6px; border-radius:50%; background:var(--active-nav); color:var(--accent-strong); font-size:12px; font-weight:700; }
+  .body { display:grid; gap:6px; }
+  .body input { width:100%; font-size:14px; }
+  .rules { display:flex; flex-wrap:wrap; align-items:center; gap:8px; font-size:12px; }
+  .rule-label { color:var(--muted); }
+  .choice { display:inline-flex; gap:2px; padding:2px; border:1px solid var(--line); border-radius:8px; }
+  .choice button { border:none; background:transparent; padding:3px 10px; border-radius:6px; font-size:12px; color:var(--muted); }
+  .choice button[aria-pressed='true'] { background:var(--active-nav); color:var(--accent-strong); font-weight:650; }
+  select { font-size:12px; padding:4px 6px; }
+  .add { justify-self:start; font-size:13px; padding:5px 10px; }
+</style>

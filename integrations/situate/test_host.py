@@ -51,17 +51,12 @@ class HostTests(unittest.TestCase):
             result=subprocess.run([sys.executable,'-c',sync.REMOTE,*map(str,paths)],capture_output=True,text=True)
             self.assertNotEqual(result.returncode,0)
             self.assertEqual(result.stdout,'')
-    def test_installer_uses_bundled_public_identity_in_a_private_host(self):
-        with tempfile.TemporaryDirectory() as root:
-            base=Path(root)
-            with patch.object(Path,'home',return_value=base), patch.object(sys,'argv',['install-chrome.py']):
-                runpy.run_path(str(ROOT/'install-chrome.py'),run_name='__main__')
-            value=json.loads((base/'Library/Application Support/Google/Chrome/NativeMessagingHosts/app.balance.situate.json').read_text())
-            key=json.loads((ROOT/'chrome/manifest.json').read_text())['key']
-            digest=hashlib.sha256(base64.b64decode(key)).digest()[:16]
-            identity=''.join(chr(97+n) for byte in digest for n in (byte>>4,byte&15))
-            self.assertEqual(value['allowed_origins'],['chrome-extension://'+identity+'/'])
-            self.assertEqual((base/'.local/share/balance-situate/native-host.py').stat().st_mode & 0o777,0o700)
+    def test_balance_installs_the_bundled_public_identity(self):
+        key=json.loads((ROOT/'chrome/manifest.json').read_text())['key']
+        digest=hashlib.sha256(base64.b64decode(key)).digest()[:16]
+        identity=''.join(chr(97+n) for byte in digest for n in (byte>>4,byte&15))
+        source=(ROOT.parents[1]/'src-tauri/src/situate.rs').read_text()
+        self.assertIn(f'const EXTENSION_ID: &str = "{identity}";',source)
     def test_invalid_ids_and_requests_rejected(self):
         for threads in [['bad'],['1; exit'],[{}]]:
             with self.assertRaises(ValueError):sync.validate({'version':1,'threads':threads})

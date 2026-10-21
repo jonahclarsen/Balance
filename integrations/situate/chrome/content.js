@@ -24,7 +24,7 @@
       const title=document.createElement('h1');title.textContent='Touch grass.';section.append(title)
       const text=document.createElement('p');text.textContent=result.stale ? 'Open Balance to refresh your Situate rules.' : 'Take the quiz to continue.';section.append(text)
       for(const rule of result.blocked) {
-        const link=document.createElement('a');const url=new URL('balance://situate');url.searchParams.set('mode',rule.mode);if(rule.target) url.searchParams.set('target',rule.target)
+        const link=document.createElement('a');const url=new URL('balance://situate');url.searchParams.set('mode',rule.mode)
         link.href=url.href;link.textContent=`Open ${rule.name} quiz`;section.append(link)
       }
       const hide=document.createElement('style');hide.textContent='html[data-situate-blocked] body{visibility:hidden!important}';root.append(hide)

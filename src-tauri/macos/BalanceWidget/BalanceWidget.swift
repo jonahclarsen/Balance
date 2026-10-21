@@ -82,7 +82,13 @@ private enum WidgetSnapshotKey {
 private struct SituateMode: Codable, Identifiable {
     let id: String
     let name: String
+    let color: String?
     let active: Bool
+
+    var tint: Color? {
+        guard let color, color.count == 7, let value = UInt32(color.dropFirst(), radix: 16) else { return nil }
+        return Color(red: Double(value >> 16 & 255) / 255, green: Double(value >> 8 & 255) / 255, blue: Double(value & 255) / 255)
+    }
 }
 
 private struct BalanceSnapshot: Codable {
@@ -300,13 +306,12 @@ private struct BalanceWidgetView: View {
                     ForEach(modes.filter { $0.active }.prefix(3)) { mode in
                         Link(destination: URL(string: "balance://situate?mode=\(mode.id)&widget=1")!) {
                             Text(mode.name).font(.caption2.weight(.semibold))
+                                .foregroundStyle(mode.tint ?? palette.ink)
                                 .padding(.horizontal, 8).padding(.vertical, 5)
-                                .background(palette.statusAccent.opacity(0.15), in: Capsule())
+                                .background((mode.tint ?? palette.statusAccent).opacity(0.15), in: Capsule())
+                                .overlay(Capsule().stroke((mode.tint ?? palette.statusAccent).opacity(0.45), lineWidth: 1))
                         }.privacySensitive()
                     }
-                    Link(destination: URL(string: "balance://situate?widget=1")!) {
-                        Image(systemName: "slider.horizontal.3").font(.caption).padding(5)
-                    }.accessibilityLabel("Situate modes")
                 }
             }
             VStack(alignment: .leading, spacing: 2) {
