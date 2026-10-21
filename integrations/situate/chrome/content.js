@@ -11,7 +11,9 @@
     if(running) return
     running=true
     try {
-      const result=await chrome.runtime.sendMessage({type:'check'})
+      const path=location.hostname.endsWith('discord.com') ? location.pathname.split('/') : []
+      const parent=path[1]==='channels' && !path[4] ? situateDiscordParent(document,path[3]) : ''
+      const result=await chrome.runtime.sendMessage({type:'check',parent})
       if(!result?.blocked?.length) { gate?.remove(); gate=null; last=''; document.documentElement?.removeAttribute('data-situate-blocked'); if(bodyState) { const {body,inert,visibility,priority,display,displayPriority}=bodyState; if(!inert) body.removeAttribute('inert'); body.style.setProperty('visibility',visibility,priority); body.style.setProperty('display',display,displayPriority); bodyState=null } return }
       const signature=JSON.stringify(result.blocked)
       if(gate?.isConnected && signature===last) { hideBody(); return }

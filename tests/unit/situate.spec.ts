@@ -125,7 +125,7 @@ test('DST wake resets use local clock dates rather than fixed 24-hour intervals'
 test('older rules gain messaging apps and colors once, keeping entertainment access', () => {
   const d=fixture();const [dolo,touch]=d.modes
   const legacy={ ...d, presets:undefined, enabled:true, settings:{ ...d.settings, accessMinutes:undefined, latitude:49, longitude:-123 }, grants:[{ mode:'dolo', epoch:1, until:2 }],
-    modes:[{ ...dolo, color:undefined, accessQuiz:undefined, categories:['social'], targets:dolo.targets.filter(t=>t.value!=='com.whatsapp'&&t.value!=='org.thoughtcrime.securesms') }, { ...touch, accessQuiz:undefined }, ...d.modes.slice(2)] } as unknown as typeof d
+    modes:[{ ...dolo, color:undefined, description:undefined, accessQuiz:undefined, categories:['social'], targets:dolo.targets.filter(t=>t.value!=='com.whatsapp'&&t.value!=='org.thoughtcrime.securesms') }, { ...touch, accessQuiz:undefined }, ...d.modes.slice(2)] } as unknown as typeof d
   const upgraded=upgradePresets(legacy)
   validate(upgraded)
   expect(upgraded.modes[0].targets.filter(t=>t.value==='com.whatsapp')).toHaveLength(1)
@@ -137,6 +137,7 @@ test('older rules gain messaging apps and colors once, keeping entertainment acc
   expect(upgraded.modes[0]).not.toHaveProperty('categories')
   expect(upgraded).not.toHaveProperty('enabled')
   expect(upgraded.settings.accessMinutes).toBe(15)
+  expect(upgraded.modes[0].description).toBe(dolo.description)
   expect(upgraded.settings).not.toHaveProperty('latitude')
   expect(upgraded.grants).toEqual([{ mode:'dolo', target:'', epoch:1, until:2 }])
   expect(upgradePresets(upgraded)).toBe(upgraded)

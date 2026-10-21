@@ -122,7 +122,7 @@ pub(crate) fn status(doc: &Value, platform: &str, now: i64) -> Value {
                 }
             }
         }
-        modes.push(json!({"id":id,"name":mode["name"],"color":mode["color"],"active":active,"targets":targets,"allTargets":mode["targets"].as_array().into_iter().flatten().map(public_target).collect::<Vec<_>>()}));
+        modes.push(json!({"id":id,"name":mode["name"],"description":mode["description"],"color":mode["color"],"active":active,"targets":targets,"allTargets":mode["targets"].as_array().into_iter().flatten().map(public_target).collect::<Vec<_>>()}));
     }
     json!({"version":1,"modes":modes,"aiBlocked":ai_blocked,"countdownUntil":countdown,"refreshAt":refresh,"enabled":true,"quizUrl":"balance://situate?mode=touch-grass"})
 }
@@ -188,10 +188,11 @@ pub(crate) async fn situate_notifications(action: String, query: Value) -> Resul
     }
 }
 const EXTENSION_ID: &str = "ffookcmhbhdhicpdijnanfjifepgkkon";
-const EXTENSION_FILES: [(&str, &[u8]); 10] = [
+const EXTENSION_FILES: [(&str, &[u8]); 11] = [
     ("manifest.json", include_bytes!("../../integrations/situate/chrome/manifest.json")),
     ("background.js", include_bytes!("../../integrations/situate/chrome/background.js")),
     ("content.js", include_bytes!("../../integrations/situate/chrome/content.js")),
+    ("discord.js", include_bytes!("../../integrations/situate/chrome/discord.js")),
     ("policy.js", include_bytes!("../../integrations/situate/chrome/policy.js")),
     ("popup.html", include_bytes!("../../integrations/situate/chrome/popup.html")),
     ("popup.js", include_bytes!("../../integrations/situate/chrome/popup.js")),

@@ -26,3 +26,20 @@ test('extension hides blocked content and restores it after a pass without readi
   await expect(page.locator('body')).not.toHaveAttribute('inert','')
   await expect(page.locator('body')).toHaveCSS('display','block')
 })
+
+test('Discord threads report their parent channel from the sidebar', async ({page}) => {
+  await page.goto('/')
+  await page.setContent(`<ul aria-label="Channels">
+    <li><div data-list-item-id="channels___100"><a href="/channels/1/100">category</a></div></li>
+    <li><div data-list-item-id="channels___200"><a href="/channels/1/200">nested parent</a></div>
+      <ul role="group"><li><div data-list-item-id="channels___201"><a href="/channels/1/201">thread</a></div></li></ul></li>
+    <li><div data-list-item-id="channels___300"><a href="/channels/1/300">sibling parent</a></div></li>
+    <ul role="group"><li><div data-list-item-id="channels___301"><a href="/channels/1/301">thread</a></div></li></ul>
+  </ul>`)
+  await page.addScriptTag({path:resolve('integrations/situate/chrome/discord.js')})
+  const parents=await page.evaluate(() => {
+    const parent=(window as unknown as {situateDiscordParent:(d:Document,id:string)=>string}).situateDiscordParent
+    return ['201','301','200','999'].map(id => parent(document,id))
+  })
+  expect(parents).toEqual(['200','300','',''])
+})

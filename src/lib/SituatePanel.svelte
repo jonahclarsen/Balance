@@ -31,7 +31,7 @@
     try { permissions = await invoke<string>('situate_permissions', { action }) } catch(e) { permissions = String(e) }
   }
 </script>
-<section class="situate-panel">
+<section class="situate-panel" data-native-undo>
   <header class="page-header"><div><h2>Situate</h2></div></header>
   {#if $situateError}<p class="error" role="alert">{$situateError}</p>{/if}
   {#if $browsersMissingExtension.length}
@@ -50,6 +50,7 @@
         {@const active = isActive($situate, mode, situatePlatform, $situateNow)}
         <article class:active style:--mode={mode.color}>
           <div class="mode-heading"><h4>{mode.name}</h4><span class="status">{active ? 'On' : 'Off'}</span></div>
+          {#if mode.description}<p class="description">{mode.description}</p>{/if}
           <p class="meta">
             {#each DEVICES.filter(d => mode.platforms.includes(d.id)) as device}<span title={device.label}><SituateIcon name={device.id} size={14} /><span class="sr-only">{device.label}</span></span>{/each}
           </p>
@@ -102,6 +103,7 @@
   .meta { display:flex; align-items:center; gap:8px; margin:0; color:var(--muted); font-size:13px; }
   .meta > span:first-child, .meta > span { display:inline-flex; align-items:center; gap:4px; }
   .when { margin:0; font-size:13px; }
+  .description { margin:0; font-size:13px; color:var(--muted); }
   .actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:4px; }
   article .actions button { font-size:14px; padding:6px 12px; }
   .sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }

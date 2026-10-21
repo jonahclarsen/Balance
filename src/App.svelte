@@ -4609,6 +4609,9 @@ return rows`
       // history yet, so global undo would jump to an unrelated change.
       // Let the browser undo and redo typing in the form instead.
       if (isGoalDraftFormEditing()) return
+      // Situate rules live outside the planner history, so their text
+      // fields keep the browser's own undo.
+      if (isNativeUndoField()) return
     }
 
     if (key === 'z' && !event.shiftKey) {
@@ -4649,6 +4652,11 @@ return rows`
     // Adding a goal resets the draft, so Cmd+Z right after Enter still
     // undoes the add instead of doing nothing.
     return newGoalDraftTyped
+  }
+
+  function isNativeUndoField() {
+    const active = document.activeElement
+    return (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) && !!active.closest('[data-native-undo]')
   }
 
   function handleGlobalKeyup(event: KeyboardEvent) {

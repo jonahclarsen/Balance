@@ -22,6 +22,7 @@
         "http://*/*"
       ],
       "js": [
+        "discord.js",
         "content.js"
       ],
       "run_at": "document_start",

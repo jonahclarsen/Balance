@@ -40,11 +40,12 @@
   }
 </script>
 <OverlayModal title={draft.name || 'Mode'} ariaLabel={`Edit ${mode.name}`} eyebrow="Mode" onClose={() => { flush(); onClose() }} maxWidth={760}>
-  <div class="editor" style:--mode={draft.color}>
+  <div class="editor" style:--mode={draft.color} data-native-undo>
     <section>
       <h3>Basics</h3>
       <div class="basics">
         <label class="field">Name<input bind:value={draft.name} maxlength="100" /></label>
+        <label class="field description">Description<textarea bind:value={draft.description} maxlength="300" rows="2" placeholder="Shown when it turns on"></textarea></label>
         <div class="field"><span>Color</span><div class="swatches" role="group" aria-label="Color">{#each MODE_COLORS as color}<button type="button" class="swatch" style:--swatch={color} aria-label={color} aria-pressed={draft.color === color} on:click={() => draft.color = color}></button>{/each}</div></div>
         <div class="field"><span>Devices</span><div class="devices" role="group" aria-label="Devices">{#each DEVICES as device}{@const on = draft.platforms.includes(device.id)}<button type="button" aria-pressed={on} disabled={on && draft.platforms.length === 1} title={on && draft.platforms.length === 1 ? 'A mode needs at least one device' : undefined} on:click={() => toggleDevice(device.id)}><SituateIcon name={device.id} />{device.label}</button>{/each}</div></div>
       </div>
@@ -80,7 +81,8 @@
   h3 { margin:0; font-size:15px; display:flex; align-items:center; gap:8px; }
   .count { font-size:12px; font-weight:600; color:var(--muted); background:var(--active-nav); border-radius:999px; padding:1px 8px; }
   .basics { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:12px 20px; align-items:end; }
-  .basics .field:first-child { grid-column:1 / -1; }
+  .basics .field:first-child, .basics .description { grid-column:1 / -1; }
+  textarea { resize:vertical; font:inherit; font-size:14px; color:var(--ink); }
   .field { display:grid; gap:6px; font-size:13px; color:var(--muted); }
   .field input { color:var(--ink); font-size:14px; }
   .swatches { display:flex; gap:6px; flex-wrap:wrap; }

@@ -16,7 +16,7 @@ func balanceSituateUpdate(_ raw: UnsafePointer<CChar>, _ announce: Bool) {
         situateModes = modes
         let active = Set(modes.filter { $0["active"] as? Bool == true }.compactMap { $0["id"] as? String })
         for mode in modes where announce && active.contains(mode["id"] as? String ?? "") && !situatePrevious.contains(mode["id"] as? String ?? "") {
-            let notice: [String: String] = ["situateNotice": "\(mode["name"] as? String ?? "Situate") is on", "mode": mode["id"] as? String ?? ""]
+            let notice: [String: String] = ["situateNotice": "\(mode["name"] as? String ?? "Situate") is on", "situateBody": mode["description"] as? String ?? "", "mode": mode["id"] as? String ?? ""]
             if let data = try? JSONSerialization.data(withJSONObject: notice), let json = String(data: data, encoding: .utf8) { _ = json.withCString { situateNotice($0) } }
         }
         situatePrevious = active

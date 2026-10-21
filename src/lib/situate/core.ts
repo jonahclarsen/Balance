@@ -4,7 +4,7 @@ export type Category = 'social' | 'entertainment' | 'ai' | 'custom'
 export type Question = { id: string; text: string; required: boolean | null; when?: { id: string; answer: boolean } }
 export type Target = { id: string; category: Category; kind: 'domain' | 'app' | 'discord'; value: string }
 export type Mode = {
-  id: string; name: string; color: string; platforms: Platform[]; scheduled: boolean
+  id: string; name: string; description: string; color: string; platforms: Platform[]; scheduled: boolean
   dayQuiz: Question[]; nightQuiz: Question[]; accessQuiz: Question[]; targets: Target[]
 }
 export type Settings = {
@@ -36,7 +36,7 @@ export const CATEGORIES: { id: Category; label: string; color: string }[] = [
   { id: 'custom', label: 'Other', color: '#5f7d8c' },
 ]
 const target = (category: Category, kind: Target['kind'], value: string): Target => ({ id: `${kind}:${value}`, category, kind, value })
-const PRESETS = 5
+const PRESETS = 6
 // Google Messages, WhatsApp, Messenger, Instagram, the Feurstagram clone and Signal on Android and Mac.
 const messagingApps = ['com.google.android.apps.messaging', 'com.whatsapp', 'net.whatsapp.WhatsApp', 'com.facebook.orca', 'com.facebook.archon', 'com.facebook.archon.developerID', 'com.burbn.instagram', 'com.instagram.android.feurstagram', 'org.thoughtcrime.securesms', 'org.whispersystems.signal-desktop']
   .map(v => target('social', 'app', v))
@@ -55,9 +55,9 @@ export function defaults(now = Date.now()): Document {
     version: 1, revision: 0, presets: PRESETS, generatedAt: now, manual: {}, grants: [], epochs: [],
     settings: { wakeMinutes: 420, eveningMinutes: 1290, sunsetOffset: 240, lateOffset: 480, lateMinutes: 150, nightMinutes: 60, lateNightMinutes: 30, accessMinutes: 15 },
     modes: [
-      { id: 'dolo', name: 'Dolo', color: PRESET_COLORS.dolo, platforms: ['mac', 'android'], scheduled: true, dayQuiz: thrust, nightQuiz: thrust, accessQuiz: entertainment, targets: targets.filter(t => t.category !== 'ai') },
-      { id: 'touch-grass', name: 'Touch grass', color: PRESET_COLORS['touch-grass'], platforms: ['mac', 'android'], scheduled: true, dayQuiz: [q('planned', 'Have you planned tomorrow?')], nightQuiz: [q('peed', 'Have you just peed?'), q('bed', 'Have you spent one minute in bed with the lights off and Herdr muted?')], accessQuiz: entertainment, targets: targets.filter(t => t.category !== 'social') },
-      { id: 'discord', name: 'Discord', color: PRESET_COLORS.discord, platforms: ['android'], scheduled: false, dayQuiz: [q('intentional', 'Do you have a specific reason to open Discord now?')], nightQuiz: [q('intentional', 'Do you have a specific reason to open Discord now?')], accessQuiz: [], targets: [target('custom', 'app', 'com.discord'), target('custom', 'domain', 'discord.com')] },
+      { id: 'dolo', name: 'Dolo', description: 'Social and messaging apps, plus entertainment.', color: PRESET_COLORS.dolo, platforms: ['mac', 'android'], scheduled: true, dayQuiz: thrust, nightQuiz: thrust, accessQuiz: entertainment, targets: targets.filter(t => t.category !== 'ai') },
+      { id: 'touch-grass', name: 'Touch grass', description: 'AI chats and entertainment.', color: PRESET_COLORS['touch-grass'], platforms: ['mac', 'android'], scheduled: true, dayQuiz: [q('planned', 'Have you planned tomorrow?')], nightQuiz: [q('peed', 'Have you just peed?'), q('bed', 'Have you spent one minute in bed with the lights off and Herdr muted?')], accessQuiz: entertainment, targets: targets.filter(t => t.category !== 'social') },
+      { id: 'discord', name: 'Discord', description: 'Discord on your phone.', color: PRESET_COLORS.discord, platforms: ['android'], scheduled: false, dayQuiz: [q('intentional', 'Do you have a specific reason to open Discord now?')], nightQuiz: [q('intentional', 'Do you have a specific reason to open Discord now?')], accessQuiz: [], targets: [target('custom', 'app', 'com.discord'), target('custom', 'domain', 'discord.com')] },
     ],
   }
   return regenerate(doc, now)
@@ -68,13 +68,13 @@ export function upgradePresets(doc: Document): Document {
   if (version >= PRESETS) return doc
   // v2 added messaging apps to Dolo and v3 mode colors. v3 briefly dropped entertainment
   // access, which v4 restores, and the global switch gave way to per-mode control. v5 takes
-  // the sunset location from the time zone instead of entered coordinates.
+  // the sunset location from the time zone instead of entered coordinates; v6 adds descriptions.
   const preset = defaults(doc.generatedAt).modes
   const modes = doc.modes.map((m: Partial<Mode> & Mode & Legacy, i) => {
     const { categories: _categories, ...mode } = m
     const targets = version < 2 && m.id === 'dolo' ? [...m.targets, ...messagingApps.filter(t => !m.targets.some(x => x.id === t.id))] : m.targets
     const fallback = preset.find(p => p.id === m.id)
-    return { ...mode, color: m.color ?? PRESET_COLORS[m.id] ?? MODE_COLORS[i % MODE_COLORS.length], accessQuiz: m.accessQuiz ?? fallback?.accessQuiz ?? [], targets }
+    return { ...mode, color: m.color ?? PRESET_COLORS[m.id] ?? MODE_COLORS[i % MODE_COLORS.length], accessQuiz: m.accessQuiz ?? fallback?.accessQuiz ?? [], description: m.description ?? fallback?.description ?? '', targets }
   })
   const { enabled: _enabled, ...rest } = doc as Document & Legacy
   const { latitude: _latitude, longitude: _longitude, ...kept } = doc.settings as Settings & Legacy
@@ -222,6 +222,7 @@ export function validate(doc: Document): void {
     if (!/^[a-z0-9-]{1,64}$/.test(m.id) || ids.has(m.id) || !m.name.trim() || m.name.length > 100) throw new Error('Modes need unique IDs and a name')
     ids.add(m.id)
     if (!/^#[0-9a-f]{6}$/i.test(m.color)) throw new Error('Choose a mode color')
+    if (typeof m.description !== 'string' || m.description.length > 300) throw new Error('Keep descriptions under 300 characters')
     if (!m.platforms.length || m.platforms.some(p => !['mac', 'android', 'windows'].includes(p))) throw new Error('Choose at least one device')
     for (const quiz of [m.dayQuiz, m.nightQuiz, m.accessQuiz]) {
       const seen = new Set<string>()

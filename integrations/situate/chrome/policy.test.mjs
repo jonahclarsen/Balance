@@ -15,6 +15,11 @@ test('a chosen Discord channel blocks only its threads',()=>{
  const d=fixture();d.modes[0].targets=d.modes[0].allTargets=[{id:'frank',kind:'discord',value:'456',category:'ai'}]
  assert.deepEqual(blockedBy(d,'https://discord.com/channels/123/456/threads/789'),[{mode:'dolo',name:'Dolo',target:''}])
  for(const url of ['https://discord.com/channels/123/456','https://discord.com/channels/123/456/789','https://discord.com/channels/123/999/threads/789','https://discord.com.evil.test/channels/123/456/threads/789']) assert.deepEqual(blockedBy(d,url),[])
+ const parent='111111111111111111'
+ d.modes[0].targets.push({id:'main',kind:'discord',value:parent,category:'ai'})
+ assert.equal(blockedBy(d,'https://discord.com/channels/123/222222222222222222',parent).length,1)
+ assert.deepEqual(blockedBy(d,`https://discord.com/channels/123/${parent}`,parent),[])
+ assert.deepEqual(blockedBy(d,'https://discord.com/channels/123/222222222222222222','333333333333333333'),[])
  d.refreshAt=1;assert.equal(blockedBy(d,'https://discord.com/channels/123/456/threads/789').length,1)
 })
 
