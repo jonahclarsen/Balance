@@ -7,7 +7,8 @@ not turn it off on another. Planner data is never shared with integrations.
 
 ## Defaults
 
-- **Dolo:** social apps and entertainment. Resets at 7 a.m. and evening. Its
+- **Dolo:** social apps, messaging (Google Messages, WhatsApp, Messenger, Instagram,
+  Feurstagram, Signal), and entertainment. Resets at 7 a.m. and evening. Its
   off quiz asks whether you got up and thrust your chosen object in and out of
   your bag.
 - **Touch grass:** AI chats and entertainment. A daytime pass requires planning
@@ -36,6 +37,7 @@ it running in the background. App activation monitoring hides blocked apps; it
 does not kill processes or discard work. Quitting Balance stops native app
 monitoring. Add Balance to macOS Login Items if it should start after login.
 Activation notices use macOS notification permission and obey system Focus settings.
+They announce scheduled changes and expired passes, not modes you switch by hand.
 
 1. Download the `situate-chrome` artifact from the Situate workflow, or use
    `integrations/situate/chrome` in this repository.

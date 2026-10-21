@@ -39,7 +39,8 @@ object BalanceSituate {
             (0 until targets.length()).any { val t=targets.getJSONObject(it); t.optString("kind")=="app" && t.optString("value")==packageName }
         }
     }
-    @Synchronized fun refresh(context: Context) {
+    // Saves pass announce=false: a mode switched by hand doesn't need a notice.
+    @Synchronized fun refresh(context: Context, announce: Boolean = true) {
         val status = status(context)
         val modes = status.optJSONArray("modes") ?: JSONArray()
         val prefs = context.getSharedPreferences("situate-runtime", Context.MODE_PRIVATE)
@@ -51,7 +52,7 @@ object BalanceSituate {
             val mode = modes.getJSONObject(i)
             if (!mode.optBoolean("active")) continue
             val id = mode.getString("id"); active.add(id)
-            if (!previous.contains(id)) {
+            if (announce && !previous.contains(id)) {
                 val intent = Intent(context, MainActivity::class.java).setData(Uri.parse("balance://situate?mode=" + Uri.encode(id))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                 val pending = PendingIntent.getActivity(context, id.hashCode(), intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
                 try { manager.notify(id.hashCode(), Notification.Builder(context,"situate").setSmallIcon(android.R.drawable.ic_lock_idle_lock).setContentTitle(mode.getString("name") + " is on").setContentText("Tap to open Situate.").setContentIntent(pending).setAutoCancel(true).build()) } catch (_: SecurityException) { }
@@ -71,7 +72,7 @@ object BalanceSituate {
             "refresh" -> {
                 val document = JSONObject(query).getJSONObject("document")
                 val file = rules(context); val tmp = File(file.parentFile,"situate-rules.tmp")
-                tmp.writeText(document.toString()); check(tmp.renameTo(file)); executor.execute { refresh(context) }; return "{}"
+                tmp.writeText(document.toString()); check(tmp.renameTo(file)); executor.execute { refresh(context, false) }; return "{}"
             }
             "permissions" -> {
                 val intent = when(query) {

@@ -17,6 +17,8 @@ export type Grant = { mode: string; target: string; epoch: number; until: number
 export type Document = {
   version: 1; revision: number; settings: Settings; modes: Mode[]; epochs: Epoch[]
   enabled: boolean; manual: Record<string, number>; grants: Grant[]; generatedAt: number
+  /** Preset revision, so new default targets reach existing rules once. */
+  presets?: number
 }
 export type Answers = Record<string, boolean>
 const minute = 60_000
@@ -25,10 +27,15 @@ const entertainment: Question[] = [q('visual', 'Is this visual entertainment?', 
   ...q('care', 'Are you eating a meal, doing the dishes, taking a bath, or brushing your teeth?'), when: { id: 'visual', answer: true },
 }]
 const target = (category: Category, kind: Target['kind'], value: string): Target => ({ id: `${kind}:${value}`, category, kind, value })
+const PRESETS = 2
+// Google Messages, WhatsApp, Messenger, Instagram, the Feurstagram clone and Signal on Android and Mac.
+const messagingApps = ['com.google.android.apps.messaging', 'com.whatsapp', 'net.whatsapp.WhatsApp', 'com.facebook.orca', 'com.facebook.archon', 'com.facebook.archon.developerID', 'com.burbn.instagram', 'com.instagram.android.feurstagram', 'org.thoughtcrime.securesms', 'org.whispersystems.signal-desktop']
+  .map(v => target('social', 'app', v))
 export function defaults(now = Date.now()): Document {
   const targets: Target[] = [
     ...['instagram.com', 'facebook.com', 'tiktok.com', 'reddit.com', 'x.com', 'twitter.com', 'threads.net', 'bsky.app', 'snapchat.com'].map(v => target('social', 'domain', v)),
     ...['com.instagram.android', 'com.facebook.katana', 'com.zhiliaoapp.musically', 'com.reddit.frontpage', 'com.twitter.android', 'com.snapchat.android', 'xyz.blueskyweb.app'].map(v => target('social', 'app', v)),
+    ...messagingApps,
     ...['youtube.com', 'youtu.be', 'netflix.com', 'twitch.tv', 'disneyplus.com'].map(v => target('entertainment', 'domain', v)),
     ...['org.videolan.vlc', 'com.google.android.youtube', 'com.netflix.mediaclient'].map(v => target('entertainment', 'app', v)),
     ...['chatgpt.com', 'chat.openai.com', 'claude.ai', 'gemini.google.com', 'perplexity.ai', 'copilot.microsoft.com', 'grok.com'].map(v => target('ai', 'domain', v)),
@@ -36,7 +43,7 @@ export function defaults(now = Date.now()): Document {
   ]
   const thrust = [q('thrust', 'Did you do one thrust? Get up and thrust your chosen object in and out of your bag.')]
   const doc: Document = {
-    version: 1, revision: 0, enabled: false, generatedAt: now, manual: {}, grants: [], epochs: [],
+    version: 1, revision: 0, presets: PRESETS, enabled: false, generatedAt: now, manual: {}, grants: [], epochs: [],
     settings: { wakeMinutes: 420, eveningMinutes: 1290, sunsetOffset: 240, lateOffset: 480, lateMinutes: 150, latitude: null, longitude: null, nightMinutes: 60, lateNightMinutes: 30, accessMinutes: 15 },
     modes: [
       { id: 'dolo', name: 'Dolo', platforms: ['mac', 'android'], categories: ['social', 'entertainment'], scheduled: true, dayQuiz: thrust, nightQuiz: thrust, accessQuiz: entertainment, targets: targets.filter(t => t.category !== 'ai') },
@@ -45,6 +52,11 @@ export function defaults(now = Date.now()): Document {
     ],
   }
   return regenerate(doc, now)
+}
+export function upgradePresets(doc: Document): Document {
+  if ((doc.presets ?? 1) >= PRESETS) return doc
+  const modes = doc.modes.map(m => m.id !== 'dolo' ? m : { ...m, targets: [...m.targets, ...messagingApps.filter(t => !m.targets.some(x => x.id === t.id))] })
+  return { ...doc, presets: PRESETS, modes }
 }
 // NOAA solar geometry. Calculate locally; coordinates never leave this device.
 export function sunset(date: Date, latitude: number, longitude: number): number | null {

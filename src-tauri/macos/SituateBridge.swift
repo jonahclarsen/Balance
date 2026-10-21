@@ -8,14 +8,14 @@ private var situateShowing = false
 @_silgen_name("balance_replace_task_notifications") private func situateNotice(_ raw: UnsafePointer<CChar>) -> Int32
 
 @_cdecl("balance_situate_update")
-func balanceSituateUpdate(_ raw: UnsafePointer<CChar>) {
+func balanceSituateUpdate(_ raw: UnsafePointer<CChar>, _ announce: Bool) {
     let data = Data(String(cString: raw).utf8)
     guard let status = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
           let modes = status["modes"] as? [[String: Any]] else { return }
     DispatchQueue.main.async {
         situateModes = modes
         let active = Set(modes.filter { $0["active"] as? Bool == true }.compactMap { $0["id"] as? String })
-        for mode in modes where active.contains(mode["id"] as? String ?? "") && !situatePrevious.contains(mode["id"] as? String ?? "") {
+        for mode in modes where announce && active.contains(mode["id"] as? String ?? "") && !situatePrevious.contains(mode["id"] as? String ?? "") {
             let notice: [String: String] = ["situateNotice": "\(mode["name"] as? String ?? "Situate") is on", "mode": mode["id"] as? String ?? ""]
             if let data = try? JSONSerialization.data(withJSONObject: notice), let json = String(data: data, encoding: .utf8) { _ = json.withCString { situateNotice($0) } }
         }

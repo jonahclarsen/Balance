@@ -1,7 +1,7 @@
 import { writable, get } from 'svelte/store'
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-import { defaults, regenerate, validate, enableMode, grant, type Document, type Answers, type Platform } from './core'
+import { defaults, regenerate, upgradePresets, validate, enableMode, grant, type Document, type Answers, type Platform } from './core'
 export const situate = writable<Document>(defaults())
 export const situateError = writable('')
 export const situateReady = writable(false)
@@ -27,7 +27,7 @@ export async function startSituate(): Promise<() => void> {
     const saved = isTauri() ? await invoke<Document | null>('situate_load') : JSON.parse(localStorage.getItem('balance-situate-v1') ?? 'null')
     if (saved) { validate(saved); situate.set(saved) }
     situateReady.set(true)
-    await mutateSituate(current => regenerate(current))
+    await mutateSituate(current => regenerate(upgradePresets(current)))
   } catch (error) { situateError.set(String(error)); return () => {} }
   const stopListening = isTauri() ? await listen<number>('situate-rules-changed', ({ payload }) => {
     void queue.then(async () => {

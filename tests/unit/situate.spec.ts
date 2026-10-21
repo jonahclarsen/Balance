@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { defaults, regenerate, epoch, enableMode, grant, isActive, questions, quizProgress, validate, matches, sunset } from '../../src/lib/situate/core'
+import { defaults, regenerate, epoch, enableMode, grant, isActive, questions, quizProgress, validate, matches, sunset, upgradePresets } from '../../src/lib/situate/core'
 const date = (day:number,hour:number,minute=0) => new Date(2026,9,17+day,hour,minute).getTime()
 const fixture = (now=date(0,12)) => ({ ...defaults(now), enabled:true })
 test('default modes, reset clocks and device scope', () => {
@@ -109,4 +109,14 @@ test('DST wake resets use local clock dates rather than fixed 24-hour intervals'
     expect(new Date(springNight.end).getHours()).toBe(7)
     expect(springNight.end-springNight.at).toBe(8.5*3600000)
   } finally { if(previous===undefined) delete process.env.TZ;else process.env.TZ=previous }
+})
+test('messaging presets reach existing Dolo rules once', () => {
+  const d=fixture();const dolo=d.modes[0]
+  const old={ ...d, presets:undefined, modes:[{ ...dolo, targets:dolo.targets.filter(t=>t.value!=='com.whatsapp'&&t.value!=='org.thoughtcrime.securesms') }, ...d.modes.slice(1)] }
+  const upgraded=upgradePresets(old)
+  expect(upgraded.modes[0].targets.filter(t=>t.value==='com.whatsapp')).toHaveLength(1)
+  expect(upgraded.modes[0].targets).toHaveLength(dolo.targets.length)
+  expect(upgraded.modes[1].targets.some(t=>t.value==='com.whatsapp')).toBe(false)
+  const pruned={ ...upgraded, modes:[{ ...upgraded.modes[0], targets:upgraded.modes[0].targets.filter(t=>t.value!=='com.whatsapp') }, ...upgraded.modes.slice(1)] }
+  expect(upgradePresets(pruned)).toBe(pruned)
 })

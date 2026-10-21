@@ -205,15 +205,25 @@ pub(crate) fn open_widget(app: &tauri::AppHandle, raw: &str) -> bool {
             let _ = window.set_focus();
         } else {
             let query: String = url.query().unwrap_or("").into();
-            let _ = tauri::WebviewWindowBuilder::new(
+            let builder = tauri::WebviewWindowBuilder::new(
                 app,
                 "situate",
                 tauri::WebviewUrl::App(format!("situate.html?{query}").into()),
             )
             .title("Situate")
             .inner_size(440.0, 540.0)
-            .min_inner_size(320.0, 400.0)
-            .build();
+            .min_inner_size(320.0, 400.0);
+            // The page draws its own close button, so keep only the native frame.
+            #[cfg(target_os = "macos")]
+            let builder = builder
+                .title_bar_style(tauri::TitleBarStyle::Overlay)
+                .hidden_title(true);
+            #[cfg(target_os = "macos")]
+            if let Ok(window) = builder.build() {
+                let _ = window.clone().run_on_main_thread(move || hide_window_buttons(&window));
+            }
+            #[cfg(not(target_os = "macos"))]
+            let _ = builder.decorations(false).build();
         }
         return true;
     }
@@ -232,12 +242,17 @@ pub(crate) fn start(app: tauri::AppHandle) {
     #[cfg(not(target_os = "android"))]
     std::thread::spawn(move || {
         let mut last = Value::Null;
+        #[cfg(target_os = "macos")]
+        let mut revision = None;
         loop {
             let current = (|| {
                 let _guard = LOCK.lock().ok()?;
                 read(&path).ok().flatten()
             })();
             if let Some(doc) = current {
+                #[cfg(target_os = "macos")]
+                // Saves bump the revision; only schedule and pass changes announce a mode.
+                let saved = revision.replace(doc["revision"].clone()).as_ref() != Some(&doc["revision"]);
                 let current = status(
                     &doc,
                     if cfg!(target_os = "macos") {
@@ -256,7 +271,7 @@ pub(crate) fn start(app: tauri::AppHandle) {
                     }
                     #[cfg(target_os = "macos")]
                     {
-                        publish_mac(&current);
+                        publish_mac(&current, !saved);
                         if crate::macos_widget::published_snapshot_is_current() {
                             if let Ok(_guard) = crate::database_access_guard() {
                                 let _ = crate::with_database(&app, |connection| {
@@ -305,13 +320,30 @@ pub(crate) fn active() -> bool {
         .is_some_and(|d| d["enabled"] == true)
 }
 #[cfg(target_os = "macos")]
-fn publish_mac(value: &Value) {
+fn hide_window_buttons(window: &tauri::WebviewWindow) {
+    use objc2_app_kit::{NSWindow, NSWindowButton};
+    let Ok(ns_window) = window.ns_window() else {
+        return;
+    };
+    let ns_window = unsafe { &*ns_window.cast::<NSWindow>() };
+    for kind in [
+        NSWindowButton::CloseButton,
+        NSWindowButton::MiniaturizeButton,
+        NSWindowButton::ZoomButton,
+    ] {
+        if let Some(button) = ns_window.standardWindowButton(kind) {
+            button.setHidden(true);
+        }
+    }
+}
+#[cfg(target_os = "macos")]
+fn publish_mac(value: &Value, announce: bool) {
     extern "C" {
-        fn balance_situate_update(raw: *const std::ffi::c_char);
+        fn balance_situate_update(raw: *const std::ffi::c_char, announce: bool);
     }
     if let Ok(raw) = std::ffi::CString::new(value.to_string()) {
         unsafe {
-            balance_situate_update(raw.as_ptr());
+            balance_situate_update(raw.as_ptr(), announce);
         }
     }
 }
