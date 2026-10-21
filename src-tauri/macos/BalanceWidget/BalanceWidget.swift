@@ -85,9 +85,32 @@ private struct SituateMode: Codable, Identifiable {
     let color: String?
     let active: Bool
 
-    var tint: Color? {
-        guard let color, color.count == 7, let value = UInt32(color.dropFirst(), radix: 16) else { return nil }
-        return Color(red: Double(value >> 16 & 255) / 255, green: Double(value >> 8 & 255) / 255, blue: Double(value & 255) / 255)
+    var tint: Color? { Color(hex: color) }
+}
+
+private let projectDateFormatter = ISO8601DateFormatter()
+private let fractionalProjectDateFormatter: ISO8601DateFormatter = {
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    return formatter
+}()
+
+private struct ActiveProject: Codable, Identifiable {
+    let id: String
+    let name: String
+    let color: String?
+    let activeUntil: String?
+
+    var tint: Color? { Color(hex: color) }
+
+    var expiresAt: Date? {
+        guard let activeUntil else { return nil }
+        return projectDateFormatter.date(from: activeUntil)
+            ?? fractionalProjectDateFormatter.date(from: activeUntil)
+    }
+
+    var url: URL {
+        URL(string: "balance://projects/\(id)") ?? URL(string: "balance://projects")!
     }
 }
 
@@ -104,6 +127,7 @@ private struct BalanceSnapshot: Codable {
     let itemTimes: [String]?
     let themeId: String?
     var situateModes: [SituateMode]? = nil
+    var activeProjects: [ActiveProject]? = nil
 
     static let placeholder = BalanceSnapshot(
         date: Self.today,
@@ -118,6 +142,16 @@ private struct BalanceSnapshot: Codable {
         itemTimes: ["8:30am–9am", "", "2pm–2:30pm"],
         themeId: "violet"
     )
+
+    /// Projects stop being active at `activeUntil`, which can pass between
+    /// snapshot publications, so every render re-checks it.
+    func projects(activeAt date: Date) -> [ActiveProject] {
+        (activeProjects ?? []).filter { $0.expiresAt.map { $0 > date } ?? false }
+    }
+
+    func nextProjectExpiry(after date: Date) -> Date? {
+        projects(activeAt: date).compactMap(\.expiresAt).min()
+    }
 
     static var today: String {
         let calendar = Calendar.autoupdatingCurrent
@@ -189,13 +223,20 @@ private struct BalanceProvider: TimelineProvider {
             matching: DateComponents(hour: dayRolloverHour, minute: 0),
             matchingPolicy: .nextTime
         ) ?? regularRefresh
-        let visibleUntil = BalanceSnapshot.visibleUntil
-        let expirationRefresh = visibleUntil.flatMap { $0 > now ? $0 : nil } ?? regularRefresh
-        let refresh = min(min(regularRefresh, dayBoundary), expirationRefresh)
+        let hideAt = BalanceSnapshot.visibleUntil.flatMap { $0 > now ? $0 : nil }
         let snapshot = BalanceSnapshot.load(at: now)
+        let projectExpiry = snapshot?.nextProjectExpiry(after: now)
+        let refresh = [regularRefresh, dayBoundary, hideAt, projectExpiry]
+            .compactMap { $0 }
+            .min() ?? regularRefresh
         var entries = [BalanceEntry(date: now, snapshot: snapshot)]
-        if snapshot != nil, let visibleUntil, visibleUntil > now {
-            entries.append(BalanceEntry(date: visibleUntil, snapshot: nil))
+        // An entry at the expiry drops the project on time even if WidgetKit
+        // defers the reload requested by the refresh policy.
+        if let snapshot, let projectExpiry, hideAt.map({ projectExpiry < $0 }) ?? true {
+            entries.append(BalanceEntry(date: projectExpiry, snapshot: snapshot))
+        }
+        if snapshot != nil, let hideAt {
+            entries.append(BalanceEntry(date: hideAt, snapshot: nil))
         }
         completion(Timeline(
             entries: entries,
@@ -225,6 +266,14 @@ private struct BalanceWidgetView: View {
         family == .systemLarge ? 6 : 4
     }
 
+    private var projectLimit: Int {
+        switch family {
+        case .systemSmall: return 1
+        case .systemMedium: return 2
+        default: return 3
+        }
+    }
+
     private var palette: WidgetPalette {
         WidgetPalette.resolve(themeId: entry.snapshot?.themeId, colorScheme: colorScheme)
     }
@@ -252,7 +301,7 @@ private struct BalanceWidgetView: View {
         if snapshot.unavailable {
             emptyView(title: "Today", message: "Open Balance to refresh your plan.")
         } else if !snapshot.hasPlan {
-            emptyView(title: "Today", message: "No plan yet. Open Balance to make one.")
+            emptyView(title: "Today", message: "No plan yet. Open Balance to make one.", snapshot: snapshot)
         } else {
             GeometryReader { geometry in
                 ViewThatFits(in: .vertical) {
@@ -300,6 +349,8 @@ private struct BalanceWidgetView: View {
                     )
                     .accessibilityLabel("\(snapshot.done) of \(snapshot.total) tasks complete")
             }
+
+            activeProjectRows(snapshot)
 
             if let modes = snapshot.situateModes, !modes.isEmpty {
                 HStack(spacing: 5) {
@@ -399,6 +450,34 @@ private struct BalanceWidgetView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    @ViewBuilder
+    private func activeProjectRows(_ snapshot: BalanceSnapshot) -> some View {
+        let projects = Array(snapshot.projects(activeAt: entry.date).prefix(projectLimit))
+        if !projects.isEmpty {
+            VStack(alignment: .leading, spacing: 3) {
+                ForEach(projects) { project in
+                    Link(destination: project.url) {
+                        HStack(alignment: .center, spacing: 6) {
+                            Circle()
+                                .fill(project.tint ?? palette.accent)
+                                .frame(width: 7, height: 7)
+                            Text(project.name)
+                                .font(.caption.weight(.medium))
+                                .fontDesign(.rounded)
+                                .foregroundStyle(palette.ink)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                    }
+                    .accessibilityLabel("\(project.name), active project")
+                    .privacySensitive()
+                }
+            }
+        }
+    }
+
     private func progress(_ snapshot: BalanceSnapshot) -> CGFloat {
         guard snapshot.total > 0 else { return 0 }
         return CGFloat(min(max(snapshot.done, 0), snapshot.total)) / CGFloat(snapshot.total)
@@ -442,9 +521,12 @@ private struct BalanceWidgetView: View {
             .accessibilityAddTraits(.isHeader)
     }
 
-    private func emptyView(title: String, message: String) -> some View {
+    private func emptyView(title: String, message: String, snapshot: BalanceSnapshot? = nil) -> some View {
         VStack(alignment: .leading, spacing: 9) {
             brand
+            if let snapshot {
+                activeProjectRows(snapshot)
+            }
             HStack {
                 Text(title)
                     .font(.headline)
@@ -684,6 +766,12 @@ private struct WidgetPalette {
 }
 
 private extension Color {
+    init?(hex: String?) {
+        guard let hex, hex.count == 7, hex.hasPrefix("#"),
+              let value = UInt32(hex.dropFirst(), radix: 16) else { return nil }
+        self.init(rgb: value)
+    }
+
     init(rgb: UInt32) {
         self.init(
             red: Double((rgb >> 16) & 0xff) / 255,

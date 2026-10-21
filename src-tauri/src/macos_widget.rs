@@ -1,10 +1,10 @@
-use chrono::{Local, Timelike};
+use chrono::{Local, Timelike, Utc};
 use rusqlite::Connection;
 use std::ffi::CString;
 use std::sync::Mutex;
 
 use crate::widget::{
-    snapshot_from_plan, theme_id_from_device_appearance, theme_id_from_preferences,
+    active_projects, snapshot_from_plan, theme_id_from_device_appearance, theme_id_from_preferences,
 };
 
 const SNAPSHOT_EXIT_GRACE_PERIOD_SECONDS: f64 = 15.0 * 60.0;
@@ -69,6 +69,10 @@ pub(crate) fn publish_snapshot(connection: &Connection) -> Result<(), String> {
     };
     let mut snapshot = snapshot_from_plan(&date, plan.as_ref(), &theme_id);
     snapshot.situate_modes = crate::situate::widget_modes();
+    snapshot.active_projects = active_projects(
+        &super::read_entity_collection(connection, "projects")?,
+        Utc::now(),
+    );
     let json = serde_json::to_string(&snapshot).map_err(|error| error.to_string())?;
     let json = CString::new(json).map_err(|error| error.to_string())?;
 

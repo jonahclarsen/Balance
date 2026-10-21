@@ -32,9 +32,9 @@ async function seed(page: Page) {
   await storeCall(page, `
     plannerStore.addProject('Synthetic alpha')
     const archived = plannerStore.addProject('Synthetic archived')
-    plannerStore.updateProject(archived, { archived: true })
+    plannerStore.setProjectStatus(archived, 'archived')
     const finished = plannerStore.addProject('Synthetic finished')
-    plannerStore.checkInProject(finished, 100, 50)
+    plannerStore.setProjectStatus(finished, 'completed')
     plannerStore.addProject('Synthetic beta')
     plannerStore.addGoal('Synthetic monthly goal', 30, [], 120)
     plannerStore.addGoal('Synthetic daily goal', 1, [], 200)

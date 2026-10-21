@@ -73,7 +73,13 @@ The serialized snapshot currently contains:
 - `items`: up to ten incomplete, non-empty tasks in preorder;
 - `itemDepths`: an index-aligned depth for each item;
 - `itemTimes`: an index-aligned visible time-range label for each item;
-- `themeId`: the active replicated color preset, with `violet` as the fallback.
+- `themeId`: the active replicated color preset, with `violet` as the fallback;
+- `activeProjects`: up to three `{ id, name, color, activeUntil }` projects in
+  stored order that are unarchived, uncompleted, and active until a future
+  instant. `activeUntil` is normalized to `YYYY-MM-DDTHH:MM:SSZ` because both
+  widgets re-filter at render time (macOS adds a timeline entry and refresh at
+  the earliest expiry; Android sets an inexact redraw alarm). Ids are limited
+  to the app's `balance://projects/<id>` grammar.
 
 Keep `items`, `itemDepths`, and `itemTimes` exactly aligned after filtering and
 truncation. Progress counts cover every non-empty task, including completed

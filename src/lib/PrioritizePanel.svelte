@@ -12,11 +12,10 @@
     readOpenSession,
     writeOpenSession,
   } from './prioritize'
-  import type { Goal, GoalCompletion, Id, PriorityItem, PrioritySession, Project, ProjectCheckIn } from './types'
+  import type { Goal, GoalCompletion, Id, PriorityItem, PrioritySession, Project } from './types'
 
   export let sessions: PrioritySession[] = []
   export let projects: Project[] = []
-  export let checkIns: ProjectCheckIn[] = []
   export let goals: Goal[] = []
   export let goalCompletions: GoalCompletion[] = []
   export let currentDay: string
@@ -87,7 +86,7 @@
   }
 
   function start() {
-    const id = plannerStore.startPrioritySession(defaultPrioritySeeds(projects, checkIns, goals, goalCompletions, currentDay))
+    const id = plannerStore.startPrioritySession(defaultPrioritySeeds(projects, goals, goalCompletions, currentDay))
     void openSession(id)
   }
 

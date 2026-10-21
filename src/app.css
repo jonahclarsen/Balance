@@ -7190,6 +7190,10 @@ textarea.note-title {
     padding-left: 128px;
   }
 
+  .app-shell.macos-titlebar-overlay .sidebar > .sidebar-active-projects:first-child {
+    padding-left: 128px;
+  }
+
   body {
     padding-top: 0;
     overflow-x: hidden;
@@ -7357,6 +7361,11 @@ textarea.note-title {
     height: auto;
     min-height: 48px;
     margin-bottom: 0;
+    padding-left: 44px;
+  }
+
+  /* Clear the drawer's close button when the previews come first. */
+  .sidebar > .sidebar-active-projects:first-child {
     padding-left: 44px;
   }
 
@@ -7627,3 +7636,41 @@ textarea.note-title {
 }
 
 .navigation-link-status { position: fixed; z-index: 1000; bottom: 20px; left: 50%; transform: translateX(-50%); margin: 0; padding: 10px 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink); }
+
+.sidebar-active-projects {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sidebar-active-projects button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 32px;
+  padding: 5px 10px;
+  border: 1px solid color-mix(in srgb, var(--project-color) 45%, var(--line));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--project-color) 12%, var(--paper));
+  color: var(--ink);
+  font-size: 13px;
+  text-align: left;
+}
+
+.sidebar-active-projects .project-dot {
+  flex: 0 0 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--project-color);
+}
+
+.sidebar-active-project-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

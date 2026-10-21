@@ -4,7 +4,7 @@ import { generatedItemMarkers, preservedPlanItems, reconcileUneditedPlanItems } 
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import { noteItemsEqual } from './noteEditor/noteItems'
 import { pickerColorToHex } from './colors'
-import { projectCheckInForDay } from './projects'
+import { listTemplatesForGeneration, projectActiveUntil } from './projects'
 import { spreadPriorityItems } from './prioritize'
 import { get, writable, type Writable } from 'svelte/store'
 import {
@@ -124,6 +124,7 @@ import type {
   ListTemplateItem,
   ListTemplateItemAlternative,
   Metric,
+  ProjectCheckIn,
   MetricEntry,
   MetricQuestion,
   MetricQuestionType,
@@ -1074,7 +1075,7 @@ function createPlannerStore() {
         current.goals,
         current.goalCompletions,
         quizAnswers,
-        current.listTemplates,
+        listTemplatesForGeneration(current.listTemplates, current.projects),
         current.templateListExpansions,
         notifications,
       )
@@ -2032,7 +2033,7 @@ function createPlannerStore() {
     moveProject(sourceId: Id, targetId: Id, placement: 'before' | 'after') {
       if (sourceId === targetId) return
       commitEntities('move_project', { sourceId, targetId, placement }, (state) => {
-        if (![sourceId, targetId].every((id) => state.projects.some((project) => project.id === id && !project.archived))) return state
+        if (![sourceId, targetId].every((id) => state.projects.some((project) => project.id === id))) return state
         const projects = moveById(state.projects, sourceId, targetId, placement)
         return projects === state.projects ? state : { ...state, projects }
       })
@@ -2046,7 +2047,7 @@ function createPlannerStore() {
       return project.id
     },
 
-    updateProject(projectId: Id, patch: Partial<Pick<import('./types').Project, 'name' | 'nameHtml' | 'description' | 'archived'>>) {
+    updateProject(projectId: Id, patch: Partial<Pick<import('./types').Project, 'name' | 'nameHtml' | 'description'>>) {
       if (patch.name !== undefined && !patch.name.trim()) return
       commitEntities('update_project', { projectId }, (state) => ({
         ...state,
@@ -2054,45 +2055,62 @@ function createPlannerStore() {
       }))
     },
 
+    // Completing or archiving ends an active stretch; reopening clears both.
+    setProjectStatus(projectId: Id, status: 'open' | 'completed' | 'archived') {
+      const timestamp = nowISO()
+      commitEntities('set_project_status', { projectId, status }, (state) => ({
+        ...state,
+        projects: state.projects.map((project) => {
+          if (project.id !== projectId) return project
+          const { activeUntil: _activeUntil, completedAt: _completedAt, archivedAt: _archivedAt, ...rest } = project
+          return {
+            ...rest,
+            archived: status === 'archived',
+            ...(status === 'completed' ? { completedAt: timestamp } : {}),
+            ...(status === 'archived' ? { archivedAt: timestamp } : {}),
+            updatedAt: timestamp,
+          }
+        }),
+      }))
+    },
+
+    // Zero days ends the active stretch now.
+    setProjectActiveDays(projectId: Id, days: number) {
+      const activeUntil = days > 0 ? projectActiveUntil(days) : null
+      commitEntities('set_project_active', { projectId, days }, (state) => ({
+        ...state,
+        projects: state.projects.map((project) => {
+          if (project.id !== projectId || project.archived || project.completedAt) return project
+          const { activeUntil: _activeUntil, ...rest } = project
+          return { ...rest, ...(activeUntil ? { activeUntil } : {}), updatedAt: nowISO() }
+        }),
+      }))
+    },
+
     permanentlyDeleteArchivedProject(projectId: Id) {
       commitEntities('delete_archived_project', { projectId }, (state) => {
         if (!state.projects.some((project) => project.id === projectId && project.archived)) return state
-        return {
-          ...state,
-          projects: state.projects.filter((project) => project.id !== projectId),
-          projectCheckIns: state.projectCheckIns.filter((entry) => entry.projectId !== projectId),
+        return { ...state, projects: state.projects.filter((project) => project.id !== projectId) }
+      })
+    },
+
+    // One-time retirement of the progress tracker: a project whose latest
+    // check-in reached 100% becomes completed, then the check-ins go.
+    retireProjectCheckIns() {
+      if (!get(store).projectCheckIns.length) return
+      commitEntities('retire_project_check_ins', {}, (state) => {
+        if (!state.projectCheckIns.length) return state
+        const latest = new Map<Id, ProjectCheckIn>()
+        for (const entry of state.projectCheckIns) {
+          const current = latest.get(entry.projectId)
+          if (!current || entry.createdAt > current.createdAt || (entry.createdAt === current.createdAt && entry.id > current.id)) latest.set(entry.projectId, entry)
         }
-      })
-    },
-
-    checkInProject(projectId: Id, progress: number, heart: number) {
-      if (![progress, heart].every((value) => Number.isFinite(value) && value >= 0 && value <= 100)) return
-      const entry = { id: createId('project_checkin'), projectId, progress: Math.round(progress), heart: Math.round(heart), createdAt: nowISO() }
-      commitEntities('check_in_project', { projectId }, (state) => {
-        if (!state.projects.some((project) => project.id === projectId && !project.archived)) return state
-        const existing = projectCheckInForDay(state.projectCheckIns, projectId, todayISO(new Date(entry.createdAt)))
-        if (existing?.progress === entry.progress && existing.heart === entry.heart) return state
-        return { ...state, projectCheckIns: existing
-          ? state.projectCheckIns.map((item) => item.id === existing.id ? { ...item, progress: entry.progress, heart: entry.heart } : item)
-          : [...state.projectCheckIns, entry] }
-      })
-    },
-
-    updateProjectCheckIn(checkInId: Id, progress: number, heart: number) {
-      if (![progress, heart].every((value) => Number.isFinite(value) && value >= 0 && value <= 100)) return
-      const ratings = { progress: Math.round(progress), heart: Math.round(heart) }
-      commitEntities('update_project_check_in', { checkInId }, (state) => {
-        const existing = state.projectCheckIns.find((entry) => entry.id === checkInId)
-        if (!existing || (existing.progress === ratings.progress && existing.heart === ratings.heart)) return state
-        return { ...state, projectCheckIns: state.projectCheckIns.map((entry) => entry.id === checkInId ? { ...entry, ...ratings } : entry) }
-      })
-    },
-
-    deleteProjectCheckIn(checkInId: Id) {
-      commitEntities('delete_project_check_in', { checkInId }, (state) => {
-        const projectCheckIns = state.projectCheckIns.filter((entry) => entry.id !== checkInId)
-        return projectCheckIns.length === state.projectCheckIns.length ? state : { ...state, projectCheckIns }
-      })
+        const projects = state.projects.map((project) => {
+          const entry = latest.get(project.id)
+          return entry?.progress === 100 && !project.archived && !project.completedAt ? { ...project, completedAt: entry.createdAt } : project
+        })
+        return { ...state, projects, projectCheckIns: [] }
+      }, { undoable: false })
     },
 
     // ---- Prioritize ----
@@ -2631,6 +2649,19 @@ function createPlannerStore() {
       )
     },
 
+    setListTemplateItemOnlyWithoutActiveProject(templateId: Id, itemId: Id, enabled: boolean) {
+      commitEntities('set_list_template_item_only_without_active_project', { templateId, itemId, enabled }, (state) =>
+        updateListTemplate(state, templateId, (template) => {
+          const items = updateListTemplateItem(template.items, itemId, (item) => {
+            if (Boolean(item.onlyWithoutActiveProject) === enabled) return item
+            const { onlyWithoutActiveProject: _onlyWithoutActiveProject, ...rest } = item
+            return enabled ? { ...rest, onlyWithoutActiveProject: true } : rest
+          })
+          return items === template.items ? template : { ...template, updatedAt: nowISO(), items }
+        }),
+      )
+    },
+
     addListTemplateItemAlternative(templateId: Id, itemId: Id) {
       const template = get(store).listTemplates.find((candidate) => candidate.id === templateId)
       const item = template ? findListTemplateItemLocation(template.items, itemId)?.item : undefined
@@ -2959,7 +2990,7 @@ function createPlannerStore() {
       const existing = current.lists.find((list) => list.listTemplateId === listTemplateId && list.date === date)
       if (existing) return existing.id
 
-      const template = current.listTemplates.find((candidate) => candidate.id === listTemplateId)
+      const template = listTemplatesForGeneration(current.listTemplates, current.projects).find((candidate) => candidate.id === listTemplateId)
       if (!template) return null
 
       const notifications: TaskNotification[] = []

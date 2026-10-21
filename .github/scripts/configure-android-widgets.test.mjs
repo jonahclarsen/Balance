@@ -178,6 +178,21 @@ class BalanceSyncWorker {
     assert.match(kotlin, /R\.id\.widget_all_done/)
     assert.match(kotlin, /R\.id\.widget_item_time_10/)
     assert.match(kotlin, /snapshot\.items\.isEmpty\(\)/)
+    assert.match(kotlin, /val activeProjects: List<BalanceWidgetProject> = emptyList\(\)/)
+    assert.match(kotlin, /json\.optJSONArray\("activeProjects"\) \?: return emptyList\(\)/)
+    assert.match(kotlin, /it\.activeUntilMs > now/)
+    assert.match(
+      kotlin,
+      /Intent\(context, MainActivity::class\.java\)\s*\.setData\(android\.net\.Uri\.parse\("balance:\/\/projects\/" \+ android\.net\.Uri\.encode\(project\.id\)\)\)/,
+    )
+    assert.match(kotlin, /setOnClickPendingIntent\(\s*rows\[index\],\s*PendingIntent\.getActivity\(/)
+    assert.match(kotlin, /setInt\(dots\[index\], "setColorFilter", color\)/)
+    assert.match(kotlin, /R\.id\.widget_projects, if \(projects\.isEmpty\(\)\) View\.GONE else View\.VISIBLE/)
+    assert.match(kotlin, /alarm\.set\(AlarmManager\.RTC, next, pending\)/)
+    assert.match(
+      kotlin,
+      /intent\.action == BalanceWidgets\.ACTION_REDRAW\) \{\s*val pending = goAsync\(\)\s*BalanceWidgets\.refreshAllAsync\(context\) \{ pending\.finish\(\) \}/,
+    )
 
     const violetLayout = await readFile(
       join(root, 'res/layout/balance_home_widget_violet.xml'),
@@ -203,6 +218,16 @@ class BalanceSyncWorker {
       /android:id="@\+id\/widget_brand"[\s\S]*?android:fontFamily="sans-serif-rounded"[\s\S]*?android:text="Balance"[\s\S]*?android:textColor="#292332"[\s\S]*?android:textStyle="bold"/,
     )
     assert.match(violetLayout, /android:text="TODAY"/)
+    // Active projects sit at the top, under the brand, and stay hidden until rendered.
+    assert.ok(violetLayout.indexOf('@+id/widget_brand') < violetLayout.indexOf('@+id/widget_projects'))
+    assert.ok(violetLayout.indexOf('@+id/widget_projects') < violetLayout.indexOf('@+id/widget_date'))
+    assert.match(violetLayout, /android:id="@\+id\/widget_projects"[\s\S]*?android:visibility="gone"/)
+    assert.match(violetLayout, /@\+id\/widget_project_row_3/)
+    assert.match(
+      violetLayout,
+      /android:id="@\+id\/widget_project_1"[\s\S]*?android:ellipsize="end"[\s\S]*?android:maxLines="1"[\s\S]*?android:textColor="#292332"/,
+    )
+    assert.match(violetLayout, /@drawable\/balance_widget_violet_project_dot/)
     assert.match(violetLayout, /@\+id\/widget_refresh_touch_target/)
     assert.match(
       violetLayout,
@@ -321,6 +346,8 @@ class BalanceSyncWorker {
       await readFile(join(root, `res/drawable/balance_widget_${theme}_progress.xml`), 'utf8')
       await readFile(join(root, `res/drawable/balance_widget_${theme}_progress_glow.xml`), 'utf8')
       await readFile(join(root, `res/drawable/balance_widget_${theme}_task_circle.xml`), 'utf8')
+      await readFile(join(root, `res/drawable/balance_widget_${theme}_project_dot.xml`), 'utf8')
+      await readFile(join(root, `res/drawable-night/balance_widget_${theme}_project_dot.xml`), 'utf8')
       await readFile(join(root, `res/drawable/balance_widget_${theme}_task_surface.xml`), 'utf8')
       await readFile(join(root, `res/drawable/balance_widget_${theme}_time_pill.xml`), 'utf8')
       await readFile(join(root, `res/layout-night/balance_home_widget_${theme}.xml`), 'utf8')
@@ -362,6 +389,17 @@ class BalanceSyncWorker {
     )
     assert.match(darkVioletLayout, /#201C25/)
     assert.match(darkVioletLayout, /#EEE9F2/)
+    assert.match(darkVioletLayout, /android:id="@\+id\/widget_project_1"[\s\S]*?android:textColor="#EEE9F2"/)
+    const violetProjectDot = await readFile(
+      join(root, 'res/drawable/balance_widget_violet_project_dot.xml'),
+      'utf8',
+    )
+    assert.match(violetProjectDot, /android:shape="oval"[\s\S]*?<solid android:color="#7355A2"/)
+    const darkVioletProjectDot = await readFile(
+      join(root, 'res/drawable-night/balance_widget_violet_project_dot.xml'),
+      'utf8',
+    )
+    assert.match(darkVioletProjectDot, /<solid android:color="#B69ADB"/)
 
     const darkIridescentBackground = await readFile(
       join(root, 'res/drawable-night/balance_widget_iridescent_background.xml'),

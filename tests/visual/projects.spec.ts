@@ -8,234 +8,189 @@ async function openView(page: Page, name: string) {
   await page.getByRole('button', { name, exact: true }).click()
 }
 
-test('daily check-ins roll over at 5 a.m. and history supports editing, deletion and undo', async ({ page }) => {
-  await page.clock.install({ time: new Date('2026-09-09T06:59:00Z') })
+async function addProject(page: Page, name: string) {
+  await page.getByRole('textbox', { name: 'New project name' }).fill(name)
+  await page.getByRole('button', { name: 'Add', exact: true }).click()
+}
+
+async function readState(page: Page) {
+  return page.evaluate(async () => {
+    const path = '/src/lib/store.ts'
+    const { plannerStore } = await import(/* @vite-ignore */ path)
+    let state: any
+    plannerStore.subscribe((value: any) => { state = value })()
+    return structuredClone({ projects: state.projects, operation: state.operations.at(-1), lists: state.lists, listTemplates: state.listTemplates })
+  })
+}
+
+test('active projects last whole days from 7 a.m., lead the list and sidebar, and lapse on time', async ({ page }) => {
+  // 6 a.m. in Vancouver: the most recent 7 a.m. was yesterday's.
+  await page.clock.install({ time: new Date('2026-09-09T13:00:00Z') })
   await page.goto('/')
   await openView(page, 'Projects')
-  await page.getByRole('textbox', { name: 'New project name' }).fill('Synthetic yellow project')
-  await page.getByRole('button', { name: 'Add project', exact: true }).click()
-  const card = page.locator('.project-card')
-  const details = page.getByRole('dialog', { name: 'Synthetic yellow project details', exact: true })
-  // Sliders render on the card, or in the details dialog when editing history.
-  const work = page.getByRole('slider', { name: 'Work complete for Synthetic yellow project' })
-  const heart = page.getByRole('slider', { name: 'Heart in it for Synthetic yellow project' })
-  const save = page.getByRole('button', { name: 'Save check-in' })
-  const readEntries = () => page.evaluate(async () => {
-    const path = '/src/lib/store.ts'
-    const { plannerStore } = await import(/* @vite-ignore */ path)
-    let entries: any
-    const unsubscribe = plannerStore.subscribe((state: any) => { entries = state.projectCheckIns })
-    unsubscribe()
-    return entries
-  })
-  await expect(work).toBeFocused()
-  await work.fill('35')
-  await heart.fill('80')
-  await save.click()
-  const original = (await readEntries())[0]
-  await expect(card.getByRole('status')).toHaveCount(0)
-  await expect(card.getByRole('button', { name: 'Edit', exact: true })).toBeVisible()
+  await addProject(page, 'Synthetic first')
+  await addProject(page, 'Synthetic second')
+  const names = page.locator('.project-card .project-name')
+  await expect(names).toHaveText(['Synthetic first', 'Synthetic second'])
 
-  // Midnight does not begin a new Balance day.
-  await page.clock.setSystemTime(new Date('2026-09-09T11:59:00Z'))
-  await page.evaluate(() => window.dispatchEvent(new Event('focus')))
-  await card.getByRole('button', { name: 'Edit', exact: true }).click()
-  await expect(work).toHaveValue('35')
-  await work.fill('45')
-  await save.click()
-  expect(await readEntries()).toEqual([{ ...original, progress: 45 }])
+  await page.locator('.project-card', { hasText: 'Synthetic second' }).click()
+  const details = page.getByRole('dialog', { name: 'Synthetic second details', exact: true })
+  await details.getByRole('button', { name: 'Mark active', exact: true }).click()
+  await expect(details.getByRole('group', { name: 'Days active' }).getByRole('button')).toHaveText(['1', '2', '3', '4', '5'])
+  await details.getByRole('button', { name: '1 day', exact: true }).click()
+  await expect(details.getByText(/^Active until/)).toBeVisible()
+  const { projects, operation } = await readState(page)
+  expect(projects.find((project: any) => project.name === 'Synthetic second').activeUntil).toBe('2026-09-09T14:00:00.000Z')
+  expect(operation.type).toBe('apply_entity_changes')
+  expect(operation.payload.action).toBe('set_project_active')
+  await details.getByRole('button', { name: 'Close', exact: true }).click()
 
-  // The existing app clock updates the button while the view stays open.
-  await page.clock.fastForward(60_000)
-  await expect(card.getByRole('button', { name: 'Check in', exact: true })).toBeVisible()
-  await card.getByRole('button', { name: 'Check in', exact: true }).click()
-  await work.fill('60')
-  await heart.fill('70')
-  await save.click()
-  expect(await readEntries()).toHaveLength(2)
-  await expect(page.locator('.project-history')).toHaveCount(0)
-  await card.getByRole('button', { name: 'Details', exact: true }).click()
+  await expect(names).toHaveText(['Synthetic second', 'Synthetic first'])
+  await expect(page.locator('.project-card.active')).toHaveText(/Synthetic second\s*until Wed/)
+  const preview = page.locator('.sidebar-active-projects button')
+  await expect(preview).toHaveText('Synthetic second')
+
+  await openView(page, 'Today')
+  await page.locator('.sidebar-active-projects button').click()
+  await expect(page.getByRole('heading', { name: 'Projects', exact: true })).toBeVisible()
   await expect(details).toBeVisible()
-  const close = details.getByRole('button', { name: 'Close', exact: true })
-  const rows = details.locator('tbody tr')
-  await expect(rows).toHaveCount(2)
-  await rows.last().getByRole('button', { name: /Edit check-in from/ }).click()
-  await expect(work).toHaveValue('45')
-  await work.fill('25')
-  await heart.fill('55')
-  await save.click()
-  expect((await readEntries())[0]).toEqual({ ...original, progress: 25, heart: 55 })
-  await expect(details.getByRole('slider')).toHaveCount(0)
-  await expect(card.locator('dd')).toHaveText(['60%', '70%'])
-  await expect(rows.last()).toContainText('25%')
-  await expect(card.getByRole('status')).toHaveCount(0)
+  await details.getByRole('button', { name: 'Close', exact: true }).click()
 
-  page.once('dialog', (dialog) => dialog.dismiss())
-  await rows.first().getByRole('button', { name: /Delete check-in from/ }).click()
-  await expect(rows).toHaveCount(2)
-  page.once('dialog', (dialog) => dialog.accept())
-  await rows.first().getByRole('button', { name: /Delete check-in from/ }).click()
-  await expect(rows).toHaveCount(1)
-  await expect(card.locator('dd')).toHaveText(['25%', '55%'])
-  await expect(card.getByRole('button', { name: 'Check in', exact: true })).toBeVisible()
-  await page.evaluate(async () => {
-    const path = '/src/lib/store.ts'
-    const { plannerStore } = await import(/* @vite-ignore */ path)
-    await plannerStore.undo()
-  })
-  await expect(rows).toHaveCount(2)
-  await expect(card.getByRole('button', { name: 'Edit', exact: true })).toBeVisible()
-  await page.evaluate(async () => {
-    const path = '/src/lib/store.ts'
-    const { plannerStore } = await import(/* @vite-ignore */ path)
-    await plannerStore.redo()
-  })
-  await expect(rows).toHaveCount(1)
-  await close.click()
-  await expect(details).toHaveCount(0)
-  await page.clock.fastForward(1_000)
-  await page.reload()
-  await openView(page, 'Projects')
-  await expect(card.locator('dd')).toHaveText(['25%', '55%'])
-  await card.getByRole('button', { name: 'Details', exact: true }).click()
-  await expect(rows).toHaveCount(1)
-  await page.screenshot({ path: test.info().outputPath('project-history-details.png'), fullPage: true, animations: 'disabled' })
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
-  page.once('dialog', (dialog) => dialog.accept())
-  await rows.first().getByRole('button', { name: /Delete check-in from/ }).click()
-  await expect(card.locator('dd')).toHaveText(['Not set', 'Not set'])
-  await expect(details.locator('.project-history')).toContainText('No check-ins yet.')
+  // The app clock drops it once 7 a.m. passes.
+  await page.clock.fastForward('01:01:00')
+  await expect(preview).toHaveCount(0)
+  await expect(page.locator('.project-card.active')).toHaveCount(0)
+  await expect(names).toHaveText(['Synthetic first', 'Synthetic second'])
 })
 
-test('project check-ins retain history, survive reload, and open from a planner link', async ({ page }) => {
+test('completed and archived projects move to dated sections and support undo, restore and deletion', async ({ page }) => {
   await page.clock.setFixedTime(new Date('2026-09-08T19:00:00Z'))
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
   await page.keyboard.press('Alt+p')
-  await expect(page.getByRole('heading', { name: 'Projects', exact: true })).toBeVisible()
-  await page.getByRole('textbox', { name: 'New project name' }).fill('Synthetic garden')
-  await page.getByRole('button', { name: 'Add project', exact: true }).click()
-  const card = page.locator('.project-card')
-  await expect(card).toHaveCount(1)
-  await expect(card.getByRole('slider')).toHaveCount(2)
-  await expect(card.getByRole('slider', { name: 'Work complete for Synthetic garden' })).toBeFocused()
-  await expect(page.getByRole('button', { name: 'Save check-in' })).toBeDisabled()
-  await expect(card.locator('.probability-slider')).toHaveCount(2)
-  const initialTracks = await card.locator('.track-wrap').evaluateAll((tracks) => tracks.map((track) => {
-    const rect = track.getBoundingClientRect()
-    return { x: rect.x, y: rect.y, width: rect.width }
-  }))
-  await page.getByRole('slider', { name: 'Work complete for Synthetic garden' }).fill('35')
-  await expect(page.getByRole('button', { name: 'Save check-in' })).toBeDisabled()
-  const mixedTracks = await card.locator('.track-wrap').evaluateAll((tracks) => tracks.map((track) => {
-    const rect = track.getBoundingClientRect()
-    return { x: rect.x, y: rect.y, width: rect.width }
-  }))
-  expect(mixedTracks).toEqual(initialTracks)
-  expect(Math.abs(mixedTracks[0].width - mixedTracks[1].width)).toBeLessThan(1)
-  expect(mixedTracks[0].y).toBe(mixedTracks[1].y)
-  await page.screenshot({ path: test.info().outputPath('project-check-in.png'), fullPage: true, animations: 'disabled' })
-  await page.getByRole('slider', { name: 'Heart in it for Synthetic garden' }).fill('80')
-  await page.getByRole('button', { name: 'Save check-in' }).click()
-  await expect(card.locator('.project-history')).toHaveCount(0)
-  await expect(card.getByRole('button', { name: 'Copy project link' })).toHaveCount(0)
-  await expect(card.getByRole('status')).toHaveCount(0)
-  await card.getByRole('button', { name: 'Details', exact: true }).click()
+  await addProject(page, 'Synthetic garden')
+  await addProject(page, 'Synthetic shed')
+  const open = page.locator('section[aria-labelledby="open-projects-title"]')
+  const completed = page.locator('section[aria-labelledby="completed-projects-title"]')
+  const archived = page.locator('section[aria-labelledby="archived-projects-title"]')
+
+  await page.locator('.project-card', { hasText: 'Synthetic garden' }).click()
   const details = page.getByRole('dialog', { name: 'Synthetic garden details', exact: true })
-  await expect(details.locator('.project-history h3')).toContainText('1 check-in')
+  await details.getByRole('textbox', { name: 'Description' }).fill('Native plants')
+  await details.getByRole('textbox', { name: 'Description' }).blur()
+  await details.getByRole('button', { name: 'Mark active', exact: true }).click()
+  await details.getByRole('button', { name: '3 days', exact: true }).click()
+  await details.getByRole('button', { name: 'Complete', exact: true }).click()
+  await expect(details.getByText('Completed Sep 8')).toBeVisible()
   await details.getByRole('button', { name: 'Close', exact: true }).click()
-  const persistedAction = await page.evaluate(async () => {
+  await expect(completed.locator('.project-card')).toHaveText(/Synthetic garden\s*Sep 8/)
+  await expect(open.locator('.project-card')).toHaveText(['Synthetic shed'])
+  await expect(page.locator('.sidebar-active-projects')).toHaveCount(0)
+  const afterComplete = (await readState(page)).projects.find((project: any) => project.name === 'Synthetic garden')
+  expect(afterComplete.activeUntil).toBeUndefined()
+  expect(afterComplete.description).toBe('Native plants')
+
+  await page.evaluate(async () => {
     const path = '/src/lib/store.ts'
     const { plannerStore } = await import(/* @vite-ignore */ path)
-    let operation: any
-    const unsubscribe = plannerStore.subscribe((state: any) => { operation = state.operations.at(-1) })
-    unsubscribe()
-    return operation
+    await plannerStore.undo()
   })
-  expect(persistedAction.type).toBe('apply_entity_changes')
-  expect(persistedAction.payload.action).toBe('check_in_project')
-  expect(persistedAction.payload.entityChanges.version).toBe(2)
-  expect(persistedAction.payload.entityChanges.upserts.some((row: any) => row.collection === 'projectCheckIns')).toBe(true)
+  await expect(completed).toHaveCount(0)
+  await expect(page.locator('.project-card.active')).toHaveText(/Synthetic garden/)
 
-  await expect(card.getByRole('slider')).toHaveCount(0)
-  await page.getByRole('button', { name: 'Edit', exact: true }).click()
-  await page.getByRole('slider', { name: 'Work complete for Synthetic garden' }).fill('95')
-  await page.getByRole('button', { name: 'Cancel', exact: true }).click()
-  await expect(card.locator('dd')).toHaveText(['35%', '80%'])
-  await page.clock.setFixedTime(new Date('2026-09-09T19:00:00Z'))
-  await page.evaluate(() => window.dispatchEvent(new Event('focus')))
-  await page.getByRole('button', { name: 'Check in', exact: true }).click()
-  await page.getByRole('slider', { name: 'Work complete for Synthetic garden' }).fill('50')
-  await page.getByRole('slider', { name: 'Heart in it for Synthetic garden' }).fill('60')
-  await page.getByRole('button', { name: 'Save check-in' }).click()
-  await card.getByRole('button', { name: 'Details', exact: true }).click()
-  await expect(details.locator('tbody tr')).toHaveCount(2)
-  await expect(details.locator('tbody tr').last()).toContainText('35%')
-  await expect(details.locator('tbody tr').last()).toContainText('80%')
-  await page.keyboard.press('Escape')
-  await expect(details).toHaveCount(0)
+  await page.locator('.project-card', { hasText: 'Synthetic garden' }).click()
+  await details.getByRole('button', { name: 'Archive', exact: true }).click()
+  await expect(details.getByText('Archived Sep 8')).toBeVisible()
+  await details.getByRole('button', { name: 'Close', exact: true }).click()
+  await expect(archived.locator('.project-card')).toHaveText(/Synthetic garden\s*Sep 8/)
   await page.reload()
   await openView(page, 'Projects')
-  await expect(card.getByRole('slider')).toHaveCount(0)
-  await expect(card.locator('dd')).toHaveText(['50%', '60%'])
-  await page.screenshot({ path: test.info().outputPath('project-vibes.png'), fullPage: true, animations: 'disabled' })
+  await expect(archived.locator('.project-card')).toHaveText(/Synthetic garden/)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
-  await page.getByRole('heading', { name: 'Projects', exact: true }).click({ button: 'right' })
-  await page.getByRole('menuitem', { name: 'Copy link', exact: true }).click()
-  await expect(page.getByRole('status').filter({ hasText: /Link copied|Copy this link/ })).toBeVisible()
-  await page.getByRole('button', { name: 'Details' }).click()
-  await expect(details.locator('input[type=color]')).toHaveCount(0)
-  await page.getByRole('button', { name: 'Archive project', exact: true }).click()
-  await expect(card).toHaveCount(0)
-  await page.getByRole('button', { name: 'View Archive' }).click()
-  await expect(page.locator('#project-archive')).toContainText('Synthetic garden')
-  const archiveDialog = page.getByRole('dialog', { name: 'Project archive', exact: true })
-  await expect(archiveDialog).toBeVisible()
-  await expect(archiveDialog.locator('#project-archive')).toContainText('Synthetic garden')
-  await expect(page.locator('.project-grid')).toHaveCount(1)
-  await page.screenshot({ path: test.info().outputPath('project-archive-modal.png'), fullPage: true, animations: 'disabled' })
-  await archiveDialog.getByRole('button', { name: 'Close', exact: true }).click()
-  await expect(page.locator('#project-archive')).toHaveCount(0)
-  await expect(page.getByRole('textbox', { name: 'New project name' })).toBeVisible()
-  await page.getByRole('button', { name: 'View Archive' }).click()
-  await page.keyboard.press('Escape')
-  await expect(archiveDialog).toHaveCount(0)
-  // Reload with a synthetic linked task; no installed application data is used.
+
+  await archived.locator('.project-card').click()
+  await details.getByRole('button', { name: 'Restore', exact: true }).click()
+  await expect(open.locator('.project-card')).toHaveText(['Synthetic garden', 'Synthetic shed'])
+  await details.getByRole('button', { name: 'Archive', exact: true }).click()
+  page.once('dialog', (dialog) => dialog.dismiss())
+  await details.getByRole('button', { name: 'Delete forever', exact: true }).click()
+  await expect(details).toBeVisible()
+  page.once('dialog', (dialog) => dialog.accept())
+  await details.getByRole('button', { name: 'Delete forever', exact: true }).click()
+  await expect(details).toHaveCount(0)
+  await expect(archived).toHaveCount(0)
+  expect((await readState(page)).projects.map((project: any) => project.name)).toEqual(['Synthetic shed'])
+})
+
+test('retired check-ins complete projects that reached 100% and are then removed', async ({ page }) => {
+  await page.goto('/')
+  await openView(page, 'Projects')
+  await addProject(page, 'Synthetic finished')
+  await addProject(page, 'Synthetic reopened')
+  // Seed the retired collection, as an older client would have left it.
   await page.evaluate(() => {
     const key = 'balance.appState.v1'
     const state = JSON.parse(localStorage.getItem(key)!)
-    const projectId = state.projects[0].id
-    const now = new Date()
-    const date = state.activePlanDate
-    const plan = { id: 'project-link-plan', date, title: 'Synthetic day', dailyReminder: '', generatedFromTemplateId: null, createdAt: now.toISOString(), items: [] as unknown[] }
-    state.plans = [plan]
-    plan.items = [{ id: 'project-link-test', text: `balance://projects/${projectId}`, html: `balance://projects/${projectId}`, done: false, children: [], time: '', endTime: '' }]
+    const [finished, reopened] = state.projects.map((project: any) => project.id)
+    state.projectCheckIns = [
+      { id: 'c1', projectId: finished, progress: 100, heart: 50, createdAt: '2026-09-01T10:00:00.000Z' },
+      { id: 'c2', projectId: reopened, progress: 100, heart: 50, createdAt: '2026-09-01T10:00:00.000Z' },
+      { id: 'c3', projectId: reopened, progress: 60, heart: 50, createdAt: '2026-09-02T10:00:00.000Z' },
+    ]
     localStorage.setItem(key, JSON.stringify(state))
   })
   await page.reload()
-  const link = page.locator('[data-internal-link-kind="projects"]').first()
-  await expect(link).toBeVisible()
-  await link.click()
-  await expect(page.getByRole('heading', { name: 'Projects', exact: true })).toBeVisible()
-  await expect(card).toHaveCSS('outline-style', 'none')
-  await expect(card).toContainText('Archived')
-  await page.getByRole('button', { name: 'Restore', exact: true }).click()
-  await archiveDialog.getByRole('button', { name: 'Close', exact: true }).click()
-  await expect(card.locator('dd')).toHaveText(['50%', '60%'])
-  await page.getByRole('button', { name: 'Details' }).click()
-  await expect(details.locator('input[type=color]')).toHaveCount(0)
-  await page.getByRole('button', { name: 'Archive project', exact: true }).click()
-  page.once('dialog', (dialog) => dialog.dismiss())
-  await page.getByRole('button', { name: 'View Archive' }).click()
-  await page.getByRole('button', { name: 'Delete forever' }).click()
-  await expect(page.locator('#project-archive')).toContainText('Synthetic garden')
-  page.once('dialog', (dialog) => dialog.accept())
-  await page.getByRole('button', { name: 'Delete forever' }).click()
-  await expect(page.locator('#project-archive')).not.toContainText('Synthetic garden')
+  await openView(page, 'Projects')
+  await expect(page.locator('section[aria-labelledby="completed-projects-title"] .project-card')).toHaveText(/Synthetic finished/)
   const persisted = await page.evaluate(() => JSON.parse(localStorage.getItem('balance.appState.v1')!))
-  expect(persisted.projects).toEqual([])
   expect(persisted.projectCheckIns).toEqual([])
+  expect(persisted.projects.map((project: any) => [project.name, project.completedAt])).toEqual([
+    ['Synthetic finished', '2026-09-01T10:00:00.000Z'],
+    ['Synthetic reopened', undefined],
+  ])
+})
+
+test('list items can wait for no active project, shown by a row indicator', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await openView(page, 'Lists')
+  await page.getByRole('button', { name: '+ New list', exact: true }).click()
+  const editor = page.locator('[data-list-template-text-input]').first()
+  await editor.fill('Synthetic quiz')
+  await editor.blur()
+  const gate = page.locator('.active-project-gate')
+  await expect(gate).toHaveCount(0)
+  await editor.click({ button: 'right' })
+  const toggle = page.getByRole('menuitemcheckbox', { name: 'Only when no active project' })
+  await expect(toggle).toHaveAttribute('aria-checked', 'false')
+  await toggle.click()
+  await expect(gate).toBeVisible()
+  await editor.click({ button: 'right' })
+  await expect(toggle).toHaveAttribute('aria-checked', 'true')
+  await page.keyboard.press('Escape')
+
+  const generated = await page.evaluate(async () => {
+    const path = '/src/lib/store.ts'
+    const { plannerStore } = await import(/* @vite-ignore */ path)
+    let state: any
+    const read = () => { plannerStore.subscribe((value: any) => { state = value })(); return state }
+    const template = read().listTemplates[0].id
+    const items = (date: string) => {
+      const id = plannerStore.ensureListForDate(template, date)
+      return read().lists.find((list: any) => list.id === id).items.map((item: any) => item.text)
+    }
+    const idle = items('2026-01-01')
+    const project = plannerStore.addProject('Synthetic project')
+    plannerStore.setProjectActiveDays(project, 2)
+    return { idle, active: items('2026-01-02') }
+  })
+  expect(generated).toEqual({ idle: ['Synthetic quiz'], active: [] })
+
+  await gate.click()
+  await expect(gate).toHaveCount(0)
+  expect((await readState(page)).listTemplates[0].items[0]).not.toHaveProperty('onlyWithoutActiveProject')
 })
 
 for (const destination of ['page', 'project'] as const) {
@@ -244,8 +199,7 @@ for (const destination of ['page', 'project'] as const) {
     await page.evaluate(() => localStorage.clear())
     await page.reload()
     await openView(page, 'Projects')
-    await page.getByRole('textbox', { name: 'New project name' }).fill('Synthetic garden')
-    await page.getByRole('button', { name: 'Add project', exact: true }).click()
+    await addProject(page, 'Synthetic garden')
     const projectId = await page.evaluate(() => JSON.parse(localStorage.getItem('balance.appState.v1')!).projects[0].id)
     const url = destination === 'page' ? 'balance://projects' : `balance://projects/${projectId}`
     await openView(page, 'Lists')
@@ -274,54 +228,39 @@ for (const destination of ['page', 'project'] as const) {
     await expect(link).toHaveAttribute('href', url)
     await link.click()
     await expect(page.getByRole('heading', { name: 'Projects', exact: true })).toBeVisible()
-    if (destination === 'project') await expect(page.locator('.project-card')).toHaveCSS('outline-style', 'none')
+    if (destination === 'project') await expect(page.getByRole('dialog', { name: 'Synthetic garden details', exact: true })).toBeVisible()
   })
 }
 
-test('project cards reorder from content, preserve controls, and retain order through undo and reload', async ({ page }) => {
+test('project rows reorder by dragging, open on a tap, and retain order through undo and reload', async ({ page }) => {
   await page.goto('/')
   await openView(page, 'Projects')
-  for (const name of ['First project', 'Second project', 'Third project']) {
-    await page.getByRole('textbox', { name: 'New project name' }).fill(name)
-    await page.getByRole('button', { name: 'Add project', exact: true }).click()
-    await page.getByRole('button', { name: 'Cancel', exact: true }).click()
-  }
-  const cards = page.locator('.project-grid .project-card')
-  const headings = cards.locator('h2')
-  await expect(headings).toHaveText(['First project', 'Second project', 'Third project'])
-  for (const card of await cards.all()) await expect(card).toHaveCSS('outline-style', 'none')
+  for (const name of ['First project', 'Second project', 'Third project']) await addProject(page, name)
+  const cards = page.locator('.project-list .project-card')
+  const names = cards.locator('.project-name')
+  await expect(names).toHaveText(['First project', 'Second project', 'Third project'])
   const first = cards.filter({ hasText: 'First project' })
   const second = cards.filter({ hasText: 'Second project' })
-  async function drag(source: ReturnType<Page['locator']>, destination: ReturnType<Page['locator']>, placement: 'before' | 'after' = 'after', expectIndicator = true) {
+  async function drag(source: ReturnType<Page['locator']>, destination: ReturnType<Page['locator']>, placement: 'before' | 'after' = 'after') {
     await source.scrollIntoViewIfNeeded()
     const start = (await source.boundingBox())!
-    const end = (await destination.locator('xpath=ancestor-or-self::article').boundingBox())!
-    const singleColumn = await cards.evaluateAll((elements) => elements.every((element) => Math.abs(element.getBoundingClientRect().left - elements[0].getBoundingClientRect().left) < 1))
-    const x = singleColumn ? end.x + end.width / 2 : placement === 'before' ? end.x - 8 : end.x + end.width + 8
-    const y = singleColumn ? placement === 'before' ? end.y - 8 : end.y + end.height + 8 : end.y + end.height / 2
+    const end = (await destination.boundingBox())!
+    const x = end.x + end.width / 2
+    const y = placement === 'before' ? end.y - 3 : end.y + end.height + 3
     await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2)
     await page.mouse.down()
     await page.mouse.move(x, y, { steps: 12 })
     const carried = (await source.boundingBox())!
-    expect(Math.hypot(carried.x - start.x, carried.y - start.y)).toBeGreaterThan(expectIndicator ? 20 : -1)
+    expect(Math.hypot(carried.x - start.x, carried.y - start.y)).toBeGreaterThan(20)
     const indicator = page.locator('.project-drop-indicator')
-    if (expectIndicator) {
-      await expect(indicator).toBeVisible()
-      const line = (await indicator.boundingBox())!
-      expect(singleColumn ? line.height : line.width).toBeGreaterThan(2)
-      expect(singleColumn ? line.height : line.width).toBeLessThan(4)
-      expect(Math.abs(singleColumn ? line.y + line.height / 2 - y : line.x + line.width / 2 - x)).toBeLessThan(1)
-      await expect(page.locator('.project-drop-target')).toHaveCount(0)
-    } else await expect(indicator).toHaveCount(0)
+    await expect(indicator).toBeVisible()
     await page.mouse.up()
     await expect(indicator).toHaveCount(0)
-    // Cards glide into their new slots rather than jumping.
-    return cards.evaluateAll((elements) => elements.filter((element) => element.getAnimations().length).length)
   }
-  await drag(first.getByRole('button', { name: 'Check in', exact: true }), second.locator('h2'), 'after', false)
-  await expect(headings).toHaveText(['First project', 'Second project', 'Third project'])
-  expect(await drag(first.locator('h2'), second.locator('h2'))).toBe(2)
-  await expect(headings).toHaveText(['Second project', 'First project', 'Third project'])
+  await drag(first, second)
+  await expect(names).toHaveText(['Second project', 'First project', 'Third project'])
+  // A drag never also opens the project.
+  await expect(page.getByRole('dialog')).toHaveCount(0)
   const operation = await page.evaluate(async () => {
     const path = '/src/lib/store.ts'
     const { plannerStore } = await import(/* @vite-ignore */ path)
@@ -334,54 +273,39 @@ test('project cards reorder from content, preserve controls, and retain order th
   expect(operation.type).toBe('apply_entity_changes')
   expect(operation.payload.action).toBe('move_project')
   expect(operation.payload.entityChanges.version).toBe(2)
-  await expect(headings).toHaveText(['First project', 'Second project', 'Third project'])
+  await expect(names).toHaveText(['First project', 'Second project', 'Third project'])
   await page.evaluate(async () => {
     const path = '/src/lib/store.ts'
     const { plannerStore } = await import(/* @vite-ignore */ path)
     await plannerStore.redo()
   })
-  await expect(headings).toHaveText(['Second project', 'First project', 'Third project'])
-  await first.getByRole('button', { name: 'Check in', exact: true }).click()
-  await first.getByRole('slider', { name: 'Work complete for First project' }).fill('45')
-  await expect(first.getByRole('slider', { name: 'Work complete for First project' })).toHaveValue('45')
-  await first.getByRole('button', { name: 'Cancel', exact: true }).click()
-  await expect(headings).toHaveText(['Second project', 'First project', 'Third project'])
+  await expect(names).toHaveText(['Second project', 'First project', 'Third project'])
   await page.reload()
   await openView(page, 'Projects')
-  await expect(headings).toHaveText(['Second project', 'First project', 'Third project'])
-  await drag(cards.filter({ hasText: 'First project' }).locator('dd').first(), cards.first().locator('h2'), 'before')
-  await expect(headings).toHaveText(['First project', 'Second project', 'Third project'])
+  await expect(names).toHaveText(['Second project', 'First project', 'Third project'])
+  await drag(cards.filter({ hasText: 'First project' }), cards.first(), 'before')
+  await expect(names).toHaveText(['First project', 'Second project', 'Third project'])
   await expect(page.locator('.project-dragging, .project-drop-indicator')).toHaveCount(0)
   await expect(cards.first()).not.toHaveAttribute('style', /transform/)
-  await expect(cards.first().getByRole('button', { name: 'Details', exact: true })).toHaveCSS('cursor', 'pointer')
-  await expect(cards.first().getByRole('button', { name: 'Check in', exact: true })).toHaveCSS('cursor', 'pointer')
 
-  // A long description stretches its row mates to the same height.
-  await cards.first().getByRole('button', { name: 'Details', exact: true }).click()
-  const details = page.getByRole('dialog', { name: 'First project details', exact: true })
-  await details.getByRole('textbox').last().fill('A synthetic description\nthat spans\nseveral\nlines')
-  await details.getByRole('textbox').last().blur()
-  await details.getByRole('button', { name: 'Close', exact: true }).click()
-  const boxes = await cards.evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect()).map(({ top, height }) => ({ top, height })))
-  const rowMates = boxes.filter((box) => Math.abs(box.top - boxes[0].top) < 1)
-  for (const box of rowMates) expect(Math.abs(box.height - boxes[0].height)).toBeLessThan(1)
-  expect(boxes[0].height).toBeGreaterThan(boxes.at(-1)!.height - 1)
+  await cards.nth(1).click()
+  await expect(page.getByRole('dialog', { name: 'Second project details', exact: true })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await cards.first().focus()
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('dialog', { name: 'First project details', exact: true })).toBeVisible()
 })
 
-test('dragging a project card to the window edge scrolls the page and keeps the card under the pointer', async ({ page }) => {
+test('dragging a project row to the window edge scrolls the page and keeps the row under the pointer', async ({ page }) => {
   await page.setViewportSize({ width: page.viewportSize()!.width, height: 600 })
   await page.goto('/')
   await openView(page, 'Projects')
-  const names = Array.from({ length: 10 }, (_, index) => `Project ${index + 1}`)
-  for (const name of names) {
-    await page.getByRole('textbox', { name: 'New project name' }).fill(name)
-    await page.getByRole('button', { name: 'Add project', exact: true }).click()
-    await page.getByRole('button', { name: 'Cancel', exact: true }).click()
-  }
-  const cards = page.locator('.project-grid .project-card')
-  await expect(cards.locator('h2')).toHaveText(names)
+  const names = Array.from({ length: 24 }, (_, index) => `Project ${index + 1}`)
+  for (const name of names) await addProject(page, name)
+  const cards = page.locator('.project-list .project-card')
+  await expect(cards.locator('.project-name')).toHaveText(names)
   const source = cards.first()
-  await source.locator('h2').scrollIntoViewIfNeeded()
+  await source.scrollIntoViewIfNeeded()
   const scrollTop = () => source.evaluate((card) => {
     for (let element = card.parentElement; element; element = element.parentElement) {
       if (element.scrollTop > 0) return element.scrollTop
@@ -389,19 +313,17 @@ test('dragging a project card to the window edge scrolls the page and keeps the 
     return document.scrollingElement?.scrollTop ?? 0
   })
   const before = await scrollTop()
-  const start = (await source.locator('h2').boundingBox())!
+  const start = (await source.boundingBox())!
   await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2)
   await page.mouse.down()
   const edge = { x: start.x + start.width / 2, y: 596 }
   await page.mouse.move(edge.x, edge.y, { steps: 12 })
   await expect.poll(scrollTop).toBeGreaterThan(before + 200)
-  // The carried card follows the pointer while the content scrolls beneath it.
+  // The carried row follows the pointer while the content scrolls beneath it.
   const carried = (await source.boundingBox())!
   expect(edge.y).toBeGreaterThan(carried.y)
   expect(edge.y).toBeLessThan(carried.y + carried.height)
-  // Stop edge scrolling and finish over a visible card. Polling the scroll
-  // distance can overshoot to the grid's end, where the window edge is no
-  // longer a valid drop target.
+  // Stop edge scrolling and finish over a visible row.
   await page.mouse.move(edge.x, page.viewportSize()!.height / 2)
   const destination = await cards.evaluateAll((elements) => {
     for (const card of elements.slice(1).reverse()) {
@@ -416,7 +338,7 @@ test('dragging a project card to the window edge scrolls the page and keeps the 
   await expect(page.locator('.project-drop-indicator')).toBeVisible()
   await page.mouse.up()
   await expect(page.locator('.project-dragging, .project-drop-indicator')).toHaveCount(0)
-  await expect(cards.locator('h2').first()).not.toHaveText('Project 1')
+  await expect(cards.locator('.project-name').first()).not.toHaveText('Project 1')
 })
 
 async function pasteLinkOverText(editor: import('@playwright/test').Locator, link: string, start: number, end: number) {
@@ -441,17 +363,17 @@ test('pasting a link over selected project name text links it when creating and 
   await pasteLinkOverText(newName, 'obsidian://open?vault=Garden', 10, 16)
   await newName.press('Enter')
 
-  const heading = page.locator('.project-card h2')
+  const heading = page.locator('.project-card .project-name')
   await expect(heading).toHaveText('Synthetic garden plan')
   await expect(heading.getByRole('link', { name: 'garden' })).toHaveAttribute('href', 'obsidian://open?vault=Garden')
   await expect(newName).toHaveText('')
 
-  await page.getByRole('button', { name: 'Details', exact: true }).click()
+  await page.locator('.project-card .project-dot').click()
   const editName = page.getByRole('textbox', { name: 'Project name', exact: true })
   await pasteLinkOverText(editName, 'https://example.com/plan', 0, 9)
   await expect(heading.getByRole('link', { name: 'Synthetic' })).toHaveAttribute('href', 'https://example.com/plan')
   await page.reload()
   await openView(page, 'Projects')
-  await expect(page.locator('.project-card h2').getByRole('link', { name: 'garden' })).toHaveAttribute('href', 'obsidian://open?vault=Garden')
-  await expect(page.locator('.project-card h2').getByRole('link', { name: 'Synthetic' })).toHaveAttribute('href', 'https://example.com/plan')
+  await expect(heading.getByRole('link', { name: 'garden' })).toHaveAttribute('href', 'obsidian://open?vault=Garden')
+  await expect(heading.getByRole('link', { name: 'Synthetic' })).toHaveAttribute('href', 'https://example.com/plan')
 })

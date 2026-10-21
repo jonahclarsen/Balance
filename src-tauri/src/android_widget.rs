@@ -1,11 +1,13 @@
 use std::path::Path;
 
+use chrono::Utc;
 use jni::objects::{JClass, JString};
 use jni::JNIEnv;
 use zeroize::Zeroizing;
 
 use crate::widget::{
-    snapshot_from_plan, theme_id_from_device_appearance, theme_id_from_preferences, WidgetSnapshot,
+    active_projects, snapshot_from_plan, theme_id_from_device_appearance,
+    theme_id_from_preferences, WidgetSnapshot,
 };
 
 fn load_snapshot(app_data_path: &Path, date: &str) -> Result<WidgetSnapshot, String> {
@@ -27,7 +29,12 @@ fn load_snapshot(app_data_path: &Path, date: &str) -> Result<WidgetSnapshot, Str
         let preferences = super::read_replicated_preferences(&connection)?;
         theme_id_from_preferences(&preferences).to_string()
     };
-    Ok(snapshot_from_plan(date, plan.as_ref(), &theme_id))
+    let mut snapshot = snapshot_from_plan(date, plan.as_ref(), &theme_id);
+    snapshot.active_projects = active_projects(
+        &super::read_entity_collection(&connection, "projects")?,
+        Utc::now(),
+    );
+    Ok(snapshot)
 }
 
 #[no_mangle]

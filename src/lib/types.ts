@@ -111,6 +111,8 @@ export type ListTemplateItem = {
   html: string
   probability: number
   alternatives?: ListTemplateItemAlternative[]
+  // Left out of generated lists while any project is active.
+  onlyWithoutActiveProject?: boolean
   children: ListTemplateItem[]
 }
 
@@ -334,10 +336,16 @@ export type Project = {
   description: string
   color: string
   archived: boolean
+  // When it was archived; absent on projects archived before it existed.
+  archivedAt?: string
+  completedAt?: string
+  // Active until this instant, unless completed or archived first.
+  activeUntil?: string
   createdAt: string
   updatedAt: string
 }
 
+// Retired progress tracker; emptied once on load by retireProjectCheckIns.
 export type ProjectCheckIn = {
   id: Id
   projectId: Id

@@ -1,7 +1,9 @@
+use chrono::{DateTime, SecondsFormat, Utc};
 use serde::Serialize;
 use serde_json::Value;
 
 const MAX_VISIBLE_ITEMS: usize = 10;
+const MAX_ACTIVE_PROJECTS: usize = 3;
 const DEFAULT_THEME_ID: &str = "iridescent";
 
 // Historical day records can reference these IDs forever. Never delete or
@@ -41,6 +43,18 @@ pub(crate) struct WidgetSnapshot {
     pub(crate) item_times: Vec<String>,
     pub(crate) theme_id: String,
     pub(crate) situate_modes: Vec<serde_json::Value>,
+    pub(crate) active_projects: Vec<WidgetProject>,
+}
+
+/// A project the user marked active. `active_until` stays in the payload so
+/// widgets can hide it on time between snapshot publications.
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct WidgetProject {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) color: String,
+    pub(crate) active_until: String,
 }
 
 impl WidgetSnapshot {
@@ -63,6 +77,7 @@ impl WidgetSnapshot {
             item_times: Vec::new(),
             theme_id: normalize_theme_id(theme_id).to_string(),
             situate_modes: Vec::new(),
+            active_projects: Vec::new(),
         }
     }
 
@@ -126,7 +141,70 @@ pub(crate) fn snapshot_from_plan(
         item_times,
         theme_id: normalize_theme_id(theme_id).to_string(),
         situate_modes: Vec::new(),
+        active_projects: Vec::new(),
     }
+}
+
+/// Active projects in stored collection order: not archived, not completed,
+/// and with an `activeUntil` instant still in the future.
+pub(crate) fn active_projects(projects: &Value, now: DateTime<Utc>) -> Vec<WidgetProject> {
+    let Some(projects) = projects.as_array() else {
+        return Vec::new();
+    };
+    projects
+        .iter()
+        .filter_map(|project| {
+            if project.get("archived").and_then(Value::as_bool) == Some(true)
+                || project
+                    .get("completedAt")
+                    .and_then(Value::as_str)
+                    .is_some_and(|value| !value.is_empty())
+            {
+                return None;
+            }
+            // Matches the app's balance://projects/<id> link grammar, so the
+            // widget never builds a link the app would reject.
+            let id = project.get("id").and_then(Value::as_str)?;
+            if id.is_empty()
+                || !id
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
+            {
+                return None;
+            }
+            let active_until = project
+                .get("activeUntil")
+                .and_then(Value::as_str)
+                .and_then(|value| DateTime::parse_from_rfc3339(value).ok())?
+                .with_timezone(&Utc);
+            if active_until <= now {
+                return None;
+            }
+            let name = project
+                .get("name")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+                .unwrap_or("Untitled project");
+            let color = project
+                .get("color")
+                .and_then(Value::as_str)
+                .filter(|color| {
+                    color.len() == 7
+                        && color.starts_with('#')
+                        && color[1..].bytes().all(|byte| byte.is_ascii_hexdigit())
+                })
+                .unwrap_or_default();
+            Some(WidgetProject {
+                id: id.to_string(),
+                name: name.to_string(),
+                color: color.to_string(),
+                // One fixed format keeps every widget parser simple.
+                active_until: active_until.to_rfc3339_opts(SecondsFormat::Secs, true),
+            })
+        })
+        .take(MAX_ACTIVE_PROJECTS)
+        .collect()
 }
 
 fn normalize_theme_id(theme_id: &str) -> &str {
@@ -293,8 +371,10 @@ fn format_minutes(minutes: i64) -> String {
 mod tests {
     use serde_json::json;
 
+    use chrono::{TimeZone, Utc};
+
     use super::{
-        random_theme_for_date, random_theme_for_date_from, snapshot_from_plan,
+        active_projects, random_theme_for_date, random_theme_for_date_from, snapshot_from_plan,
         stable_theme_hash_64, theme_id_from_device_appearance, theme_id_from_preferences,
         ACTIVE_RANDOM_THEME_IDS,
     };
@@ -417,6 +497,53 @@ mod tests {
         assert!(snapshot.item_depths.is_empty());
         assert!(snapshot.item_times.is_empty());
         assert_eq!(snapshot.theme_id, "iridescent");
+    }
+
+    #[test]
+    fn widget_lists_only_active_projects_in_collection_order() {
+        let now = Utc.with_ymd_and_hms(2026, 10, 20, 12, 0, 0).unwrap();
+        let projects = json!([
+            { "id": "project_late", "name": "  Garden  ", "color": "#4a9b6f", "archived": false, "activeUntil": "2026-10-21T08:30:00.250Z" },
+            { "id": "project_expired", "name": "Old", "color": "#aabbcc", "archived": false, "activeUntil": "2026-10-20T12:00:00.000Z" },
+            { "id": "project_archived", "name": "Shelved", "color": "#aabbcc", "archived": true, "activeUntil": "2026-10-22T00:00:00Z" },
+            { "id": "project_done", "name": "Done", "color": "#aabbcc", "archived": false, "completedAt": "2026-10-19T00:00:00Z", "activeUntil": "2026-10-22T00:00:00Z" },
+            { "id": "project_idle", "name": "Idle", "color": "#aabbcc", "archived": false },
+            { "id": "project_bad_date", "name": "Bad", "archived": false, "activeUntil": "tomorrow" },
+            { "id": "project bad/id", "name": "Bad id", "archived": false, "activeUntil": "2026-10-22T00:00:00Z" },
+            { "id": "project_offset", "name": "", "color": "blue", "archived": false, "activeUntil": "2026-10-20T14:00:00+01:00", "completedAt": "" }
+        ]);
+
+        let active = active_projects(&projects, now);
+
+        let ids = active
+            .iter()
+            .map(|project| project.id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(ids, ["project_late", "project_offset"]);
+        assert_eq!(active[0].name, "Garden");
+        assert_eq!(active[0].color, "#4a9b6f");
+        assert_eq!(active[0].active_until, "2026-10-21T08:30:00Z");
+        assert_eq!(active[1].name, "Untitled project");
+        assert_eq!(active[1].color, "");
+        assert_eq!(active[1].active_until, "2026-10-20T13:00:00Z");
+        assert_eq!(
+            serde_json::to_value(&active[0]).unwrap(),
+            json!({ "id": "project_late", "name": "Garden", "color": "#4a9b6f", "activeUntil": "2026-10-21T08:30:00Z" })
+        );
+    }
+
+    #[test]
+    fn widget_caps_active_projects_and_tolerates_missing_collections() {
+        let now = Utc.with_ymd_and_hms(2026, 10, 20, 12, 0, 0).unwrap();
+        let projects = (0..5)
+            .map(|index| json!({ "id": format!("project_{index}"), "name": "P", "activeUntil": "2026-10-21T00:00:00Z" }))
+            .collect::<Vec<_>>();
+
+        assert_eq!(active_projects(&json!(projects), now).len(), 3);
+        assert!(active_projects(&json!(null), now).is_empty());
+        let snapshot =
+            serde_json::to_value(snapshot_from_plan("2026-10-20", None, "ocean")).unwrap();
+        assert_eq!(snapshot["activeProjects"], json!([]));
     }
 
     #[test]

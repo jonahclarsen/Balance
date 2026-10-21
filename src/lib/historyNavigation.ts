@@ -126,12 +126,5 @@ export function historyDestination(before: AppState, after: AppState): HistoryDe
       }
     }
   }
-  if (before.projectCheckIns !== after.projectCheckIns) {
-    const beforeIds = new Set((before.projectCheckIns ?? []).map((entry) => entry.id))
-    const afterIds = new Set((after.projectCheckIns ?? []).map((entry) => entry.id))
-    const entry = (after.projectCheckIns ?? []).find((entry) => !beforeIds.has(entry.id))
-      ?? (before.projectCheckIns ?? []).find((entry) => !afterIds.has(entry.id))
-    if (entry) return { view: 'projects', entityId: entry.projectId, label: 'project check-in', removed: !afterIds.has(entry.id) }
-  }
   return null
 }

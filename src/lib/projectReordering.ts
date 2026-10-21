@@ -2,8 +2,8 @@ import { tick } from 'svelte'
 import { dragAutoScroll } from './dragAutoScroll'
 import { plannerStore } from './store'
 
-/** Start a card move from its content, leaving embedded controls interactive. */
-export function projectReordering(node: HTMLElement) {
+/** Start a card move from its content, leaving embedded controls interactive. A press without a drag opens the card. */
+export function projectReordering(node: HTMLElement, onOpen: (projectId: string) => void = () => {}) {
   let source: HTMLElement | null = null
   let target: HTMLElement | null = null
   let placement: 'before' | 'after' = 'before'
@@ -140,12 +140,14 @@ export function projectReordering(node: HTMLElement) {
     if (event.pointerId !== pointerId) return
     if (dragging) updateTarget(event.clientX, event.clientY)
     const dropped = dragging ? source : null
+    const tapped = dragging ? null : source
     const before = dropped ? measureCards() : null
     if (dragging && source && target) {
       plannerStore.moveProject(source.id.slice('project-'.length), target.id.slice('project-'.length), placement)
     }
     reset()
     if (dropped && before) void settle(dropped, before)
+    if (tapped) onOpen(tapped.id.slice('project-'.length))
   }
 
   function measureCards() {
@@ -182,6 +184,9 @@ export function projectReordering(node: HTMLElement) {
   node.addEventListener('pointercancel', cancel)
   node.addEventListener('lostpointercapture', cancel)
   return {
+    update(next: (projectId: string) => void) {
+      onOpen = next
+    },
     destroy() {
       reset()
       node.removeEventListener('pointerdown', down)

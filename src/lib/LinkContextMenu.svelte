@@ -1,13 +1,19 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
   import { invoke, isTauri } from '@tauri-apps/api/core'
-  import { Menu } from '@tauri-apps/api/menu'
+  import { get } from 'svelte/store'
+  import { CheckMenuItem, Menu } from '@tauri-apps/api/menu'
   import { linkAtElement, parseNavigationURL } from './navigationLinks'
   import { bucketsLinkFromURL } from './bucketLinks'
+  import { plannerStore } from './store'
+  import { findListTemplateItem } from './planner'
+
+  // A copy entry carries its link; a toggle carries its state and action.
+  type Option = { label: string; url?: string; checked?: boolean; toggle?: () => void }
 
   let nativeMenu: Menu | undefined
   let menu: HTMLDivElement
-  let options: { label: string; url: string }[] = []
+  let options: Option[] = []
   let x = 0
   let y = 0
   let status = ''
@@ -62,8 +68,17 @@
     if (!url) return
     event.preventDefault()
     previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
-    const entries = [{ label: 'Copy link', url }]
+    const entries: Option[] = [{ label: 'Copy link', url }]
     const target = parseNavigationURL(url)
+    const listTemplateId = target?.kind === 'list-template' && target.itemId && event.target.closest('[data-list-template-item-id]') ? target.id : ''
+    const listItem = listTemplateId && target?.kind === 'list-template' && target.itemId
+      ? findListTemplateItem(get(plannerStore).listTemplates.find(({ id }) => id === listTemplateId)?.items ?? [], target.itemId)
+      : null
+    const listItemToggle: Option | null = listItem ? {
+      label: 'Only when no active project',
+      checked: Boolean(listItem.onlyWithoutActiveProject),
+      toggle: () => plannerStore.setListTemplateItemOnlyWithoutActiveProject(listTemplateId, listItem.id, !listItem.onlyWithoutActiveProject),
+    } : null
     if (target?.kind === 'day-template' || target?.kind === 'list-template') {
       entries.push({ label: 'Copy review link', url: `balance://review/${target.kind === 'day-template' ? 'day' : 'list'}/${target.id}` })
     } else if (url === 'balance://page/buckets' || url === 'balance://buckets') {
@@ -77,14 +92,15 @@
         const editable = Boolean(event.target.closest('input, textarea, [contenteditable="true"]'))
         await nativeMenu?.close()
         nativeMenu = await Menu.new({ items: [
-          ...entries.map(entry => ({ text: entry.label, action: () => { void copy(entry.url) } })),
+          ...entries.map(entry => ({ text: entry.label, action: () => { void copy(entry.url!) } })),
+          ...(listItemToggle ? [{ item: 'Separator' as const }, await CheckMenuItem.new({ text: listItemToggle.label, checked: listItemToggle.checked, action: listItemToggle.toggle })] : []),
           ...(editable ? [{ item: 'Separator' as const }, { item: 'Cut' as const }, { item: 'Copy' as const }, { item: 'Paste' as const }, { item: 'SelectAll' as const }] : []),
         ] })
         await nativeMenu.popup()
         return
       } catch { /* Browser menu remains available if native menus are unavailable. */ }
     }
-    options = entries
+    options = listItemToggle ? [...entries, listItemToggle] : entries
     const rect = event.target.getBoundingClientRect()
     x = event.clientX || rect.left
     y = event.clientY || rect.bottom
@@ -141,7 +157,11 @@
 {#if options.length}
   <div class="link-context-menu" role="menu" aria-label="Links" bind:this={menu} style:left={`${x}px`} style:top={`${y}px`}>
     {#each options as option}
-      <button type="button" role="menuitem" on:click={() => copy(option.url)}>{option.label}</button>
+      {#if option.toggle}
+        <button class="menu-toggle" type="button" role="menuitemcheckbox" aria-checked={option.checked} on:click={() => { option.toggle?.(); close(true) }}><span class="menu-check" aria-hidden="true">{option.checked ? '✓' : ''}</span>{option.label}</button>
+      {:else}
+        <button type="button" role="menuitem" on:click={() => copy(option.url!)}>{option.label}</button>
+      {/if}
     {/each}
   </div>
 {/if}
@@ -155,6 +175,8 @@
 <style>
   .link-context-menu { position: fixed; z-index: 10000; min-width: 160px; padding: 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); box-shadow: 0 8px 24px #0003; }
   .link-context-menu button { display: block; width: 100%; text-align: left; border: 0; background: transparent; padding: 9px 12px; }
+  .link-context-menu .menu-toggle { display: flex; gap: 6px; border-top: 1px solid var(--line); border-radius: 0; }
+  .menu-check { flex: 0 0 1em; }
   .link-context-menu button:hover, .link-context-menu button:focus-visible { background: var(--line); }
   .link-copy-status { position: fixed; z-index: 10001; bottom: 20px; left: 50%; transform: translateX(-50%); max-width: calc(100vw - 32px); padding: 10px 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink); }
   .link-copy-status input { display: block; width: min(480px, 75vw); margin-block: 8px; }

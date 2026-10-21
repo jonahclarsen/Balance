@@ -46,6 +46,7 @@
     summarizeListTiming,
   } from './lib/listTiming'
   import ProjectsPanel from './lib/ProjectsPanel.svelte'
+  import { activeProjects } from './lib/projects'
   import PrioritizePanel from './lib/PrioritizePanel.svelte'
   import BucketsPanel from './lib/BucketsPanel.svelte'
   import IdeaSortModal from './lib/IdeaSortModal.svelte'
@@ -372,6 +373,9 @@
 
   applyDefaultZoom()
   let currentDay = todayISO()
+  // Minute-resolution clock for active projects lapsing.
+  let projectClock = Date.now()
+  $: sidebarActiveProjects = activeProjects($plannerStore.projects, projectClock)
   let mobileNavPreview: View | null = null
   let mobileNavRevision = 0
   $: selectedNavView = mobileNavPreview ?? view
@@ -1093,6 +1097,13 @@ return rows`
     mobileDrawerPressPointerId = null
     mobileDrawerOpeningClickPending = false
     finishMobileDrawerGesture()
+  }
+
+  async function openActiveProject(projectId: Id) {
+    linkedProjectId = ''
+    await selectMobileDrawerView('projects')
+    await tick()
+    linkedProjectId = projectId
   }
 
   async function selectMobileDrawerView(nextView: View) {
@@ -2523,6 +2534,7 @@ return rows`
       plannerStore.purgeExpiredNotes()
       plannerStore.purgeExpiredIdeas()
       noteTrashCleanupTimer = window.setInterval(() => { plannerStore.purgeExpiredNotes(); plannerStore.purgeExpiredIdeas() }, 60 * 1000)
+      plannerStore.retireProjectCheckIns()
       seedDefaultGoals()
 
       // Android may serialize event-plugin registration with command IPC while
@@ -2617,6 +2629,7 @@ return rows`
       await requestSync('launch')
       plannerStore.purgeExpiredNotes()
       plannerStore.purgeExpiredIdeas()
+      plannerStore.retireProjectCheckIns()
       seedDefaultGoals()
 
       try {
@@ -2672,6 +2685,7 @@ return rows`
   })
 
   function refreshCurrentDay() {
+    projectClock = Date.now()
     applyIridescentHueShift()
     restoreGoalRhythmHide()
     const nextDay = todayISO()
@@ -7084,6 +7098,14 @@ return rows`
     inert={mobileDrawerPressing}
     bind:this={mobileDrawerEl}
   >
+    {#if sidebarActiveProjects.length}
+      <ul class="sidebar-active-projects" aria-label="Active projects">
+        {#each sidebarActiveProjects as project (project.id)}
+          <li><button type="button" style:--project-color={project.color} data-balance-link={`balance://projects/${project.id}`} on:click={() => openActiveProject(project.id)}><span class="project-dot" aria-hidden="true"></span><span class="sidebar-active-project-name">{project.name}</span></button></li>
+        {/each}
+      </ul>
+    {/if}
+
     <div class="sidebar-quick-actions">
       <button
         class="sidebar-search-button"
@@ -7605,6 +7627,7 @@ return rows`
                 addAlternative={plannerStore.addListTemplateItemAlternative}
                 patchAlternative={plannerStore.patchListTemplateItemAlternative}
                 deleteAlternative={plannerStore.deleteListTemplateItemAlternative}
+                setOnlyWithoutActiveProject={plannerStore.setListTemplateItemOnlyWithoutActiveProject}
                 historyRevision={$plannerStore.historyRevision}
                 selectedItemIds={selectedItemIdSet}
                 selectionDragging={selectingItems}
@@ -7942,14 +7965,13 @@ return rows`
     {/if}
 
     {#if view === 'projects'}
-      <ProjectsPanel projects={$plannerStore.projects} checkIns={$plannerStore.projectCheckIns} {linkedProjectId} {currentDay} />
+      <ProjectsPanel projects={$plannerStore.projects} {linkedProjectId} now={projectClock} />
     {/if}
 
     {#if view === 'prioritize'}
       <PrioritizePanel
         sessions={$plannerStore.prioritySessions}
         projects={$plannerStore.projects}
-        checkIns={$plannerStore.projectCheckIns}
         {goals}
         {goalCompletions}
         {currentDay}

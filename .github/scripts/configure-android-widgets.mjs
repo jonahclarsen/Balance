@@ -12,6 +12,7 @@ const resPath = join(root, 'res')
 
 const source = `package app.balance.local
 
+import android.app.AlarmManager
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
@@ -31,6 +32,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
+import java.util.TimeZone
 import java.util.concurrent.Executors
 import kotlin.math.roundToInt
 import org.json.JSONObject
@@ -47,10 +49,19 @@ data class BalanceWidgetSnapshot(
     val itemDepths: List<Int>,
     val itemTimes: List<String>,
     val themeId: String,
+    val activeProjects: List<BalanceWidgetProject> = emptyList(),
+)
+
+data class BalanceWidgetProject(
+    val id: String,
+    val name: String,
+    val color: String,
+    val activeUntilMs: Long,
 )
 
 object BalanceWidgets {
     const val ACTION_REFRESH = "app.balance.local.action.REFRESH_WIDGETS"
+    const val ACTION_REDRAW = "app.balance.local.action.REDRAW_WIDGETS"
     private const val SELF_TEST_DELAY_MS = 15_000L
     private const val DAY_ROLLOVER_HOUR = 3
     private val executor = Executors.newSingleThreadExecutor()
@@ -91,6 +102,40 @@ object BalanceWidgets {
         for (id in ids) {
             manager.updateAppWidget(id, renderHome(context, snapshot))
         }
+        scheduleProjectExpiry(context, snapshot)
+    }
+
+    // A project stops being active at activeUntil, which can pass while the
+    // app is closed. Redraw then; an inexact alarm needs no extra permission.
+    private fun scheduleProjectExpiry(context: Context, snapshot: BalanceWidgetSnapshot) {
+        val now = System.currentTimeMillis()
+        val next = snapshot.activeProjects.map { it.activeUntilMs }.filter { it > now }.minOrNull()
+        val alarm = context.getSystemService(AlarmManager::class.java) ?: return
+        val intent = Intent(context, BalanceHomeWidgetProvider::class.java).setAction(ACTION_REDRAW)
+        val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        val pending = PendingIntent.getBroadcast(context, 43, intent, flags)
+        if (next == null) alarm.cancel(pending) else alarm.set(AlarmManager.RTC, next, pending)
+    }
+
+    private fun parseProjects(json: JSONObject): List<BalanceWidgetProject> {
+        val values = json.optJSONArray("activeProjects") ?: return emptyList()
+        val format = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US)
+        format.timeZone = TimeZone.getTimeZone("UTC")
+        val projects = ArrayList<BalanceWidgetProject>(values.length())
+        for (index in 0 until values.length()) {
+            val value = values.optJSONObject(index) ?: continue
+            val id = value.optString("id", "")
+            val activeUntil = try {
+                format.parse(value.optString("activeUntil", ""))?.time
+            } catch (_: java.text.ParseException) {
+                null
+            } ?: continue
+            if (id.isEmpty()) continue
+            projects.add(
+                BalanceWidgetProject(id, value.optString("name", ""), value.optString("color", ""), activeUntil),
+            )
+        }
+        return projects
     }
 
     private fun loadSnapshot(context: Context): BalanceWidgetSnapshot {
@@ -123,6 +168,7 @@ object BalanceWidgets {
             itemDepths,
             itemTimes,
             json.optString("themeId", "violet"),
+            parseProjects(json),
         )
     }
 
@@ -141,6 +187,7 @@ object BalanceWidgets {
                 views.setOnClickPendingIntent(viewId, PendingIntent.getActivity(context, 6700 + index, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
             }
         }
+        renderProjects(context, views, snapshot)
         val situateIntent = Intent(context, MainActivity::class.java).setData(android.net.Uri.parse("balance://situate"))
         views.setOnClickPendingIntent(R.id.widget_situate_controls, PendingIntent.getActivity(context, 6799, situateIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
         views.setTextViewText(
@@ -254,6 +301,41 @@ object BalanceWidgets {
         views.setViewVisibility(R.id.widget_all_done, if (showAllDone) View.VISIBLE else View.GONE)
         attachActions(context, views)
         return views
+    }
+
+    private fun renderProjects(context: Context, views: RemoteViews, snapshot: BalanceWidgetSnapshot) {
+        val now = System.currentTimeMillis()
+        val projects = snapshot.activeProjects.filter { it.activeUntilMs > now }
+        val rows = intArrayOf(R.id.widget_project_row_1, R.id.widget_project_row_2, R.id.widget_project_row_3)
+        val dots = intArrayOf(R.id.widget_project_dot_1, R.id.widget_project_dot_2, R.id.widget_project_dot_3)
+        val names = intArrayOf(R.id.widget_project_1, R.id.widget_project_2, R.id.widget_project_3)
+        for (index in rows.indices) {
+            val project = projects.getOrNull(index)
+            views.setViewVisibility(rows[index], if (project == null) View.GONE else View.VISIBLE)
+            if (project == null) continue
+            views.setTextViewText(names[index], project.name.ifBlank { "Untitled project" })
+            views.setContentDescription(rows[index], project.name + ", active project")
+            // The generated dot already uses the theme accent; tint only valid colors.
+            val color = if (Regex("#[0-9A-Fa-f]{6}").matches(project.color)) {
+                android.graphics.Color.parseColor(project.color)
+            } else {
+                null
+            }
+            if (color != null) views.setInt(dots[index], "setColorFilter", color)
+            val intent = Intent(context, MainActivity::class.java)
+                .setData(android.net.Uri.parse("balance://projects/" + android.net.Uri.encode(project.id)))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            views.setOnClickPendingIntent(
+                rows[index],
+                PendingIntent.getActivity(
+                    context,
+                    6900 + index,
+                    intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                ),
+            )
+        }
+        views.setViewVisibility(R.id.widget_projects, if (projects.isEmpty()) View.GONE else View.VISIBLE)
     }
 
     private fun brandText(context: Context, themeId: String): CharSequence {
@@ -408,6 +490,9 @@ class BalanceHomeWidgetProvider : AppWidgetProvider() {
                     pending.finish()
                 }
             }
+        } else if (intent.action == BalanceWidgets.ACTION_REDRAW) {
+            val pending = goAsync()
+            BalanceWidgets.refreshAllAsync(context) { pending.finish() }
         } else {
             super.onReceive(context, intent)
         }
@@ -509,6 +594,39 @@ function taskRows(theme) {
   }).join('\n')
 }
 
+function projectRows(theme) {
+  return Array.from({ length: 3 }, (_, index) => {
+    const item = index + 1
+    return `                <LinearLayout
+                    android:id="@+id/widget_project_row_${item}"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:minHeight="32dp"
+                    android:orientation="horizontal"
+                    android:visibility="gone">
+                    <ImageView
+                        android:id="@+id/widget_project_dot_${item}"
+                        android:layout_width="7dp"
+                        android:layout_height="7dp"
+                        android:layout_marginEnd="6dp"
+                        android:contentDescription="@null"
+                        android:importantForAccessibility="no"
+                        android:src="@drawable/balance_widget_${theme.id}_project_dot" />
+                    <TextView
+                        android:id="@+id/widget_project_${item}"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:ellipsize="end"
+                        android:fontFamily="sans-serif-medium"
+                        android:maxLines="1"
+                        android:textColor="${theme.ink}"
+                        android:textSize="12sp" />
+                </LinearLayout>`
+  }).join('\n')
+}
+
 function homeLayout(theme) {
   return `<?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
@@ -540,6 +658,14 @@ function homeLayout(theme) {
                 android:textColor="${theme.brand ?? theme.ink}"
                 android:textSize="20sp"
                 android:textStyle="bold" />
+            <LinearLayout
+                android:id="@+id/widget_projects"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone">
+${projectRows(theme)}
+            </LinearLayout>
             <TextView
                 android:id="@+id/widget_date"
                 android:layout_width="wrap_content"
@@ -759,6 +885,15 @@ function taskCircle(theme) {
 `
 }
 
+function projectDot(theme) {
+  return `<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
+    <size android:width="7dp" android:height="7dp" />
+    <solid android:color="${theme.accent}" />
+</shape>
+`
+}
+
 function progress(theme) {
   const fill = theme.progressColors
     ? `<gradient android:angle="0" android:startColor="${theme.progressColors[0]}" android:centerColor="${theme.progressColors[1]}" android:endColor="${theme.progressColors[2]}" />`
@@ -851,6 +986,10 @@ function addThemeFiles(theme, layoutDirectory, drawableDirectory) {
   files.set(
     join(resPath, `${drawableDirectory}/balance_widget_${theme.id}_task_circle.xml`),
     taskCircle(theme),
+  )
+  files.set(
+    join(resPath, `${drawableDirectory}/balance_widget_${theme.id}_project_dot.xml`),
+    projectDot(theme),
   )
   files.set(
     join(resPath, `${drawableDirectory}/balance_widget_${theme.id}_progress.xml`),

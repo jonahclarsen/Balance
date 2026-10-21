@@ -1,6 +1,7 @@
 import { writable } from 'svelte/store'
 import { goalDaysUntilLapse, isGoalActiveOnDate } from './goals'
-import type { Goal, GoalCompletion, Id, PriorityItem, Project, ProjectCheckIn } from './types'
+import type { Goal, GoalCompletion, Id, PriorityItem, Project } from './types'
+import { isProjectActive, isProjectOpen } from './projects'
 
 const OPEN_SESSION_KEY = 'balance.prioritize.open'
 // An untouched session gives way to the start screen after this long.
@@ -45,21 +46,16 @@ export function nextUnratedId(ordered: PriorityItem[], currentId: Id | null): Id
   return null
 }
 
-// Active, incomplete projects in their page order, then goals due today or
-// overdue, most overdue first.
+// Open projects in their page order, active ones first, then goals due today
+// or overdue, most overdue first.
 export function defaultPrioritySeeds(
   projects: Project[],
-  checkIns: ProjectCheckIn[],
   goals: Goal[],
   completions: GoalCompletion[],
   currentDay: string,
 ): Omit<PriorityItem, 'id'>[] {
-  const latestProgress = new Map<Id, { createdAt: string; progress: number }>()
-  for (const entry of checkIns) {
-    const latest = latestProgress.get(entry.projectId)
-    if (!latest || entry.createdAt >= latest.createdAt) latestProgress.set(entry.projectId, entry)
-  }
-  const openProjects = projects.filter((project) => !project.archived && latestProgress.get(project.id)?.progress !== 100)
+  const open = projects.filter(isProjectOpen)
+  const openProjects = [...open.filter((project) => isProjectActive(project)), ...open.filter((project) => !isProjectActive(project))]
   const lapse = new Map(goals.map((goal) => [goal.id, goalDaysUntilLapse(goal, completions, currentDay)]))
   const dueGoals = goals
     .filter((goal) => isGoalActiveOnDate(goal, currentDay) && (lapse.get(goal.id) ?? 1) <= 0)

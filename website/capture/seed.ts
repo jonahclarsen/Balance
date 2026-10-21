@@ -19,6 +19,7 @@ import {
   shiftCalendarDateISO,
 } from '../../src/lib/planner'
 import { createGoal, reconcileGoalCompletionsForDate } from '../../src/lib/goals'
+import { projectActiveUntil } from '../../src/lib/projects'
 import type { AppState, DailyTemplate, NoteItem, NoteItemKind, PlanItem, TemplateItem } from '../../src/lib/types'
 
 // Deterministic so reruns produce the same pictures.
@@ -227,25 +228,16 @@ export function createScreenshotState(today: string): AppState {
     const now = new Date().toISOString()
     return { id: createId('project'), name, description, color, archived: false, createdAt: now, updatedAt: now }
   }
+  const daysAgo = (days: number) => new Date(`${shiftCalendarDateISO(today, -days)}T18:00:00`).toISOString()
   state.projects = [
-    project('Learn piano', 'Play three pieces from memory by spring.', '#7b5bd6'),
+    { ...project('Learn piano', 'Play three pieces from memory by spring.', '#7b5bd6'), activeUntil: projectActiveUntil(3) },
     project('Garden redesign', 'Native plants and a small vegetable bed.', '#46b887'),
     project('Short story', 'Finish a 5,000-word draft.', '#f0a23e'),
+    project('Photo album', 'Print and arrange the summer trip photos.', '#e0607e'),
+    project('Bike tune-up', 'New chain, brake pads and a wheel true.', '#4f8fd6'),
+    { ...project('Sourdough starter', 'Keep a starter alive for a month.', '#c48a3a'), completedAt: daysAgo(12) },
+    { ...project('Old blog', 'Move posts to the new site.', '#8a8a8a'), archived: true, archivedAt: daysAgo(30) },
   ]
-  for (const [index, item] of state.projects.entries()) {
-    let progress = 5 + index * 8
-    for (let week = 10; week >= 0; week -= 1) {
-      progress = Math.min(95, progress + Math.round(roll() * 9))
-      const createdAt = new Date(`${shiftCalendarDateISO(today, -week * 7)}T18:00:00`).toISOString()
-      state.projectCheckIns.push({
-        id: createId('project_check_in'),
-        projectId: item.id,
-        progress,
-        heart: Math.round(55 + roll() * 40),
-        createdAt,
-      })
-    }
-  }
 
   const ideas = (texts: string[]) => texts.map((text) => ({ ...createPlanItem(text), bucketedAt: new Date().toISOString() }))
   state.ideaBuckets = [

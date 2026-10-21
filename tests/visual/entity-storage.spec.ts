@@ -51,12 +51,10 @@ test('feature actions emit generic patches that replay in the native database', 
     const goal = store.addGoal('Synthetic goal', 7, ['synthetic'], 120)
     store.patchGoal(goal, { name: 'Synthetic renamed goal' })
     const project = store.addProject('Synthetic project')
-    store.checkInProject(project, 35, 80)
-    store.checkInProject(project, 45, 75)
-    const checkIn = live.projectCheckIns.find((entry: any) => entry.projectId === project)
-    store.updateProjectCheckIn(checkIn.id, 55, 70)
-    store.deleteProjectCheckIn(checkIn.id)
-    store.checkInProject(project, 60, 65)
+    store.setProjectActiveDays(project, 3)
+    store.setProjectActiveDays(project, 0)
+    store.setProjectStatus(project, 'completed')
+    store.setProjectStatus(project, 'open')
     const idea = store.addIdea('Synthetic idea')
     const fragment = store.addIdea('Synthetic fragment')
     store.appendIdeaToPrevious(fragment, idea)
@@ -84,7 +82,7 @@ test('feature actions emit generic patches that replay in the native database', 
       expect(operation.payload.action).toEqual(expect.any(String))
     }
   }
-  for (const collection of ['templateListExpansions', 'notes', 'listTemplates', 'lists', 'metrics', 'metricEntries', 'goals', 'projects', 'projectCheckIns', 'ideaBuckets']) {
+  for (const collection of ['templateListExpansions', 'notes', 'listTemplates', 'lists', 'metrics', 'metricEntries', 'goals', 'projects', 'ideaBuckets']) {
     expect(fixture.operations.some((operation: any) => operation.payload.entityChanges.upserts.some((upsert: any) => upsert.collection === collection))).toBe(true)
   }
   mkdirSync('artifacts/entity-fixtures', { recursive: true })

@@ -1,19 +1,38 @@
 import { expect, test } from '@playwright/test'
-import { projectCheckInForDay } from '../../src/lib/projects'
-import { todayISO } from '../../src/lib/planner'
+import { activeProjects, listTemplatesForGeneration, nextProjectExpiry, projectActiveUntil } from '../../src/lib/projects'
+import type { ListTemplate, ListTemplateItem, Project } from '../../src/lib/types'
 
-test('project days roll over at 5 a.m. local time across midnight and year boundaries', () => {
-  const entry = { id: 'old', projectId: 'project', progress: 30, heart: 80, createdAt: new Date(2026, 11, 31, 23, 59).toISOString() }
-  expect(projectCheckInForDay([entry], 'project', todayISO(new Date(2027, 0, 1, 4, 59)))).toBe(entry)
-  expect(projectCheckInForDay([entry], 'project', todayISO(new Date(2027, 0, 1, 5)))).toBeUndefined()
-  const early = { ...entry, id: 'early', createdAt: new Date(2027, 0, 1, 4, 59).toISOString() }
-  expect(projectCheckInForDay([entry, early], 'project', '2026-12-31')).toBe(early)
-  expect(projectCheckInForDay([entry, early], 'other-project', '2026-12-31')).toBeUndefined()
+const project = (patch: Partial<Project> = {}): Project => ({ id: 'project', name: 'Project', description: '', color: '#336699', archived: false, createdAt: '', updatedAt: '', ...patch })
+const item = (id: string, patch: Partial<ListTemplateItem> = {}): ListTemplateItem => ({ id, text: id, html: id, probability: 100, children: [], ...patch })
+
+test('active days count whole days from the most recent 7 a.m.', () => {
+  expect(new Date(projectActiveUntil(1, new Date(2026, 9, 20, 7))).getTime()).toBe(new Date(2026, 9, 21, 7).getTime())
+  expect(new Date(projectActiveUntil(1, new Date(2026, 9, 20, 23, 30))).getTime()).toBe(new Date(2026, 9, 21, 7).getTime())
+  expect(new Date(projectActiveUntil(1, new Date(2026, 9, 20, 6, 59))).getTime()).toBe(new Date(2026, 9, 20, 7).getTime())
+  expect(new Date(projectActiveUntil(3, new Date(2026, 9, 20, 12))).getTime()).toBe(new Date(2026, 9, 20, 7).getTime() + 3 * 24 * 60 * 60 * 1000)
 })
 
-test('legacy duplicate check-ins remain intact and the latest is selected consistently', () => {
-  const first = { id: 'a', projectId: 'project', progress: 30, heart: 80, createdAt: new Date(2026, 8, 9, 12).toISOString() }
-  const last = { ...first, id: 'z' }
-  expect(projectCheckInForDay([last, first], 'project', '2026-09-09')).toBe(last)
-  expect(projectCheckInForDay([first, last], 'project', '2026-09-09')).toBe(last)
+test('only open projects within their active window are active', () => {
+  const now = Date.parse('2026-10-20T12:00:00Z')
+  const projects = [
+    project({ id: 'active', activeUntil: '2026-10-21T14:00:00Z' }),
+    project({ id: 'lapsed', activeUntil: '2026-10-20T11:59:00Z' }),
+    project({ id: 'done', activeUntil: '2026-10-21T14:00:00Z', completedAt: '2026-10-20T10:00:00Z' }),
+    project({ id: 'archived', activeUntil: '2026-10-21T14:00:00Z', archived: true }),
+    project({ id: 'soon', activeUntil: '2026-10-20T13:00:00Z' }),
+  ]
+  expect(activeProjects(projects, now).map(({ id }) => id)).toEqual(['active', 'soon'])
+  expect(nextProjectExpiry(projects, now)).toBe(Date.parse('2026-10-20T13:00:00Z'))
+})
+
+test('flagged list items and their children drop out of generation while a project is active', () => {
+  const templates: ListTemplate[] = [{
+    id: 'list', name: 'List', maxExpectedWords: 0, archivedItems: [], createdAt: '', updatedAt: '',
+    items: [item('keep', { children: [item('gated-child', { onlyWithoutActiveProject: true })] }), item('gated', { onlyWithoutActiveProject: true, children: [item('child')] })],
+  }]
+  const now = Date.parse('2026-10-20T12:00:00Z')
+  expect(listTemplatesForGeneration(templates, [project()], now)).toBe(templates)
+  const filtered = listTemplatesForGeneration(templates, [project({ activeUntil: '2026-10-21T14:00:00Z' })], now)
+  expect(filtered[0].items.map(({ id }) => id)).toEqual(['keep'])
+  expect(filtered[0].items[0].children).toEqual([])
 })
