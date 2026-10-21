@@ -1,7 +1,7 @@
 import { writeFileSync } from 'node:fs'
-import { defaults, grant, enableMode, isActive } from '../src/lib/situate/core.ts'
+import { defaults, regenerate, grant, enableMode, isActive } from '../src/lib/situate/core.ts'
 const now = new Date(2026,9,17,12).getTime()
-let base = defaults(now)
+let base = regenerate(defaults(now), now, null)
 base.epochs = base.epochs.filter(e => e.end >= now-86400000 && e.at < now+2*86400000)
 const cases=[]
 const documents=[base,grant(base,'dolo',{thrust:true},now,now),grant(base,'dolo',{visual:false},now,now,'domain:youtube.com'),enableMode(base,'discord',now)]

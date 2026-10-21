@@ -49,14 +49,14 @@
       {#each modes as mode (mode.id)}
         {@const active = isActive($situate, mode, situatePlatform, $situateNow)}
         <article class:active style:--mode={mode.color}>
-          <div class="mode-heading"><span class="dot" aria-hidden="true"></span><h4>{mode.name}</h4><span class="status">{active ? 'On' : 'Off'}</span></div>
+          <div class="mode-heading"><h4>{mode.name}</h4><span class="status">{active ? 'On' : 'Off'}</span></div>
           <p class="meta">
             {#each DEVICES.filter(d => mode.platforms.includes(d.id)) as device}<span title={device.label}><SituateIcon name={device.id} size={14} /><span class="sr-only">{device.label}</span></span>{/each}
             <span>{mode.targets.length} blocked</span>
           </p>
           <p class="when">{summary(mode, active)}</p>
           <div class="actions">
-            <button type="button" class:primary-mode={!active} aria-label={`${active ? 'Turn off' : 'Turn on'} ${mode.name}`} on:click={() => active ? requestQuiz(mode.id) : activateMode(mode.id).catch(() => {})}>{active ? 'Turn off' : 'Turn on'}</button>
+            <button type="button" aria-label={`${active ? 'Turn off' : 'Turn on'} ${mode.name}`} on:click={() => active ? requestQuiz(mode.id) : activateMode(mode.id).catch(() => {})}>{active ? 'Turn off' : 'Turn on'}</button>
             <button type="button" aria-label={`Edit ${mode.name}`} on:click={() => editing = structuredClone(mode)}>Edit</button>
           </div>
         </article>
@@ -94,11 +94,9 @@
   h3 { margin:0 0 14px; font-size:1.05rem; }
   .modes { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:14px; }
   article { position:relative; display:grid; gap:8px; padding:16px 18px 16px 22px; border:1px solid var(--line); border-radius:14px; background:var(--paper-strong); overflow:hidden; }
-  article::before { content:''; position:absolute; inset:0 auto 0 0; width:5px; background:var(--mode); opacity:.35; }
+  article.active::before { content:''; position:absolute; inset:0 auto 0 0; width:5px; background:var(--mode); }
   article.active { border-color:color-mix(in srgb, var(--mode) 55%, var(--line)); background:color-mix(in srgb, var(--mode) 6%, var(--paper-strong)); }
-  article.active::before { opacity:1; }
   .mode-heading { display:flex; align-items:center; gap:8px; }
-  .dot { width:10px; height:10px; border-radius:50%; background:var(--mode); }
   h4 { margin:0; font-size:1.1rem; flex:1; }
   .status { border-radius:999px; padding:2px 10px; font-size:12px; font-weight:650; color:var(--muted); border:1px solid var(--line); }
   .active .status { color:white; background:var(--mode); border-color:var(--mode); }
@@ -107,7 +105,6 @@
   .when { margin:0; font-size:13px; }
   .actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:4px; }
   article .actions button { font-size:14px; padding:6px 12px; }
-  .primary-mode { border-color:var(--mode); color:color-mix(in srgb, var(--mode) 70%, var(--ink)); }
   .sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
   @media(max-width:600px) { .situate-panel { padding:16px 6px; } }
 </style>

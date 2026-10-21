@@ -9,7 +9,7 @@ export type Mode = {
 }
 export type Settings = {
   wakeMinutes: number; eveningMinutes: number; sunsetOffset: number; lateOffset: number
-  lateMinutes: number; latitude: number | null; longitude: number | null
+  lateMinutes: number
   nightMinutes: number; lateNightMinutes: number; accessMinutes: number
 }
 export type Epoch = { at: number; end: number; phase: 'day' | 'night'; late: number }
@@ -36,7 +36,7 @@ export const CATEGORIES: { id: Category; label: string; color: string }[] = [
   { id: 'custom', label: 'Other', color: '#5f7d8c' },
 ]
 const target = (category: Category, kind: Target['kind'], value: string): Target => ({ id: `${kind}:${value}`, category, kind, value })
-const PRESETS = 4
+const PRESETS = 5
 // Google Messages, WhatsApp, Messenger, Instagram, the Feurstagram clone and Signal on Android and Mac.
 const messagingApps = ['com.google.android.apps.messaging', 'com.whatsapp', 'net.whatsapp.WhatsApp', 'com.facebook.orca', 'com.facebook.archon', 'com.facebook.archon.developerID', 'com.burbn.instagram', 'com.instagram.android.feurstagram', 'org.thoughtcrime.securesms', 'org.whispersystems.signal-desktop']
   .map(v => target('social', 'app', v))
@@ -53,7 +53,7 @@ export function defaults(now = Date.now()): Document {
   const thrust = [q('thrust', 'Did you do one thrust? Get up and thrust your chosen object in and out of your bag.')]
   const doc: Document = {
     version: 1, revision: 0, presets: PRESETS, generatedAt: now, manual: {}, grants: [], epochs: [],
-    settings: { wakeMinutes: 420, eveningMinutes: 1290, sunsetOffset: 240, lateOffset: 480, lateMinutes: 150, latitude: null, longitude: null, nightMinutes: 60, lateNightMinutes: 30, accessMinutes: 15 },
+    settings: { wakeMinutes: 420, eveningMinutes: 1290, sunsetOffset: 240, lateOffset: 480, lateMinutes: 150, nightMinutes: 60, lateNightMinutes: 30, accessMinutes: 15 },
     modes: [
       { id: 'dolo', name: 'Dolo', color: PRESET_COLORS.dolo, platforms: ['mac', 'android'], scheduled: true, dayQuiz: thrust, nightQuiz: thrust, accessQuiz: entertainment, targets: targets.filter(t => t.category !== 'ai') },
       { id: 'touch-grass', name: 'Touch grass', color: PRESET_COLORS['touch-grass'], platforms: ['mac', 'android'], scheduled: true, dayQuiz: [q('planned', 'Have you planned tomorrow?')], nightQuiz: [q('peed', 'Have you just peed?'), q('bed', 'Have you spent one minute in bed with the lights off and Herdr muted?')], accessQuiz: entertainment, targets: targets.filter(t => t.category !== 'social') },
@@ -62,12 +62,13 @@ export function defaults(now = Date.now()): Document {
   }
   return regenerate(doc, now)
 }
-type Legacy = { categories?: unknown; enabled?: unknown }
+type Legacy = { categories?: unknown; enabled?: unknown; latitude?: unknown; longitude?: unknown }
 export function upgradePresets(doc: Document): Document {
   const version = doc.presets ?? 1
   if (version >= PRESETS) return doc
   // v2 added messaging apps to Dolo and v3 mode colors. v3 briefly dropped entertainment
-  // access, which v4 restores, and the global switch gave way to per-mode control.
+  // access, which v4 restores, and the global switch gave way to per-mode control. v5 takes
+  // the sunset location from the time zone instead of entered coordinates.
   const preset = defaults(doc.generatedAt).modes
   const modes = doc.modes.map((m: Partial<Mode> & Mode & Legacy, i) => {
     const { categories: _categories, ...mode } = m
@@ -76,7 +77,8 @@ export function upgradePresets(doc: Document): Document {
     return { ...mode, color: m.color ?? PRESET_COLORS[m.id] ?? MODE_COLORS[i % MODE_COLORS.length], accessQuiz: m.accessQuiz ?? fallback?.accessQuiz ?? [], targets }
   })
   const { enabled: _enabled, ...rest } = doc as Document & Legacy
-  const settings = { ...doc.settings, accessMinutes: doc.settings.accessMinutes ?? 15 }
+  const { latitude: _latitude, longitude: _longitude, ...kept } = doc.settings as Settings & Legacy
+  const settings = { ...kept, accessMinutes: kept.accessMinutes ?? 15 }
   const grants = doc.grants.map(g => ({ ...g, target: g.target ?? '' }))
   return { ...rest, presets: PRESETS, settings, modes, grants }
 }
@@ -99,7 +101,36 @@ export function sunset(date: Date, latitude: number, longitude: number): number 
 function clock(day: Date, minutes: number): number {
   return new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, minutes).getTime()
 }
-export function regenerate(doc: Document, now = Date.now()): Document {
+export type Location = { name: string; zone: string; latitude: number; longitude: number }
+// The largest Canadian city in each Canadian time zone.
+const CITIES: Location[] = [
+  { name: 'Vancouver', zone: 'America/Vancouver', latitude: 49.28, longitude: -123.12 },
+  { name: 'Whitehorse', zone: 'America/Whitehorse', latitude: 60.72, longitude: -135.06 },
+  { name: 'Calgary', zone: 'America/Edmonton', latitude: 51.05, longitude: -114.07 },
+  { name: 'Saskatoon', zone: 'America/Regina', latitude: 52.13, longitude: -106.67 },
+  { name: 'Winnipeg', zone: 'America/Winnipeg', latitude: 49.9, longitude: -97.14 },
+  { name: 'Toronto', zone: 'America/Toronto', latitude: 43.65, longitude: -79.38 },
+  { name: 'Halifax', zone: 'America/Halifax', latitude: 44.65, longitude: -63.57 },
+  { name: "St. John's", zone: 'America/St_Johns', latitude: 47.56, longitude: -52.71 },
+]
+function utcOffset(zone: string, at: number): number | null {
+  try {
+    const name = new Intl.DateTimeFormat('en-US', { timeZone: zone, timeZoneName: 'longOffset' }).formatToParts(at).find(p => p.type === 'timeZoneName')?.value ?? ''
+    const m = /^GMT(?:([+-])(\d{2}):(\d{2}))?$/.exec(name)
+    return m ? (m[1] === '-' ? -1 : 1) * (Number(m[2] ?? 0) * 60 + Number(m[3] ?? 0)) : null
+  } catch { return null }
+}
+/** Sunset comes from the largest Canadian city sharing this time zone's offsets, or none outside them. */
+export function timeZoneLocation(zone = Intl.DateTimeFormat().resolvedOptions().timeZone, year = new Date().getFullYear()): Location | null {
+  const exact = CITIES.find(c => c.zone === zone)
+  if (exact) return exact
+  const offsets = (z: string) => [utcOffset(z, Date.UTC(year, 0, 15)), utcOffset(z, Date.UTC(year, 6, 15))]
+  const [winter, summer] = offsets(zone)
+  if (winter === null) return null
+  const matches = CITIES.filter(c => offsets(c.zone)[0] === winter)
+  return matches.find(c => offsets(c.zone)[1] === summer) ?? matches[0] ?? null
+}
+export function regenerate(doc: Document, now = Date.now(), location = timeZoneLocation()): Document {
   const { settings: s } = doc
   const epochs: Epoch[] = []
   // Dates, rather than 24-hour additions, preserve local wall clocks across DST.
@@ -108,7 +139,7 @@ export function regenerate(doc: Document, now = Date.now()): Document {
     const wake = clock(day, s.wakeMinutes)
     const nextDay = new Date(day); nextDay.setDate(nextDay.getDate() + 1)
     const end = clock(nextDay, s.wakeMinutes)
-    const sun = s.latitude !== null && s.longitude !== null ? sunset(day, s.latitude, s.longitude) : null
+    const sun = location ? sunset(day, location.latitude, location.longitude) : null
     const evening = Math.min(end - minute, Math.max(wake + minute, clock(day, s.eveningMinutes), sun === null ? 0 : sun + s.sunsetOffset * minute))
     // Late clock belongs to the night following this day's sunset.
     const lateDay = s.lateMinutes < s.eveningMinutes ? nextDay : day
@@ -186,7 +217,6 @@ export function validate(doc: Document): void {
   for (const k of ['wakeMinutes', 'eveningMinutes', 'lateMinutes'] as const) if (!Number.isInteger(s[k]) || s[k] < 0 || s[k] >= 1440) throw new Error('Choose a valid clock time')
   for (const k of ['nightMinutes', 'lateNightMinutes', 'accessMinutes'] as const) if (!Number.isFinite(s[k]) || s[k] < 1 || s[k] > 240) throw new Error('Allow between 1 and 240 minutes')
   for (const k of ['sunsetOffset', 'lateOffset'] as const) if (!Number.isFinite(s[k]) || s[k] < 0 || s[k] > 1440) throw new Error('Sunset offsets must be between 0 and 24 hours')
-  if ((s.latitude === null) !== (s.longitude === null) || (s.latitude !== null && (!Number.isFinite(s.latitude) || Math.abs(s.latitude) > 90)) || (s.longitude !== null && (!Number.isFinite(s.longitude) || Math.abs(s.longitude) > 180))) throw new Error('Enter both latitude and longitude')
   const ids = new Set<string>()
   for (const m of doc.modes) {
     if (!/^[a-z0-9-]{1,64}$/.test(m.id) || ids.has(m.id) || !m.name.trim() || m.name.length > 100) throw new Error('Modes need unique IDs and a name')

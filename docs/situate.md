@@ -21,9 +21,10 @@ Each mode has a color used across Balance and a device list (desktop, mobile, or
 both). A mode appears only on the devices it covers, and edits save as you make them.
 
 Evening is the later of 9:30 p.m. and sunset + 4 hours. The late-night boundary is
-sunset + 8 hours, rounded to the nearest half hour. Enter an approximate latitude
-and longitude under **Schedule** on the Situate page; calculation is offline. Without coordinates, or
-when there is no sunset, the fallback times are 9:30 p.m. and 2:30 a.m.
+sunset + 8 hours, rounded to the nearest half hour. Sunset is calculated offline for
+the largest Canadian city sharing the device's time zone (Vancouver for Pacific time,
+Toronto for Eastern, and so on). Outside those time zones, or when there is no sunset,
+the fallback times are 9:30 p.m. and 2:30 a.m.
 The 7 a.m. Situate reset does not change the planner's day boundary.
 
 Scheduled modes turn on at morning and evening; passing a mode's quiz turns it

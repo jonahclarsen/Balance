@@ -1,7 +1,8 @@
 import { test, expect } from '@playwright/test'
-import { defaults, regenerate, epoch, enableMode, grant, isActive, questions, quizProgress, validate, matches, sunset, upgradePresets } from '../../src/lib/situate/core'
+import { defaults, regenerate, epoch, enableMode, grant, isActive, questions, quizProgress, validate, matches, sunset, upgradePresets, timeZoneLocation } from '../../src/lib/situate/core'
 const date = (day:number,hour:number,minute=0) => new Date(2026,9,17+day,hour,minute).getTime()
-const fixture = (now=date(0,12)) => defaults(now)
+// Clock times only: sunset would otherwise follow the machine's time zone.
+const fixture = (now=date(0,12)) => regenerate(defaults(now), now, null)
 test('default modes, reset clocks and device scope', () => {
   const d=fixture();validate(d)
   expect(d.settings.wakeMinutes).toBe(420)
@@ -80,19 +81,25 @@ test('domains use label boundaries, app identifiers use exact equality', () => {
   expect(matches(t,'domain','reddit.com.evil.test')).toBe(false)
   expect(matches(t,'app','reddit.com')).toBe(false)
 })
-test('polar sunset absence uses clock fallback and invalid locations are rejected', () => {
+test('polar sunset absence uses clock fallback', () => {
   expect(sunset(new Date(2026,5,21),89,0)).toBeNull()
-  const d=fixture();d.settings.latitude=89;d.settings.longitude=0
-  const projected=regenerate(d,new Date(2026,5,21,12).getTime())
+  const projected=regenerate(fixture(),new Date(2026,5,21,12).getTime(),{ name:'Pole', zone:'UTC', latitude:89, longitude:0 })
   expect(new Date(epoch(projected,new Date(2026,5,21,12).getTime())!.end).getHours()).toBe(21)
-  d.settings.longitude=null;expect(()=>validate(d)).toThrow('both')
+})
+test('sunset location is the largest Canadian city sharing the time zone', () => {
+  expect(timeZoneLocation('America/Vancouver',2026)?.name).toBe('Vancouver')
+  expect(timeZoneLocation('America/Los_Angeles',2026)?.name).toBe('Vancouver')
+  expect(timeZoneLocation('America/New_York',2026)?.name).toBe('Toronto')
+  expect(timeZoneLocation('America/Phoenix',2026)?.name).toBe('Whitehorse')
+  expect(timeZoneLocation('America/Moncton',2026)?.name).toBe('Halifax')
+  expect(timeZoneLocation('Europe/London',2026)).toBeNull()
+  expect(timeZoneLocation('Not/AZone',2026)).toBeNull()
 })
 test('sunset is plausible for Vancouver and later-of rule is respected', () => {
   const day=new Date('2026-10-17T19:00:00Z')
   const actual=sunset(day,49.28,-123.12)!
   expect(new Date(actual).toISOString()).toMatch(/^2026-10-18T01:/)
-  const d=fixture(); d.settings.latitude=49.28;d.settings.longitude=-123.12
-  const p=regenerate(d,day.getTime());const e=epoch(p,day.getTime())!
+  const p=regenerate(fixture(),day.getTime(),timeZoneLocation('America/Vancouver'));const e=epoch(p,day.getTime())!
   expect(e.end).toBeGreaterThanOrEqual(actual+240*60000-1000)
 })
 test('a stale schedule fails closed and regeneration preserves unexpired grants', () => {
@@ -105,11 +112,11 @@ test('DST wake resets use local clock dates rather than fixed 24-hour intervals'
   try {
     process.env.TZ='America/New_York'
     const now=new Date(2025,10,1,22).getTime()
-    const d=defaults(now)
+    const d=regenerate(defaults(now),now,null)
     const night=epoch(d,now)!
     expect(new Date(night.end).getHours()).toBe(7)
     expect(night.end-night.at).toBe(10.5*3600000)
-    const spring=defaults(new Date(2025,2,8,22).getTime())
+    const spring=regenerate(defaults(new Date(2025,2,8,22).getTime()),new Date(2025,2,8,22).getTime(),null)
     const springNight=epoch(spring,new Date(2025,2,8,22).getTime())!
     expect(new Date(springNight.end).getHours()).toBe(7)
     expect(springNight.end-springNight.at).toBe(8.5*3600000)
@@ -117,7 +124,7 @@ test('DST wake resets use local clock dates rather than fixed 24-hour intervals'
 })
 test('older rules gain messaging apps and colors once, keeping entertainment access', () => {
   const d=fixture();const [dolo,touch]=d.modes
-  const legacy={ ...d, presets:undefined, enabled:true, settings:{ ...d.settings, accessMinutes:undefined }, grants:[{ mode:'dolo', epoch:1, until:2 }],
+  const legacy={ ...d, presets:undefined, enabled:true, settings:{ ...d.settings, accessMinutes:undefined, latitude:49, longitude:-123 }, grants:[{ mode:'dolo', epoch:1, until:2 }],
     modes:[{ ...dolo, color:undefined, accessQuiz:undefined, categories:['social'], targets:dolo.targets.filter(t=>t.value!=='com.whatsapp'&&t.value!=='org.thoughtcrime.securesms') }, { ...touch, accessQuiz:undefined }, ...d.modes.slice(2)] } as unknown as typeof d
   const upgraded=upgradePresets(legacy)
   validate(upgraded)
@@ -130,6 +137,7 @@ test('older rules gain messaging apps and colors once, keeping entertainment acc
   expect(upgraded.modes[0]).not.toHaveProperty('categories')
   expect(upgraded).not.toHaveProperty('enabled')
   expect(upgraded.settings.accessMinutes).toBe(15)
+  expect(upgraded.settings).not.toHaveProperty('latitude')
   expect(upgraded.grants).toEqual([{ mode:'dolo', target:'', epoch:1, until:2 }])
   expect(upgradePresets(upgraded)).toBe(upgraded)
 })

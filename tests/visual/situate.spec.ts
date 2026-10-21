@@ -68,7 +68,7 @@ test('a mode keeps at least one device and leaves devices it no longer covers', 
 })
 
 test('night passes show a countdown and automatically restore the boundary', async ({page}) => {
-  await page.clock.setSystemTime(new Date(2026,9,17,22))
+  await page.clock.setSystemTime(new Date(2026,9,17,23))
   await page.clock.runFor(1001)
   await page.getByRole('button',{name:'Turn off Touch grass',exact:true}).click()
   const quiz=page.getByRole('dialog',{name:'Touch grass',exact:true})
