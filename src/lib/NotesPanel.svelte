@@ -191,6 +191,14 @@
     return visit(note.items)
   }
 
+  // Lines read as two spaces apart; the no-break space keeps HTML from collapsing them.
+  function previewText(note: Note): string {
+    const lines: string[] = []
+    const visit = (items: Note['items']) => items.forEach((item) => { lines.push(...item.text.split('\n')); visit(item.children) })
+    visit(note.items)
+    return lines.map((line) => line.trim().replace(/\s+/g, ' ')).filter(Boolean).join('\u00a0 ').slice(0, 90)
+  }
+
   export function createNote() {
     trashOpen = false
     const id = onCreate()
@@ -601,7 +609,7 @@
           <div class="note-card-row" data-balance-link={`balance://note/${note.id}`}>
             <button type="button" class="note-card" class:active={note.id === selectedNote?.id} on:click={() => onSelect(note.id)}>
               <strong>{note.title.trim() || 'Untitled note'}{#if versionLabel}<small class="note-card-version"> · {versionLabel}</small>{/if}</strong>
-              <span>{flattenText(note).trim().replace(/\s+/g, ' ').slice(0, 90) || 'Empty note'}</span>
+              <span>{previewText(note) || 'Empty note'}</span>
               {#if versions.length > 1}<small class="note-card-versions">{versions.length} versions</small>{/if}
               <time datetime={updatedAt}>{readableDate(updatedAt)}</time>
             </button>
