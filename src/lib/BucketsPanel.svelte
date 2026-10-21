@@ -26,6 +26,7 @@
   let unlockTick = 0
   let shaking: IdeaBucketKind | null = null
   let shakeTimer: number | null = null
+  let trashOpen = false
 
   $: selected = selectedItemId ? findIdea(buckets, selectedItemId) : null
   // Drop the selection once its idea disappears (undo, sync, purge).
@@ -81,7 +82,9 @@
   }
 
   function rootIdsInOrder(): Id[] {
-    return IDEA_BUCKETS.flatMap((meta) => bucketsByKind[meta.kind].items.map((item) => item.id))
+    return IDEA_BUCKETS
+      .filter((meta) => meta.kind !== 'trash' || trashOpen)
+      .flatMap((meta) => bucketsByKind[meta.kind].items.map((item) => item.id))
   }
 
   function moveSelection(direction: -1 | 1) {
@@ -148,7 +151,11 @@
     {@const bucket = bucketsByKind[meta.kind]}
     <section class="bucket-card" data-bucket={meta.kind} data-balance-link={`balance://bucket/${meta.kind}`} aria-label={meta.label}>
       <header class="bucket-card-header">
-        <h3>{meta.label}</h3>
+        {#if meta.kind === 'trash'}
+          <h3><button class="bucket-toggle" type="button" aria-expanded={trashOpen} on:click={() => { trashOpen = !trashOpen }}>{meta.label}</button></h3>
+        {:else}
+          <h3>{meta.label}</h3>
+        {/if}
         <span class="bucket-count">{bucket.items.length}</span>
         {#if meta.kind === 'proposition'}
           <button class="ghost bucket-review-button" type="button" disabled={bucket.items.length === 0} on:click={onSortPropositions}>Sort</button>
@@ -158,51 +165,53 @@
           <span class="bucket-note">clears after {IDEA_TRASH_RETENTION_DAYS} days</span>
         {/if}
       </header>
-      <div class="list-panel bucket-list" data-plan-item-scope={bucket.id}>
-        {#each bucket.items as item (item.id)}
-          <PlanItemEditor
-            {item}
-            allItems={bucket.items}
-            timeWarnings={noTimeWarnings}
-            planId={bucket.id}
-            patchItem={plannerStore.patchIdeaItem}
-            splitItem={plannerStore.splitIdeaItem}
-            backspaceItemAtStart={plannerStore.backspaceIdeaItemAtStart}
-            deleteItem={plannerStore.deleteIdeaItem}
-            deleteItemPreservingChildren={plannerStore.deleteIdeaItemPreservingChildren}
-            moveItem={plannerStore.moveIdeaItem}
-            moveItemWithinLevel={plannerStore.moveIdeaItemWithinLevel}
-            outdentItem={plannerStore.outdentIdeaItem}
-            historyRevision={$plannerStore.historyRevision}
-            selectedItemIds={selectedItemIdSet}
-            onSelectionPointerDown={handleSelectionPointerDown}
-            onMobileSelectionStart={(itemId) => select(itemId)}
-            onMobileSelectionToggle={(itemId) => select(selectedItemId === itemId ? null : itemId)}
-            {mobile}
-            mobileSelectionMode={mobile && selectedItemId !== null}
-            {listTemplates}
-            {metrics}
-            {notes}
-            {onOpenLink}
-            hideTime
-            collapsible
-          />
-        {/each}
-        <button class="add-row" type="button" on:click={() => { void addItem(bucket.id) }}>+ Add item</button>
-      </div>
-      {#if selected && selected.bucket.kind === meta.kind}
-        <div class="bucket-move-strip" role="group" aria-label="Move idea to">
-          {#each IDEA_BUCKETS.filter((target) => target.kind !== meta.kind) as target (target.kind)}
-            <button
-              type="button"
-              class="idea-bucket-button"
-              class:locked={locked(target.kind, unlockTick)}
-              class:shaking={shaking === target.kind}
-              aria-disabled={locked(target.kind, unlockTick) ? 'true' : undefined}
-              on:click={() => attemptMove(target.kind)}
-            >{target.label} <kbd aria-hidden="true">{target.key.toUpperCase()}</kbd></button>
+      {#if meta.kind !== 'trash' || trashOpen}
+        <div class="list-panel bucket-list" data-plan-item-scope={bucket.id}>
+          {#each bucket.items as item (item.id)}
+            <PlanItemEditor
+              {item}
+              allItems={bucket.items}
+              timeWarnings={noTimeWarnings}
+              planId={bucket.id}
+              patchItem={plannerStore.patchIdeaItem}
+              splitItem={plannerStore.splitIdeaItem}
+              backspaceItemAtStart={plannerStore.backspaceIdeaItemAtStart}
+              deleteItem={plannerStore.deleteIdeaItem}
+              deleteItemPreservingChildren={plannerStore.deleteIdeaItemPreservingChildren}
+              moveItem={plannerStore.moveIdeaItem}
+              moveItemWithinLevel={plannerStore.moveIdeaItemWithinLevel}
+              outdentItem={plannerStore.outdentIdeaItem}
+              historyRevision={$plannerStore.historyRevision}
+              selectedItemIds={selectedItemIdSet}
+              onSelectionPointerDown={handleSelectionPointerDown}
+              onMobileSelectionStart={(itemId) => select(itemId)}
+              onMobileSelectionToggle={(itemId) => select(selectedItemId === itemId ? null : itemId)}
+              {mobile}
+              mobileSelectionMode={mobile && selectedItemId !== null}
+              {listTemplates}
+              {metrics}
+              {notes}
+              {onOpenLink}
+              hideTime
+              collapsible
+            />
           {/each}
+          <button class="add-row" type="button" on:click={() => { void addItem(bucket.id) }}>+ Add item</button>
         </div>
+        {#if selected && selected.bucket.kind === meta.kind}
+          <div class="bucket-move-strip" role="group" aria-label="Move idea to">
+            {#each IDEA_BUCKETS.filter((target) => target.kind !== meta.kind) as target (target.kind)}
+              <button
+                type="button"
+                class="idea-bucket-button"
+                class:locked={locked(target.kind, unlockTick)}
+                class:shaking={shaking === target.kind}
+                aria-disabled={locked(target.kind, unlockTick) ? 'true' : undefined}
+                on:click={() => attemptMove(target.kind)}
+              >{target.label} <kbd aria-hidden="true">{target.key.toUpperCase()}</kbd></button>
+            {/each}
+          </div>
+        {/if}
       {/if}
     </section>
   {/each}
@@ -224,6 +233,16 @@
     min-height: 28px;
   }
   .bucket-card-header h3 { margin: 0; font-size: 15px; }
+  .bucket-toggle {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+  .bucket-toggle::after { content: ' ▸'; color: var(--muted); }
+  .bucket-toggle[aria-expanded='true']::after { content: ' ▾'; }
   .bucket-count { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
   .bucket-note { margin-left: auto; color: var(--muted); font-size: 12px; }
   .bucket-review-button { margin-left: auto; padding: 2px 8px; font-size: 13px; }

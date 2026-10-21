@@ -449,6 +449,10 @@ test('pasted lists import as ideas and open the sorter; trash clears after 30 da
 
   await card(page, 'proposition').locator('[data-plan-item-id]').filter({ hasText: 'Synthetic delta' }).getByRole('button', { name: 'Select item' }).click()
   await page.keyboard.press('t')
+  // Trash stays collapsed until its header is clicked.
+  await expect(card(page, 'trash').locator('.bucket-count')).toHaveText('1')
+  await expect(rows(page, 'trash')).toHaveCount(0)
+  await card(page, 'trash').getByRole('button', { name: 'Trash' }).click()
   await expect(rows(page, 'trash')).toHaveText(['Synthetic delta'])
   // The minute sweep runs against the moved clock.
   await page.clock.setSystemTime(new Date(NOW.getTime() + 29 * 24 * 60 * 60 * 1000))
