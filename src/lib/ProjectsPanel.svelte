@@ -166,11 +166,11 @@
       {:else}
         {#if detailsActive}<p class="project-status">Active until {activeEnd(project.activeUntil!)}</p>{/if}
         {#if pickingDays}
+          <p class="project-status">For how many days?</p>
           <div class="project-days" role="group" aria-label="Days active">
             {#each PROJECT_ACTIVE_DAY_COUNTS as days}
               <button type="button" aria-label={`${days} ${days === 1 ? 'day' : 'days'}`} on:click={() => activate(project, days)}>{days}</button>
             {/each}
-            <span class="muted">days</span>
           </div>
         {/if}
         <div class="project-actions">
@@ -206,6 +206,5 @@
   .project-actions, .project-days { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
   .project-actions button { font-size: 14px; padding: 8px 10px; }
   .project-days button { min-width: 40px; font-size: 15px; padding: 8px 0; font-variant-numeric: tabular-nums; }
-  .project-days span { font-size: 13px; }
   textarea { width: 100%; box-sizing: border-box; min-height: 96px; resize: vertical; background: var(--paper-strong); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
 </style>

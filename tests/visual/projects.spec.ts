@@ -1,12 +1,8 @@
 import { expect, test, type Page } from '@playwright/test'
+import { openView, showPrimaryNavigation } from '../helpers/navigation'
 
 test.use({ timezoneId: 'America/Vancouver' })
 
-async function openView(page: Page, name: string) {
-  const menu = page.getByRole('button', { name: 'Open navigation', exact: true })
-  if (await menu.isVisible()) await menu.click()
-  await page.getByRole('button', { name, exact: true }).click()
-}
 
 async function addProject(page: Page, name: string) {
   await page.getByRole('textbox', { name: 'New project name' }).fill(name)
@@ -51,6 +47,7 @@ test('active projects last whole days from 7 a.m., lead the list and sidebar, an
   await expect(preview).toHaveText('Synthetic second')
 
   await openView(page, 'Today')
+  await showPrimaryNavigation(page)
   await page.locator('.sidebar-active-projects button').click()
   await expect(page.getByRole('heading', { name: 'Projects', exact: true })).toBeVisible()
   await expect(details).toBeVisible()
