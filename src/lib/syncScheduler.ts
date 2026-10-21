@@ -49,6 +49,9 @@ export const automaticSyncStatus = writable<AutomaticSyncStatus>({
 })
 
 let running: Promise<SyncPassResult | null> | null = null
+// Android reports a return to the app as both resume and focus. Until the
+// running refresh reads the backend, a second one only rereads the workspace.
+let runningRefreshUnread = false
 let queuedReason: string | null = null
 let queuedPromise: Promise<SyncPassResult | null> | null = null
 let resolveQueued: ((result: SyncPassResult | null | PromiseLike<SyncPassResult | null>) => void) | null = null
@@ -154,6 +157,7 @@ function scheduleRetry(): void {
 }
 
 export async function requestSync(reason: string): Promise<SyncPassResult | null> {
+  if (running && runningRefreshUnread && ['resume', 'focus'].includes(reason)) return running
   if (running) {
     if (requiresFollowup(reason)) {
       // Keep an explicit refresh when an edit joins the same queued pass.
@@ -169,6 +173,7 @@ export async function requestSync(reason: string): Promise<SyncPassResult | null
     }))
     return requiresFollowup(reason) ? queuedPromise : running
   }
+  runningRefreshUnread = refreshesVisibleState(reason) && reason !== 'manual'
   running = (async () => {
     // initialSyncComplete is a launch latch. Routine polls, resumes, and edits
     // must not reset it and make unrelated foreground UI look uninitialized.
@@ -186,6 +191,7 @@ export async function requestSync(reason: string): Promise<SyncPassResult | null
     try {
       syncConfigured = await configured()
     } catch (error) {
+      runningRefreshUnread = false
       if (reason === 'launch') {
         try {
           await plannerStore.reloadFromBackend()
@@ -207,6 +213,7 @@ export async function requestSync(reason: string): Promise<SyncPassResult | null
       return null
     }
 
+    runningRefreshUnread = false
     if (!syncConfigured) {
       automaticSyncStatus.set({
         running: false,

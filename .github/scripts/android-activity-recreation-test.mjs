@@ -101,6 +101,22 @@ async function responsive({deferDatabaseProbe = false} = {}) {
   return { frameMs, inputMs, readMs, durableProbeMs, nativeAndDbMs,
     ...(deferDatabaseProbe ? {marker} : {}) }
 }
+// Names what changed between native snapshots, never their synthetic content.
+function snapshotChanges(before, after) {
+  if (before === after) return []
+  const a = JSON.parse(before), b = JSON.parse(after), changes = []
+  for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
+    if (JSON.stringify(a[key]) === JSON.stringify(b[key])) continue
+    if (Array.isArray(a[key]) && Array.isArray(b[key])) {
+      const byId = new Map(a[key].map(item => [item?.id, JSON.stringify(item)]))
+      const ids = b[key].filter(item => byId.get(item?.id) !== JSON.stringify(item)).map(item => item?.id)
+      changes.push(`${key}: ${a[key].length}->${b[key].length} [${ids.slice(0, 5).join(',')}]`)
+    } else if (a[key] && b[key] && typeof a[key] === 'object') {
+      changes.push(`${key}: {${Object.keys({...a[key], ...b[key]}).filter(k => JSON.stringify(a[key][k]) !== JSON.stringify(b[key][k])).slice(0, 8).join(',')}}`)
+    } else changes.push(`${key}: ${typeof a[key]}->${typeof b[key]}${typeof b[key] === 'string' && b[key].length < 40 ? ` ${a[key]}->${b[key]}` : ''}`)
+  }
+  return changes
+}
 function fixture(count = 40) {
   const state = syntheticState()
   const day = new Date(Date.now() - 5 * 3600000).toISOString().slice(0, 10)
@@ -385,6 +401,7 @@ try {
         await client.send('Profiler.start')
         await client.send('Page.reload')
         await waitFor(() => client.evaluate(`window.__startupProfile === '${days}-${rate}' && window.__startupReadyAt`), 'instrumented startup', 120000)
+        const hydratedSnapshot = await invoke('read_app_state', {}, 60000)
         await sleep(3000)
         const profile = (await client.send('Profiler.stop')).profile
         await writeFile(`android-lifecycle-history-${days}-cpu${rate}.cpuprofile`, JSON.stringify(profile))
@@ -402,6 +419,8 @@ try {
         console.log(JSON.stringify(result))
         await client.send('Page.removeScriptToEvaluateOnNewDocument', {identifier})
         // Offline focus/resume currently rereads and normalizes the workspace.
+        const beforeResumeSnapshot = await invoke('read_app_state', {}, 60000)
+        await sleep(1000)
         await client.evaluate('window.__startupTasks = []')
         await home()
         await client.send('Profiler.start')
@@ -415,7 +434,9 @@ try {
         await writeFile(`android-lifecycle-history-${days}-cpu${rate}-resume.cpuprofile`,
           JSON.stringify((await client.send('Profiler.stop')).profile))
         const resume = {days, rate, phase: 'resume', elapsedMs,
-          ...interaction, tasks: await client.evaluate('window.__startupTasks')}
+          ...interaction, tasks: await client.evaluate('window.__startupTasks'),
+          snapshotChangesBeforeResume: snapshotChanges(hydratedSnapshot, beforeResumeSnapshot),
+          snapshotChangesAfterResume: snapshotChanges(beforeResumeSnapshot, await invoke('read_app_state', {}, 60000))}
         resume.durableProbeMs = await verifyDurableInput(marker)
         report.cases.push(resume)
         console.log(JSON.stringify(resume))
