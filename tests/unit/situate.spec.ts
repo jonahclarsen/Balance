@@ -27,6 +27,16 @@ test('day planning pass ends at evening, and evening cannot reuse day quiz', () 
   expect(isActive(allowed,d.modes[1],'mac',date(0,21,30))).toBe(true)
   expect(() => grant(d,'touch-grass',{planned:true},now,date(0,21,30))).toThrow('changed')
 })
+test('an unplanned tomorrow allows only a 5-minute emergency pass', () => {
+  const d=fixture();const now=date(0,12)
+  expect(quizProgress(questions(d,d.modes[1],now),{planned:false}).next?.id).toBe('emergency')
+  expect(quizProgress(questions(d,d.modes[1],now),{planned:false,emergency:false}).denied).toBe(true)
+  const allowed=grant(d,'touch-grass',{planned:false,emergency:true},now,now)
+  expect(allowed.grants[0].until-now).toBe(5*60000)
+  expect(isActive(allowed,d.modes[1],'mac',now+5*60000)).toBe(true)
+  const legacy=upgradePresets({ ...d, presets:7, modes:d.modes.map(m=>({ ...m, dayQuiz:m.dayQuiz.filter(q=>q.id!=='emergency') })) })
+  expect(legacy.modes[1].dayQuiz.map(q=>q.id)).toEqual(['planned','emergency'])
+})
 test('night passes last 60 minutes, late passes 30, and never cross wake time', () => {
   const d=fixture();const answers={peed:true,bed:true}
   for(const [now,duration] of [[date(0,23),60],[date(1,2,30),30],[date(1,6,50),10]]) {

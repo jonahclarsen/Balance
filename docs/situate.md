@@ -12,7 +12,7 @@ not turn it off on another. Planner data is never shared with integrations.
   off quiz asks whether you got up and thrust your chosen object in and out of
   your bag.
 - **Touch grass:** AI chats and entertainment. A daytime pass requires planning
-  tomorrow and ends at evening. At night, confirm that you just peed and spent
+  tomorrow and ends at evening; an emergency instead grants 5 minutes. At night, confirm that you just peed and spent
   a minute in bed with the lights off and Herdr muted. Passes last 60 minutes,
   shortened to 30 minutes for passes started after the late-night boundary.
 - **Discord:** mobile only, manually enabled.

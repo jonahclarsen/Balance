@@ -14,7 +14,7 @@
   $: modes = $situate.modes.filter(m => m.platforms.includes(situatePlatform))
   $: currentEpoch = epoch($situate, $situateNow)
   $: today = scheduleToday($situate, $situateNow)
-  $: countdown = $situate.grants.find(g => g.mode === 'touch-grass' && g.until > $situateNow && currentEpoch?.phase === 'night')
+  $: countdown = currentEpoch && $situate.grants.find(g => g.mode === 'touch-grass' && !g.target && g.until > $situateNow && (currentEpoch!.phase === 'night' || g.until < currentEpoch!.end))
   function nightPass(mode: Mode) {
     if (mode.id !== 'touch-grass' || currentEpoch?.phase !== 'night') return 0
     return $situateNow >= currentEpoch.late ? $situate.settings.lateNightMinutes : $situate.settings.nightMinutes

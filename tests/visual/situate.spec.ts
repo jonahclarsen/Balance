@@ -98,6 +98,17 @@ test('night passes show a countdown and automatically restore the boundary', asy
   await expect(page.getByRole('timer')).toHaveCount(0)
 })
 
+test('an emergency allows 5 minutes without planning tomorrow', async ({page}) => {
+  await page.getByRole('button',{name:'Turn off Touch grass',exact:true}).click()
+  const quiz=page.getByRole('dialog',{name:'Touch grass',exact:true})
+  await quiz.getByRole('button',{name:'No',exact:true}).click()
+  await expect(quiz.getByRole('heading',{level:2})).toHaveText('Is this an emergency?')
+  await quiz.getByRole('button',{name:'Yes',exact:true}).click()
+  await expect(page.getByRole('timer')).toContainText('5 min')
+  await page.clock.fastForward(300001)
+  await expect(page.getByRole('button',{name:'Turn off Touch grass',exact:true})).toBeVisible()
+})
+
 test('entertainment access passes one site and leaves the mode on', async ({page}) => {
   await page.goto('/situate.html?mode=touch-grass&target=domain%3Ayoutube.com&widget=1')
   const quiz=page.getByRole('dialog',{name:'Touch grass',exact:true})
