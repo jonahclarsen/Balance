@@ -6,7 +6,7 @@ export const situate = writable<Document>(defaults())
 export const situateError = writable('')
 export const situateReady = writable(false)
 export const situateNow = writable(Date.now())
-export const quizRequest = writable<{ mode: string; startedAt: number; revision: number } | null>(null)
+export const quizRequest = writable<{ mode: string; target: string; startedAt: number; revision: number } | null>(null)
 export const situatePlatform: Platform = /Android/i.test(navigator.userAgent) ? 'android' : /Win/i.test(navigator.userAgent) ? 'windows' : 'mac'
 let queue = Promise.resolve()
 export function mutateSituate(change: (current: Document) => Document): Promise<void> {
@@ -25,7 +25,8 @@ export function mutateSituate(change: (current: Document) => Document): Promise<
 export async function startSituate(): Promise<() => void> {
   try {
     const saved = isTauri() ? await invoke<Document | null>('situate_load') : JSON.parse(localStorage.getItem('balance-situate-v1') ?? 'null')
-    if (saved) { validate(saved); situate.set(saved) }
+    // Upgrade before validating: older rules lack fields that validation now requires.
+    if (saved) { const upgraded = upgradePresets(saved); validate(upgraded); situate.set(upgraded) }
     situateReady.set(true)
     await mutateSituate(current => regenerate(upgradePresets(current)))
   } catch (error) { situateError.set(String(error)); return () => {} }
@@ -33,7 +34,7 @@ export async function startSituate(): Promise<() => void> {
     void queue.then(async () => {
       if (payload <= get(situate).revision) return
       const current = await invoke<Document | null>('situate_load')
-      if(current) { validate(current); situate.set(current) }
+      if(current) { const upgraded = upgradePresets(current); validate(upgraded); situate.set(upgraded) }
     }).catch(error => situateError.set(String(error)))
   }) : () => {}
   const clockKey = () => `${new Date().toDateString()}:${new Date().getTimezoneOffset()}`
@@ -44,14 +45,14 @@ export async function startSituate(): Promise<() => void> {
   }, 1000)
   return () => { window.clearInterval(timer); stopListening() }
 }
-export function requestQuiz(mode: string) { quizRequest.set({ mode, startedAt: Date.now(), revision: get(situate).revision }) }
+export function requestQuiz(mode: string, target = '') { quizRequest.set({ mode, target, startedAt: Date.now(), revision: get(situate).revision }) }
 export function activateMode(mode: string) { return mutateSituate(current => enableMode(current, mode)) }
 export function answerQuiz(answers: Answers) {
   const request = get(quizRequest)
   if (!request) return Promise.resolve()
   return mutateSituate(current => {
     if(current.revision !== request.revision) throw new Error('Rules changed. Reopen the quiz.')
-    return grant(current, request.mode, answers, request.startedAt, Date.now())
+    return grant(current, request.mode, answers, request.startedAt, Date.now(), request.target)
   }).then(() => quizRequest.set(null))
 }
 export function situateDeepLink(raw: string): boolean {
@@ -59,7 +60,7 @@ export function situateDeepLink(raw: string): boolean {
     const url = new URL(raw)
     if (url.protocol !== 'balance:' || url.hostname !== 'situate') return false
     const mode = url.searchParams.get('mode')
-    if (mode && get(situate).modes.some(m => m.id === mode)) requestQuiz(mode)
+    if (mode && get(situate).modes.some(m => m.id === mode)) requestQuiz(mode, url.searchParams.get('target') ?? '')
     return true
   } catch { return false }
 }

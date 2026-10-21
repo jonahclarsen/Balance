@@ -62,6 +62,7 @@
       <div class="quizzes">
         <SituateQuestionEditor label="Day" hint={today ? `${clockTime(today.wake)}–${clockTime(today.evening)}` : ''} bind:questions={draft.dayQuiz} />
         <SituateQuestionEditor label="Night" hint={today ? `${clockTime(today.evening)}–${clockTime(today.nextWake)}` : ''} bind:questions={draft.nightQuiz} />
+        <SituateQuestionEditor label="Entertainment access" hint={`One site, ${$situate.settings.accessMinutes} min`} bind:questions={draft.accessQuiz} />
       </div>
     </section>
     <section>

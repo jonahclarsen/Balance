@@ -91,34 +91,40 @@ pub(crate) fn status(doc: &Value, platform: &str, now: i64) -> Value {
         let id = mode["id"].as_str().unwrap_or("");
         let activation =
             if mode["scheduled"] == true { at } else { 0 }.max(number(&doc["manual"][id]));
-        let enabled = doc["enabled"] == true && activation > 0;
-        let pass = grants.iter().find(|g| {
-            g["mode"] == id && number(&g["epoch"]) >= activation && number(&g["until"]) > now
-        });
+        let enabled = activation > 0;
+        let target_of = |g: &Value| g["target"].as_str().unwrap_or("").to_string();
+        let allowed = |target: &str| {
+            grants.iter().find(|g| {
+                g["mode"] == id
+                    && (target_of(g).is_empty() || target_of(g) == target)
+                    && number(&g["epoch"]) >= activation
+                    && number(&g["until"]) > now
+            })
+        };
         for grant in &grants {
             let until = number(&grant["until"]);
             if until > now {
                 refresh = refresh.min(until);
             }
         }
-        let active = enabled && pass.is_none();
-        let all: Vec<Value> = mode["targets"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .map(public_target)
-            .collect();
+        let active = enabled && allowed("").is_none();
+        let mut targets = Vec::new();
+        for target in mode["targets"].as_array().into_iter().flatten() {
+            if enabled && allowed(target["id"].as_str().unwrap_or("")).is_none() {
+                targets.push(public_target(target));
+            }
+        }
         if id == "touch-grass" {
             ai_blocked = active;
             if enabled && epoch.is_some_and(|e| e["phase"] == "night") {
-                if let Some(g) = pass {
+                if let Some(g) = allowed("") {
                     countdown = g["until"].clone();
                 }
             }
         }
-        modes.push(json!({"id":id,"name":mode["name"],"color":mode["color"],"active":active,"targets":if active { all.clone() } else { Vec::new() },"allTargets":all}));
+        modes.push(json!({"id":id,"name":mode["name"],"color":mode["color"],"active":active,"targets":targets,"allTargets":mode["targets"].as_array().into_iter().flatten().map(public_target).collect::<Vec<_>>()}));
     }
-    json!({"version":1,"modes":modes,"aiBlocked":ai_blocked,"countdownUntil":countdown,"refreshAt":refresh,"enabled":doc["enabled"],"quizUrl":"balance://situate?mode=touch-grass"})
+    json!({"version":1,"modes":modes,"aiBlocked":ai_blocked,"countdownUntil":countdown,"refreshAt":refresh,"enabled":true,"quizUrl":"balance://situate?mode=touch-grass"})
 }
 #[tauri::command]
 pub(crate) fn situate_load(app: tauri::AppHandle) -> Result<Option<Value>, String> {
@@ -240,7 +246,11 @@ pub(crate) fn situate_extension(app: tauri::AppHandle, action: String) -> Result
             .status()
             .map_err(|e| e.to_string())?;
     }
-    if action == "install" {
+    // Keep an installed copy current so a browser reload picks up new rules.
+    let stale = EXTENSION_FILES
+        .iter()
+        .any(|(name, contents)| fs::read_to_string(folder.join(name)).ok().as_deref() != Some(*contents));
+    if action == "install" || (folder.exists() && stale) {
         for (name, contents) in EXTENSION_FILES {
             write_text(&folder.join(name), contents, 0o600)?;
         }
@@ -401,11 +411,12 @@ pub(crate) fn widget_modes() -> Vec<Value> {
         })
         .unwrap_or_default()
 }
+/// Situate keeps Balance running in the background once it has rules.
 pub(crate) fn active() -> bool {
     DIRECTORY
         .get()
         .and_then(|p| read(p).ok().flatten())
-        .is_some_and(|d| d["enabled"] == true)
+        .is_some()
 }
 #[cfg(target_os = "macos")]
 fn hide_window_buttons(window: &tauri::WebviewWindow) {
@@ -537,7 +548,7 @@ mod tests {
         }
     }
     fn fixture() -> Value {
-        json!({"enabled":true,"generatedAt":1,"epochs":[{"at":100,"end":1000,"phase":"night"}],"modes":[{"id":"touch-grass","name":"Touch grass","platforms":["mac"],"scheduled":true,"targets":[{"id":"yt","kind":"domain","value":"youtube.com"}]}],"manual":{},"grants":[]})
+        json!({"generatedAt":1,"epochs":[{"at":100,"end":1000,"phase":"night"}],"modes":[{"id":"touch-grass","name":"Touch grass","platforms":["mac"],"scheduled":true,"targets":[{"id":"yt","kind":"domain","value":"youtube.com"}]}],"manual":{},"grants":[]})
     }
     #[test]
     fn grants_expire_and_never_expose_private_fields() {
@@ -545,7 +556,7 @@ mod tests {
         d["secretPlanner"] = json!("not public");
         d["settings"] = json!({"latitude":1});
         assert_eq!(status(&d, "mac", 200)["aiBlocked"], true);
-        d["grants"] = json!([{"mode":"touch-grass","epoch":100,"until":500}]);
+        d["grants"] = json!([{"mode":"touch-grass","target":"","epoch":100,"until":500}]);
         let s = status(&d, "mac", 200);
         assert_eq!(s["aiBlocked"], false);
         assert_eq!(s["countdownUntil"], 500);
@@ -555,13 +566,13 @@ mod tests {
         assert_eq!(status(&d, "android", 200)["modes"], json!([]));
     }
     #[test]
-    fn manual_reactivation_revokes_pass() {
+    fn target_grant_never_unlocks_mode_and_manual_reactivation_revokes_pass() {
         let mut d = fixture();
-        d["grants"] = json!([{"mode":"touch-grass","epoch":100,"until":500}]);
-        assert_eq!(status(&d, "mac", 200)["modes"][0]["targets"], json!([]));
+        d["grants"] = json!([{"mode":"touch-grass","target":"yt","epoch":100,"until":500}]);
+        let s = status(&d, "mac", 200);
+        assert_eq!(s["aiBlocked"], true);
+        assert_eq!(s["modes"][0]["targets"], json!([]));
         d["manual"] = json!({"touch-grass":201});
-        let s = status(&d, "mac", 202);
-        assert_eq!(s["modes"][0]["active"], true);
-        assert_eq!(s["modes"][0]["targets"].as_array().unwrap().len(), 1);
+        assert_eq!(status(&d, "mac", 202)["modes"][0]["targets"].as_array().unwrap().len(), 1);
     }
 }

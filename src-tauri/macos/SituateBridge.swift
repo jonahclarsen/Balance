@@ -31,7 +31,7 @@ private func enforceSituate() {
           let bundle = app.bundleIdentifier, bundle != "app.balance.local" else { return }
     for mode in situateModes {
         guard let targets = mode["targets"] as? [[String: Any]],
-              targets.contains(where: { $0["kind"] as? String == "app" && $0["value"] as? String == bundle }) else { continue }
+              let target = targets.first(where: { $0["kind"] as? String == "app" && $0["value"] as? String == bundle }) else { continue }
         situateShowing = true
         app.hide()
         let alert = NSAlert()
@@ -43,6 +43,7 @@ private func enforceSituate() {
         if alert.runModal() == .alertSecondButtonReturn {
             var url = URLComponents(string: "balance://situate")!
             url.queryItems = [URLQueryItem(name: "mode", value: mode["id"] as? String)]
+            if target["category"] as? String == "entertainment" { url.queryItems?.append(URLQueryItem(name: "target", value: target["id"] as? String)) }
             if let url = url.url { NSWorkspace.shared.open(url) }
         }
         situateShowing = false

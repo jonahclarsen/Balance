@@ -3,7 +3,6 @@ import { openView } from '../helpers/navigation'
 test.use({ userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36' })
 test.beforeEach(async ({page}) => { await page.clock.install({time:new Date(2026,9,17,12)}); await page.goto('/'); await openView(page,'Situate') })
 test('quiz refusal keeps mode on, success persists and does not switch off other mode', async ({page}) => {
-  await page.getByRole('button',{name:'Enable Situate',exact:true}).click()
   await page.getByRole('button',{name:'Turn off Dolo',exact:true}).click()
   let dialog=page.getByRole('dialog',{name:'Dolo',exact:true})
   await dialog.getByRole('button',{name:'No',exact:true}).click()
@@ -27,7 +26,6 @@ test('mode edits save as you go, including conditional questions', async ({page}
   await page.keyboard.press('Escape')
   await expect(dialog).toBeHidden()
   await page.reload();await openView(page,'Situate')
-  await page.getByRole('button',{name:'Enable Situate',exact:true}).click()
   await page.getByRole('button',{name:'Turn off Dolo',exact:true}).click()
   const quiz=page.getByRole('dialog',{name:'Dolo',exact:true})
   await quiz.getByRole('button',{name:'No',exact:true}).click()
@@ -72,7 +70,6 @@ test('a mode keeps at least one device and leaves devices it no longer covers', 
 test('night passes show a countdown and automatically restore the boundary', async ({page}) => {
   await page.clock.setSystemTime(new Date(2026,9,17,22))
   await page.clock.runFor(1001)
-  await page.getByRole('button',{name:'Enable Situate',exact:true}).click()
   await page.getByRole('button',{name:'Turn off Touch grass',exact:true}).click()
   const quiz=page.getByRole('dialog',{name:'Touch grass',exact:true})
   await quiz.getByRole('button',{name:'Yes',exact:true}).click()
@@ -85,8 +82,18 @@ test('night passes show a countdown and automatically restore the boundary', asy
   await expect(page.getByRole('timer')).toHaveCount(0)
 })
 
+test('entertainment access passes one site and leaves the mode on', async ({page}) => {
+  await page.goto('/situate.html?mode=touch-grass&target=domain%3Ayoutube.com&widget=1')
+  const quiz=page.getByRole('dialog',{name:'Touch grass',exact:true})
+  await expect(quiz.getByText('youtube.com')).toBeVisible()
+  await quiz.getByRole('button',{name:'Yes',exact:true}).click()
+  await quiz.getByRole('button',{name:'Yes',exact:true}).click()
+  await expect(quiz).toBeHidden()
+  const doc=await page.evaluate(()=>JSON.parse(localStorage.getItem('balance-situate-v1')!))
+  expect(doc.grants).toEqual([expect.objectContaining({mode:'touch-grass',target:'domain:youtube.com'})])
+})
+
 test('compact widget opens a quiz without loading planner storage', async ({page}) => {
-  await page.getByRole('button',{name:'Enable Situate',exact:true}).click()
   await page.addInitScript(() => {
     const original=Storage.prototype.getItem
     const keys:string[]=[]

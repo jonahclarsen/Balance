@@ -1,6 +1,6 @@
 <script lang="ts">
   import { isTauri, invoke } from '@tauri-apps/api/core'
-  import { situate, situateNow, situatePlatform, situateError, mutateSituate, requestQuiz, activateMode } from './situate/store'
+  import { situate, situateNow, situatePlatform, situateError, requestQuiz, activateMode } from './situate/store'
   import { isActive, epoch, backOn, scheduleToday, type Mode } from './situate/core'
   import { DEVICES, clockTime } from './situate/ui'
   import { browsersMissingExtension, extensionSetupOpen } from './situate/extension'
@@ -19,7 +19,6 @@
     return $situateNow >= currentEpoch.late ? $situate.settings.lateNightMinutes : $situate.settings.nightMinutes
   }
   function summary(mode: Mode, active: boolean) {
-    if (!$situate.enabled) return mode.scheduled ? 'Morning and evening' : 'By hand'
     if (!active) {
       const until = backOn($situate, mode, $situateNow)
       return until ? `Back on at ${clockTime(until)}` : 'Off until you turn it on'
@@ -35,9 +34,6 @@
 <section class="situate-panel">
   <header class="page-header"><div><h2>Situate</h2></div></header>
   {#if $situateError}<p class="error" role="alert">{$situateError}</p>{/if}
-  {#if !$situate.enabled}
-    <div class="intro"><div><h3>Pause before scrolling.</h3><p class="muted">Modes block apps and sites until you take their quiz.</p></div><button class="primary" type="button" on:click={() => mutateSituate(d => ({ ...d, enabled: true })).catch(() => {})}>Enable Situate</button></div>
-  {/if}
   {#if $browsersMissingExtension.length}
     <button type="button" class="extension-alert" on:click={() => extensionSetupOpen.set(true)}>
       <span class="alert-icon" aria-hidden="true">!</span>
@@ -85,8 +81,6 @@
 <style>
   .situate-panel { max-width:1000px; margin:0 auto; padding:24px; }
   .error { color:var(--danger); }
-  .intro { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; padding:18px 20px; border:1px solid var(--accent); border-radius:14px; background:color-mix(in srgb, var(--accent) 7%, var(--paper)); margin-bottom:16px; }
-  .intro h3 { margin:0 0 4px; } .intro p { margin:0; }
   .extension-alert { display:flex; align-items:center; gap:14px; width:100%; text-align:left; padding:14px 16px; margin-bottom:16px; border:1.5px solid var(--danger); border-radius:14px; background:color-mix(in srgb, var(--danger) 10%, var(--paper)); color:var(--ink); }
   .extension-alert:hover { background:color-mix(in srgb, var(--danger) 15%, var(--paper)); border-color:var(--danger); }
   .extension-alert > span:nth-child(2) { display:grid; gap:2px; flex:1; }

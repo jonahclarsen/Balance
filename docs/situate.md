@@ -1,7 +1,7 @@
 # Situate
 
 Situate adds device-local app boundaries to Balance on macOS and Android.
-Enable it in **Situate**, review the preset targets, then grant the device permissions.
+Review the modes in **Situate**, then grant the device permissions.
 Settings and passes are local to each device; turning a mode off on one device does
 not turn it off on another. Planner data is never shared with integrations.
 
@@ -27,13 +27,18 @@ when there is no sunset, the fallback times are 9:30 p.m. and 2:30 a.m.
 The 7 a.m. Situate reset does not change the planner's day boundary.
 
 Scheduled modes turn on at morning and evening; passing a mode's quiz turns it
-off until the next one. A pass covers the whole mode; overlapping modes must each
-be passed. Day and night quizzes, required answers, and conditions on earlier
+off until the next one. There is no global switch: set a mode to **Only by hand**
+to keep it off until you turn it on. Overlapping modes must each be passed.
+
+Entertainment has a separate 15-minute pass for one site, offered from a blocked
+site's gate or the Mac app prompt. Answer no to “Is this visual entertainment?” for
+work use. Answering yes requires confirming a meal, dishes, bath, or toothbrushing.
+Day, night and entertainment quizzes, required answers, and conditions on earlier
 answers can be edited independently.
 
 ## Mac and Chrome
 
-Keep Balance running. Closing its main window while Situate is enabled leaves
+Keep Balance running. Closing its main window while Situate has rules leaves
 it running in the background. App activation monitoring hides blocked apps; it
 does not kill processes or discard work. Quitting Balance stops native app
 monitoring. Add Balance to macOS Login Items if it should start after login.
@@ -72,8 +77,10 @@ For multiple instances on one host, repeat `--sessions` for each index. The SSH
 account needs read access to those indexes; the helper never elevates privileges.
 If an instance is unavailable, it retains the previous combined list. Different
 hosts can instead export a combined ID list into the same private
-`frank-threads.json` contract. Exact channel/thread IDs can also be added manually
-as **Discord thread/channel** targets; unrelated Discord conversations remain usable.
+`frank-threads.json` contract. A channel ID can also be added as a **Discord**
+target; that blocks only threads opened inside the channel (its
+`/channels/<server>/<channel>/threads/<thread>` view), not the channel itself.
+A thread opened on its own page isn't recognized unless it is a Frank thread.
 
 ## Herdr and Cactus
 

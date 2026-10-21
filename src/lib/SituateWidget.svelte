@@ -15,8 +15,7 @@
     let stop: (()=>void) | undefined, unlisten: (()=>void) | undefined, mounted=true
     void startSituate().then(cleanup => {
       if(!mounted) { cleanup();return } stop=cleanup
-      const params = new URLSearchParams(location.search)
-      if(params.get('mode')) requestQuiz(params.get('mode')!)
+      situateDeepLink(`balance://situate${location.search}`)
       if(isTauri()) void listen<string>('situate-widget', event => situateDeepLink(event.payload)).then(fn => { if(mounted) unlisten=fn; else fn() })
     })
     return () => { mounted=false;stop?.();unlisten?.() }

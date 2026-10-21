@@ -1,12 +1,11 @@
 import { derived, get, writable } from 'svelte/store'
 import { invoke, isTauri } from '@tauri-apps/api/core'
-import { situate, situatePlatform } from './store'
+import { situatePlatform } from './store'
 export type Browser = { id: string; name: string; extension: boolean; host: boolean }
 export const extensionStatus = writable<{ browsers: Browser[]; folder: string } | null>(null)
 export const extensionSetupOpen = writable(false)
-/** Installed browsers still missing the extension, once Situate is on. */
-export const browsersMissingExtension = derived([extensionStatus, situate], ([status, doc]) =>
-  doc.enabled ? (status?.browsers ?? []).filter(b => !b.extension || !b.host) : [])
+/** Installed browsers still missing the extension. */
+export const browsersMissingExtension = derived(extensionStatus, status => (status?.browsers ?? []).filter(b => !b.extension || !b.host))
 export async function checkExtension(action: 'status' | 'install' | `open-${string}` = 'status') {
   if (!isTauri() || situatePlatform !== 'mac') return
   try { extensionStatus.set(await invoke('situate_extension', { action })) } catch { /* Keep the last result. */ }

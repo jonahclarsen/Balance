@@ -4,7 +4,7 @@
   import { browsersMissingExtension, extensionSetupOpen } from './situate/extension'
   /** Shows off modes too, so they can be turned on from here. */
   export let all = false
-  $: modes = $situate.enabled ? $situate.modes.filter(m => m.platforms.includes(situatePlatform)).map(mode => ({ mode, active: isActive($situate, mode, situatePlatform, $situateNow) })).filter(m => all || m.active) : []
+  $: modes = $situate.modes.filter(m => m.platforms.includes(situatePlatform)).map(mode => ({ mode, active: isActive($situate, mode, situatePlatform, $situateNow) })).filter(m => all || m.active)
 </script>
 {#if modes.length || $browsersMissingExtension.length}
   <div class="situate-pills" aria-label="Situate modes">

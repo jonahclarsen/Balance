@@ -41,6 +41,7 @@
       {#if today}<span class="muted">({clockTime(today.late)} tonight)</span>{/if}
     </div>
   </div>
+  <div class="inline"><span>Entertainment access lasts</span><input class="short" type="number" min="1" max="240" value={s.accessMinutes} aria-label="Entertainment access minutes" on:change={e => save({ accessMinutes: Number(e.currentTarget.value) })} /><span>min</span></div>
   {#if error}<p class="error" role="alert">{error}</p>{/if}
 </div>
 <style>

@@ -10,8 +10,9 @@
   $: mode = $situate.modes.find(m => m.id === $quizRequest?.mode)
   $: quiz = mode && $quizRequest ? getQuiz() : []
   $: progress = quizProgress(quiz, answers)
+  $: site = mode?.targets.find(t => t.id === $quizRequest?.target)?.value
   function getQuiz() {
-    try { return questions($situate, mode!, Date.now()) }
+    try { return questions($situate, mode!, Date.now(), $quizRequest!.target) }
     catch (e) { error = String(e); return [] }
   }
   async function answer(value: boolean) {
@@ -27,7 +28,7 @@
   }
 </script>
 {#if $quizRequest && mode}
-  <OverlayModal title={mode.name} eyebrow="A moment to choose" onClose={() => quizRequest.set(null)} maxWidth={520} cover="viewport">
+  <OverlayModal title={mode.name} eyebrow={site ?? 'A moment to choose'} onClose={() => quizRequest.set(null)} maxWidth={520} cover="viewport">
     <div class="quiz" style:--mode={mode.color}>
       {#if error}<p role="alert">{error}</p>
       {:else if progress.denied}
