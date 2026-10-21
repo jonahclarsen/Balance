@@ -236,13 +236,13 @@ pub(crate) fn situate_extension(app: tauri::AppHandle, action: String) -> Result
     let folder = root.join("extension");
     // Opens the browser's extensions page, which pages and links cannot do.
     #[cfg(target_os = "macos")]
-    if let Some((id, _, _, bundle)) = browsers(&home)
+    if let Some((_, _, _, bundle)) = browsers(&home)
         .into_iter()
         .find(|(id, ..)| action == format!("open-{id}"))
     {
-        let page = if id == "brave" { "brave://extensions" } else { "chrome://extensions" };
+        // Brave ignores brave:// links from other apps but maps chrome:// to its own pages.
         std::process::Command::new("open")
-            .args(["-b", bundle, page])
+            .args(["-b", bundle, "chrome://extensions"])
             .status()
             .map_err(|e| e.to_string())?;
     }
