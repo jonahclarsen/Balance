@@ -8,20 +8,12 @@
   export let active = false
   export let highlighted = false
   export let onOpen: (projectId: string) => void
-  $: nameHtml = withDescriptionColon(sanitizeInlineHTML(project.nameHtml ?? escapeHTML(project.name)), Boolean(project.description.trim()))
-  // A trailing colon hints that the project has a description; only the card shows it.
-  function withDescriptionColon(html: string, hasDescription: boolean) {
-    if (!hasDescription) return html
-    let rest = html
-    let closingTags = ''
-    for (;;) {
-      rest = rest.replace(/(?:\s|&nbsp;|&#160;)+$/, '')
-      const tag = rest.match(/<\/[a-z]+>$|<br\s*\/?>$/i)
-      if (!tag) break
-      rest = rest.slice(0, -tag[0].length)
-      if (!tag[0].startsWith('<br')) closingTags = tag[0] + closingTags
-    }
-    return rest.endsWith(':') ? rest + closingTags : `${rest}${closingTags}:`
+  $: nameHtml = sanitizeInlineHTML(project.nameHtml ?? escapeHTML(project.name))
+  $: descriptionPreview = previewLine(project.description)
+  // The card shows the description's first line; an ellipsis marks that more follows.
+  function previewLine(description: string) {
+    const [first = '', ...rest] = description.trim().split(/\s*\n\s*/)
+    return rest.length ? `${first}…` : first
   }
   function click(event: MouseEvent) {
     const anchor = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>('a[href]') : null
@@ -51,7 +43,10 @@
   }}
 >
   <span class="project-dot" aria-hidden="true"></span>
-  <span class="project-name">{@html nameHtml}</span>
+  <span class="project-text">
+    <span class="project-name">{@html nameHtml}</span>
+    {#if descriptionPreview}<span class="project-description">{descriptionPreview}</span>{/if}
+  </span>
   {#if note}<span class="project-note">{note}</span>{/if}
 </div>
 
@@ -65,7 +60,10 @@
     100% { box-shadow: 0 0 0 3px transparent; }
   }
   .project-dot { flex: 0 0 10px; width: 10px; height: 10px; border-radius: 50%; background: var(--project-color); }
-  .project-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; }
+  .project-text { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+  .project-name, .project-description { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .project-name { font-size: 15px; }
+  .project-description { color: var(--muted); font-size: 13px; }
   .project-name :global(a) { color: inherit; text-decoration: underline; text-decoration-color: var(--accent-strong); }
   .project-note { flex: 0 0 auto; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
   @media (prefers-reduced-motion: reduce) {
