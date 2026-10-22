@@ -55,7 +55,7 @@
     draft.platforms = on ? draft.platforms.filter(p => p !== id) : [...draft.platforms, id]
   }
 </script>
-<OverlayModal title={draft.name || 'Mode'} ariaLabel={`Edit ${mode.name}`} eyebrow="Mode" onClose={() => { flush(); onClose() }} maxWidth={760}>
+<OverlayModal title={draft.name || 'Mode'} ariaLabel={`Edit ${mode.name}`} onClose={() => { flush(); onClose() }} maxWidth={760}>
   <div class="editor" style:--mode={draft.color} data-native-undo>
     <section>
       <h3>Basics</h3>
