@@ -104,6 +104,7 @@
     persistenceError,
     plannerStore,
     redoAvailable,
+    recordedHistoryChangeCount,
     recoverDatabaseWithKey,
     rotateDatabaseRecoveryKey,
     runDatabaseMaintenanceIfNeeded,
@@ -721,8 +722,6 @@ return rows`
   let newGoalNameHtml = ''
   // Bumped after adding so the still-focused name editor clears its DOM.
   let newGoalFormResets = 0
-  // True once the Add-a-goal draft has been typed in since its last reset.
-  let newGoalDraftTyped = false
   let newGoalCadenceDays = 1
   let newGoalTerms = ''
   let newGoalTermsHtml = ''
@@ -1307,7 +1306,8 @@ return rows`
       notesTrashOpen = note ? isNoteTrashed(note) : false
     } else if (nextView === 'metrics') selectedMetricId = entityId
     else if (nextView === 'goals') goalSearch = ''
-    else if (nextView === 'projects') linkedProjectId = entityId
+    // Undoing an add removes the project, so there is nothing to reveal.
+    else if (nextView === 'projects') linkedProjectId = destination.removed ? '' : entityId
     else if (nextView === 'prioritize') prioritizeReveal.set({ sessionId: entityId, itemId })
     openMobileDrawerView(nextView)
     await tick()
@@ -3699,7 +3699,6 @@ return rows`
     newGoalName = ''
     newGoalNameHtml = ''
     newGoalFormResets += 1
-    newGoalDraftTyped = false
     newGoalCadenceDays = 1
     newGoalTerms = ''
     newGoalTermsHtml = ''
@@ -4607,10 +4606,10 @@ return rows`
     }
 
     if (key === 'z' || (event.shiftKey && key === 'c')) {
-      // The Add-a-goal form is a draft: nothing typed there is in the
-      // history yet, so global undo would jump to an unrelated change.
-      // Let the browser undo and redo typing in the form instead.
-      if (isGoalDraftFormEditing()) return
+      // Typing that never reached the history (drafts like New project,
+      // fields saved on blur) would make global undo jump to an unrelated
+      // change. Let the browser undo and redo it in the field instead.
+      if (isTypingUnrecorded()) return
       // Situate rules live outside the planner history, so their text
       // fields keep the browser's own undo.
       if (isNativeUndoField()) return
@@ -4648,12 +4647,18 @@ return rows`
     keyboardScrollFrame = requestAnimationFrame(advanceKeyboardScroll)
   }
 
-  function isGoalDraftFormEditing() {
-    const active = document.activeElement
-    if (!(active instanceof HTMLElement) || !active.closest('[data-goal-draft-form]')) return false
-    // Adding a goal resets the draft, so Cmd+Z right after Enter still
-    // undoes the add instead of doing nothing.
-    return newGoalDraftTyped
+  // Captured before the field's own input handler, so typing that saves on
+  // each keystroke (Today's tasks) moves the count past this mark. Adding a
+  // draft also moves it, so Cmd+Z right after Enter undoes the add.
+  let lastTyping: { field: EventTarget | null; historyChanges: number } | null = null
+
+  function noteTyping(event: Event) {
+    lastTyping = { field: event.target, historyChanges: recordedHistoryChangeCount() }
+  }
+
+  function isTypingUnrecorded() {
+    return !!lastTyping && lastTyping.field === document.activeElement &&
+      lastTyping.historyChanges === recordedHistoryChangeCount()
   }
 
   function isNativeUndoField() {
@@ -6835,6 +6840,7 @@ return rows`
   on:keydown|capture={handleGlobalKeydown}
   on:paste|capture={handleNativeEditorPaste}
   on:keyup|capture={handleGlobalKeyup}
+  on:input|capture={noteTyping}
   on:blur={stopKeyboardScroll}
   on:wheel|passive={stopKeyboardScroll}
   on:focusin={handleGlobalFocusIn}
@@ -8034,7 +8040,7 @@ return rows`
         </div>
       </header>
 
-      <div class="goal-create-panel" data-goal-draft-form>
+      <div class="goal-create-panel">
         <div class="goal-create-intro">
           <h3>Add a goal</h3>
           <p>It completes automatically when a checked daily-plan item contains any matching word or phrase.</p>
@@ -8059,7 +8065,6 @@ return rows`
             onChange={(html, text) => {
               newGoalNameHtml = html
               newGoalName = text
-              newGoalDraftTyped = true
             }}
           />
         </label>
@@ -8089,7 +8094,6 @@ return rows`
             onChange={(html, text) => {
               newGoalTermsHtml = html
               newGoalTerms = text
-              newGoalDraftTyped = true
             }}
           />
           {#if newGoalNameMismatch}

@@ -362,3 +362,35 @@ test('rapid adding keeps the cursor in place, and the name field opens at its en
   const { projects } = await readState(page)
   expect(projects.find((project: any) => project.name.startsWith('Synthetic one')).name).toBe('Synthetic one plan')
 })
+
+test('undo in an unsaved project field undoes typing, and undoing an add leaves no unavailable notice', async ({ page }) => {
+  await page.goto('/')
+  await openView(page, 'Projects')
+  const newName = page.getByRole('textbox', { name: 'New project name' })
+  const names = page.locator('.project-card .project-name')
+  await addProject(page, 'Synthetic kept')
+
+  await newName.click()
+  await newName.pressSequentially('Draft')
+  await newName.press('ControlOrMeta+z')
+  await expect(newName).not.toHaveText('Draft')
+  await expect(names).toHaveText(['Synthetic kept'])
+  await newName.press('ControlOrMeta+Shift+z')
+  await expect(newName).toHaveText('Draft')
+
+  // Adding records history, so undo right after Enter removes the project.
+  await newName.press('Enter')
+  await expect(names).toHaveText(['Synthetic kept', 'Draft'])
+  await newName.press('ControlOrMeta+z')
+  await expect(names).toHaveText(['Synthetic kept'])
+  await expect(page.getByText('Project unavailable.')).toHaveCount(0)
+
+  // The description saves on blur, so undo while typing stays in the field.
+  await page.locator('.project-card', { hasText: 'Synthetic kept' }).click()
+  const description = page.getByRole('dialog').getByRole('textbox', { name: 'Description' })
+  await description.click()
+  await description.pressSequentially('Notes')
+  await description.press('ControlOrMeta+z')
+  await expect(description).not.toHaveValue('Notes')
+  await expect(names).toHaveText(['Synthetic kept'])
+})

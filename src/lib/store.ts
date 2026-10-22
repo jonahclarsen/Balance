@@ -335,6 +335,9 @@ export type DatabaseMaintenanceStatus = {
 
 let undoStack: HistoryEntry[] = []
 let redoStack: HistoryEntry[] = []
+// Counts recorded undo entries (merged typing included) so a text field can
+// tell whether its own typing reached the history.
+let recordedHistoryChanges = 0
 const redoAvailableState = writable(false)
 // Only the latest normalized snapshot's HTML is retained. Resume can reread
 // years of unchanged history; rebuilding DOM for each field blocks the WebView.
@@ -357,6 +360,7 @@ export const persistenceError = writable('')
 export const databaseLoadError = writable('')
 export const databaseLoadPending = writable(isTauri())
 export const redoAvailable = { subscribe: redoAvailableState.subscribe }
+export const recordedHistoryChangeCount = () => recordedHistoryChanges
 export const databaseLoadProgress = writable<DatabaseLoadProgress>({
   percent: 0,
   stage: 'Starting Balance',
@@ -3521,6 +3525,7 @@ function recordHistory(
 ): void {
   const mergeKey = options.mergeKey ?? null
   const last = undoStack.at(-1)
+  recordedHistoryChanges += 1
   // Native history operations are already durable in SQLite. Keeping their
   // ever-growing in-memory operation arrays would turn the snapshot cache into
   // quadratic memory use during a long session.
