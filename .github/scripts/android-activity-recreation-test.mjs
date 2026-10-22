@@ -17,13 +17,14 @@ const repeats = Number(process.env.BALANCE_LIFECYCLE_REPEATS ?? 20)
 const offlineBackgroundSeconds = Number(process.env.BALANCE_OFFLINE_BACKGROUND_SECONDS ?? 0)
 assert([0, 600].includes(offlineBackgroundSeconds))
 assert(Number.isInteger(repeats) && repeats > 0 && repeats <= 200)
-assert(['activity', 'process', 'worker-start', 'offline-buckets', 'offline-history', 'offline-notifications'].includes(scenario))
+assert(['activity', 'process', 'worker-start', 'offline-buckets', 'offline-history', 'offline-notifications', 'offline-latency'].includes(scenario))
 const report = { scenario, cases: [], hypothesis: {
   activity: 'Destroying the last Android activity must exit without native finalizer races and reopen with saved edits intact.',
   process: 'Background process reclamation while offline prevents a fresh native/JS startup.',
   'offline-buckets': 'An acknowledged bucket Save must survive immediate WebView destruction and offline reopening.',
   'offline-notifications': 'Resuming while native reminders are being registered must not block the Android UI thread.',
   'offline-history': 'Offline startup and resume must remain responsive with a year of synthetic history, including slower WebView CPUs.',
+  'offline-latency': 'Saving an idea or a note edit must be as quick offline, or with a hanging relay, as online, including across screen sleep.',
   'worker-start': 'WorkManager initializes native state before the first activity, leaving startup blocked when a relay request hangs.',
 }[scenario] }
 let client, logcat, relay, editNumber = 0, lastDurableText
@@ -125,6 +126,115 @@ function fixture(count = 40) {
     items: Array.from({ length: count }, (_, i) => ({ ...state.plans[0].items[0],
       id: `lifecycle-item-${i}`, text: `Synthetic lifecycle task ${i}`, html: `Synthetic lifecycle task ${i}`, done: false,
     })) }]
+  return state
+}
+// Records every IPC round trip in the page, by command name only.
+async function traceIpc() {
+  await client.evaluate(`(() => {
+    const internals = window.__TAURI_INTERNALS__
+    if (internals.__traced) return
+    const original = internals.invoke
+    window.__ipcTrace = []
+    internals.invoke = (command, ...rest) => {
+      const entry = {command, start: Math.round(performance.now())}
+      window.__ipcTrace.push(entry)
+      if (window.__ipcTrace.length > 400) window.__ipcTrace.shift()
+      const settle = ok => { entry.ms = Math.round(performance.now()) - entry.start; entry.ok = ok }
+      return original(command, ...rest).then(value => { settle(true); return value }, error => { settle(false); throw error })
+    }
+    internals.__traced = true
+    new PerformanceObserver(list => (window.__longTasks ??= []).push(...list.getEntries().map(e => ({start: Math.round(e.startTime), ms: Math.round(e.duration)}))))
+      .observe({type: 'longtask'})
+  })()`)
+}
+// Commands which took noticeable time since `since`, plus long JS tasks.
+async function slowWork(since) {
+  return client.evaluate(`({
+    ipc: window.__ipcTrace.filter(e => e.start >= ${since} && (e.ms === undefined || e.ms >= 50)),
+    longTasks: (window.__longTasks ?? []).filter(e => e.start >= ${since}),
+  })`)
+}
+async function setCondition(condition) {
+  relay.setMode(condition === 'relay-silent' ? 'silent' : 'online')
+  await radios(condition === 'radios-off')
+  await waitFor(async () => Boolean(await invoke('get_sync_network_offline')) === (condition === 'radios-off'), `${condition} connectivity`, 30000)
+  // Let the connectivity change's own sync pass start, as on a real phone.
+  await sleep(1500)
+}
+// Times Save from submit until the dialog closes, which acknowledges durability.
+async function timedQuickAdd(text) {
+  await client.evaluate(`document.querySelector('button[aria-label="Add idea"]').click()`)
+  await waitFor(() => client.evaluate(`Boolean(document.querySelector('.quick-add-dialog [contenteditable="true"]'))`), 'Quick Add editor')
+  return client.evaluate(`(async () => {
+    const editor = document.querySelector('.quick-add-dialog [contenteditable="true"]')
+    editor.focus()
+    document.execCommand('insertText', false, ${JSON.stringify(text)})
+    await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)))
+    const start = performance.now()
+    const closed = new Promise(resolve => {
+      const observer = new MutationObserver(() => {
+        if (!document.querySelector('.quick-add-dialog')) { observer.disconnect(); resolve() }
+      })
+      observer.observe(document.body, {childList: true, subtree: true})
+    })
+    document.querySelector('.quick-add-dialog').requestSubmit()
+    await closed
+    return {start: Math.round(start), saveMs: Math.round(performance.now() - start)}
+  })()`, 60000)
+}
+async function openSyntheticNote() {
+  await client.evaluate(`document.querySelector('button[data-nav-view="notes"]').click()`)
+  await waitFor(() => client.evaluate(`(() => {
+    const visible = el => el && !el.closest('[hidden], [inert]') && el.getClientRects().length > 0
+    let editor = document.querySelector('section[aria-label="Main note"] [contenteditable="true"]')
+    if (!visible(editor)) { document.querySelector('.note-card')?.click(); return false }
+    editor.focus()
+    const range = document.createRange()
+    range.selectNodeContents(editor)
+    range.collapse(false)
+    getSelection().removeAllRanges()
+    getSelection().addRange(range)
+    return true
+  })()`), 'visible synthetic note editor')
+}
+async function screenOff() {
+  adb(['shell', 'input', 'keyevent', 'KEYCODE_SLEEP'])
+  await waitFor(() => /mWakefulness=Asleep|mWakefulness=Dozing/.test(adb(['shell', 'dumpsys', 'power'])), 'screen off', 10000)
+}
+async function screenOn() {
+  adb(['shell', 'input', 'keyevent', 'KEYCODE_WAKEUP'])
+  adb(['shell', 'wm', 'dismiss-keyguard'], {allowFailure: true})
+}
+// A year of synthetic history approximates a long-used workspace.
+function historyFixture(days) {
+  const state = fixture()
+  const today = state.plans[0]
+  for (let day = 1; day <= days; day++) {
+    state.plans.push({...today, id: `history-plan-${day}`,
+      date: new Date(Date.parse(today.date) - day * 86400000).toISOString().slice(0, 10),
+      items: Array.from({length: 20}, (_, i) => ({...today.items[0],
+        id: `history-item-${day}-${i}`, text: `Synthetic historical task ${day} ${i}`,
+        html: `Synthetic <strong>historical</strong> task ${day} ${i}`, done: i % 3 === 0,
+      })),
+    })
+  }
+  state.listTemplates = [{id: 'history-list-template', name: 'Synthetic routine',
+    maxExpectedWords: 0, archivedItems: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+    items: today.items.map(item => ({...item, probability: 100})),
+  }]
+  state.lists = state.plans.map((plan, day) => ({id: `history-list-${day}`, date: plan.date,
+    listTemplateId: 'history-list-template', createdAt: new Date().toISOString(),
+    items: today.items.map((item, i) => ({...item, id: `history-list-item-${day}-${i}`,
+      text: `Synthetic daily routine ${i}`, html: `Synthetic <em>daily routine</em> ${i}`})),
+  }))
+  state.ideaBuckets = [{id: 'history-bucket', kind: 'proposition', items:
+    Array.from({length: 100}, (_, i) => ({...today.items[0], id: `history-idea-${i}`,
+      text: `Synthetic saved idea ${i}`, html: `Synthetic saved idea ${i}`}))}]
+  state.notes = Array.from({length: 50}, (_, i) => ({id: `history-note-${i}`,
+    title: `Synthetic note ${i}`, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+    items: Array.from({length: 20}, (_, j) => ({id: `history-note-${i}-${j}`, kind: 'paragraph',
+      text: 'Synthetic paragraph for startup testing.', html: 'Synthetic paragraph for <em>startup testing</em>.', children: []})),
+  }))
   return state
 }
 async function seed(count = 40) {
@@ -339,34 +449,7 @@ try {
     await radios(true)
     await waitFor(() => invoke('get_sync_network_offline'), 'OS offline')
     for (const days of [30, 365]) {
-      const state = fixture()
-      const today = state.plans[0]
-      for (let day = 1; day <= days; day++) {
-        state.plans.push({...today, id: `history-plan-${day}`,
-          date: new Date(Date.parse(today.date) - day * 86400000).toISOString().slice(0, 10),
-          items: Array.from({length: 20}, (_, i) => ({...today.items[0],
-            id: `history-item-${day}-${i}`, text: `Synthetic historical task ${day} ${i}`,
-            html: `Synthetic <strong>historical</strong> task ${day} ${i}`, done: i % 3 === 0,
-          })),
-        })
-      }
-      state.listTemplates = [{id: 'history-list-template', name: 'Synthetic routine',
-        maxExpectedWords: 0, archivedItems: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-        items: today.items.map(item => ({...item, probability: 100})),
-      }]
-      state.lists = state.plans.map((plan, day) => ({id: `history-list-${day}`, date: plan.date,
-        listTemplateId: 'history-list-template', createdAt: new Date().toISOString(),
-        items: today.items.map((item, i) => ({...item, id: `history-list-item-${day}-${i}`,
-          text: `Synthetic daily routine ${i}`, html: `Synthetic <em>daily routine</em> ${i}`})),
-      }))
-      state.ideaBuckets = [{id: 'history-bucket', kind: 'proposition', items:
-        Array.from({length: 100}, (_, i) => ({...today.items[0], id: `history-idea-${i}`,
-          text: `Synthetic saved idea ${i}`, html: `Synthetic saved idea ${i}`}))}]
-      state.notes = Array.from({length: 50}, (_, i) => ({id: `history-note-${i}`,
-        title: `Synthetic note ${i}`, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-        items: Array.from({length: 20}, (_, j) => ({id: `history-note-${i}-${j}`, kind: 'paragraph',
-          text: 'Synthetic paragraph for startup testing.', html: 'Synthetic paragraph for <em>startup testing</em>.', children: []})),
-      }))
+      const state = historyFixture(days)
       await invoke('initialize_app_state', {stateJson: JSON.stringify(state)}, 120000)
       lastDurableText = undefined
       adb(['shell', 'am', 'force-stop', packageName])
@@ -446,6 +529,62 @@ try {
     assert(report.cases.filter(result => result.phase === 'resume')
       .every(result => result.inputMs < 1000 && result.tasks.every(task => task.duration < 1000)),
     'Offline resume blocked the WebView for at least one second with unchanged synthetic history')
+  } else if (scenario === 'offline-latency') {
+    // A long-used workspace, so per-save costs which scale with history show.
+    await invoke('initialize_app_state', {stateJson: JSON.stringify(historyFixture(365))}, 120000)
+    lastDurableText = undefined
+    adb(['shell', 'locksettings', 'set-disabled', 'true'], {allowFailure: true})
+    adb(['shell', 'am', 'force-stop', packageName])
+    launchApp()
+    await connect()
+    await sleep(5000) // Measure steady use, not launch sync and maintenance.
+    await traceIpc()
+    const saved = []
+    for (const condition of ['online', 'radios-off', 'relay-silent', 'online']) {
+      await setCondition(condition)
+      for (let i = 0; i < 6; i++) {
+        const text = `Synthetic latency idea ${condition} ${saved.length}`
+        const result = await timedQuickAdd(text)
+        saved.push(text)
+        const entry = {phase: 'quick-add', condition, i, saveMs: result.saveMs, ...await slowWork(result.start)}
+        report.cases.push(entry)
+        console.log(JSON.stringify(entry))
+        await sleep(i % 2 ? 300 : 2500) // Both rapid saves and saves between sync polls.
+      }
+      await openSyntheticNote()
+      for (let i = 0; i < 3; i++) {
+        await client.send('Input.insertText', {text: ` sleep${++editNumber}`})
+        const before = await client.evaluate('Math.round(performance.now())')
+        await screenOff()
+        await sleep(4000)
+        const woke = performance.now()
+        await screenOn()
+        // Frame and native-input latency after waking, then a real edit.
+        await client.evaluate(`new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)))`, 30000)
+        const frameMs = Math.round(performance.now() - woke)
+        const inputStart = performance.now()
+        await client.send('Input.insertText', {text: ` woke${editNumber}`})
+        await client.evaluate(`new Promise(resolve => requestAnimationFrame(resolve)).then(() => undefined)`, 30000)
+        const inputMs = Math.round(performance.now() - inputStart)
+        await sleep(3000)
+        const entry = {phase: 'note-sleep', condition, i, frameMs, inputMs, ...await slowWork(before)}
+        report.cases.push(entry)
+        console.log(JSON.stringify(entry))
+      }
+      await client.evaluate(`document.querySelector('.sidebar button[aria-keyshortcuts="Alt+T"]')?.click()`)
+    }
+    await setCondition('online')
+    const final = JSON.parse(await invoke('read_app_state', {}, 60000))
+    for (const idea of saved) assert(final.ideaBuckets.some(bucket => bucket.items.some(item => item.text === idea)), `Lost ${idea}`)
+    report.freezeDiagnostics = await invoke('export_freeze_diagnostics', {}, 60000).catch(error => String(error))
+    const summary = {}
+    for (const entry of report.cases) {
+      const key = `${entry.phase}/${entry.condition}`
+      const value = entry.saveMs ?? Math.max(entry.frameMs, entry.inputMs)
+      ;(summary[key] ??= []).push(value)
+    }
+    report.summary = summary
+    console.log(JSON.stringify(summary))
   } else if (scenario === 'worker-start') {
     for (let i = 0; i < 12; i++) {
       relay.setMode('online')
