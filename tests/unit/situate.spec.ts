@@ -64,7 +64,7 @@ test('night passes last 60 minutes, late passes 30, and never cross wake time', 
     expect(isActive(allowed,d.modes[1],'mac',now+duration*60000)).toBe(now+duration*60000<date(1,7))
   }
 })
-test('entertainment branches allow work or permitted care only, scoped to one target and mode', () => {
+test('entertainment branches allow work or permitted care only, scoped to one target in every mode', () => {
   const now=date(0,12);const d=enableMode(fixture(),'touch-grass',now);const target='domain:youtube.com'
   expect(quizProgress(questions(d,d.modes[0],now,target),{visual:true}).next?.id).toBe('care')
   expect(() => grant(d,'dolo',{visual:true,care:false},now,now,target)).toThrow('Complete')
@@ -72,7 +72,8 @@ test('entertainment branches allow work or permitted care only, scoped to one ta
     const allowed=grant(d,'dolo',answers,now,now,target)
     expect(isActive(allowed,d.modes[0],'mac',now,target)).toBe(false)
     expect(isActive(allowed,d.modes[0],'mac',now,'domain:reddit.com')).toBe(true)
-    expect(isActive(allowed,d.modes[1],'mac',now,target)).toBe(true)
+    expect(isActive(allowed,d.modes[1],'mac',now,target)).toBe(false)
+    expect(isActive(allowed,d.modes[1],'mac',now,'domain:claude.ai')).toBe(true)
     expect(isActive(allowed,d.modes[0],'mac',now+15*60000,target)).toBe(true)
   }
   expect(() => questions(d,d.modes[0],now,'domain:reddit.com')).toThrow('mode quiz')
@@ -151,18 +152,21 @@ test('DST wake resets use local clock dates rather than fixed 24-hour intervals'
     expect(springNight.end-springNight.at).toBe(8.5*3600000)
   } finally { if(previous===undefined) delete process.env.TZ;else process.env.TZ=previous }
 })
-test('older rules gain messaging apps and colors once, keeping entertainment access', () => {
+test('older rules gain messaging apps and colors once, keeping Dolo\'s entertainment quiz for every mode', () => {
   const d=fixture();const [dolo,touch]=d.modes
-  const legacy={ ...d, presets:undefined, enabled:true, settings:{ ...d.settings, accessMinutes:undefined, latitude:49, longitude:-123 }, grants:[{ mode:'dolo', epoch:1, until:2 }],
-    modes:[{ ...dolo, color:undefined, description:undefined, accessQuiz:undefined, categories:['social'], targets:dolo.targets.filter(t=>t.value!=='com.whatsapp'&&t.value!=='org.thoughtcrime.securesms') }, { ...touch, accessQuiz:undefined }, ...d.modes.slice(2)] } as unknown as typeof d
+  const doloQuiz=[{ id:'mine', text:'Mine?', required:true }]
+  const { accessQuiz:_accessQuiz, ...unshared }=d
+  const legacy={ ...unshared, presets:undefined, enabled:true, settings:{ ...d.settings, accessMinutes:undefined, latitude:49, longitude:-123 }, grants:[{ mode:'dolo', epoch:1, until:2 }],
+    modes:[{ ...dolo, color:undefined, description:undefined, accessQuiz:doloQuiz, categories:['social'], targets:dolo.targets.filter(t=>t.value!=='com.whatsapp'&&t.value!=='org.thoughtcrime.securesms') }, { ...touch, accessQuiz:[{ id:'other', text:'Other?', required:true }] }, ...d.modes.slice(2)] } as unknown as typeof d
   const upgraded=upgradePresets(legacy)
   validate(upgraded)
   expect(upgraded.modes[0].targets.filter(t=>t.value==='com.whatsapp')).toHaveLength(1)
   expect(upgraded.modes[0].targets).toHaveLength(dolo.targets.length)
   expect(upgraded.modes[1].targets.some(t=>t.value==='com.whatsapp')).toBe(false)
   expect(upgraded.modes[0].color).toBe(dolo.color)
-  expect(upgraded.modes[0].accessQuiz).toEqual(dolo.accessQuiz)
-  expect(upgraded.modes[1].accessQuiz).toEqual(touch.accessQuiz)
+  expect(upgraded.accessQuiz).toEqual(doloQuiz)
+  expect(upgraded.modes.some(m=>'accessQuiz' in m)).toBe(false)
+  expect(upgradePresets({ ...legacy, modes:legacy.modes.map(m=>({ ...m, accessQuiz:undefined })) } as typeof d).accessQuiz).toEqual(d.accessQuiz)
   expect(upgraded.modes[0]).not.toHaveProperty('categories')
   expect(upgraded).not.toHaveProperty('enabled')
   expect(upgraded.settings.accessMinutes).toBe(15)

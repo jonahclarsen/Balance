@@ -7,6 +7,7 @@
   import { browsersMissingExtension, extensionSetupOpen } from './situate/extension'
   import SituateModeEditor from './SituateModeEditor.svelte'
   import SituateSchedule from './SituateSchedule.svelte'
+  import SituateAccess from './SituateAccess.svelte'
   import SituateIcon from './SituateIcon.svelte'
   import SituateNotifications from './SituateNotifications.svelte'
   let editing: Mode | null = null
@@ -70,6 +71,8 @@
   </section>
 
   <section class="block"><h3>Schedule</h3><SituateSchedule /></section>
+
+  <section class="block"><h3>Entertainment access</h3><SituateAccess /></section>
 
   {#if isTauri() && situatePlatform === 'android'}
     <section class="block">

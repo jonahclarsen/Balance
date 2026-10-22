@@ -113,7 +113,7 @@ test('an emergency allows 5 minutes without planning tomorrow', async ({page}) =
   await expect(page.getByRole('button',{name:'Turn off Touch grass',exact:true})).toBeVisible()
 })
 
-test('entertainment access passes one site and leaves the mode on', async ({page}) => {
+test('entertainment access passes one site in every mode and leaves the modes on', async ({page}) => {
   await page.goto('/situate.html?mode=touch-grass&target=domain%3Ayoutube.com&widget=1')
   const quiz=page.getByRole('dialog',{name:'Touch grass',exact:true})
   await expect(quiz.getByText('youtube.com')).toBeVisible()
@@ -121,7 +121,19 @@ test('entertainment access passes one site and leaves the mode on', async ({page
   await quiz.getByRole('button',{name:'Yes',exact:true}).click()
   await expect(quiz).toBeHidden()
   const doc=await page.evaluate(()=>JSON.parse(localStorage.getItem('balance-situate-v1')!))
-  expect(doc.grants).toEqual([expect.objectContaining({mode:'touch-grass',target:'domain:youtube.com'})])
+  expect(doc.grants).toEqual(expect.arrayContaining(['dolo','touch-grass'].map(mode=>expect.objectContaining({mode,target:'domain:youtube.com'}))))
+  expect(doc.grants).toHaveLength(2)
+})
+
+test('one entertainment quiz is edited for every mode', async ({page}) => {
+  const quiz=page.getByRole('group',{name:'Quiz',exact:true})
+  await quiz.getByRole('button',{name:'+ Question'}).click()
+  await quiz.getByLabel('Quiz question 3',{exact:true}).fill('Is it short?')
+  await expect.poll(()=>page.evaluate(()=>JSON.parse(localStorage.getItem('balance-situate-v1')!).accessQuiz.length)).toBe(3)
+  await page.reload();await openView(page,'Situate')
+  await expect(page.getByRole('group',{name:'Quiz',exact:true}).getByLabel('Quiz question 3',{exact:true})).toHaveValue('Is it short?')
+  await page.getByRole('button',{name:'Edit Dolo',exact:true}).click()
+  await expect(page.getByRole('dialog',{name:'Edit Dolo'}).getByRole('group',{name:'Entertainment access'})).toHaveCount(0)
 })
 
 test('reminder modes show only while on and open their description', async ({page}) => {

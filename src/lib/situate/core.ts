@@ -6,7 +6,7 @@ export type Question = { id: string; text: string; required: boolean | null; whe
 export type Target = { id: string; category: Category; kind: 'domain' | 'app' | 'discord'; value: string }
 export type Mode = {
   id: string; name: string; description: string; color: string; platforms: Platform[]; scheduled: boolean
-  dayQuiz: Question[]; nightQuiz: Question[]; accessQuiz: Question[]; targets: Target[]
+  dayQuiz: Question[]; nightQuiz: Question[]; targets: Target[]
   /** A scheduled mode that turns on only at evening, not at morning. */
   eveningOnly?: boolean
   /** Notify this many minutes before the mode turns back on. */
@@ -26,6 +26,8 @@ export type Grant = { mode: string; target: string; epoch: number; until: number
 export type Document = {
   version: 1; revision: number; settings: Settings; modes: Mode[]; epochs: Epoch[]; windows: Window[]
   manual: Record<string, number>; grants: Grant[]; generatedAt: number
+  /** One quiz for an entertainment site, passing every mode that blocks it. */
+  accessQuiz: Question[]
   /** Preset revision, so new default targets reach existing rules once. */
   presets?: number
 }
@@ -44,13 +46,13 @@ export const CATEGORIES: { id: Category; label: string; color: string }[] = [
   { id: 'custom', label: 'Other', color: '#5f7d8c' },
 ]
 const target = (category: Category, kind: Target['kind'], value: string): Target => ({ id: `${kind}:${value}`, category, kind, value })
-const PRESETS = 9
+const PRESETS = 10
 const emergency: Question = { ...q('emergency', 'Is this an emergency?'), when: { id: 'planned', answer: false }, minutes: 5 }
 // Google Messages, WhatsApp, Messenger, Instagram, the Feurstagram clone and Signal on Android and Mac.
 const messagingApps = ['com.google.android.apps.messaging', 'com.whatsapp', 'net.whatsapp.WhatsApp', 'com.facebook.orca', 'com.facebook.archon', 'com.facebook.archon.developerID', 'com.burbn.instagram', 'com.instagram.android.feurstagram', 'org.thoughtcrime.securesms', 'org.whispersystems.signal-desktop']
   .map(v => target('social', 'app', v))
 const reminder = (id: string, name: string, description: string, color: string, from: number, until: number): Mode =>
-  ({ id, name, description, color, platforms: ['mac', 'android'], scheduled: false, dayQuiz: [], nightQuiz: [], accessQuiz: [], targets: [], reminder: { from, until } })
+  ({ id, name, description, color, platforms: ['mac', 'android'], scheduled: false, dayQuiz: [], nightQuiz: [], targets: [], reminder: { from, until } })
 export function defaults(now = Date.now()): Document {
   const targets: Target[] = [
     ...['instagram.com', 'facebook.com', 'tiktok.com', 'reddit.com', 'x.com', 'twitter.com', 'threads.net', 'bsky.app', 'snapchat.com'].map(v => target('social', 'domain', v)),
@@ -63,19 +65,19 @@ export function defaults(now = Date.now()): Document {
   ]
   const thrust = [q('thrust', 'Did you do one thrust? Get up and thrust your chosen object in and out of your bag.')]
   const doc: Document = {
-    version: 1, revision: 0, presets: PRESETS, generatedAt: now, manual: {}, grants: [], epochs: [], windows: [],
+    version: 1, revision: 0, presets: PRESETS, generatedAt: now, manual: {}, grants: [], epochs: [], windows: [], accessQuiz: entertainment,
     settings: { wakeMinutes: 420, eveningMinutes: 1290, sunsetOffset: 240, lateOffset: 480, lateMinutes: 150, nightMinutes: 60, lateNightMinutes: 30, accessMinutes: 15 },
     modes: [
-      { id: 'dolo', name: 'Dolo', description: 'Social and messaging apps, plus entertainment.', color: PRESET_COLORS.dolo, platforms: ['mac', 'android'], scheduled: true, dayQuiz: thrust, nightQuiz: thrust, accessQuiz: entertainment, targets: targets.filter(t => t.category !== 'ai') },
-      { id: 'touch-grass', name: 'Touch grass', description: 'AI chats and entertainment.', color: PRESET_COLORS['touch-grass'], platforms: ['mac', 'android'], scheduled: true, eveningOnly: true, headsUp: [15, 5], dayQuiz: [q('planned', 'Have you planned tomorrow?'), emergency], nightQuiz: [q('peed', 'Have you just peed?'), q('bed', 'Have you spent one minute in bed with the lights off and Herdr muted?')], accessQuiz: entertainment, targets: targets.filter(t => t.category !== 'social') },
+      { id: 'dolo', name: 'Dolo', description: 'Social and messaging apps, plus entertainment.', color: PRESET_COLORS.dolo, platforms: ['mac', 'android'], scheduled: true, dayQuiz: thrust, nightQuiz: thrust, targets: targets.filter(t => t.category !== 'ai') },
+      { id: 'touch-grass', name: 'Touch grass', description: 'AI chats and entertainment.', color: PRESET_COLORS['touch-grass'], platforms: ['mac', 'android'], scheduled: true, eveningOnly: true, headsUp: [15, 5], dayQuiz: [q('planned', 'Have you planned tomorrow?'), emergency], nightQuiz: [q('peed', 'Have you just peed?'), q('bed', 'Have you spent one minute in bed with the lights off and Herdr muted?')], targets: targets.filter(t => t.category !== 'social') },
       reminder('active-projects', 'Active Projects', 'Time for your active projects.', MODE_COLORS[5], 420, 1200),
       reminder('no-active-project', 'No Active Project', 'Leave projects for tomorrow.', MODE_COLORS[6], 1260, 420),
-      { id: 'discord', name: 'Discord', description: 'Discord on your phone.', color: PRESET_COLORS.discord, platforms: ['android'], scheduled: false, dayQuiz: [q('intentional', 'Do you have a specific reason to open Discord now?')], nightQuiz: [q('intentional', 'Do you have a specific reason to open Discord now?')], accessQuiz: [], targets: [target('custom', 'app', 'com.discord'), target('custom', 'domain', 'discord.com')] },
+      { id: 'discord', name: 'Discord', description: 'Discord on your phone.', color: PRESET_COLORS.discord, platforms: ['android'], scheduled: false, dayQuiz: [q('intentional', 'Do you have a specific reason to open Discord now?')], nightQuiz: [q('intentional', 'Do you have a specific reason to open Discord now?')], targets: [target('custom', 'app', 'com.discord'), target('custom', 'domain', 'discord.com')] },
     ],
   }
   return regenerate(doc, now)
 }
-type Legacy = { categories?: unknown; enabled?: unknown; latitude?: unknown; longitude?: unknown }
+type Legacy = { categories?: unknown; enabled?: unknown; latitude?: unknown; longitude?: unknown; accessQuiz?: Question[] }
 export function upgradePresets(doc: Document): Document {
   const version = doc.presets ?? 1
   if (version >= PRESETS) return doc
@@ -83,22 +85,25 @@ export function upgradePresets(doc: Document): Document {
   // access, which v4 restores, and the global switch gave way to per-mode control. v5 takes
   // the sunset location from the time zone instead of entered coordinates; v6 adds descriptions
   // and v7 the reminder modes. v8 lets an emergency excuse Touch grass's planning question;
-  // v9 turns Touch grass on only at evening, with 15- and 5-minute heads-ups.
+  // v9 turns Touch grass on only at evening, with 15- and 5-minute heads-ups; v10 replaces
+  // each mode's entertainment quiz with one shared quiz, keeping Dolo's.
   const preset = defaults(doc.generatedAt).modes
+  const legacy = doc.modes as (Mode & Legacy)[]
+  const accessQuiz = doc.accessQuiz ?? [legacy.find(m => m.id === 'dolo'), ...legacy].find(m => m?.accessQuiz?.length)?.accessQuiz ?? entertainment
   const modes = doc.modes.map((m: Partial<Mode> & Mode & Legacy, i) => {
-    const { categories: _categories, ...mode } = m
+    const { categories: _categories, accessQuiz: _accessQuiz, ...mode } = m
     const targets = version < 2 && m.id === 'dolo' ? [...m.targets, ...messagingApps.filter(t => !m.targets.some(x => x.id === t.id))] : m.targets
     const fallback = preset.find(p => p.id === m.id)
     const dayQuiz = version < 8 && m.id === 'touch-grass' && m.dayQuiz.some(q => q.id === 'planned') && !m.dayQuiz.some(q => q.id === emergency.id) ? [...m.dayQuiz, emergency] : m.dayQuiz
     const evening = version < 9 && m.id === 'touch-grass' && m.scheduled ? { eveningOnly: true, headsUp: m.headsUp ?? [15, 5] } : {}
-    return { ...mode, ...evening, dayQuiz, color: m.color ?? PRESET_COLORS[m.id] ?? MODE_COLORS[i % MODE_COLORS.length], accessQuiz: m.accessQuiz ?? fallback?.accessQuiz ?? [], description: m.description ?? fallback?.description ?? '', targets }
+    return { ...mode, ...evening, dayQuiz, color: m.color ?? PRESET_COLORS[m.id] ?? MODE_COLORS[i % MODE_COLORS.length], description: m.description ?? fallback?.description ?? '', targets }
   })
   const { enabled: _enabled, ...rest } = doc as Document & Legacy
   const { latitude: _latitude, longitude: _longitude, ...kept } = doc.settings as Settings & Legacy
   const settings = { ...kept, accessMinutes: kept.accessMinutes ?? 15 }
   const grants = doc.grants.map(g => ({ ...g, target: g.target ?? '' }))
   const reminders = version < 7 ? preset.filter(p => p.reminder && !modes.some(m => m.id === p.id)) : []
-  return { ...rest, presets: PRESETS, settings, modes: [...modes, ...reminders], grants, windows: doc.windows ?? [] }
+  return { ...rest, presets: PRESETS, accessQuiz, settings, modes: [...modes, ...reminders], grants, windows: doc.windows ?? [] }
 }
 // NOAA solar geometry. Calculate locally; coordinates never leave this device.
 export function sunset(date: Date, latitude: number, longitude: number): number | null {
@@ -228,7 +233,7 @@ export function questions(doc: Document, mode: Mode, now: number, targetId = '')
   if (targetId) {
     const t = mode.targets.find(t => t.id === targetId)
     if (!t || t.category !== 'entertainment') throw new Error('This target requires the mode quiz.')
-    return mode.accessQuiz
+    return doc.accessQuiz
   }
   return epoch(doc, now)?.phase === 'night' ? mode.nightQuiz : mode.dayQuiz
 }
@@ -254,8 +259,10 @@ export function grant(doc: Document, modeId: string, answers: Answers, startedAt
   const limit = Math.min(...quiz.filter(q => asked(q, answers)).map(q => q.minutes ?? Infinity))
   const minutes = Math.min(limit, targetId ? s.accessMinutes : mode.id === 'touch-grass' && e.phase === 'night' ? now >= e.late ? s.lateNightMinutes : s.nightMinutes : Infinity)
   const until = !mode.scheduled && !targetId && minutes === Infinity ? Number.MAX_SAFE_INTEGER : Math.min(e.end, now + minutes * minute)
-  const entry: Grant = { mode: modeId, target: targetId, epoch: Math.max(e.at, doc.manual[modeId] ?? 0), until }
-  return { ...doc, revision: doc.revision + 1, grants: [...doc.grants.filter(g => !(g.mode === modeId && g.target === entry.target)), entry] }
+  // An entertainment pass covers the site in every mode that blocks it.
+  const passed = targetId ? doc.modes.filter(m => m.targets.some(t => t.id === targetId && t.category === 'entertainment') && startedAt >= (doc.manual[m.id] ?? 0)).map(m => m.id) : [modeId]
+  const entries: Grant[] = passed.map(id => ({ mode: id, target: targetId, epoch: Math.max(e.at, doc.manual[id] ?? 0), until }))
+  return { ...doc, revision: doc.revision + 1, grants: [...doc.grants.filter(g => !(passed.includes(g.mode) && g.target === targetId)), ...entries] }
 }
 export function enableMode(doc: Document, mode: string, now = Date.now()): Document {
   const found = doc.modes.find(m => m.id === mode)
@@ -271,7 +278,8 @@ export function matches(target: Target, kind: Target['kind'], value: string): bo
   return host === domain || host.endsWith(`.${domain}`)
 }
 export function validate(doc: Document): void {
-  if (doc.version !== 1 || !Array.isArray(doc.modes) || doc.modes.length > 30) throw new Error('Unsupported Situate rules')
+  if (doc.version !== 1 || !Array.isArray(doc.modes) || doc.modes.length > 30 || !Array.isArray(doc.accessQuiz)) throw new Error('Unsupported Situate rules')
+  validateQuiz(doc.accessQuiz)
   const s = doc.settings
   for (const k of ['wakeMinutes', 'eveningMinutes', 'lateMinutes'] as const) if (!Number.isInteger(s[k]) || s[k] < 0 || s[k] >= 1440) throw new Error('Choose a valid clock time')
   for (const k of ['nightMinutes', 'lateNightMinutes', 'accessMinutes'] as const) if (!Number.isFinite(s[k]) || s[k] < 1 || s[k] > 240) throw new Error('Allow between 1 and 240 minutes')
@@ -283,20 +291,21 @@ export function validate(doc: Document): void {
     if (!/^#[0-9a-f]{6}$/i.test(m.color)) throw new Error('Choose a mode color')
     if (typeof m.description !== 'string' || m.description.length > 300) throw new Error('Keep descriptions under 300 characters')
     if (!m.platforms.length || m.platforms.some(p => !['mac', 'android', 'windows'].includes(p))) throw new Error('Choose at least one device')
-    for (const quiz of [m.dayQuiz, m.nightQuiz, m.accessQuiz]) {
-      const seen = new Set<string>()
-      if (quiz.length > 50) throw new Error('Use at most 50 questions')
-      for (const q of quiz) {
-        if (!q.id || seen.has(q.id) || !q.text.trim() || q.text.length > 2000 || ![true, false, null].includes(q.required) || (q.when && !seen.has(q.when.id))) throw new Error('Conditions must refer to an earlier question')
-        if (q.minutes !== undefined && !(Number.isFinite(q.minutes) && q.minutes >= 1 && q.minutes <= 240)) throw new Error('Allow between 1 and 240 minutes')
-        seen.add(q.id)
-      }
-    }
+    validateQuiz(m.dayQuiz); validateQuiz(m.nightQuiz)
     if (m.headsUp && (m.headsUp.length > 5 || m.headsUp.some(t => !Number.isInteger(t) || t < 1 || t > 240))) throw new Error('Heads-ups must be between 1 and 240 minutes')
     if (m.reminder && (![m.reminder.from, m.reminder.until].every(t => Number.isInteger(t) && t >= 0 && t < 1440) || m.reminder.from === m.reminder.until || m.targets.length)) throw new Error('Reminder modes need different start and end times')
     if (m.targets.length > 300) throw new Error('Use at most 300 targets per mode')
     for (const t of m.targets) {
       if (!t.value || t.value.length > 255 || /[\s/\\]/.test(t.value) || !['domain', 'app', 'discord'].includes(t.kind)) throw new Error('Targets use a domain, bundle/package ID, or Discord channel ID')
     }
+  }
+}
+function validateQuiz(quiz: Question[]): void {
+  const seen = new Set<string>()
+  if (quiz.length > 50) throw new Error('Use at most 50 questions')
+  for (const q of quiz) {
+    if (!q.id || seen.has(q.id) || !q.text.trim() || q.text.length > 2000 || ![true, false, null].includes(q.required) || (q.when && !seen.has(q.when.id))) throw new Error('Conditions must refer to an earlier question')
+    if (q.minutes !== undefined && !(Number.isFinite(q.minutes) && q.minutes >= 1 && q.minutes <= 240)) throw new Error('Allow between 1 and 240 minutes')
+    seen.add(q.id)
   }
 }

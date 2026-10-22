@@ -27,7 +27,6 @@
       {#if today}<span class="muted">({clockTime(today.late)} tonight)</span>{/if}
     </div>
   </div>
-  <div class="inline"><span>Entertainment access lasts</span><SituateDragValue kind="minutes" max={240} label="Entertainment access" value={s.accessMinutes} onChange={v => save({ accessMinutes: v })} /></div>
   {#if error}<p class="error" role="alert">{error}</p>{/if}
 </div>
 <style>
