@@ -1114,6 +1114,13 @@ nav button.active {
   font-weight: 500;
 }
 
+.nav-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
 .nav-shortcut {
   min-width: 26px;
   color: var(--muted);
