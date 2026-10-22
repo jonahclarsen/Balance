@@ -66,6 +66,7 @@ fn number(v: &Value) -> i64 {
 fn public_target(target: &Value) -> Value {
     json!({"id":target["id"],"kind":target["kind"],"value":target["value"],"category":target["category"]})
 }
+const MAX_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
 pub(crate) fn status(doc: &Value, platform: &str, now: i64) -> Value {
     let epochs = doc["epochs"].as_array();
     let epoch = epochs.and_then(|es| {
@@ -104,8 +105,13 @@ pub(crate) fn status(doc: &Value, platform: &str, now: i64) -> Value {
             modes.push(json!({"id":id,"name":mode["name"],"description":mode["description"],"color":mode["color"],"active":active,"reminder":true,"targets":[],"allTargets":[]}));
             continue;
         }
-        let activation =
-            if mode["scheduled"] == true { at } else { 0 }.max(number(&doc["manual"][id]));
+        let scheduled = mode["scheduled"] == true;
+        let evening_only = scheduled && mode["eveningOnly"] == true;
+        let night = epoch.is_some_and(|e| e["phase"] == "night");
+        // An evening-only mode turned on by hand stays on only until the next morning.
+        let manual = number(&doc["manual"][id]);
+        let manual = if evening_only && manual < at { 0 } else { manual };
+        let activation = if scheduled && (night || !evening_only) { at } else { 0 }.max(manual);
         let enabled = activation > 0;
         let target_of = |g: &Value| g["target"].as_str().unwrap_or("").to_string();
         let allowed = |target: &str| {
@@ -123,6 +129,28 @@ pub(crate) fn status(doc: &Value, platform: &str, now: i64) -> Value {
             }
         }
         let active = enabled && allowed("").is_none();
+        // The heads-up whose time before this mode comes back on has been reached.
+        let mut soon = Value::Null;
+        if !active {
+            let pass = allowed("").map(|g| number(&g["until"]));
+            let back_on = match pass {
+                Some(until) if until < MAX_SAFE_INTEGER && (until < end || !scheduled) => Some(until),
+                _ if scheduled => epochs.into_iter().flatten().find(|e| number(&e["at"]) > now && (!evening_only || e["phase"] == "night")).map(|e| number(&e["at"])),
+                _ => None,
+            };
+            if let Some(on) = back_on {
+                let mut reached = None;
+                for minutes in mode["headsUp"].as_array().into_iter().flatten().filter_map(Value::as_i64) {
+                    let notice = on - minutes * 60_000;
+                    if now >= notice {
+                        reached = Some(reached.map_or(minutes, |r: i64| r.min(minutes)));
+                    } else {
+                        refresh = refresh.min(notice);
+                    }
+                }
+                soon = json!(reached);
+            }
+        }
         let mut targets = Vec::new();
         for target in mode["targets"].as_array().into_iter().flatten() {
             if enabled && allowed(target["id"].as_str().unwrap_or("")).is_none() {
@@ -137,7 +165,7 @@ pub(crate) fn status(doc: &Value, platform: &str, now: i64) -> Value {
                 }
             }
         }
-        modes.push(json!({"id":id,"name":mode["name"],"description":mode["description"],"color":mode["color"],"active":active,"targets":targets,"allTargets":mode["targets"].as_array().into_iter().flatten().map(public_target).collect::<Vec<_>>()}));
+        modes.push(json!({"id":id,"name":mode["name"],"description":mode["description"],"color":mode["color"],"active":active,"soon":soon,"targets":targets,"allTargets":mode["targets"].as_array().into_iter().flatten().map(public_target).collect::<Vec<_>>()}));
     }
     json!({"version":1,"modes":modes,"aiBlocked":ai_blocked,"countdownUntil":countdown,"refreshAt":refresh,"enabled":true,"quizUrl":"balance://situate?mode=touch-grass"})
 }
@@ -563,7 +591,7 @@ mod tests {
                 case["platform"].as_str().unwrap(),
                 number(&case["now"]),
             );
-            let modes: Vec<Value> = actual["modes"].as_array().unwrap().iter().map(|m| json!({"id":m["id"],"active":m["active"],"targets":m["targets"].as_array().unwrap().iter().map(|t|t["id"].clone()).collect::<Vec<_>>()})).collect();
+            let modes: Vec<Value> = actual["modes"].as_array().unwrap().iter().map(|m| json!({"id":m["id"],"active":m["active"],"soon":m["soon"],"targets":m["targets"].as_array().unwrap().iter().map(|t|t["id"].clone()).collect::<Vec<_>>()})).collect();
             assert_eq!(json!(modes), case["expected"]);
         }
     }
@@ -584,6 +612,18 @@ mod tests {
         assert!(s.get("settings").is_none());
         assert_eq!(status(&d, "mac", 500)["aiBlocked"], true);
         assert_eq!(status(&d, "android", 200)["modes"], json!([]));
+    }
+    #[test]
+    fn evening_only_mode_wakes_android_for_heads_ups() {
+        let mut d = fixture();
+        d["epochs"] = json!([{"at":0,"end":3_600_000,"phase":"day"},{"at":3_600_000,"end":7_200_000,"phase":"night"}]);
+        d["modes"][0]["eveningOnly"] = json!(true);
+        d["modes"][0]["headsUp"] = json!([15, 5]);
+        let s = status(&d, "mac", 60_000);
+        assert_eq!((s["aiBlocked"].clone(), s["modes"][0]["soon"].clone(), s["refreshAt"].clone()), (json!(false), Value::Null, json!(2_700_000)));
+        assert_eq!(status(&d, "mac", 2_700_000)["modes"][0]["soon"], 15);
+        assert_eq!(status(&d, "mac", 3_400_000)["modes"][0]["soon"], 5);
+        assert_eq!(status(&d, "mac", 3_600_000)["aiBlocked"], true);
     }
     #[test]
     fn target_grant_never_unlocks_mode_and_manual_reactivation_revokes_pass() {

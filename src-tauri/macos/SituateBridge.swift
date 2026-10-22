@@ -4,6 +4,7 @@ import Foundation
 private var situateModes: [[String: Any]] = []
 private var situateObserver: NSObjectProtocol?
 private var situatePrevious = Set<String>()
+private var situatePreviousSoon: [String: Int] = [:]
 private var situateShowing = false
 @_silgen_name("balance_replace_task_notifications") private func situateNotice(_ raw: UnsafePointer<CChar>) -> Int32
 
@@ -15,11 +16,20 @@ func balanceSituateUpdate(_ raw: UnsafePointer<CChar>, _ announce: Bool) {
     DispatchQueue.main.async {
         situateModes = modes
         let active = Set(modes.filter { $0["active"] as? Bool == true }.compactMap { $0["id"] as? String })
-        for mode in modes where announce && active.contains(mode["id"] as? String ?? "") && !situatePrevious.contains(mode["id"] as? String ?? "") {
-            let notice: [String: String] = ["situateNotice": "\(mode["name"] as? String ?? "Situate") is on", "situateBody": mode["description"] as? String ?? "", "mode": mode["id"] as? String ?? ""]
+        func notify(_ mode: [String: Any], _ title: String) {
+            let notice: [String: String] = ["situateNotice": "\(mode["name"] as? String ?? "Situate") \(title)", "situateBody": mode["description"] as? String ?? "", "mode": mode["id"] as? String ?? ""]
             if let data = try? JSONSerialization.data(withJSONObject: notice), let json = String(data: data, encoding: .utf8) { _ = json.withCString { situateNotice($0) } }
         }
+        let soon = modes.reduce(into: [String: Int]()) { result, mode in
+            if let id = mode["id"] as? String, let minutes = mode["soon"] as? Int { result[id] = minutes }
+        }
+        for mode in modes where announce {
+            let id = mode["id"] as? String ?? ""
+            if active.contains(id) && !situatePrevious.contains(id) { notify(mode, "is on") }
+            else if let minutes = soon[id], situatePreviousSoon[id] != minutes { notify(mode, "in \(minutes) min") }
+        }
         situatePrevious = active
+        situatePreviousSoon = soon
         if situateObserver == nil {
             situateObserver = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { _ in enforceSituate() }
         }

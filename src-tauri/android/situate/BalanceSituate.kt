@@ -45,20 +45,31 @@ object BalanceSituate {
         val modes = status.optJSONArray("modes") ?: JSONArray()
         val prefs = context.getSharedPreferences("situate-runtime", Context.MODE_PRIVATE)
         val previous = prefs.getStringSet("active", emptySet()) ?: emptySet()
+        val previousSoon = prefs.getStringSet("soon", emptySet()) ?: emptySet()
         val active = mutableSetOf<String>()
+        val soon = mutableSetOf<String>()
         val manager = context.getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(NotificationChannel("situate", "Situate mode changes", NotificationManager.IMPORTANCE_DEFAULT))
+        fun notify(mode: JSONObject, title: String) {
+            val id = mode.getString("id")
+            val intent = Intent(context, MainActivity::class.java).setData(Uri.parse("balance://situate?mode=" + Uri.encode(id))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            val pending = PendingIntent.getActivity(context, id.hashCode(), intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            try { manager.notify(id.hashCode(), Notification.Builder(context,"situate").setSmallIcon(android.R.drawable.ic_lock_idle_lock).setContentTitle(mode.getString("name") + " " + title).setContentText(mode.optString("description").ifBlank { "Tap to open Situate." }).setContentIntent(pending).setAutoCancel(true).build()) } catch (_: SecurityException) { }
+        }
         for (i in 0 until modes.length()) {
             val mode = modes.getJSONObject(i)
-            if (!mode.optBoolean("active")) continue
-            val id = mode.getString("id"); active.add(id)
-            if (announce && !previous.contains(id)) {
-                val intent = Intent(context, MainActivity::class.java).setData(Uri.parse("balance://situate?mode=" + Uri.encode(id))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                val pending = PendingIntent.getActivity(context, id.hashCode(), intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-                try { manager.notify(id.hashCode(), Notification.Builder(context,"situate").setSmallIcon(android.R.drawable.ic_lock_idle_lock).setContentTitle(mode.getString("name") + " is on").setContentText(mode.optString("description").ifBlank { "Tap to open Situate." }).setContentIntent(pending).setAutoCancel(true).build()) } catch (_: SecurityException) { }
+            val id = mode.getString("id")
+            if (!mode.optBoolean("active")) {
+                // A heads-up is announced once per threshold before the mode comes back on.
+                if (mode.isNull("soon")) continue
+                val minutes = mode.getInt("soon"); val key = "$id:$minutes"; soon.add(key)
+                if (announce && !previousSoon.contains(key)) notify(mode, "in $minutes min")
+                continue
             }
+            active.add(id)
+            if (announce && !previous.contains(id)) notify(mode, "is on")
         }
-        prefs.edit().putStringSet("active", active).apply()
+        prefs.edit().putStringSet("active", active).putStringSet("soon", soon).apply()
         val alarm = context.getSystemService(AlarmManager::class.java)
         val pending = PendingIntent.getBroadcast(context, 32741, Intent(context, SituateReceiver::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val at = maxOf(System.currentTimeMillis()+1000, status.optLong("refreshAt", System.currentTimeMillis()+3600000))

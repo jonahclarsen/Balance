@@ -34,6 +34,20 @@
     mutateSituate(d => regenerate({ ...d, modes: d.modes.map(m => m.id === value.id ? value : m) })).catch(e => { error = String(e); saved = '' })
   }
   onDestroy(flush)
+  const HEADS_UP = [15, 5]
+  function setSchedule(scheduled: boolean, eveningOnly: boolean) {
+    draft.scheduled = scheduled
+    if (eveningOnly) draft.eveningOnly = true
+    else delete draft.eveningOnly
+    draft = draft
+  }
+  function toggleHeadsUp(minutes: number) {
+    const current = draft.headsUp ?? []
+    const next = current.includes(minutes) ? current.filter(m => m !== minutes) : [...current, minutes].sort((a, b) => b - a)
+    if (next.length) draft.headsUp = next
+    else delete draft.headsUp
+    draft = draft
+  }
   function toggleDevice(id: Mode['platforms'][number]) {
     const on = draft.platforms.includes(id)
     if (on && draft.platforms.length === 1) return
@@ -64,10 +78,12 @@
     <section>
       <h3>Turns on</h3>
       <div class="devices" role="group" aria-label="Turns on">
-        <button type="button" aria-pressed={draft.scheduled} on:click={() => draft.scheduled = true}>Morning and evening</button>
-        <button type="button" aria-pressed={!draft.scheduled} on:click={() => draft.scheduled = false}>Only by hand</button>
+        <button type="button" aria-pressed={draft.scheduled && !draft.eveningOnly} on:click={() => setSchedule(true, false)}>Morning and evening</button>
+        <button type="button" aria-pressed={draft.scheduled && !!draft.eveningOnly} on:click={() => setSchedule(true, true)}>Evening</button>
+        <button type="button" aria-pressed={!draft.scheduled} on:click={() => setSchedule(false, false)}>Only by hand</button>
       </div>
-      <p class="muted">{draft.scheduled && today ? `Today at ${clockTime(today.wake)} and ${clockTime(today.evening)}.` : 'Stays on until a quiz turns it off.'}</p>
+      <p class="muted">{draft.scheduled && today ? draft.eveningOnly ? `Today at ${clockTime(today.evening)}.` : `Today at ${clockTime(today.wake)} and ${clockTime(today.evening)}.` : 'Stays on until a quiz turns it off.'}</p>
+      <div class="heads-up"><span>Heads-up</span><div class="devices" role="group" aria-label="Heads-up">{#each HEADS_UP as minutes}<button type="button" aria-pressed={!!draft.headsUp?.includes(minutes)} on:click={() => toggleHeadsUp(minutes)}>{minutes} min</button>{/each}</div></div>
     </section>
     <section>
       <h3>Quiz to turn off</h3>
@@ -105,6 +121,7 @@
   .devices button[aria-pressed='true'] { color:var(--ink); border-color:var(--mode); background:color-mix(in srgb, var(--mode) 12%, transparent); font-weight:600; }
   .devices button:disabled { cursor:default; opacity:1; }
   p.muted { margin:0; font-size:13px; }
+  .heads-up { display:flex; flex-wrap:wrap; align-items:center; gap:8px; font-size:13px; color:var(--muted); }
   .hours { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--muted); }
   .quizzes { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
   .error { margin:0; color:var(--danger); }

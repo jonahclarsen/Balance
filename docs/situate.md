@@ -11,7 +11,8 @@ not turn it off on another. Planner data is never shared with integrations.
   Feurstagram, Signal), and entertainment. Resets at 7 a.m. and evening. Its
   off quiz asks whether you got up and thrust your chosen object in and out of
   your bag.
-- **Touch grass:** AI chats and entertainment. A daytime pass requires planning
+- **Touch grass:** AI chats and entertainment. Turns on only at evening, with
+  heads-ups 15 and 5 minutes before. Turned on by hand during the day, a pass requires planning
   tomorrow and ends at evening; an emergency instead grants 5 minutes. At night, confirm that you just peed and spent
   a minute in bed with the lights off and Herdr muted. Passes last 60 minutes,
   shortened to 30 minutes for passes started after the late-night boundary.
@@ -31,9 +32,12 @@ Toronto for Eastern, and so on). Outside those time zones, or when there is no s
 the fallback times are 9:30 p.m. and 2:30 a.m.
 The 7 a.m. Situate reset does not change the planner's day boundary.
 
-Scheduled modes turn on at morning and evening; passing a mode's quiz turns it
-off until the next one. There is no global switch: set a mode to **Only by hand**
-to keep it off until you turn it on. Overlapping modes must each be passed.
+Scheduled modes turn on at morning and evening, or only at **Evening**; passing a
+mode's quiz turns it off until the next one. An evening-only mode turned on by hand
+during the day stays on until morning at most. There is no global switch: set a mode
+to **Only by hand** to keep it off until you turn it on. Overlapping modes must each
+be passed. A **Heads-up** notifies 15 or 5 minutes before an off mode comes back on,
+whether at its scheduled time or when a pass ends.
 
 Entertainment has a separate 15-minute pass for one site, offered from a blocked
 site's gate or the Mac app prompt. Answer no to “Is this visual entertainment?” for
@@ -92,7 +96,7 @@ not recognized unless it is a Frank thread.
 
 The optional adapters read `~/.local/share/balance-situate/status.json` (directory
 0700, file 0600). Its allowlisted contract contains mode IDs/names, app/domain
-rules, active state, expiry, and the quiz link. It contains no coordinates, quiz
+rules, active state, heads-up minutes, expiry, and the quiz link. It contains no coordinates, quiz
 answers, tasks, notes, recovery keys, or notification text. Readers cannot write
 grants or run shell commands through the feed.
 

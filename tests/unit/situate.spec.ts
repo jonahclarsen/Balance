@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { defaults, regenerate, epoch, enableMode, grant, isActive, questions, quizProgress, validate, matches, sunset, upgradePresets, timeZoneLocation } from '../../src/lib/situate/core'
+import { defaults, regenerate, epoch, enableMode, grant, isActive, backOn, headsUp, questions, quizProgress, validate, matches, sunset, upgradePresets, timeZoneLocation } from '../../src/lib/situate/core'
 const date = (day:number,hour:number,minute=0) => new Date(2026,9,17+day,hour,minute).getTime()
 // Clock times only: sunset would otherwise follow the machine's time zone.
 const fixture = (now=date(0,12)) => regenerate(defaults(now), now, null)
@@ -12,7 +12,7 @@ test('default modes, reset clocks and device scope', () => {
   expect(isActive(enableMode(d,'discord',date(0,12)),d.modes.find(m=>m.id==='discord')!,'mac',date(0,12))).toBe(false)
 })
 test('dolo requires a yes and cannot bypass missing answers', () => {
-  const d=fixture();const now=date(0,12)
+  const now=date(0,12);const d=enableMode(fixture(),'touch-grass',now)
   expect(() => grant(d,'dolo',{},now,now)).toThrow('Complete')
   expect(() => grant(d,'dolo',{thrust:false},now,now)).toThrow('Complete')
   const allowed=grant(d,'dolo',{thrust:true},now,now)
@@ -31,22 +31,41 @@ test('an unplanned tomorrow allows only a 5-minute emergency pass', () => {
   const d=fixture();const now=date(0,12)
   expect(quizProgress(questions(d,d.modes[1],now),{planned:false}).next?.id).toBe('emergency')
   expect(quizProgress(questions(d,d.modes[1],now),{planned:false,emergency:false}).denied).toBe(true)
-  const allowed=grant(d,'touch-grass',{planned:false,emergency:true},now,now)
+  const allowed=grant(enableMode(d,'touch-grass',now),'touch-grass',{planned:false,emergency:true},now,now)
   expect(allowed.grants[0].until-now).toBe(5*60000)
   expect(isActive(allowed,d.modes[1],'mac',now+5*60000)).toBe(true)
   const legacy=upgradePresets({ ...d, presets:7, modes:d.modes.map(m=>({ ...m, dayQuiz:m.dayQuiz.filter(q=>q.id!=='emergency') })) })
   expect(legacy.modes[1].dayQuiz.map(q=>q.id)).toEqual(['planned','emergency'])
+})
+test('touch grass turns on only at evening, with heads-ups, and a daytime turn-on lasts until morning', () => {
+  const d=fixture();const tg=d.modes[1]
+  expect(isActive(d,tg,'mac',date(0,12))).toBe(false)
+  expect(isActive(d,tg,'mac',date(0,21,30))).toBe(true)
+  expect(isActive(d,tg,'mac',date(1,8))).toBe(false)
+  expect(backOn(d,tg,date(0,12))).toBe(date(0,21,30))
+  expect([date(0,21,14),date(0,21,15),date(0,21,25),date(0,21,30)].map(t=>headsUp(d,tg,'mac',t))).toEqual([null,15,5,null])
+  const night=grant(d,'touch-grass',{peed:true,bed:true},date(0,23),date(0,23))
+  expect(headsUp(night,tg,'mac',date(0,23,45))).toBe(15)
+  const nightDolo=grant(d,'dolo',{thrust:true},date(0,23),date(0,23))
+  expect(backOn(nightDolo,d.modes[0],date(0,23))).toBe(date(1,7))
+  const manual=enableMode(d,'touch-grass',date(0,12))
+  expect(isActive(manual,tg,'mac',date(0,12))).toBe(true)
+  expect(isActive(manual,tg,'mac',date(1,8))).toBe(false)
+  const legacy=upgradePresets({ ...d, presets:8, modes:d.modes.map(({ eveningOnly:_e, headsUp:_h, ...m })=>m) })
+  expect(legacy.modes[1]).toMatchObject({ eveningOnly:true, headsUp:[15,5] })
+  expect(() => validate({ ...d, modes:[{ ...tg, headsUp:[0] }] })).toThrow('Heads-ups')
 })
 test('night passes last 60 minutes, late passes 30, and never cross wake time', () => {
   const d=fixture();const answers={peed:true,bed:true}
   for(const [now,duration] of [[date(0,23),60],[date(1,2,30),30],[date(1,6,50),10]]) {
     const allowed=grant(d,'touch-grass',answers,now,now)
     expect(allowed.grants[0].until-now).toBe(duration*60000)
-    expect(isActive(allowed,d.modes[1],'mac',now+duration*60000)).toBe(true)
+    // Touch grass turns on only at evening, so a pass that reaches wake time leaves it off.
+    expect(isActive(allowed,d.modes[1],'mac',now+duration*60000)).toBe(now+duration*60000<date(1,7))
   }
 })
 test('entertainment branches allow work or permitted care only, scoped to one target and mode', () => {
-  const d=fixture();const now=date(0,12);const target='domain:youtube.com'
+  const now=date(0,12);const d=enableMode(fixture(),'touch-grass',now);const target='domain:youtube.com'
   expect(quizProgress(questions(d,d.modes[0],now,target),{visual:true}).next?.id).toBe('care')
   expect(() => grant(d,'dolo',{visual:true,care:false},now,now,target)).toThrow('Complete')
   for(const answers of [{visual:false},{visual:true,care:true}]) {

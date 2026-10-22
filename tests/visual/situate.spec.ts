@@ -3,6 +3,7 @@ import { openView } from '../helpers/navigation'
 test.use({ userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36' })
 test.beforeEach(async ({page}) => { await page.clock.install({time:new Date(2026,9,17,12)}); await page.goto('/'); await openView(page,'Situate') })
 test('quiz refusal keeps mode on, success persists and does not switch off other mode', async ({page}) => {
+  await page.getByRole('button',{name:'Turn on Touch grass',exact:true}).click()
   await page.getByRole('button',{name:'Turn off Dolo',exact:true}).click()
   let dialog=page.getByRole('dialog',{name:'Dolo',exact:true})
   await dialog.getByRole('button',{name:'No',exact:true}).click()
@@ -99,6 +100,9 @@ test('night passes show a countdown and automatically restore the boundary', asy
 })
 
 test('an emergency allows 5 minutes without planning tomorrow', async ({page}) => {
+  // Touch grass turns on only at evening unless turned on by hand.
+  await expect(page.locator('article',{hasText:'Touch grass'}).getByText(/^Back on at .*PM$/)).toBeVisible()
+  await page.getByRole('button',{name:'Turn on Touch grass',exact:true}).click()
   await page.getByRole('button',{name:'Turn off Touch grass',exact:true}).click()
   const quiz=page.getByRole('dialog',{name:'Touch grass',exact:true})
   await quiz.getByRole('button',{name:'No',exact:true}).click()
@@ -146,4 +150,18 @@ test('compact widget opens a quiz without loading planner storage', async ({page
   const reads=await page.evaluate(()=>(window as unknown as {storageReads:string[]}).storageReads)
   expect(reads).not.toContain('balance.appState.v1')
   await expect(page.getByRole('navigation',{name:'Primary',exact:true})).toHaveCount(0)
+})
+
+test('a mode can turn on only at evening with heads-ups', async ({page}) => {
+  await page.getByRole('button',{name:'Edit Dolo',exact:true}).click()
+  const dialog=page.getByRole('dialog',{name:'Edit Dolo'})
+  await dialog.getByRole('group',{name:'Turns on'}).getByRole('button',{name:'Evening',exact:true}).click()
+  await dialog.getByRole('group',{name:'Heads-up'}).getByRole('button',{name:'5 min',exact:true}).click()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('button',{name:'Turn on Dolo',exact:true})).toBeVisible()
+  await page.reload();await openView(page,'Situate')
+  await page.getByRole('button',{name:'Edit Dolo',exact:true}).click()
+  await expect(dialog.getByRole('button',{name:'Evening',exact:true})).toHaveAttribute('aria-pressed','true')
+  await expect(dialog.getByRole('button',{name:'5 min',exact:true})).toHaveAttribute('aria-pressed','true')
+  await expect(dialog.getByRole('button',{name:'15 min',exact:true})).toHaveAttribute('aria-pressed','false')
 })

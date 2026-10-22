@@ -7,6 +7,10 @@ export type Target = { id: string; category: Category; kind: 'domain' | 'app' | 
 export type Mode = {
   id: string; name: string; description: string; color: string; platforms: Platform[]; scheduled: boolean
   dayQuiz: Question[]; nightQuiz: Question[]; accessQuiz: Question[]; targets: Target[]
+  /** A scheduled mode that turns on only at evening, not at morning. */
+  eveningOnly?: boolean
+  /** Notify this many minutes before the mode turns back on. */
+  headsUp?: number[]
   /** A reminder mode blocks nothing and has no quiz: it is on daily between these clock minutes. */
   reminder?: { from: number; until: number }
 }
@@ -40,7 +44,7 @@ export const CATEGORIES: { id: Category; label: string; color: string }[] = [
   { id: 'custom', label: 'Other', color: '#5f7d8c' },
 ]
 const target = (category: Category, kind: Target['kind'], value: string): Target => ({ id: `${kind}:${value}`, category, kind, value })
-const PRESETS = 8
+const PRESETS = 9
 const emergency: Question = { ...q('emergency', 'Is this an emergency?'), when: { id: 'planned', answer: false }, minutes: 5 }
 // Google Messages, WhatsApp, Messenger, Instagram, the Feurstagram clone and Signal on Android and Mac.
 const messagingApps = ['com.google.android.apps.messaging', 'com.whatsapp', 'net.whatsapp.WhatsApp', 'com.facebook.orca', 'com.facebook.archon', 'com.facebook.archon.developerID', 'com.burbn.instagram', 'com.instagram.android.feurstagram', 'org.thoughtcrime.securesms', 'org.whispersystems.signal-desktop']
@@ -63,7 +67,7 @@ export function defaults(now = Date.now()): Document {
     settings: { wakeMinutes: 420, eveningMinutes: 1290, sunsetOffset: 240, lateOffset: 480, lateMinutes: 150, nightMinutes: 60, lateNightMinutes: 30, accessMinutes: 15 },
     modes: [
       { id: 'dolo', name: 'Dolo', description: 'Social and messaging apps, plus entertainment.', color: PRESET_COLORS.dolo, platforms: ['mac', 'android'], scheduled: true, dayQuiz: thrust, nightQuiz: thrust, accessQuiz: entertainment, targets: targets.filter(t => t.category !== 'ai') },
-      { id: 'touch-grass', name: 'Touch grass', description: 'AI chats and entertainment.', color: PRESET_COLORS['touch-grass'], platforms: ['mac', 'android'], scheduled: true, dayQuiz: [q('planned', 'Have you planned tomorrow?'), emergency], nightQuiz: [q('peed', 'Have you just peed?'), q('bed', 'Have you spent one minute in bed with the lights off and Herdr muted?')], accessQuiz: entertainment, targets: targets.filter(t => t.category !== 'social') },
+      { id: 'touch-grass', name: 'Touch grass', description: 'AI chats and entertainment.', color: PRESET_COLORS['touch-grass'], platforms: ['mac', 'android'], scheduled: true, eveningOnly: true, headsUp: [15, 5], dayQuiz: [q('planned', 'Have you planned tomorrow?'), emergency], nightQuiz: [q('peed', 'Have you just peed?'), q('bed', 'Have you spent one minute in bed with the lights off and Herdr muted?')], accessQuiz: entertainment, targets: targets.filter(t => t.category !== 'social') },
       reminder('active-projects', 'Active Projects', 'Time for your active projects.', MODE_COLORS[5], 420, 1200),
       reminder('no-active-project', 'No Active Project', 'Leave projects for tomorrow.', MODE_COLORS[6], 1260, 420),
       { id: 'discord', name: 'Discord', description: 'Discord on your phone.', color: PRESET_COLORS.discord, platforms: ['android'], scheduled: false, dayQuiz: [q('intentional', 'Do you have a specific reason to open Discord now?')], nightQuiz: [q('intentional', 'Do you have a specific reason to open Discord now?')], accessQuiz: [], targets: [target('custom', 'app', 'com.discord'), target('custom', 'domain', 'discord.com')] },
@@ -78,14 +82,16 @@ export function upgradePresets(doc: Document): Document {
   // v2 added messaging apps to Dolo and v3 mode colors. v3 briefly dropped entertainment
   // access, which v4 restores, and the global switch gave way to per-mode control. v5 takes
   // the sunset location from the time zone instead of entered coordinates; v6 adds descriptions
-  // and v7 the reminder modes. v8 lets an emergency excuse Touch grass's planning question.
+  // and v7 the reminder modes. v8 lets an emergency excuse Touch grass's planning question;
+  // v9 turns Touch grass on only at evening, with 15- and 5-minute heads-ups.
   const preset = defaults(doc.generatedAt).modes
   const modes = doc.modes.map((m: Partial<Mode> & Mode & Legacy, i) => {
     const { categories: _categories, ...mode } = m
     const targets = version < 2 && m.id === 'dolo' ? [...m.targets, ...messagingApps.filter(t => !m.targets.some(x => x.id === t.id))] : m.targets
     const fallback = preset.find(p => p.id === m.id)
     const dayQuiz = version < 8 && m.id === 'touch-grass' && m.dayQuiz.some(q => q.id === 'planned') && !m.dayQuiz.some(q => q.id === emergency.id) ? [...m.dayQuiz, emergency] : m.dayQuiz
-    return { ...mode, dayQuiz, color: m.color ?? PRESET_COLORS[m.id] ?? MODE_COLORS[i % MODE_COLORS.length], accessQuiz: m.accessQuiz ?? fallback?.accessQuiz ?? [], description: m.description ?? fallback?.description ?? '', targets }
+    const evening = version < 9 && m.id === 'touch-grass' && m.scheduled ? { eveningOnly: true, headsUp: m.headsUp ?? [15, 5] } : {}
+    return { ...mode, ...evening, dayQuiz, color: m.color ?? PRESET_COLORS[m.id] ?? MODE_COLORS[i % MODE_COLORS.length], accessQuiz: m.accessQuiz ?? fallback?.accessQuiz ?? [], description: m.description ?? fallback?.description ?? '', targets }
   })
   const { enabled: _enabled, ...rest } = doc as Document & Legacy
   const { latitude: _latitude, longitude: _longitude, ...kept } = doc.settings as Settings & Legacy
@@ -177,10 +183,18 @@ export function epoch(doc: Document, now: number): Epoch | undefined { return do
 export function isActive(doc: Document, mode: Mode, platform: Platform, now = Date.now(), targetId = ''): boolean {
   if (!mode.platforms.includes(platform)) return false
   if (mode.reminder) return doc.windows.some(w => w.mode === mode.id && w.at <= now && now < w.end)
-  const e = epoch(doc, now)
-  const activation = Math.max(mode.scheduled ? e?.at ?? doc.generatedAt : 0, doc.manual[mode.id] ?? 0)
+  const activation = activatedAt(doc, mode, now)
   if (!activation) return false
   return !doc.grants.some(g => g.mode === mode.id && (g.target === '' || g.target === targetId) && g.epoch >= activation && g.until > now)
+}
+const eveningOnly = (mode: Mode) => mode.scheduled && !!mode.eveningOnly
+function activatedAt(doc: Document, mode: Mode, now: number): number {
+  const e = epoch(doc, now)
+  const at = e?.at ?? doc.generatedAt
+  const scheduled = mode.scheduled && !(eveningOnly(mode) && e?.phase !== 'night')
+  // An evening-only mode turned on by hand stays on only until the next morning.
+  const manual = doc.manual[mode.id] ?? 0
+  return Math.max(scheduled ? at : 0, eveningOnly(mode) && manual < at ? 0 : manual)
 }
 
 /** The day (wake to evening) that the current moment belongs to, plus the next wake. */
@@ -190,10 +204,25 @@ export function scheduleToday(doc: Document, now: number): { wake: number; eveni
   const night = doc.epochs[doc.epochs.indexOf(day!) + 1]
   return day && night && { wake: day.at, evening: day.end, late: day.late, nextWake: night.end }
 }
-/** When a mode that was turned off by a quiz comes back on, or null if it stays off until turned on. */
+/** When an off mode comes back on, or null if it stays off until turned on. */
 export function backOn(doc: Document, mode: Mode, now: number): number | null {
-  const pass = doc.grants.find(g => g.mode === mode.id && !g.target && g.until > now)
-  return pass && pass.until < Number.MAX_SAFE_INTEGER ? pass.until : null
+  if (mode.reminder) return null
+  const end = epoch(doc, now)?.end ?? Infinity
+  const pass = doc.grants.find(g => g.mode === mode.id && !g.target && g.epoch >= activatedAt(doc, mode, now) && g.until > now)
+  if (pass && pass.until < Number.MAX_SAFE_INTEGER && (pass.until < end || !mode.scheduled)) return pass.until
+  return nextScheduled(doc, mode, now)
+}
+/** When the schedule next turns a mode on, after now. */
+export function nextScheduled(doc: Document, mode: Mode, now: number): number | null {
+  if (!mode.scheduled) return null
+  return doc.epochs.find(e => e.at > now && (!eveningOnly(mode) || e.phase === 'night'))?.at ?? null
+}
+/** The heads-up, in minutes, whose time before an off mode comes back on has been reached. */
+export function headsUp(doc: Document, mode: Mode, platform: Platform, now: number): number | null {
+  if (!mode.headsUp?.length || isActive(doc, mode, platform, now)) return null
+  const on = backOn(doc, mode, now)
+  const reached = on === null ? [] : mode.headsUp.filter(m => now >= on - m * minute)
+  return reached.length ? Math.min(...reached) : null
 }
 export function questions(doc: Document, mode: Mode, now: number, targetId = ''): Question[] {
   if (targetId) {
@@ -263,6 +292,7 @@ export function validate(doc: Document): void {
         seen.add(q.id)
       }
     }
+    if (m.headsUp && (m.headsUp.length > 5 || m.headsUp.some(t => !Number.isInteger(t) || t < 1 || t > 240))) throw new Error('Heads-ups must be between 1 and 240 minutes')
     if (m.reminder && (![m.reminder.from, m.reminder.until].every(t => Number.isInteger(t) && t >= 0 && t < 1440) || m.reminder.from === m.reminder.until || m.targets.length)) throw new Error('Reminder modes need different start and end times')
     if (m.targets.length > 300) throw new Error('Use at most 300 targets per mode')
     for (const t of m.targets) {

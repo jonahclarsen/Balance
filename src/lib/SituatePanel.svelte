@@ -1,7 +1,7 @@
 <script lang="ts">
   import { isTauri, invoke } from '@tauri-apps/api/core'
   import { situate, situateNow, situatePlatform, situateError, requestQuiz, activateMode } from './situate/store'
-  import { isActive, epoch, backOn, scheduleToday, type Mode } from './situate/core'
+  import { isActive, epoch, backOn, nextScheduled, scheduleToday, type Mode } from './situate/core'
   import { DEVICES, clockTime } from './situate/ui'
   import { formatMinutes as minutesTime } from './planner'
   import { browsersMissingExtension, extensionSetupOpen } from './situate/extension'
@@ -27,7 +27,8 @@
     }
     const minutes = nightPass(mode)
     if (minutes) return `A quiz turns it off for ${minutes} min`
-    return mode.scheduled && currentEpoch ? `A quiz turns it off until ${clockTime(currentEpoch.end)}` : 'A quiz turns it off'
+    const until = nextScheduled($situate, mode, $situateNow)
+    return until ? `A quiz turns it off until ${clockTime(until)}` : 'A quiz turns it off'
   }
   async function permissionsAction(action: string) {
     try { permissions = await invoke<string>('situate_permissions', { action }) } catch(e) { permissions = String(e) }
