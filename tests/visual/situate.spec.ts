@@ -160,9 +160,12 @@ test('mode descriptions grow with their lines and keep them in the preview', asy
   await expect.poll(()=>preview.evaluate(el=>(el as HTMLElement).innerText)).toBe('One\nTwo\nThree')
 })
 
-test('reminder modes show only while on and open their description', async ({page}) => {
+test('sidebar shows only modes that are on; reminders open their description', async ({page}) => {
   const sidebar=page.getByLabel('Situate modes')
   await expect(sidebar.getByRole('button',{name:'No Active Project',exact:true})).toHaveCount(0)
+  await expect(sidebar.getByRole('button',{name:'Touch grass',exact:true})).toHaveCount(0)
+  await page.getByRole('button',{name:'Turn on Touch grass',exact:true}).click()
+  await expect(sidebar.getByRole('button',{name:'Touch grass',exact:true})).toBeVisible()
   await sidebar.getByRole('button',{name:'Active Projects',exact:true}).click()
   const reminder=page.getByRole('dialog',{name:'Active Projects',exact:true})
   await expect(reminder.getByText('Time for your active projects.')).toBeVisible()

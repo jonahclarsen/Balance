@@ -7159,7 +7159,7 @@ return rows`
         {/if}
       </div>
       <p class="muted">Focus on what matters today</p>
-      <SituatePills all />
+      <SituatePills />
     </div>
 
     <button
