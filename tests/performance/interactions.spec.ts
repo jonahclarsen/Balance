@@ -255,7 +255,7 @@ async function installSyntheticWorkspace(page: Page) {
       const runtime = window as unknown as { __TAURI_INTERNALS__: { invoke: (command: string) => Promise<unknown> } }
       runtime.__TAURI_INTERNALS__ = {
         invoke: async (command: string) => {
-          if (command === 'read_app_state') return JSON.stringify(state)
+          if (command === 'read_app_state_changes') return { state: structuredClone(state) }
           if (command === 'persist_operation') return true
           throw new Error(`Unsupported synthetic command: ${command}`)
         },

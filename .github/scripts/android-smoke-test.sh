@@ -35,6 +35,9 @@ adb() {
 # debugApplicationIdSuffix (".debug").
 PKG=app.balance.local.debug
 
+# Stream console output for the whole run; later steps clear the logcat buffer.
+"$ADB_BIN" logcat -v brief 'Tauri/Console:*' '*:S' > logcat-incremental-reads.txt 2>/dev/null &
+
 launch() {
   adb logcat -c
   adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1
@@ -396,7 +399,18 @@ fi
 # accessibility dumper, which can wedge even while the app and emulator remain
 # healthy. Keep it available for deliberate CI debugging without charging every
 # tagged release for that flaky system harness.
+# Debug builds compare each incremental workspace read with a complete read.
+check_incremental_reads() {
+  echo "Incremental workspace reads verified against complete reads: $(grep -c "Incremental workspace read matched" "$1" || true)"
+  if grep -q "Incremental workspace read diverged" "$1"; then
+    echo "Incremental workspace reads diverged from complete reads:"
+    grep "Incremental workspace read diverged" "$1"
+    exit 1
+  fi
+}
+
 if [ "${BALANCE_RUN_UI_PAIRING_E2E:-0}" != 1 ]; then
+  check_incremental_reads logcat-incremental-reads.txt
   echo "[ui-sync] optional camera/UI pairing journey skipped; core Android smoke checks passed."
   echo "App builds, launches, reopens its encrypted database, and passes native encrypted sync verification."
   exit 0
@@ -912,5 +926,6 @@ E2E_ACTIVE=0
 kill "$UI_RELAY_PID" 2>/dev/null || true
 trap - EXIT
 adb logcat -d > logcat-sync-e2e.txt 2>/dev/null || true
+check_incremental_reads logcat-incremental-reads.txt
 
 echo "App builds, launches, reopens its encrypted database, scans a real QR camera frame, and syncs two isolated Android installations."

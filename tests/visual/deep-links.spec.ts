@@ -152,7 +152,7 @@ test('native launch queue routes navigation after loading the workspace', async 
       transformCallback: (callback: (event: unknown) => void) => { callbacks.set(++callbackId, callback); return callbackId },
       unregisterCallback: () => {},
       invoke: async (command: string, args: any) => {
-        if (command === 'read_app_state') return JSON.stringify(state)
+        if (command === 'read_app_state_changes') return { state: structuredClone(state) }
         if (command === 'pending_deep_links') return ['balance://note/destination?item=paragraph']
         if (command === 'acknowledge_deep_link') { runtime.__acknowledged.push(args.url); return }
         if (command === 'get_sync_settings') return { enabled: false, pairingCode: null, relayUrl: '' }

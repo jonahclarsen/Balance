@@ -130,6 +130,7 @@ mod macos_haptic_drag {
 }
 mod sync;
 mod connectivity;
+mod state_changes;
 mod task_notifications;
 mod situate;
 #[cfg(any(test, target_os = "android", target_os = "macos"))]
@@ -1473,39 +1474,83 @@ async fn read_app_state(
     known_revision: Option<i64>,
 ) -> Result<Option<String>, String> {
     run_startup_database_task(move || {
-        let startup = take_startup_database_connection(&app, StartupDatabaseRead::AppState)?;
-        let result = (|| {
-            let revision = state_revision(&startup.connection)?;
-            if known_revision == Some(revision) {
-                return Ok(None);
+        Ok(match read_workspace(&app, known_revision)? {
+            WorkspaceRead::Current | WorkspaceRead::Missing => None,
+            WorkspaceRead::Snapshot { mut state, revision } => {
+                if let Some(revision) = revision {
+                    state["stateRevision"] = revision.into();
+                }
+                Some(state.to_string())
             }
-            read_app_state_from_database(&startup.connection)?
-                .map(|mut value| {
-                    value["canRedo"] = latest_redoable_history_entry(&startup.connection)?
-                        .is_some()
-                        .into();
-                    // Android startup reads can bypass a background writer's
-                    // lock. A revision that moved during the read is unknown.
-                    if state_revision(&startup.connection)? == revision {
-                        value["stateRevision"] = revision.into();
-                    }
-                    Ok(value.to_string())
-                })
-                .transpose()
-        })();
-        if result.is_ok() {
-            if let Err(error) = task_notifications::publish(&startup.connection) {
-                log::warn!("Could not refresh task notifications: {error}");
-            }
-            #[cfg(target_os = "macos")]
-            if let Err(error) = macos_widget::publish_snapshot(&startup.connection) {
-                eprintln!("Could not refresh the macOS widget: {error}");
-            }
-            finish_startup_database_read(startup, StartupDatabaseRead::AppState, None);
-        }
-        result
+        })
     })
     .await
+}
+
+/// The frontend's workspace read: nothing when the store holds every change
+/// since `known_revision`, otherwise only what differs from the snapshot that
+/// `known` fingerprints, as raw JSON so the WebView parses it exactly once.
+#[tauri::command]
+async fn read_app_state_changes(
+    app: tauri::AppHandle,
+    known: Option<state_changes::KnownState>,
+    known_revision: Option<i64>,
+) -> Result<Box<serde_json::value::RawValue>, String> {
+    let read = run_startup_database_task(move || read_workspace(&app, known_revision)).await?;
+    // Fingerprint and serialize after releasing the database lock.
+    tauri::async_runtime::spawn_blocking(move || workspace_response(read, known.as_ref()))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+enum WorkspaceRead {
+    /// Nothing changed since the frontend's known revision.
+    Current,
+    Missing,
+    /// `revision` is None when another writer moved it during the read.
+    Snapshot { state: Value, revision: Option<i64> },
+}
+
+fn read_workspace(app: &tauri::AppHandle, known_revision: Option<i64>) -> Result<WorkspaceRead, String> {
+    let startup = take_startup_database_connection(app, StartupDatabaseRead::AppState)?;
+    let result = read_workspace_from(&startup.connection, known_revision);
+    if result.is_ok() {
+        if let Err(error) = task_notifications::publish(&startup.connection) {
+            log::warn!("Could not refresh task notifications: {error}");
+        }
+        #[cfg(target_os = "macos")]
+        if let Err(error) = macos_widget::publish_snapshot(&startup.connection) {
+            eprintln!("Could not refresh the macOS widget: {error}");
+        }
+        finish_startup_database_read(startup, StartupDatabaseRead::AppState, None);
+    }
+    result
+}
+
+fn read_workspace_from(connection: &Connection, known_revision: Option<i64>) -> Result<WorkspaceRead, String> {
+    let revision = state_revision(connection)?;
+    if known_revision == Some(revision) {
+        return Ok(WorkspaceRead::Current);
+    }
+    let Some(state) = read_frontend_app_state(connection)? else {
+        return Ok(WorkspaceRead::Missing);
+    };
+    // Android startup reads can bypass a background writer's lock. A revision
+    // that moved during the read is unknown.
+    let revision = (state_revision(connection)? == revision).then_some(revision);
+    Ok(WorkspaceRead::Snapshot { state, revision })
+}
+
+fn workspace_response(
+    read: WorkspaceRead,
+    known: Option<&state_changes::KnownState>,
+) -> Result<Box<serde_json::value::RawValue>, String> {
+    let json = match read {
+        WorkspaceRead::Current => r#"{"current":true}"#.to_string(),
+        WorkspaceRead::Missing => "null".to_string(),
+        WorkspaceRead::Snapshot { state, revision } => return state_changes::response(&state, known, revision),
+    };
+    serde_json::value::RawValue::from_string(json).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -3093,6 +3138,16 @@ fn maintain_database_at(
         let _ = fs::remove_file(&working_path);
     }
     result
+}
+
+/// The workspace snapshot the frontend loads, with its redo availability.
+fn read_frontend_app_state(connection: &Connection) -> Result<Option<Value>, String> {
+    read_app_state_from_database(connection)?
+        .map(|mut value| {
+            value["canRedo"] = latest_redoable_history_entry(connection)?.is_some().into();
+            Ok(value)
+        })
+        .transpose()
 }
 
 fn read_app_state_from_database(connection: &Connection) -> Result<Option<Value>, String> {
@@ -10980,6 +11035,7 @@ pub fn run() {
             situate::situate_notifications,
             situate::situate_extension,
             read_app_state,
+            read_app_state_changes,
             pending_deep_links,
             acknowledge_deep_link,
             has_processed_siri_request,
@@ -12240,6 +12296,80 @@ mod tests {
         assert_eq!(undone["templateQuestions"], json!([]));
         let redone = redo_last_operation_in_database(&mut connection).unwrap().unwrap();
         assert_eq!(redone["templateQuestions"], json!([question]));
+    }
+
+    #[test]
+    fn incremental_reads_track_real_database_operations() {
+        use state_changes::test_support::{apply, known_from_full, parse};
+        let database = TestDatabase::new("incremental-reads");
+        let recovery_key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        replace_app_state(&mut connection, &test_state("Synthetic incremental day")).unwrap();
+        let read = |connection: &Connection| read_frontend_app_state(connection).unwrap().unwrap();
+        let initial = read(&connection);
+        let full = parse(&state_changes::response(&initial, None, None).unwrap());
+        // The frontend's first read is byte-identical to the legacy command.
+        assert_eq!(serde_json::to_string(&full["state"]).unwrap(), initial.to_string());
+        let mut known = known_from_full(&full);
+        let mut held = initial;
+
+        let mut plan = held["plans"][0].clone();
+        plan["id"] = json!("incremental-next-plan");
+        plan["date"] = json!("2026-05-22");
+        plan["items"][0]["id"] = json!("incremental-item");
+        let note = json!({"id": "incremental-note", "title": "Synthetic note", "items": []});
+        let operations = [
+            json!({"id": "op_device_test_2", "deviceId": "device_test", "sequence": 2,
+                "type": "add_plan_item_from_siri", "timestamp": "2026-05-21T12:00:00Z",
+                "payload": {"requestId": "incremental-request", "date": "2026-05-22", "createdPlan": plan,
+                    "item": plan["items"][0], "heading": null, "headingId": "unused", "parentId": null,
+                    "position": 0, "reactivatedItemIds": []}}),
+            json!({"id": "op_device_test_3", "deviceId": "device_test", "sequence": 3,
+                "type": "apply_entity_changes", "timestamp": "2026-05-21T12:01:00Z",
+                "payload": {"action": "create_note", "entityChanges": {"version": 2, "deletes": [], "upserts": [
+                    {"collection": "notes", "key": "incremental-note", "position": 0, "value": note,
+                        "patches": [sync::entities::diff(&Value::Null, &note)]}]}}}),
+        ];
+        let mut steps: Vec<Box<dyn Fn(&mut Connection)>> = Vec::new();
+        for operation in operations {
+            steps.push(Box::new(move |connection| {
+                persist_operation_to_database(connection, &operation).unwrap();
+            }));
+        }
+        steps.push(Box::new(|connection| {
+            undo_last_operation_in_database(connection).unwrap().unwrap();
+        }));
+        steps.push(Box::new(|connection| {
+            redo_last_operation_in_database(connection).unwrap().unwrap();
+        }));
+        steps.push(Box::new(|connection| {
+            sync::checkpoint_operation_log_preserving_history(connection).unwrap();
+        }));
+        for step in steps {
+            step(&mut connection);
+            let expected = read(&connection);
+            let changes = parse(&state_changes::response(&expected, Some(&known), None).unwrap());
+            let (merged, merged_known) = apply(&held, &known, &changes["changes"]);
+            assert_eq!(merged, expected);
+            held = merged;
+            known = merged_known;
+        }
+        // An unchanged database resends no records.
+        let unchanged = parse(&state_changes::response(&read(&connection), Some(&known), None).unwrap());
+        assert_eq!(unchanged["changes"]["collections"], json!({}));
+        assert_eq!(unchanged["changes"]["valueHashes"], json!({}));
+        // A store that holds the current revision is told so without a read;
+        // any write moves the revision and returns only the changed records.
+        let revision = state_revision(&connection).unwrap();
+        let current = parse(&workspace_response(read_workspace_from(&connection, Some(revision)).unwrap(), Some(&known)).unwrap());
+        assert_eq!(current, json!({"current": true}));
+        let edit = json!({"id": "op_device_test_9", "deviceId": "device_test", "sequence": 9,
+            "type": "patch_plan_item", "timestamp": "2026-05-21T12:05:00Z",
+            "payload": {"planId": "plan_today", "itemId": "plan_item_wake", "patch": {"text": "Synthetic revision edit"}}});
+        persist_operation_to_database(&mut connection, &edit).unwrap();
+        let changed = parse(&workspace_response(read_workspace_from(&connection, Some(revision)).unwrap(), Some(&known)).unwrap());
+        assert_eq!(changed["revision"], json!(state_revision(&connection).unwrap()));
+        assert_eq!(changed["changes"]["collections"]["plans"]["records"].as_array().unwrap().len(), 1);
     }
 
     #[test]

@@ -10,7 +10,7 @@ for (const outcome of ['saved', 'new', 'error'] as const) {
         metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main' } },
         transformCallback: () => 1,
         invoke: async (command: string) => {
-          if (command === 'read_app_state') {
+          if (command === 'read_app_state_changes') {
             return new Promise((resolve, reject) => {
               runtime.__finishStartup = resolve
               runtime.__failStartup = reject
@@ -44,7 +44,7 @@ for (const outcome of ['saved', 'new', 'error'] as const) {
       const { createGoal } = await import(/* @vite-ignore */ goalsPath)
       const state = createInitialState()
       state.goals = [createGoal('Synthetic saved goal', 1, [], 180, 50, undefined, 'synthetic-goal')]
-      runtime.__finishStartup(JSON.stringify(state))
+      runtime.__finishStartup({ state })
     }, outcome)
 
     await expect(page.getByRole('progressbar', { name: 'Database loading progress' })).toHaveCount(0)
@@ -93,7 +93,7 @@ test('the Android loading card is horizontally centered', async ({ page }, testI
       metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main' } },
       transformCallback: () => 1,
       invoke: async (command: string) => {
-        if (command === 'read_app_state') return new Promise(() => undefined)
+        if (command === 'read_app_state_changes') return new Promise(() => undefined)
         if (command === 'get_recovery_key_status') {
           return {
             confirmed: true,

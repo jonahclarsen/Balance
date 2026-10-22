@@ -61,7 +61,7 @@ for (const structural of [false, true]) for (const cached of [true, false]) for 
           }
           return response
         }
-        if (command === 'read_app_state') return JSON.stringify(database)
+        if (command === 'read_app_state_changes') return { state: JSON.parse(JSON.stringify(database)) }
         if (command === 'persist_operation') {
           const operation = JSON.parse(args.operationJson)
           const previous = durable.get(operation.id)

@@ -25,13 +25,13 @@ for (const scenario of ['same-session', 'reload', 'native-race'] as const) {
       let persisted = JSON.stringify(initial)
       const persistedRequests: string[] = []
       const receipts = new Set<string>()
-      // read_app_state intentionally returns plans but no operation history,
+      // The workspace read intentionally returns plans but no operation history,
       // matching read_app_state_from_database_with_progress in lib.rs.
       Object.assign(window, {
         isTauri: true,
         __TAURI_INTERNALS__: {
           invoke: async (command: string, args?: { operationJson?: string }) => {
-            if (command === 'read_app_state') return persisted
+            if (command === 'read_app_state_changes') return { state: JSON.parse(persisted) }
             if (command === 'has_processed_siri_request') {
               // Model a stale preflight result: persistence remains authoritative.
               return scenario === 'native-race' ? false : receipts.has((args as { requestId: string }).requestId)

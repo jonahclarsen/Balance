@@ -1,0 +1,315 @@
+{
+  "after": {
+    "activePlanDate": "2026-10-21",
+    "canRedo": true,
+    "deviceId": "device-a",
+    "goalCompletions": [
+      {
+        "date": "2026-10-20",
+        "goalId": "goal-a"
+      }
+    ],
+    "historyRevision": 0,
+    "localSequence": 9,
+    "notes": [
+      {
+        "id": "note-a"
+      },
+      {
+        "id": "note-a"
+      }
+    ],
+    "operations": [],
+    "plans": [
+      {
+        "date": "2027-01-01",
+        "id": "plan-new",
+        "items": []
+      },
+      {
+        "date": "2026-01-01",
+        "id": "plan-0",
+        "items": [
+          {
+            "done": true,
+            "html": "Synthetic <em>task</em>",
+            "id": "item-0",
+            "text": "Synthetic task"
+          }
+        ]
+      },
+      {
+        "date": "2026-01-02",
+        "id": "plan-1",
+        "items": [
+          {
+            "done": false,
+            "html": "Synthetic <em>task</em>",
+            "id": "item-1",
+            "text": "Synthetic task"
+          }
+        ]
+      },
+      {
+        "date": "2026-01-03",
+        "id": "plan-2",
+        "items": [
+          {
+            "done": true,
+            "html": "Synthetic <em>task</em>",
+            "id": "item-2",
+            "text": "Synthetic task edited"
+          }
+        ]
+      },
+      {
+        "date": "2026-01-04",
+        "id": "plan-3",
+        "items": [
+          {
+            "done": false,
+            "html": "Synthetic <em>task</em>",
+            "id": "item-3",
+            "text": "Synthetic task"
+          }
+        ]
+      },
+      {
+        "date": "2026-01-06",
+        "id": "plan-5",
+        "items": [
+          {
+            "done": false,
+            "html": "Synthetic <em>task</em>",
+            "id": "item-5",
+            "text": "Synthetic task"
+          }
+        ]
+      }
+    ],
+    "preferences": {
+      "dayTheme:2026-10-20": "iridescent",
+      "theme": "iridescent"
+    },
+    "schemaVersion": 1
+  },
+  "afterFingerprints": {
+    "collections": {
+      "plans": {
+        "hashes": [
+          "418400de46464236",
+          "769a1f79f45123b5",
+          "2e2fb10a5cfdbf49",
+          "4fcae15552ad52d4",
+          "1cb1967cd4a2bc68",
+          "625ddca6301b60a2"
+        ],
+        "ids": [
+          "plan-new",
+          "plan-0",
+          "plan-1",
+          "plan-2",
+          "plan-3",
+          "plan-5"
+        ]
+      }
+    },
+    "values": {
+      "goalCompletions": "5f63fcb63ec515b4",
+      "notes": "b928fb0526e03d29",
+      "preferences": "a271fe72e818e531"
+    }
+  },
+  "before": {
+    "fingerprints": {
+      "collections": {
+        "notes": {
+          "hashes": [],
+          "ids": []
+        },
+        "plans": {
+          "hashes": [
+            "769a1f79f45123b5",
+            "2e2fb10a5cfdbf49",
+            "92c14d37a2dc77f4",
+            "1cb1967cd4a2bc68",
+            "ac353c44d9adf4dd",
+            "625ddca6301b60a2"
+          ],
+          "ids": [
+            "plan-0",
+            "plan-1",
+            "plan-2",
+            "plan-3",
+            "plan-4",
+            "plan-5"
+          ]
+        }
+      },
+      "values": {
+        "goalCompletions": "5f63fcb63ec515b4",
+        "preferences": "f8d7c6e006afdfa8"
+      }
+    },
+    "revision": null,
+    "state": {
+      "activePlanDate": "2026-10-21",
+      "canRedo": false,
+      "deviceId": "device-a",
+      "goalCompletions": [
+        {
+          "date": "2026-10-20",
+          "goalId": "goal-a"
+        }
+      ],
+      "historyRevision": 0,
+      "localSequence": 7,
+      "notes": [],
+      "operations": [],
+      "plans": [
+        {
+          "date": "2026-01-01",
+          "id": "plan-0",
+          "items": [
+            {
+              "done": true,
+              "html": "Synthetic <em>task</em>",
+              "id": "item-0",
+              "text": "Synthetic task"
+            }
+          ]
+        },
+        {
+          "date": "2026-01-02",
+          "id": "plan-1",
+          "items": [
+            {
+              "done": false,
+              "html": "Synthetic <em>task</em>",
+              "id": "item-1",
+              "text": "Synthetic task"
+            }
+          ]
+        },
+        {
+          "date": "2026-01-03",
+          "id": "plan-2",
+          "items": [
+            {
+              "done": true,
+              "html": "Synthetic <em>task</em>",
+              "id": "item-2",
+              "text": "Synthetic task"
+            }
+          ]
+        },
+        {
+          "date": "2026-01-04",
+          "id": "plan-3",
+          "items": [
+            {
+              "done": false,
+              "html": "Synthetic <em>task</em>",
+              "id": "item-3",
+              "text": "Synthetic task"
+            }
+          ]
+        },
+        {
+          "date": "2026-01-05",
+          "id": "plan-4",
+          "items": [
+            {
+              "done": true,
+              "html": "Synthetic <em>task</em>",
+              "id": "item-4",
+              "text": "Synthetic task"
+            }
+          ]
+        },
+        {
+          "date": "2026-01-06",
+          "id": "plan-5",
+          "items": [
+            {
+              "done": false,
+              "html": "Synthetic <em>task</em>",
+              "id": "item-5",
+              "text": "Synthetic task"
+            }
+          ]
+        }
+      ],
+      "preferences": {
+        "dayTheme:2026-10-20": "iridescent",
+        "theme": "graphite"
+      },
+      "schemaVersion": 1
+    }
+  },
+  "changes": {
+    "changes": {
+      "collections": {
+        "plans": {
+          "hashes": [
+            "418400de46464236",
+            "4fcae15552ad52d4"
+          ],
+          "ids": [
+            "plan-new",
+            "plan-0",
+            "plan-1",
+            "plan-2",
+            "plan-3",
+            "plan-5"
+          ],
+          "records": [
+            {
+              "date": "2027-01-01",
+              "id": "plan-new",
+              "items": []
+            },
+            {
+              "date": "2026-01-03",
+              "id": "plan-2",
+              "items": [
+                {
+                  "done": true,
+                  "html": "Synthetic <em>task</em>",
+                  "id": "item-2",
+                  "text": "Synthetic task edited"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "valueHashes": {
+        "notes": "b928fb0526e03d29",
+        "preferences": "a271fe72e818e531"
+      },
+      "values": {
+        "activePlanDate": "2026-10-21",
+        "canRedo": true,
+        "deviceId": "device-a",
+        "historyRevision": 0,
+        "localSequence": 9,
+        "notes": [
+          {
+            "id": "note-a"
+          },
+          {
+            "id": "note-a"
+          }
+        ],
+        "operations": [],
+        "preferences": {
+          "dayTheme:2026-10-20": "iridescent",
+          "theme": "iridescent"
+        },
+        "schemaVersion": 1
+      }
+    },
+    "revision": null
+  }
+}

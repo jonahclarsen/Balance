@@ -34,7 +34,7 @@ test('Android recovery-key confirmation stays usable in a short viewport and sub
       transformCallback: () => 1,
       invoke: async (command, args) => {
         switch (command) {
-          case 'read_app_state':
+          case 'read_app_state_changes':
           case 'initialize_app_state':
           case 'plugin:event|listen':
           case 'plugin:event|unlisten':

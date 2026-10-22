@@ -188,7 +188,7 @@ async function installSyntheticWorkspace(page: Page) {
       runtime.isTauri = true
       runtime.__TAURI_INTERNALS__ = {
         invoke: async (command: string) => {
-          if (command === 'read_app_state') return stateJson
+          if (command === 'read_app_state_changes') return { state: JSON.parse(stateJson) }
           if (command === 'get_recovery_key_status') return { confirmed: true, recoveryKey: null, databasePath: '/synthetic/fixture.sqlite3' }
           if (command === 'get_sync_settings') return { enabled: false, pairingCode: null, relayUrl: '' }
           if (command === 'get_database_maintenance_status') return { due: false, operationCount: 0, operationBytes: 0, checkpointRecommended: false }

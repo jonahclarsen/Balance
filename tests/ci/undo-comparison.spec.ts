@@ -13,7 +13,7 @@ for (const [size, plans, entries] of [['small', 75, 300], ['large', 1500, 10000]
     writeFileSync(join(root, 'SYNTHETIC_FIXTURES_ONLY'), '')
     const calls: any[] = []
     function native(command: string, args: any = {}) {
-      if (!['seed', 'verify', 'read_app_state', 'persist_operation', 'undo_last_operation', 'redo_last_operation'].includes(command)) {
+      if (!['seed', 'verify', 'read_app_state', 'read_app_state_changes', 'persist_operation', 'undo_last_operation', 'redo_last_operation'].includes(command)) {
         if (command === 'get_recovery_key_status') return { confirmed: true, recoveryKey: null, databasePath: join(root, 'fixture.sqlite3') }
         if (command === 'get_sync_settings') return { enabled: false, pairingCode: null, relayUrl: '' }
         if (command === 'get_database_maintenance_status') return { due: false, operationCount: 0, operationBytes: 0, checkpointRecommended: false }

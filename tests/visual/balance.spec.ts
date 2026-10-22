@@ -669,11 +669,11 @@ test('threshold-based launch housekeeping never blocks the app with a maintenanc
       metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main' } },
       transformCallback: () => 1,
       invoke: async (command: string) => {
-        if (command === 'read_app_state' || command === 'plugin:event|listen') {
+        if (command === 'read_app_state_changes' || command === 'plugin:event|listen') {
           runtime.__databaseStartupCalls.push(command)
         }
         switch (command) {
-          case 'read_app_state':
+          case 'read_app_state_changes':
             return new Promise((resolve) => {
               finishStartup = () => resolve(null)
             })
@@ -747,8 +747,8 @@ test('threshold-based launch housekeeping never blocks the app with a maintenanc
     const runtime = globalThis as typeof globalThis & { __databaseStartupCalls: string[] }
     // Native event registration is independent of database hydration and may
     // start concurrently (Android also receives Situate deep links).
-    return runtime.__databaseStartupCalls.filter(command => command === 'read_app_state')
-  })).toEqual(['read_app_state'])
+    return runtime.__databaseStartupCalls.filter(command => command === 'read_app_state_changes')
+  })).toEqual(['read_app_state_changes'])
   await page.evaluate(() => {
     const runtime = globalThis as typeof globalThis & { __finishDatabaseStartup: () => void }
     runtime.__finishDatabaseStartup()
@@ -758,7 +758,7 @@ test('threshold-based launch housekeeping never blocks the app with a maintenanc
   await expect.poll(() => page.evaluate(() => {
     const runtime = globalThis as typeof globalThis & { __databaseStartupCalls: string[] }
     return runtime.__databaseStartupCalls[0]
-  })).toBe('read_app_state')
+  })).toBe('read_app_state_changes')
 
   await page.screenshot({
     path: `artifacts/visual-smoke/${testInfo.project.name}-background-database-housekeeping.png`,
@@ -790,7 +790,7 @@ test('recovery-key failure surfaces even if state hydration remains blocked', as
       metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main' } },
       transformCallback: () => 1,
       invoke: async (command: string) => {
-        if (command === 'read_app_state') return new Promise(() => undefined)
+        if (command === 'read_app_state_changes') return new Promise(() => undefined)
         if (command === 'get_recovery_key_status') {
           throw 'The encrypted Balance database exists, but its recovery key is unavailable.'
         }

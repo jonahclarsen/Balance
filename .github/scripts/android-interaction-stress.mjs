@@ -972,7 +972,7 @@ const freezeActions = actions.filter((action) => (
 ))
 const failedActions = actions.filter((action) => !action.ok)
 const fatalLogLines = diagnostics.logcat.split('\n').filter((line) => (
-  /FATAL EXCEPTION|ANR in app\.balance\.local\.debug|am_anr.*app\.balance\.local\.debug|Fatal signal.*(?:balance|libbalance)|F DEBUG\s*:.*>>> app\.balance\.local\.debug <<</i.test(line)
+  /FATAL EXCEPTION|ANR in app\.balance\.local\.debug|am_anr.*app\.balance\.local\.debug|Fatal signal.*(?:balance|libbalance)|F DEBUG\s*:.*>>> app\.balance\.local\.debug <<<|Incremental workspace read diverged/i.test(line)
 ))
 const report = {
   seed,

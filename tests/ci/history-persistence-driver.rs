@@ -17,6 +17,12 @@ fn history_persistence_driver() {
                 Ok(Value::Null)
             }
             "read_app_state" => Ok(json!(read_app_state_from_database(&connection)?.map(|v| v.to_string()))),
+            "read_app_state_changes" => {
+                let known: Option<crate::state_changes::KnownState> =
+                    serde_json::from_value(args["known"].clone()).map_err(|error| error.to_string())?;
+                let read = crate::read_workspace_from(&connection, args["knownRevision"].as_i64())?;
+                serde_json::from_str(crate::workspace_response(read, known.as_ref())?.get()).map_err(|error| error.to_string())
+            }
             "persist_operation" => {
                 let operation = serde_json::from_str(args["operationJson"].as_str().unwrap()).unwrap();
                 crate::persist_operation_once(&mut connection, &operation).map(|v| json!(v))

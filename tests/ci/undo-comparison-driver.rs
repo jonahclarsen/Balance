@@ -100,6 +100,8 @@ fn undo_comparison_driver() {
             "entries": read_entity_collection(&connection, "metricEntries").unwrap(),
         }),
         "read_app_state" => json!(read_app_state_from_database(&connection).unwrap().map(|v| v.to_string())),
+        // Complete snapshots only: this driver also builds older checkouts.
+        "read_app_state_changes" => read_app_state_from_database(&connection).unwrap().map_or(Value::Null, |state| json!({"state": state})),
         "persist_operation" => {
             let operation = serde_json::from_str(request["args"]["operationJson"].as_str().unwrap()).unwrap();
             { persist_operation_to_database(&mut connection, &operation).unwrap(); json!(true) }

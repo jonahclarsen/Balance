@@ -196,12 +196,12 @@ for (const reload of ['none', 'unchanged', 'changed', 'sequence'] as const) {
         transformCallback: () => 1,
         invoke: async (command, args) => {
           switch (command) {
-            case 'read_app_state':
+            case 'read_app_state_changes':
               if (persistedOperation && new URLSearchParams(location.search).has('reload-history')) {
                 if (new URLSearchParams(location.search).has('sequence-only')) state.localSequence += 1
                 else state.plans[0].title = 'Remote title'
               }
-              return JSON.stringify({ ...state, canRedo: runtime.__historyCalls.at(-1)?.command === 'undo_last_operation' })
+              return { state: structuredClone({ ...state, canRedo: runtime.__historyCalls.at(-1)?.command === 'undo_last_operation' }) }
             case 'persist_operation':
               persistedOperation = JSON.parse(String(args?.operationJson))
               Object.assign(state.plans[0].items[0], persistedOperation!.payload.patch)

@@ -114,6 +114,10 @@ jobs:
           generate-sync-fixture: "true"
 
       - name: Build x86_64 debug APK for the emulator
+        # Debug test builds compare every incremental workspace read with a
+        # complete read; the release and lifecycle timing builds do not.
+        env:
+          VITE_BALANCE_VERIFY_NATIVE_READS: "1"
         run: pnpm tauri android build --apk --debug --target x86_64
 
       - name: Locate and verify APK

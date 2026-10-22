@@ -8,6 +8,14 @@ import { projectActiveUntil, templateForGeneration } from './projects'
 import { spreadPriorityItems } from './prioritize'
 import { get, writable, type Writable } from 'svelte/store'
 import {
+  hasNoRecordChanges,
+  mergeNativeChanges,
+  sameFingerprints,
+  scalarSignature,
+  type NativeFingerprints,
+  type NativeStateResponse,
+} from './nativeStateChanges'
+import {
   addPlanItem,
   addTemplateItem,
   createId,
@@ -113,6 +121,7 @@ import type {
   AppState,
   ArchivedListTemplateItem,
   DailyPlan,
+  DailyTemplate,
   Goal,
   Id,
   IdeaBucket,
@@ -346,10 +355,12 @@ const redoAvailableState = writable(false)
 // Only the latest normalized snapshot's HTML is retained. Resume can reread
 // years of unchanged history; rebuilding DOM for each field blocks the WebView.
 let storedHTMLCache = new Map<string, string>()
+let storedHTMLCacheBytes = 0
 let persistenceTarget: 'tauri' | 'localStorage' | null = null
-// The raw native snapshot the store was last loaded from. An identical reread
-// holds nothing the store lacks, so it is not parsed again.
-let lastAppliedNativeState: string | null = null
+// Fingerprints of the native snapshot the store was last loaded from. Rereads
+// send them and receive only what changed; null forces a complete read.
+let nativeFingerprints: NativeFingerprints | null = null
+let nativeScalars: string | null = null
 // The database revision whose changes the store fully holds, or null when
 // another writer may have changed the database since the last full read.
 // Refreshes skip rereading the workspace while it is current.
@@ -423,18 +434,19 @@ function parseStoredState(raw: string | null): AppState | null {
   }
 }
 
-async function parseNativeStoredState(raw: string | null): Promise<{ state: AppState; canRedo: boolean; revision: number | null } | null> {
-  if (!raw) return null
-  const stored = JSON.parse(raw) as AppState & { canRedo?: unknown; stateRevision?: unknown }
-  if (stored.schemaVersion !== 1) return null
-  const { canRedo, stateRevision, ...parsed } = stored
-  const revision = typeof stateRevision === 'number' ? stateRevision : null
-  const steps = normalizeStateSteps({ ...parsed, historyRevision: parsed.historyRevision || 0,
-    activePlanDate: localActivePlanDate(), operations: parsed.operations || [] })
+type NativeSnapshot = {
+  state: AppState
+  canRedo: boolean
+  fingerprints: NativeFingerprints | null
+  scalars: string
+  revision: number | null
+}
+
+async function runInSlices<T>(steps: Generator<void, T, void>): Promise<T> {
   let sliceStarted = performance.now()
   for (;;) {
     const step = steps.next()
-    if (step.done) return { state: step.value, canRedo: canRedo === true, revision }
+    if (step.done) return step.value
     if (performance.now() - sliceStarted >= 8) {
       // A resolved Promise only queues another microtask and still starves
       // input. Return to the WebView event loop between history records.
@@ -442,6 +454,79 @@ async function parseNativeStoredState(raw: string | null): Promise<{ state: AppS
       sliceStarted = performance.now()
     }
   }
+}
+
+// CI-only checks that incremental reads agree with a complete read of the
+// same native snapshot. Snapshots that changed in between prove nothing.
+function reportIncrementalRead(held: AppState, full: AppState): void {
+  // The operation list holds this store's own unread operations.
+  const differences = (Object.keys(full) as (keyof AppState)[]).filter((key) =>
+    key !== 'activePlanDate' && key !== 'historyRevision' && key !== 'operations' && !sameStoredValue(held[key], full[key]))
+  if (differences.length > 0) {
+    console.error(`Incremental workspace read diverged from a complete read: ${differences.join(', ')}`)
+  } else {
+    // A warning so Android's WebView forwards it to logcat in CI verify builds.
+    console.warn('Incremental workspace read matched a complete read')
+  }
+}
+
+async function verifyIncrementalRead(merged: NativeSnapshot): Promise<void> {
+  if (!merged.fingerprints) return
+  const full = await normalizeNativeState(await readNativeState(null, null), merged.state, null)
+  if (!full || full === 'reread' || !full.fingerprints || full.scalars !== merged.scalars ||
+    !sameFingerprints(full.fingerprints, merged.fingerprints)) return
+  reportIncrementalRead(merged.state, full.state)
+}
+
+// A 'current' answer claims the store already holds the whole database.
+async function verifyCurrentRead(held: () => AppState, mutationRevision: number): Promise<void> {
+  const full = await normalizeNativeState(await readNativeState(null, null), held(), null)
+  if (!full || full === 'reread' || full.revision === null || full.revision !== knownNativeRevision ||
+    mutationRevision !== localMutationRevision || pendingOperations.size > 0) return
+  reportIncrementalRead(held(), full.state)
+}
+
+function readNativeState(known: NativeFingerprints | null, knownRevision: number | null): Promise<NativeStateResponse> {
+  return invoke<NativeStateResponse>('read_app_state_changes', { known, knownRevision })
+}
+
+/**
+ * Normalizes a native read. A changes response is merged into `held`, the
+ * state that `known` describes. Null means there is no workspace; 'reread'
+ * means `held` cannot take these changes and a complete read is needed.
+ */
+async function normalizeNativeState(
+  response: NativeStateResponse,
+  held: AppState,
+  known: NativeFingerprints | null,
+): Promise<NativeSnapshot | null | 'reread'> {
+  if (!response || 'current' in response) return null
+  if ('state' in response) {
+    const stored = response.state as AppState & { canRedo?: unknown }
+    if (stored.schemaVersion !== 1) return null
+    const { canRedo, ...parsed } = stored
+    const state = await runInSlices(normalizeStateSteps({ ...parsed, historyRevision: parsed.historyRevision || 0,
+      activePlanDate: localActivePlanDate(), operations: parsed.operations || [] }))
+    return { state, canRedo: canRedo === true, fingerprints: response.fingerprints ?? null,
+      scalars: scalarSignature(response.state), revision: response.revision ?? null }
+  }
+  if (!known) return 'reread'
+  const normalizers = recordNormalizers(normalizeCachedHTML)
+  const merged = await runInSlices(mergeNativeChanges(held, known, response.changes, {
+    value: (key, value) => {
+      if (key === 'preferences') return normalizeReplicatedPreferences(value as AppState['preferences'])
+      const normalize = Object.hasOwn(normalizers, key) ? normalizers[key as keyof typeof normalizers] : null
+      return normalize && Array.isArray(value) ? value.map((record) => normalize(record as never)) : value
+    },
+    record: (key, record) => Object.hasOwn(normalizers, key)
+      ? normalizers[key as keyof typeof normalizers](record as never)
+      : record,
+  }))
+  if (!merged) return 'reread'
+  const { canRedo, ...state } = merged.state as AppState & { canRedo?: unknown }
+  if (state.schemaVersion !== 1) return null
+  return { state: { ...state, historyRevision: held.historyRevision }, canRedo: canRedo === true,
+    fingerprints: merged.fingerprints, scalars: scalarSignature(response.changes.values), revision: response.revision ?? null }
 }
 
 function readLocalState(): AppState {
@@ -458,16 +543,18 @@ async function hydratePersistence(store: Writable<AppState>): Promise<void> {
     // the blocking native database task can stall Android error delivery while
     // its WebView is starting, leaving recovery failures stuck at 0%.
     databaseLoadProgress.set({ percent: 15, stage: 'Opening encrypted database' })
-    const stored = await invoke<string | null>('read_app_state')
+    const response = await readNativeState(null, null)
     databaseLoadProgress.set({ percent: 95, stage: 'Restoring workspace' })
-    const snapshot = await parseNativeStoredState(stored)
+    const normalized = await normalizeNativeState(response, get(store), null)
+    const snapshot = normalized === 'reread' ? null : normalized
     const parsed = snapshot?.state
     if (snapshot) redoAvailableState.set(snapshot.canRedo)
     persistenceTarget = 'tauri'
 
     if (parsed) {
       store.set(parsed)
-      lastAppliedNativeState = stored
+      nativeFingerprints = snapshot.fingerprints
+      nativeScalars = snapshot.scalars
       knownNativeRevision = snapshot.revision
     } else {
       await invoke('initialize_app_state', { stateJson: JSON.stringify({ ...get(store), activePlanDate: '' }) })
@@ -650,7 +737,7 @@ async function flushOperationsNow(): Promise<void> {
           // A second frontend can race the preflight check. Native persistence
           // rejects it atomically; reconcile the optimistic state after flushing.
           if (accepted === false) {
-            lastAppliedNativeState = null
+            nativeFingerprints = null
             knownNativeRevision = null
           }
           if (accepted === false) void plannerStore.reloadFromBackend().catch((error) => {
@@ -764,20 +851,27 @@ function createPlannerStore() {
 
       const mutationRevisionBeforeRead = localMutationRevision
       const requestRevisionBeforeRead = backendReloadRequestRevision
+      const known = nativeFingerprints
+      const knownScalars = nativeScalars
       const knownRevisionBeforeRead = knownNativeRevision
-      const stored = await invoke<string | null>('read_app_state', { knownRevision: knownRevisionBeforeRead })
+      const response = await readNativeState(known, knownRevisionBeforeRead)
       const mutationChanged = mutationRevisionBeforeRead !== localMutationRevision
 
       // Every change in the database is already in the store, typically
       // because the only writes since the last read were this store's own.
-      if (stored === null && knownRevisionBeforeRead !== null) {
+      if (response && 'current' in response) {
+        if (import.meta.env.VITE_BALANCE_VERIFY_NATIVE_READS === '1' && !mutationChanged) {
+          void verifyCurrentRead(() => get(store), localMutationRevision)
+            .catch((error) => console.error('Could not verify an incremental workspace read', error))
+        }
         if (requestRevisionBeforeRead === backendReloadRequestRevision) return
         continue
       }
 
       // Nothing was persisted since the store was loaded, so edits made during
-      // the read are still newer than it. Parsing years of history blocks input.
-      if (stored !== null && stored === lastAppliedNativeState &&
+      // the read are still newer than it.
+      if (response && 'changes' in response && hasNoRecordChanges(response.changes) &&
+        knownScalars !== null && scalarSignature(response.changes.values) === knownScalars &&
         requestRevisionBeforeRead === backendReloadRequestRevision) return
 
       if (mutationChanged || requestRevisionBeforeRead !== backendReloadRequestRevision) {
@@ -788,12 +882,19 @@ function createPlannerStore() {
         continue
       }
 
-      const snapshot = await parseNativeStoredState(stored)
+      const snapshot = await normalizeNativeState(response, get(store), known)
       // Normalization yields to input. A save, undo, or newer refresh during
       // those slices makes this snapshot stale just like an edit during IPC.
       const changedWhileNormalizing = mutationRevisionBeforeRead !== localMutationRevision
       if (changedWhileNormalizing || requestRevisionBeforeRead !== backendReloadRequestRevision) {
         waitForQuiet = changedWhileNormalizing
+        continue
+      }
+      // A rejected operation clears the fingerprints so its optimistic edit
+      // cannot survive as an unchanged record. Reread everything after one.
+      if (snapshot === 'reread' || nativeFingerprints !== known) {
+        nativeFingerprints = null
+        waitForQuiet = false
         continue
       }
       if (!snapshot) return
@@ -803,8 +904,12 @@ function createPlannerStore() {
       redoAvailableState.set(snapshot.canRedo)
 
       lastOperationMergeKey = null
-      lastAppliedNativeState = stored
+      nativeFingerprints = snapshot.fingerprints
+      nativeScalars = snapshot.scalars
       knownNativeRevision = snapshot.revision
+      if (import.meta.env.VITE_BALANCE_VERIFY_NATIVE_READS === '1' && response && 'changes' in response) {
+        void verifyIncrementalRead(snapshot).catch((error) => console.error('Could not verify an incremental workspace read', error))
+      }
       store.update((current) => {
         // Focus/resume can refresh an unchanged database. Keep the validated
         // history snapshots and their shared collection references in that case;
@@ -820,7 +925,7 @@ function createPlannerStore() {
           redoStack = []
           return { ...parsed, historyRevision: current.historyRevision + 1 }
         }
-        if (current.operations === parsed.operations && current.activePlanDate === parsed.activePlanDate) return current
+        if (sameStoredValue(current.operations, parsed.operations) && current.activePlanDate === parsed.activePlanDate) return current
         return { ...current, operations: parsed.operations, activePlanDate: parsed.activePlanDate }
       })
       return
@@ -3445,6 +3550,7 @@ function createPlannerStore() {
         const stateJson = await invoke<string | null>('restore_recovery_entry', { historyId })
         const parsed = parseStoredState(stateJson)
         knownNativeRevision = null
+        nativeFingerprints = null
         if (!parsed) return false
 
         lastOperationMergeKey = null
@@ -4160,6 +4266,69 @@ function* normalizeRecords<T>(records: T[], normalize: (record: T) => T): Genera
   return normalized
 }
 
+// Changed records arriving between complete reads join the latest snapshot's
+// cache instead of replacing it, within the same bounds.
+function normalizeCachedHTML(value: string): string {
+  const cached = storedHTMLCache.get(value)
+  if (cached !== undefined) return cached
+  const html = sanitizeInlineHTML(value)
+  const bytes = 2 * (value.length + html.length)
+  if (storedHTMLCache.size < 16_384 && storedHTMLCacheBytes + bytes <= 8 * 1024 * 1024) {
+    storedHTMLCache.set(value, html)
+    storedHTMLCacheBytes += bytes
+  }
+  return html
+}
+
+function recordNormalizers(normalizeHTML: (value: string) => string) {
+  return {
+    goals: normalizeGoal,
+    goalCompletions: normalizeGoalCompletion,
+    templates: (template: DailyTemplate): DailyTemplate => ({
+      ...template,
+      items: normalizeTemplateItems(template.items, normalizeHTML),
+    }),
+    plans: (plan: DailyPlan): DailyPlan => ({
+      ...plan,
+      dailyReminder: plan.dailyReminder ?? DEFAULT_DAILY_REMINDER,
+      generatedGoalIds: Array.isArray(plan.generatedGoalIds)
+        ? [...new Set(plan.generatedGoalIds.filter(
+          (goalId): goalId is Id => typeof goalId === 'string' && goalId.length > 0,
+        ))]
+        : undefined,
+      items: normalizePlanItems(plan.items, normalizeHTML),
+    }),
+    listTemplates: (template: ListTemplate): ListTemplate => ({
+      ...template,
+      maxExpectedWords: template.maxExpectedWords ?? 0,
+      items: normalizeListTemplateItems(template.items ?? [], normalizeHTML),
+      archivedItems: (template.archivedItems ?? []).map(entry => normalizeArchivedListTemplateItem(entry, normalizeHTML)),
+    }),
+    lists: (list: ListInstance): ListInstance => ({
+      ...list,
+      items: normalizePlanItems(list.items ?? [], normalizeHTML),
+    }),
+    metrics: (metric: Metric): Metric => ({
+      ...metric,
+      questions: (metric.questions ?? []).map((question) => ({
+        ...question,
+        html: normalizeHTML(question.html ?? escapeHTML(question.prompt ?? '')),
+        type: question.type === 'boolean' || question.type === 'number' ? question.type : 'text',
+      })),
+    }),
+    metricEntries: (entry: MetricEntry): MetricEntry => ({
+      ...entry,
+      answers: (entry.answers ?? []).map((answer) => ({ ...answer })),
+    }),
+    notes: (note: Note): Note => ({
+      ...note,
+      title: note.title ?? '',
+      deletedAt: typeof note.deletedAt === 'string' && Number.isFinite(Date.parse(note.deletedAt)) ? note.deletedAt : null,
+      items: normalizeNoteItems(note.items ?? [], normalizeHTML),
+    }),
+  }
+}
+
 function* normalizeStateSteps(state: AppState): Generator<void, AppState, void> {
   const nextHTMLCache = new Map<string, string>()
   let cachedBytes = 0
@@ -4174,6 +4343,7 @@ function* normalizeStateSteps(state: AppState): Generator<void, AppState, void> 
     }
     return html
   }
+  const normalize = recordNormalizers(normalizeHTML)
   const normalized: AppState = {
     ...state,
     images: state.images ?? [],
@@ -4187,52 +4357,18 @@ function* normalizeStateSteps(state: AppState): Generator<void, AppState, void> 
     prioritySessions: state.prioritySessions ?? [],
     ideaBuckets: state.ideaBuckets ?? [],
     preferences: normalizeReplicatedPreferences(state.preferences),
-    goals: yield* normalizeRecords(state.goals ?? [], normalizeGoal),
-    goalCompletions: yield* normalizeRecords(state.goalCompletions ?? [], normalizeGoalCompletion),
-    templates: yield* normalizeRecords(state.templates, (template) => ({
-      ...template,
-      items: normalizeTemplateItems(template.items, normalizeHTML),
-    })),
-    plans: yield* normalizeRecords(state.plans, (plan) => ({
-      ...plan,
-      dailyReminder: plan.dailyReminder ?? DEFAULT_DAILY_REMINDER,
-      generatedGoalIds: Array.isArray(plan.generatedGoalIds)
-        ? [...new Set(plan.generatedGoalIds.filter(
-          (goalId): goalId is Id => typeof goalId === 'string' && goalId.length > 0,
-        ))]
-        : undefined,
-      items: normalizePlanItems(plan.items, normalizeHTML),
-    })),
-    listTemplates: yield* normalizeRecords(state.listTemplates ?? [], (template) => ({
-      ...template,
-      maxExpectedWords: template.maxExpectedWords ?? 0,
-      items: normalizeListTemplateItems(template.items ?? [], normalizeHTML),
-      archivedItems: (template.archivedItems ?? []).map(entry => normalizeArchivedListTemplateItem(entry, normalizeHTML)),
-    })),
-    lists: yield* normalizeRecords(state.lists ?? [], (list) => ({
-      ...list,
-      items: normalizePlanItems(list.items ?? [], normalizeHTML),
-    })),
-    metrics: yield* normalizeRecords(state.metrics ?? [], (metric) => ({
-      ...metric,
-      questions: (metric.questions ?? []).map((question) => ({
-        ...question,
-        html: normalizeHTML(question.html ?? escapeHTML(question.prompt ?? '')),
-        type: question.type === 'boolean' || question.type === 'number' ? question.type : 'text',
-      })),
-    })),
-    metricEntries: yield* normalizeRecords(state.metricEntries ?? [], (entry) => ({
-      ...entry,
-      answers: (entry.answers ?? []).map((answer) => ({ ...answer })),
-    })),
-    notes: yield* normalizeRecords(state.notes ?? [], (note) => ({
-      ...note,
-      title: note.title ?? '',
-      deletedAt: typeof note.deletedAt === 'string' && Number.isFinite(Date.parse(note.deletedAt)) ? note.deletedAt : null,
-      items: normalizeNoteItems(note.items ?? [], normalizeHTML),
-    })),
+    goals: yield* normalizeRecords(state.goals ?? [], normalize.goals),
+    goalCompletions: yield* normalizeRecords(state.goalCompletions ?? [], normalize.goalCompletions),
+    templates: yield* normalizeRecords(state.templates, normalize.templates),
+    plans: yield* normalizeRecords(state.plans, normalize.plans),
+    listTemplates: yield* normalizeRecords(state.listTemplates ?? [], normalize.listTemplates),
+    lists: yield* normalizeRecords(state.lists ?? [], normalize.lists),
+    metrics: yield* normalizeRecords(state.metrics ?? [], normalize.metrics),
+    metricEntries: yield* normalizeRecords(state.metricEntries ?? [], normalize.metricEntries),
+    notes: yield* normalizeRecords(state.notes ?? [], normalize.notes),
   }
   storedHTMLCache = nextHTMLCache
+  storedHTMLCacheBytes = cachedBytes
   return normalized
 }
 

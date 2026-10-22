@@ -114,7 +114,7 @@ test.beforeEach(async ({ page }) => {
         switch (command) {
           case 'get_sync_network_offline':
             return !navigator.onLine
-          case 'read_app_state': {
+          case 'read_app_state_changes': {
             runtime.__stateReadCount += 1
             if (
               new URLSearchParams(location.search).has('edit-during-launch-reload') &&
@@ -125,9 +125,9 @@ test.beforeEach(async ({ page }) => {
               await new Promise<void>((resolve) => {
                 runtime.__releaseReloadRead = resolve
               })
-              return snapshotBeforeEdit
+              return { state: JSON.parse(snapshotBeforeEdit) }
             }
-            return storedState
+            return { state: JSON.parse(storedState) }
           }
           case 'persist_operation': {
             runtime.__persistOperationCount += 1
@@ -662,7 +662,7 @@ for (const reason of ['resume', 'focus', 'manual']) {
       const backgroundState = JSON.parse(runtime.__storedState)
       backgroundState.plans[0].items[0].done = true
       runtime.__TAURI_INTERNALS__.invoke = async (command, args) => {
-        if (command === 'read_app_state') return JSON.stringify(backgroundState)
+        if (command === 'read_app_state_changes') return { state: structuredClone(backgroundState) }
         if (command === 'sync_relay_once') return {
           pulledOperations: 0, pushedOperations: 0, stateChanged: false,
           checkpointCommitted: false, epoch: 'synthetic', latestSequence: 2,
@@ -804,11 +804,11 @@ test('partial native apply followed by a relay error still refreshes visible com
     let applied = false
     let reads = 0
     runtime.__TAURI_INTERNALS__.invoke = async (command, args) => {
-      if (command === 'read_app_state') {
+      if (command === 'read_app_state_changes') {
         reads++
         const state = JSON.parse(runtime.__storedState)
         state.plans[0].items[0].done = applied
-        return JSON.stringify(state)
+        return { state }
       }
       if (command === 'sync_relay_once') {
         if (!applied) { applied = true; throw new Error('Synthetic second batch download failed') }
@@ -1341,8 +1341,8 @@ test('offline refresh reuses sanitized history and still sanitizes changed remot
         html: `Synthetic refresh history <strong>${i}</strong>`,
       })),
     })
-    runtime.__TAURI_INTERNALS__.invoke = async (command, args) => command === 'read_app_state'
-      ? JSON.stringify(state) : original(command, args)
+    runtime.__TAURI_INTERNALS__.invoke = async (command, args) => command === 'read_app_state_changes'
+      ? { state: structuredClone(state) } : original(command, args)
     await plannerStore.reloadFromBackend()
     const descriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML')!
     let historyParses = 0
@@ -1392,7 +1392,7 @@ test(`a local ${action} during incremental history normalization survives the re
     const original = runtime.__TAURI_INTERNALS__.invoke
     let reads = 0
     runtime.__TAURI_INTERNALS__.invoke = async (command, args) => {
-      if (command === 'read_app_state') { reads++; return JSON.stringify(backend) }
+      if (command === 'read_app_state_changes') { reads++; return { state: structuredClone(backend) } }
       if (command === 'persist_operation') {
         const op = JSON.parse(String(args?.operationJson))
         if (op.payload.planId === 'local-plan' && op.payload.itemId === 'visible-item') {
@@ -1463,10 +1463,10 @@ test('a refresh after only local saves skips rereading the workspace, while a fo
     runtime.__revision = 7
     runtime.__fullReads = []
     runtime.__TAURI_INTERNALS__.invoke = async (command: string, args?: Record<string, unknown>) => {
-      if (command === 'read_app_state') {
-        if (args?.knownRevision === runtime.__revision) return null
+      if (command === 'read_app_state_changes') {
+        if (args?.knownRevision === runtime.__revision) return { current: true }
         runtime.__fullReads.push(args?.knownRevision ?? null)
-        return JSON.stringify({ ...JSON.parse(runtime.__storedState), stateRevision: runtime.__revision })
+        return { state: JSON.parse(runtime.__storedState), revision: runtime.__revision }
       }
       if (command === 'persist_operation') {
         await original(command, args)

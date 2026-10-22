@@ -16,7 +16,11 @@ on:
         description: Lifecycle path to verify with synthetic data
         type: choice
         default: activity
-        options: [activity, process, worker-start, offline-buckets, offline-history, offline-notifications, offline-latency]
+        options: [activity, process, worker-start, offline-buckets, offline-history, offline-notifications, offline-latency, startup-ab]
+      baseline_apk_run_id:
+        description: For startup-ab, the lifecycle run whose APK is the baseline build
+        type: string
+        default: ''
       repetitions:
         description: Activity or process cycles per Android version
         type: choice
@@ -108,7 +112,7 @@ jobs:
     name: Android ${{ matrix.api }} / ${{ matrix.scenario }}
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: ${{ matrix.scenario == 'startup-ab' && 45 || 25 }}
     strategy:
       fail-fast: false
       matrix:
@@ -137,6 +141,15 @@ jobs:
       - name: Fetch pinned AOSP WebView for both Android versions
         run: |
           curl --fail --location --retry 3 'https://android.googlesource.com/platform/external/chromium-webview/+/27ac2bdb9a1a4e55dc65bb6cdc752dbfdea3b9f4/128.0.6613.88/x86_64/webview.apk?format=TEXT' | base64 --decode > ci-webview.apk
+      - name: Fetch the baseline APK for the same-emulator comparison
+        if: matrix.scenario == 'startup-ab'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASELINE_RUN_ID: ${{ inputs.baseline_apk_run_id }}
+        run: |
+          test -n "$BASELINE_RUN_ID"
+          gh run download "$BASELINE_RUN_ID" --name Balance-android-lifecycle-test-apk --dir baseline-apk
+          mv baseline-apk/balance-debug.apk baseline-debug.apk
       - name: Destroy background activities and verify reopening and durable edits
         uses: reactivecircus/android-emulator-runner@v2
         env:
@@ -154,7 +167,7 @@ jobs:
           enable-hw-keyboard: true
           script: |
             bash .github/scripts/install-ci-webview.sh
-            timeout --foreground --kill-after=30s 20m node .github/scripts/android-activity-recreation-test.mjs
+            timeout --foreground --kill-after=30s ${{ matrix.scenario == 'startup-ab' && '40m' || '20m' }} node .github/scripts/${{ matrix.scenario == 'startup-ab' && 'android-startup-ab.mjs' || 'android-activity-recreation-test.mjs' }}
       - name: Retain host diagnostics
         if: always()
         run: bash .github/scripts/collect-android-host-diagnostics.sh

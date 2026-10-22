@@ -8,8 +8,9 @@ import { writeFile, readFile } from 'node:fs/promises'
 import { createNetworkLossFixture } from './android-network-loss-fixture.mjs'
 import {
   packageName, adb, sleep, waitFor, appPid, launchApp, connectDevTools,
-  waitForDatabaseReady, syntheticState, forceBackgroundJob,
+  waitForDatabaseReady, forceBackgroundJob,
 } from './android-sync-profile-helpers.mjs'
+import { lifecycleFixture as fixture, historyFixture } from './android-history-fixture.mjs'
 
 assert(process.env.CI && adb(['shell', 'getprop', 'ro.kernel.qemu']).trim() === '1', 'CI emulator only')
 const scenario = process.env.BALANCE_LIFECYCLE_SCENARIO ?? 'activity'
@@ -102,32 +103,6 @@ async function responsive({deferDatabaseProbe = false} = {}) {
   return { frameMs, inputMs, readMs, durableProbeMs, nativeAndDbMs,
     ...(deferDatabaseProbe ? {marker} : {}) }
 }
-// Names what changed between native snapshots, never their synthetic content.
-function snapshotChanges(before, after) {
-  if (before === after) return []
-  const a = JSON.parse(before), b = JSON.parse(after), changes = []
-  for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
-    if (JSON.stringify(a[key]) === JSON.stringify(b[key])) continue
-    if (Array.isArray(a[key]) && Array.isArray(b[key])) {
-      const byId = new Map(a[key].map(item => [item?.id, JSON.stringify(item)]))
-      const ids = b[key].filter(item => byId.get(item?.id) !== JSON.stringify(item)).map(item => item?.id)
-      changes.push(`${key}: ${a[key].length}->${b[key].length} [${ids.slice(0, 5).join(',')}]`)
-    } else if (a[key] && b[key] && typeof a[key] === 'object') {
-      changes.push(`${key}: {${Object.keys({...a[key], ...b[key]}).filter(k => JSON.stringify(a[key][k]) !== JSON.stringify(b[key][k])).slice(0, 8).join(',')}}`)
-    } else changes.push(`${key}: ${typeof a[key]}->${typeof b[key]}${typeof b[key] === 'string' && b[key].length < 40 ? ` ${a[key]}->${b[key]}` : ''}`)
-  }
-  return changes
-}
-function fixture(count = 40) {
-  const state = syntheticState()
-  const day = new Date(Date.now() - 5 * 3600000).toISOString().slice(0, 10)
-  state.activePlanDate = day
-  state.plans = [{ ...state.plans[0], id: 'lifecycle-plan', date: day,
-    items: Array.from({ length: count }, (_, i) => ({ ...state.plans[0].items[0],
-      id: `lifecycle-item-${i}`, text: `Synthetic lifecycle task ${i}`, html: `Synthetic lifecycle task ${i}`, done: false,
-    })) }]
-  return state
-}
 // Records JavaScript long tasks so a blocked WebView shows in the report.
 async function observeLongTasks() {
   await client.evaluate(`window.__longTasks ??= [], new PerformanceObserver(list => window.__longTasks.push(...list.getEntries()
@@ -186,38 +161,6 @@ async function screenOff() {
 async function screenOn() {
   adb(['shell', 'input', 'keyevent', 'KEYCODE_WAKEUP'])
   adb(['shell', 'wm', 'dismiss-keyguard'], {allowFailure: true})
-}
-// A year of synthetic history approximates a long-used workspace.
-function historyFixture(days) {
-  const state = fixture()
-  const today = state.plans[0]
-  for (let day = 1; day <= days; day++) {
-    state.plans.push({...today, id: `history-plan-${day}`,
-      date: new Date(Date.parse(today.date) - day * 86400000).toISOString().slice(0, 10),
-      items: Array.from({length: 20}, (_, i) => ({...today.items[0],
-        id: `history-item-${day}-${i}`, text: `Synthetic historical task ${day} ${i}`,
-        html: `Synthetic <strong>historical</strong> task ${day} ${i}`, done: i % 3 === 0,
-      })),
-    })
-  }
-  state.listTemplates = [{id: 'history-list-template', name: 'Synthetic routine',
-    maxExpectedWords: 0, archivedItems: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-    items: today.items.map(item => ({...item, probability: 100})),
-  }]
-  state.lists = state.plans.map((plan, day) => ({id: `history-list-${day}`, date: plan.date,
-    listTemplateId: 'history-list-template', createdAt: new Date().toISOString(),
-    items: today.items.map((item, i) => ({...item, id: `history-list-item-${day}-${i}`,
-      text: `Synthetic daily routine ${i}`, html: `Synthetic <em>daily routine</em> ${i}`})),
-  }))
-  state.ideaBuckets = [{id: 'history-bucket', kind: 'proposition', items:
-    Array.from({length: 100}, (_, i) => ({...today.items[0], id: `history-idea-${i}`,
-      text: `Synthetic saved idea ${i}`, html: `Synthetic saved idea ${i}`}))}]
-  state.notes = Array.from({length: 50}, (_, i) => ({id: `history-note-${i}`,
-    title: `Synthetic note ${i}`, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-    items: Array.from({length: 20}, (_, j) => ({id: `history-note-${i}-${j}`, kind: 'paragraph',
-      text: 'Synthetic paragraph for startup testing.', html: 'Synthetic paragraph for <em>startup testing</em>.', children: []})),
-  }))
-  return state
 }
 async function seed(count = 40) {
   await invoke('initialize_app_state', { stateJson: JSON.stringify(fixture(count)) }, 120000)
@@ -466,7 +409,6 @@ try {
         await client.send('Profiler.start')
         await client.send('Page.reload')
         await waitFor(() => client.evaluate(`window.__startupProfile === '${days}-${rate}' && window.__startupReadyAt`), 'instrumented startup', 120000)
-        const hydratedSnapshot = await invoke('read_app_state', {}, 60000)
         await sleep(3000)
         const profile = (await client.send('Profiler.stop')).profile
         await writeFile(`android-lifecycle-history-${days}-cpu${rate}.cpuprofile`, JSON.stringify(profile))
@@ -484,8 +426,6 @@ try {
         console.log(JSON.stringify(result))
         await client.send('Page.removeScriptToEvaluateOnNewDocument', {identifier})
         // Offline focus/resume currently rereads and normalizes the workspace.
-        const beforeResumeSnapshot = await invoke('read_app_state', {}, 60000)
-        await sleep(1000)
         await client.evaluate('window.__startupTasks = []')
         await home()
         await client.send('Profiler.start')
@@ -499,9 +439,7 @@ try {
         await writeFile(`android-lifecycle-history-${days}-cpu${rate}-resume.cpuprofile`,
           JSON.stringify((await client.send('Profiler.stop')).profile))
         const resume = {days, rate, phase: 'resume', elapsedMs,
-          ...interaction, tasks: await client.evaluate('window.__startupTasks'),
-          snapshotChangesBeforeResume: snapshotChanges(hydratedSnapshot, beforeResumeSnapshot),
-          snapshotChangesAfterResume: snapshotChanges(beforeResumeSnapshot, await invoke('read_app_state', {}, 60000))}
+          ...interaction, tasks: await client.evaluate('window.__startupTasks')}
         resume.durableProbeMs = await verifyDurableInput(marker)
         report.cases.push(resume)
         console.log(JSON.stringify(resume))
