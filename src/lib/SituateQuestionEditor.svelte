@@ -7,6 +7,18 @@
   function add() { questions = [...questions, { id: crypto.randomUUID(), text: '', required: true }] }
   function remove(id: string) { questions = questions.filter(q => q.id !== id).map(q => q.when?.id === id ? { ...q, when: undefined } : q) }
   function update(id: string, patch: Partial<Question>) { questions = questions.map(q => q.id === id ? { ...q, ...patch } : q) }
+  // Questions are one paragraph: long text wraps onto more lines instead of scrolling.
+  function grow(node: HTMLTextAreaElement, _value: string) {
+    const fit = () => {
+      node.style.height = 'auto'
+      const style = getComputedStyle(node)
+      node.style.height = `${node.scrollHeight + parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth)}px`
+    }
+    const observer = new ResizeObserver(fit)
+    observer.observe(node)
+    fit()
+    return { update: fit, destroy: () => observer.disconnect() }
+  }
 </script>
 <div class="quiz-editor" role="group" aria-label={label}>
   <div class="quiz-heading"><h4>{label}</h4>{#if hint}<span>{hint}</span>{/if}</div>
@@ -15,7 +27,7 @@
       <li>
         <span class="number">{i + 1}</span>
         <div class="body">
-          <input value={question.text} maxlength="2000" placeholder="Question" aria-label={`${label} question ${i + 1}`} on:input={e => update(question.id, { text: e.currentTarget.value })} />
+          <textarea rows="1" value={question.text} maxlength="2000" placeholder="Question" aria-label={`${label} question ${i + 1}`} use:grow={question.text} on:keydown={e => { if (e.key === 'Enter') e.preventDefault() }} on:input={e => update(question.id, { text: e.currentTarget.value.replace(/\s*\n\s*/g, ' ') })}></textarea>
           <div class="rules">
             <span class="rule-label">Pass on</span>
             <div class="choice" role="group" aria-label="Answer that passes">{#each answers as answer}<button type="button" aria-pressed={question.required === answer.value} on:click={() => update(question.id, { required: answer.value })}>{answer.label}</button>{/each}</div>
@@ -44,7 +56,8 @@
   li + li { border-top:1px solid var(--row-border); }
   .number { display:grid; place-items:center; width:22px; height:22px; margin-top:6px; border-radius:50%; background:var(--active-nav); color:var(--accent-strong); font-size:12px; font-weight:700; }
   .body { display:grid; gap:6px; }
-  .body input { width:100%; font-size:14px; }
+  textarea { display:block; width:100%; font-size:14px; line-height:1.4; resize:none; overflow:hidden; border:1px solid var(--line); border-radius:6px; background:var(--paper-strong); color:var(--ink); padding:8px 10px; }
+  textarea:focus { outline:2px solid var(--focus-ring); outline-offset:2px; }
   .rules { display:flex; flex-wrap:wrap; align-items:center; gap:8px; font-size:12px; }
   .rule-label { color:var(--muted); }
   .choice { display:inline-flex; gap:2px; padding:2px; border:1px solid var(--line); border-radius:8px; }

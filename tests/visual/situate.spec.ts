@@ -136,6 +136,17 @@ test('one entertainment quiz is edited for every mode', async ({page}) => {
   await expect(page.getByRole('dialog',{name:'Edit Dolo'}).getByRole('group',{name:'Entertainment access'})).toHaveCount(0)
 })
 
+test('long quiz questions wrap onto more lines instead of scrolling', async ({page}) => {
+  const field=page.getByRole('group',{name:'Quiz',exact:true}).getByLabel('Quiz question 2',{exact:true})
+  const oneLine=await field.evaluate(el=>el.clientHeight)
+  await field.fill('Are you eating a meal, doing the dishes, taking a bath, or brushing your teeth, and is this genuinely the only thing you will watch?')
+  await field.press('Enter')
+  await expect(field).not.toHaveValue(/\n/)
+  const grown=await field.evaluate(el=>({height:el.clientHeight,scroll:el.scrollHeight}))
+  expect(grown.height).toBeGreaterThan(oneLine)
+  expect(grown.scroll).toBeLessThanOrEqual(grown.height)
+})
+
 test('reminder modes show only while on and open their description', async ({page}) => {
   const sidebar=page.getByLabel('Situate modes')
   await expect(sidebar.getByRole('button',{name:'No Active Project',exact:true})).toHaveCount(0)
