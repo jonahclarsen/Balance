@@ -924,6 +924,31 @@ test('mobile Enter on an empty line in the middle of a task splits it there', as
   await expect(secondHalf.locator('br')).toHaveCount(0)
 })
 
+test('mobile Enter twice in the middle of a task splits it there', async ({ page }, testInfo) => {
+  test.skip(!isMobileProject(testInfo.project.name), 'Desktop Enter always starts the next task')
+  const taskEditors = page.locator('[data-plan-text-input]')
+  const taskCount = await taskEditors.count()
+  const editor = page
+    .getByRole('listitem', { name: 'Plan item: Another task used to verify mobile drag selection' })
+    .locator('[data-plan-text-input]')
+  await editor.evaluate((element: HTMLElement) => {
+    element.focus()
+    const text = element.firstChild!
+    getSelection()!.collapse(text, text.textContent!.indexOf(' used'))
+  })
+
+  await page.keyboard.press('Enter')
+  await expect(taskEditors).toHaveCount(taskCount)
+  await expect(editor.locator('br')).toHaveCount(1)
+  await page.keyboard.press('Enter')
+  await expect(taskEditors).toHaveCount(taskCount + 1)
+  await expect(editor).toHaveText('Another task')
+  await expect(editor.locator('br')).toHaveCount(0)
+  const secondHalf = page.getByRole('listitem', { name: 'Plan item: used to verify mobile drag selection', exact: true }).locator('[data-plan-text-input]')
+  await expect(secondHalf).toHaveText('used to verify mobile drag selection')
+  await expect(secondHalf.locator('br')).toHaveCount(0)
+})
+
 test('mobile keyboard reveals focused tasks, follows typing, and permits manual scrolling', async ({ page }, testInfo) => {
   test.skip(!isMobileProject(testInfo.project.name))
   const editor = page.locator('[data-plan-text-input]').nth(12)
