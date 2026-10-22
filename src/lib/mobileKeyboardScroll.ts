@@ -173,6 +173,8 @@ export function installMobileKeyboardScroll(): () => void {
     // finish docking before measuring, and coalesce keyboard animation events.
     if (frame === null) frame = requestAnimationFrame(() => { frame = requestAnimationFrame(reveal) })
   }
+  // Listen while capturing: Lexical stops input from bubbling, and when it
+  // cancels beforeinput to insert text itself no input event follows at all.
   function handleInput(event: Event) {
     const editor = activeEditor()
     if (editor && event.target instanceof Node && editor.contains(event.target)) schedule()
@@ -183,7 +185,8 @@ export function installMobileKeyboardScroll(): () => void {
 
   document.addEventListener('focusin', schedule)
   document.addEventListener('focusout', schedule)
-  document.addEventListener('input', handleInput)
+  document.addEventListener('beforeinput', handleInput, true)
+  document.addEventListener('input', handleInput, true)
   document.addEventListener('keydown', handleKeydown)
   window.addEventListener('resize', schedule)
   viewport?.addEventListener('resize', schedule)
@@ -192,7 +195,8 @@ export function installMobileKeyboardScroll(): () => void {
     restorePadding()
     document.removeEventListener('focusin', schedule)
     document.removeEventListener('focusout', schedule)
-    document.removeEventListener('input', handleInput)
+    document.removeEventListener('beforeinput', handleInput, true)
+    document.removeEventListener('input', handleInput, true)
     document.removeEventListener('keydown', handleKeydown)
     window.removeEventListener('resize', schedule)
     viewport?.removeEventListener('resize', schedule)

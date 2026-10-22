@@ -36,6 +36,41 @@ test('P-55 the formatting toolbar docks above an open keyboard while editing and
   expect(await harness.page.evaluate(() => document.activeElement?.closest('[data-rich-text-input]') !== null)).toBe(true)
 })
 
+test('P-56 voice typing keeps the caret above the keyboard as the phrase grows', async ({ harness }) => {
+  await harness.boot({ select: 'Simple paragraphs' })
+  const note = harness.noteByTitle('Simple paragraphs')
+  const last = note.items[note.items.length - 1]
+  await harness.placeCaret(last.id, last.text.length)
+  await harness.page.evaluate(() => {
+    const viewport = window.visualViewport!
+    Object.defineProperty(viewport, 'height', { configurable: true, get: () => window.innerHeight - 320 })
+    Object.defineProperty(viewport, 'offsetTop', { configurable: true, get: () => 0 })
+    viewport.dispatchEvent(new Event('resize'))
+    window.dispatchEvent(new Event('resize'))
+  })
+  const toolbar = harness.page.getByRole('toolbar', { name: 'Note formatting' })
+  await expect.poll(() => toolbar.evaluate((element) => getComputedStyle(element).position)).toBe('fixed')
+
+  // Gboard voice typing streams one growing composition without key presses.
+  const session = await harness.page.context().newCDPSession(harness.page)
+  let phrase = ''
+  for (let word = 0; word < 120; word++) {
+    phrase += ' spoken'
+    await session.send('Input.imeSetComposition', { text: phrase, selectionStart: phrase.length, selectionEnd: phrase.length })
+  }
+  await expect.poll(() => harness.page.evaluate(() => {
+    const selection = getSelection()!
+    const range = document.createRange()
+    range.setStart(selection.focusNode!, selection.focusOffset)
+    range.collapse(true)
+    const caret = range.getBoundingClientRect()
+    const bar = document.querySelector('.note-format-toolbar')!.getBoundingClientRect()
+    return caret.height > 0 && caret.top >= 0 && caret.bottom <= bar.top
+  })).toBe(true)
+  await session.send('Input.insertText', { text: phrase })
+  await harness.waitForNote(note.id, (stored) => stored.items.at(-1)!.text.endsWith(' spoken spoken'))
+})
+
 test('checklists toggle by tap and the slash menu fits the small viewport', async ({ harness }) => {
   await harness.boot({ select: 'Checklist' })
   const note = harness.noteByTitle('Checklist')
