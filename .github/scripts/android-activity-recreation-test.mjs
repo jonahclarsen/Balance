@@ -150,12 +150,13 @@ async function traceIpc() {
 // Commands which took noticeable time since `since`, plus long JS tasks.
 async function slowWork(since) {
   return client.evaluate(`({
-    ipc: window.__ipcTrace.filter(e => e.start >= ${since} && (e.ms === undefined || e.ms >= 50)),
+    ipc: window.__ipcTrace.filter(e => e.start >= ${since} && (e.ms === undefined || e.ms >= 20)),
+    reads: window.__ipcTrace.filter(e => e.start >= ${since} && e.command === 'read_app_state').length,
     longTasks: (window.__longTasks ?? []).filter(e => e.start >= ${since}),
   })`)
 }
 async function setCondition(condition) {
-  relay.setMode(condition === 'relay-silent' ? 'silent' : 'online')
+  relay.setMode({'relay-silent': 'silent', 'relay-reset': 'reset'}[condition] ?? 'online')
   await radios(condition === 'radios-off')
   await waitFor(async () => Boolean(await invoke('get_sync_network_offline')) === (condition === 'radios-off'), `${condition} connectivity`, 30000)
   // Let the connectivity change's own sync pass start, as on a real phone.
@@ -540,7 +541,7 @@ try {
     await sleep(5000) // Measure steady use, not launch sync and maintenance.
     await traceIpc()
     const saved = []
-    for (const condition of ['online', 'radios-off', 'relay-silent', 'online']) {
+    for (const condition of ['online', 'radios-off', 'relay-silent', 'relay-reset', 'online']) {
       await setCondition(condition)
       for (let i = 0; i < 6; i++) {
         const text = `Synthetic latency idea ${condition} ${saved.length}`
