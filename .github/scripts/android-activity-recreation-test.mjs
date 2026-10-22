@@ -128,32 +128,13 @@ function fixture(count = 40) {
     })) }]
   return state
 }
-// Records every IPC round trip in the page, by command name only.
-async function traceIpc() {
-  await client.evaluate(`(() => {
-    const internals = window.__TAURI_INTERNALS__
-    if (window.__ipcTrace) return
-    window.__ipcTrace = []
-    // Tauri defines invoke as read-only, so shadow it on a derived object.
-    window.__TAURI_INTERNALS__ = Object.create(internals, {invoke: {value: (command, ...rest) => {
-      const entry = {command, start: Math.round(performance.now())}
-      window.__ipcTrace.push(entry)
-      if (window.__ipcTrace.length > 400) window.__ipcTrace.shift()
-      const settle = ok => { entry.ms = Math.round(performance.now()) - entry.start; entry.ok = ok }
-      return internals.invoke(command, ...rest).then(value => { settle(true); return value }, error => { settle(false); throw error })
-    }}})
-    new PerformanceObserver(list => (window.__longTasks ??= []).push(...list.getEntries().map(e => ({start: Math.round(e.startTime), ms: Math.round(e.duration)}))))
-      .observe({type: 'longtask'})
-  })()`)
-  report.ipcTraced = await client.evaluate(`window.__TAURI_INTERNALS__.invoke('build_info').then(() => window.__ipcTrace.length > 0)`)
+// Records JavaScript long tasks so a blocked WebView shows in the report.
+async function observeLongTasks() {
+  await client.evaluate(`window.__longTasks ??= [], new PerformanceObserver(list => window.__longTasks.push(...list.getEntries()
+    .map(e => ({start: Math.round(e.startTime), ms: Math.round(e.duration)})))).observe({type: 'longtask'})`)
 }
-// Commands which took noticeable time since `since`, plus long JS tasks.
-async function slowWork(since) {
-  return client.evaluate(`({
-    ipc: window.__ipcTrace.filter(e => e.start >= ${since} && (e.ms === undefined || e.ms >= 20)),
-    reads: window.__ipcTrace.filter(e => e.start >= ${since} && e.command === 'read_app_state').length,
-    longTasks: (window.__longTasks ?? []).filter(e => e.start >= ${since}),
-  })`)
+async function longTasksSince(since) {
+  return client.evaluate(`window.__longTasks.filter(e => e.start >= ${since})`)
 }
 async function setCondition(condition) {
   relay.setMode({'relay-silent': 'silent', 'relay-reset': 'reset'}[condition] ?? 'online')
@@ -539,7 +520,7 @@ try {
     launchApp()
     await connect()
     await sleep(5000) // Measure steady use, not launch sync and maintenance.
-    await traceIpc()
+    await observeLongTasks()
     const saved = []
     for (const condition of ['online', 'radios-off', 'relay-silent', 'relay-reset', 'online']) {
       await setCondition(condition)
@@ -547,7 +528,7 @@ try {
         const text = `Synthetic latency idea ${condition} ${saved.length}`
         const result = await timedQuickAdd(text)
         saved.push(text)
-        const entry = {phase: 'quick-add', condition, i, saveMs: result.saveMs, ...await slowWork(result.start)}
+        const entry = {phase: 'quick-add', condition, i, saveMs: result.saveMs, longTasks: await longTasksSince(result.start)}
         report.cases.push(entry)
         console.log(JSON.stringify(entry))
         await sleep(i % 2 ? 300 : 2500) // Both rapid saves and saves between sync polls.
@@ -570,7 +551,7 @@ try {
         await client.evaluate(`new Promise(resolve => requestAnimationFrame(resolve)).then(() => undefined)`, 30000)
         const inputMs = Math.round(performance.now() - inputStart)
         await sleep(3000)
-        const entry = {phase: 'note-sleep', condition, i, frameMs, inputMs, ...await slowWork(before)}
+        const entry = {phase: 'note-sleep', condition, i, frameMs, inputMs, longTasks: await longTasksSince(before)}
         report.cases.push(entry)
         console.log(JSON.stringify(entry))
       }
@@ -586,7 +567,7 @@ try {
         const result = await timedQuickAdd(text)
         saved.push(text)
         const entry = {phase: 'wake-quick-add', condition, i, saveMs: result.saveMs,
-          wakeToSavedMs: Math.round(performance.now() - woke), ...await slowWork(result.start - 10000)}
+          wakeToSavedMs: Math.round(performance.now() - woke), longTasks: await longTasksSince(result.start - 10000)}
         report.cases.push(entry)
         console.log(JSON.stringify(entry))
       }
@@ -605,6 +586,10 @@ try {
     }
     report.summary = summary
     console.log(JSON.stringify(summary))
+    // Rereading a year of history after a local edit blocked a throttled
+    // WebView for 700-900 ms on return; skipping it keeps tasks near 200 ms.
+    assert(report.cases.filter(entry => entry.phase !== 'quick-add')
+      .every(entry => entry.longTasks.every(task => task.ms < 500)), 'Returning to Balance after an edit blocked the WebView')
   } else if (scenario === 'worker-start') {
     for (let i = 0; i < 12; i++) {
       relay.setMode('online')

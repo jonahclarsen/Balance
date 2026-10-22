@@ -114,8 +114,9 @@ jobs:
       matrix:
         api: [31, 34]
         # Keep release coverage for teardown, durable capture, large offline
-        # workspaces, and the JNI callback that R8 can otherwise remove.
-        scenario: ${{ fromJSON(inputs.scenario && format('["{0}"]', inputs.scenario) || '["activity","offline-buckets","offline-history","offline-notifications"]') }}
+        # workspaces, returning after an edit, and the JNI callback that R8 can
+        # otherwise remove.
+        scenario: ${{ fromJSON(inputs.scenario && format('["{0}"]', inputs.scenario) || '["activity","offline-buckets","offline-history","offline-notifications","offline-latency"]') }}
     steps:
       - uses: actions/checkout@v6
       - name: Enable KVM
