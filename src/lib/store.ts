@@ -2227,7 +2227,7 @@ function createPlannerStore() {
       commitEntities('update_project', { projectId }, (state) => ({
         ...state,
         projects: state.projects.map((project) => project.id === projectId ? { ...project, ...patch, updatedAt: nowISO() } : project),
-      }))
+      }), patch.description !== undefined ? { mergeKey: `project-description:${projectId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS } : {})
     },
 
     // Completing or archiving ends an active stretch; reopening clears both.

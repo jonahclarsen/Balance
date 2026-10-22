@@ -8,8 +8,22 @@
   export let active = false
   export let highlighted = false
   export let onOpen: (projectId: string) => void
-  $: nameHtml = sanitizeInlineHTML(project.nameHtml ?? escapeHTML(project.name))
+  $: nameHtml = withDescriptionColon(sanitizeInlineHTML(project.nameHtml ?? escapeHTML(project.name)), Boolean(project.description.trim()))
   $: descriptionPreview = previewLine(project.description)
+  // A trailing colon hints that the project has a description; only the card shows it.
+  function withDescriptionColon(html: string, hasDescription: boolean) {
+    if (!hasDescription) return html
+    let rest = html
+    let closingTags = ''
+    for (;;) {
+      rest = rest.replace(/(?:\s|&nbsp;|&#160;)+$/, '')
+      const tag = rest.match(/<\/[a-z]+>$|<br\s*\/?>$/i)
+      if (!tag) break
+      rest = rest.slice(0, -tag[0].length)
+      if (!tag[0].startsWith('<br')) closingTags = tag[0] + closingTags
+    }
+    return rest.endsWith(':') ? rest + closingTags : `${rest}${closingTags}:`
+  }
   // The card shows the description's first line; an ellipsis marks that more follows.
   function previewLine(description: string) {
     const [first = '', ...rest] = description.trim().split(/\s*\n\s*/)

@@ -81,7 +81,7 @@ test('completed and archived projects move to dated sections and support undo, r
   await details.getByRole('button', { name: 'Complete', exact: true }).click()
   await expect(details.getByText('Completed Sep 8')).toBeVisible()
   await details.getByRole('button', { name: 'Close', exact: true }).click()
-  await expect(completed.locator('.project-card')).toHaveText(/Synthetic garden\s*Native plants\s*Sep 8/)
+  await expect(completed.locator('.project-card')).toHaveText(/Synthetic garden:\s*Native plants\s*Sep 8/)
   await expect(open.locator('.project-card')).toHaveText(['Synthetic shed'])
   await expect(page.locator('.sidebar-active-projects')).toHaveCount(0)
   const afterComplete = (await readState(page)).projects.find((project: any) => project.name === 'Synthetic garden')
@@ -100,7 +100,7 @@ test('completed and archived projects move to dated sections and support undo, r
   await details.getByRole('button', { name: 'Archive', exact: true }).click()
   await expect(details.getByText('Archived Sep 8')).toBeVisible()
   await details.getByRole('button', { name: 'Close', exact: true }).click()
-  await expect(archived.locator('.project-card')).toHaveText(/Synthetic garden\s*Native plants\s*Sep 8/)
+  await expect(archived.locator('.project-card')).toHaveText(/Synthetic garden:\s*Native plants\s*Sep 8/)
   await page.reload()
   await openView(page, 'Projects')
   await expect(archived.locator('.project-card')).toHaveText(/Synthetic garden/)
@@ -108,7 +108,7 @@ test('completed and archived projects move to dated sections and support undo, r
 
   await archived.locator('.project-card').click()
   await details.getByRole('button', { name: 'Restore', exact: true }).click()
-  await expect(open.locator('.project-card')).toHaveText([/^\s*Synthetic garden\s*Native plants\s*$/, 'Synthetic shed'])
+  await expect(open.locator('.project-card')).toHaveText([/^\s*Synthetic garden:\s*Native plants\s*$/, 'Synthetic shed'])
   await details.getByRole('button', { name: 'Archive', exact: true }).click()
   page.once('dialog', (dialog) => dialog.dismiss())
   await details.getByRole('button', { name: 'Delete forever', exact: true }).click()
@@ -357,7 +357,7 @@ test('rapid adding keeps the cursor in place, and the name field opens at its en
   await editName.focus()
   await editName.press('Enter')
   await expect(details).toHaveCount(0)
-  await expect(page.locator('.project-card .project-name')).toHaveText(['Synthetic one plan', 'Synthetic two'])
+  await expect(page.locator('.project-card .project-name')).toHaveText(['Synthetic one plan:', 'Synthetic two'])
   await expect(page.locator('.project-card .project-description')).toHaveText(['Synthetic notes…'])
   const { projects } = await readState(page)
   expect(projects.find((project: any) => project.name.startsWith('Synthetic one')).name).toBe('Synthetic one plan')
@@ -385,7 +385,7 @@ test('undo in an unsaved project field undoes typing, and undoing an add leaves 
   await expect(names).toHaveText(['Synthetic kept'])
   await expect(page.getByText('Project unavailable.')).toHaveCount(0)
 
-  // The description saves on blur, so undo while typing stays in the field.
+  // Typing in the description is one undo step that leaves other projects alone.
   await page.locator('.project-card', { hasText: 'Synthetic kept' }).click()
   const description = page.getByRole('dialog').getByRole('textbox', { name: 'Description' })
   await description.click()
@@ -393,4 +393,14 @@ test('undo in an unsaved project field undoes typing, and undoing an add leaves 
   await description.press('ControlOrMeta+z')
   await expect(description).not.toHaveValue('Notes')
   await expect(names).toHaveText(['Synthetic kept'])
+
+  // Closing with Escape keeps what was typed, line breaks included.
+  await description.pressSequentially('One')
+  await description.press('Shift+Enter')
+  await description.press('Enter')
+  await description.pressSequentially('Two')
+  await description.press('Escape')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await page.locator('.project-card', { hasText: 'Synthetic kept' }).click()
+  await expect(description).toHaveValue('One\n\nTwo')
 })

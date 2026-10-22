@@ -179,7 +179,7 @@
         }}
         onChange={(html, text) => { if (text.trim()) plannerStore.updateProject(project.id, { name: text.trim(), nameHtml: html }) }}
       /></div>
-      <label>Description<textarea value={project.description} on:change={(event) => plannerStore.updateProject(project.id, { description: event.currentTarget.value })}></textarea></label>
+      <label>Description<textarea value={project.description} on:input={(event) => plannerStore.updateProject(project.id, { description: event.currentTarget.value })}></textarea></label>
       {#if project.archived}
         <p class="project-status">Archived{project.archivedAt ? ` ${shortDate(project.archivedAt)}` : ''}</p>
         <div class="project-actions">
