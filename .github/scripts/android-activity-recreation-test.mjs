@@ -132,20 +132,20 @@ function fixture(count = 40) {
 async function traceIpc() {
   await client.evaluate(`(() => {
     const internals = window.__TAURI_INTERNALS__
-    if (internals.__traced) return
-    const original = internals.invoke
+    if (window.__ipcTrace) return
     window.__ipcTrace = []
-    internals.invoke = (command, ...rest) => {
+    // Tauri defines invoke as read-only, so shadow it on a derived object.
+    window.__TAURI_INTERNALS__ = Object.create(internals, {invoke: {value: (command, ...rest) => {
       const entry = {command, start: Math.round(performance.now())}
       window.__ipcTrace.push(entry)
       if (window.__ipcTrace.length > 400) window.__ipcTrace.shift()
       const settle = ok => { entry.ms = Math.round(performance.now()) - entry.start; entry.ok = ok }
-      return original(command, ...rest).then(value => { settle(true); return value }, error => { settle(false); throw error })
-    }
-    internals.__traced = true
+      return internals.invoke(command, ...rest).then(value => { settle(true); return value }, error => { settle(false); throw error })
+    }}})
     new PerformanceObserver(list => (window.__longTasks ??= []).push(...list.getEntries().map(e => ({start: Math.round(e.startTime), ms: Math.round(e.duration)}))))
       .observe({type: 'longtask'})
   })()`)
+  report.ipcTraced = await client.evaluate(`window.__TAURI_INTERNALS__.invoke('build_info').then(() => window.__ipcTrace.length > 0)`)
 }
 // Commands which took noticeable time since `since`, plus long JS tasks.
 async function slowWork(since) {
@@ -553,6 +553,8 @@ try {
         await sleep(i % 2 ? 300 : 2500) // Both rapid saves and saves between sync polls.
       }
       await openSyntheticNote()
+      // Phone WebViews run JavaScript several times slower than CI hosts.
+      await client.send('Emulation.setCPUThrottlingRate', {rate: 6})
       for (let i = 0; i < 3; i++) {
         await client.send('Input.insertText', {text: ` sleep${++editNumber}`})
         const before = await client.evaluate('Math.round(performance.now())')
@@ -572,6 +574,23 @@ try {
         report.cases.push(entry)
         console.log(JSON.stringify(entry))
       }
+      // Waking the phone to jot down an idea right after editing a note.
+      for (let i = 0; i < 2; i++) {
+        await openSyntheticNote()
+        await client.send('Input.insertText', {text: ` idea${++editNumber}`})
+        await screenOff()
+        await sleep(4000)
+        await screenOn()
+        const text = `Synthetic wake idea ${condition} ${saved.length}`
+        const woke = performance.now()
+        const result = await timedQuickAdd(text)
+        saved.push(text)
+        const entry = {phase: 'wake-quick-add', condition, i, saveMs: result.saveMs,
+          wakeToSavedMs: Math.round(performance.now() - woke), ...await slowWork(result.start - 10000)}
+        report.cases.push(entry)
+        console.log(JSON.stringify(entry))
+      }
+      await client.send('Emulation.setCPUThrottlingRate', {rate: 1})
       await client.evaluate(`document.querySelector('.sidebar button[aria-keyshortcuts="Alt+T"]')?.click()`)
     }
     await setCondition('online')
@@ -581,7 +600,7 @@ try {
     const summary = {}
     for (const entry of report.cases) {
       const key = `${entry.phase}/${entry.condition}`
-      const value = entry.saveMs ?? Math.max(entry.frameMs, entry.inputMs)
+      const value = entry.wakeToSavedMs ?? entry.saveMs ?? Math.max(entry.frameMs, entry.inputMs, ...entry.longTasks.map(task => task.ms))
       ;(summary[key] ??= []).push(value)
     }
     report.summary = summary
