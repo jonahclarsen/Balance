@@ -27,7 +27,7 @@
   }
 </script>
 {#if $quizRequest && mode}
-  <OverlayModal title={`${mode.name} quiz`} onClose={() => quizRequest.set(null)} maxWidth={520} cover="viewport">
+  <OverlayModal title={`${mode.name} quiz`} onClose={() => quizRequest.set(null)} maxWidth={520} cover="viewport" z={150}>
     <div class="quiz" style:--mode={mode.color}>
       {#if error}<p role="alert">{error}</p>
       {:else if progress.denied}

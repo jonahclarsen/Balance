@@ -4,7 +4,7 @@
   $: mode = $situate.modes.find(m => m.id === $reminderRequest)
 </script>
 {#if mode}
-  <OverlayModal title={mode.name} onClose={() => reminderRequest.set(null)} maxWidth={480} cover="viewport">
+  <OverlayModal title={mode.name} onClose={() => reminderRequest.set(null)} maxWidth={480} cover="viewport" z={150}>
     <p class="reminder" style:--mode={mode.color}>{mode.description || 'No description yet.'}</p>
   </OverlayModal>
 {/if}
