@@ -885,10 +885,7 @@ test('every sidebar menu item has a left-hand Alt shortcut', async ({ page }, te
     { key: 's', label: 'Settings' },
   ]
 
-  await expect(page.locator('.primary-nav > button > span')).toHaveText([
-    ...shortcuts.map(({ label }) => label),
-    'Admin Settings',
-  ])
+  await expect(page.locator('.primary-nav > button > span')).toHaveText(shortcuts.map(({ label }) => label))
 
   for (const { key, label } of shortcuts) {
     const menuItem = page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: label, exact: true })
@@ -1629,45 +1626,6 @@ test('color theme settings show live Today task previews', async ({ page }, test
     fullPage: false,
   })
 })
-
-test('iridescent gradient controls preview live, persist, and toggle with the original palette', async ({ page }) => {
-  await page.goto('/')
-  await page.evaluate(() => localStorage.clear())
-  await page.reload()
-  await openView(page, 'Admin Settings')
-
-  const controls = page.getByLabel('Iridescent background controls')
-  const contrast = controls.getByLabel('Iridescent contrast')
-  const magentaHue = controls.getByLabel('Magenta hue')
-  const toggle = controls.getByRole('button', { name: 'Restore original gradient' })
-  const originalContrast = await contrast.inputValue()
-  const originalHue = await magentaHue.inputValue()
-  await expect(toggle).toBeDisabled()
-
-  await contrast.fill('180')
-  await magentaHue.fill('282')
-  await expect.poll(() => page.locator('html').evaluate(element =>
-    getComputedStyle(element).getPropertyValue('--iridescent-pink'),
-  )).toContain('282')
-  await expect.poll(() => page.evaluate(() => {
-    const appearance = JSON.parse(localStorage.getItem('balance:deviceAppearance.v1')!)
-    return { contrast: appearance.iridescentGradient.contrast, hue: appearance.iridescentGradient.colors[0].hue }
-  })).toEqual({ contrast: 180, hue: 282 })
-
-  await page.reload()
-  await openView(page, 'Admin Settings')
-  await expect(contrast).toHaveValue('180')
-  await expect(magentaHue).toHaveValue('282')
-  await toggle.click()
-  await expect(contrast).toHaveValue(originalContrast)
-  await expect(magentaHue).toHaveValue(originalHue)
-  const restoreCustom = controls.getByRole('button', { name: 'Return to your gradient' })
-  await restoreCustom.click()
-  await expect(contrast).toHaveValue('180')
-  await expect(magentaHue).toHaveValue('282')
-})
-
-
 
 test('database opening messages can be customized and restored', async ({ page }) => {
   const defaultMessages = [
@@ -2748,21 +2706,6 @@ test('dragging app sliders requests native haptics except for notes writing spac
   await page.getByRole('button', { name: 'New list' }).click()
   await dragRangeToRatio(page, page.getByLabel('Appearance probability').first(), 0.5)
   await expect.poll(hapticCount).toBeGreaterThan(dayTemplateHaptics)
-  const probabilityHaptics = await hapticCount()
-
-  await openView(page, 'Settings')
-  await page.getByRole('group', { name: 'Color theme' }).getByRole('button', { name: /^Iridescent/ }).click()
-  await openView(page, 'Admin Settings')
-  const contrast = page.getByLabel('Iridescent contrast')
-  await contrast.scrollIntoViewIfNeeded()
-  const contrastBounds = await contrast.boundingBox()
-  if (!contrastBounds) throw new Error('Missing Iridescent contrast slider geometry')
-  const contrastY = contrastBounds.y + contrastBounds.height / 2
-  await page.mouse.move(contrastBounds.x + contrastBounds.width * 0.4, contrastY)
-  await page.mouse.down()
-  await page.mouse.move(contrastBounds.x + contrastBounds.width * 0.7, contrastY)
-  await page.mouse.up()
-  await expect.poll(hapticCount).toBeGreaterThan(probabilityHaptics)
 
   await openView(page, 'Notes')
   await page.getByRole('button', { name: '+ New note' }).click()

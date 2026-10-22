@@ -173,14 +173,6 @@ fn safe_schema_key(key: &str) -> bool {
             | "doneTintColor"
             | "checkboxColor"
             | "databaseLoadingMessages"
-            | "iridescentGradient"
-            | "contrast"
-            | "backgroundSaturation"
-            | "backgroundLightness"
-            | "angle"
-            | "reach"
-            | "colors"
-            | "strength"
     )
 }
 

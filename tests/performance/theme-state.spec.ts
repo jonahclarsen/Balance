@@ -37,18 +37,6 @@ test('device theme bootstrap stays effectively instant across repeated startups'
       randomThemeStartDate: '',
       doneTintColor: '',
       checkboxColor: '',
-      iridescentGradient: {
-        contrast: 100,
-        backgroundSaturation: 100,
-        backgroundLightness: 0,
-        angle: 145,
-        reach: 34,
-        colors: [
-          { hue: 330, saturation: 85, lightness: 62, strength: 13 },
-          { hue: 188, saturation: 66, lightness: 53, strength: 14 },
-          { hue: 37, saturation: 84, lightness: 59, strength: 13 },
-        ],
-      },
     }))
   })
 

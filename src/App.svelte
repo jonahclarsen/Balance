@@ -23,7 +23,6 @@
   import { installMobileKeyboardScroll } from './lib/mobileKeyboardScroll'
   import GoalColorPicker from './lib/GoalColorPicker.svelte'
   import GoalCopyButton from './lib/GoalCopyButton.svelte'
-  import IridescentGradientSettings from './lib/IridescentGradientSettings.svelte'
   import RecentPage from './lib/RecentPage.svelte'
   import { createRecentPages } from './lib/recentPages'
   import GoalHistoryPanel from './lib/GoalHistoryPanel.svelte'
@@ -111,7 +110,7 @@
     runDatabaseMaintenanceIfNeeded,
   } from './lib/store'
   import type { DatabaseHistoryEntry, DatabaseInspection, DatabaseMaintenanceStatus, DatabaseOperationEntry, MetadataEntry, RecoveryEntry, RecoveryKeyStatus } from './lib/store'
-  import type { ArchivedListTemplateItem, ColorSchemePreference, DailyPlan, DailyTemplate, DeviceAppearancePreferences, Goal, Id, IridescentGradientPreferences, ListInstance, ListTemplate, ListTemplateItem, Metric, MetricEntry, MetricQuestion, MoveDirection, MovePlacement, Note, NoteViewState, PlanItem, TemplateItem, TemplateQuizAnswers } from './lib/types'
+  import type { ArchivedListTemplateItem, ColorSchemePreference, DailyPlan, DailyTemplate, DeviceAppearancePreferences, Goal, Id, ListInstance, ListTemplate, ListTemplateItem, Metric, MetricEntry, MetricQuestion, MoveDirection, MovePlacement, Note, NoteViewState, PlanItem, TemplateItem, TemplateQuizAnswers } from './lib/types'
   import { historyDestination, type HistoryDestination } from './lib/historyNavigation'
   import { captureTreeEditorSelection, restoreTreeEditorSelection } from './lib/treeEditorSelection'
   import type { SearchResult } from './lib/search'
@@ -121,7 +120,7 @@
   import { buildItemTimeWarnings, createPlanItem, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatMinutes, formatPlanTitle, hasActiveTimeRange, hasIncompletePlanItems, itemLinkFromURL, linkifyItemText, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, sanitizeInlineHTML, templateQuizSteps, todayISO, totalWordCount, type ItemLink, type TemplateQuizStep, type TemplateReviewKind } from './lib/planner'
   import { hexToPickerColor, pickerColorToHex, type PickerColor } from './lib/colors'
   import { automaticSyncStatus, requestSync, startAutomaticSync } from './lib/syncScheduler'
-  import { createDefaultIridescentGradient, DEFAULT_DATABASE_LOADING_MESSAGES, normalizeIridescentGradient, replicatedDayTheme } from './lib/preferences'
+  import { DEFAULT_DATABASE_LOADING_MESSAGES, replicatedDayTheme } from './lib/preferences'
   import {
     applyIridescentHueShift,
     COLOR_SCHEME_QUERY,
@@ -179,7 +178,7 @@
     { id: 'dark', name: 'Dark', description: 'Always use dark mode' },
   ]
 
-  type View = 'situate' | 'next' | 'today' | 'templates' | 'listTemplates' | 'lists' | 'notes' | 'projects' | 'prioritize' | 'buckets' | 'metrics' | 'goals' | 'settings' | 'admin'
+  type View = 'situate' | 'next' | 'today' | 'templates' | 'listTemplates' | 'lists' | 'notes' | 'projects' | 'prioritize' | 'buckets' | 'metrics' | 'goals' | 'settings'
   type Opener = { container: 'plan' | 'list'; containerId: Id; itemId: Id }
   type ExportSettings = {
     exportDirectory: string
@@ -201,15 +200,9 @@
   const GOAL_RHYTHM_HIDE_MS = 6 * 60 * 60 * 1000
   const GOAL_HISTORY_UPDATE_DEBOUNCE_MS = 1_000
   const GOAL_HISTORY_EDIT_UPDATE_DEBOUNCE_MS = 5_000
-  const DEFAULT_KEYBOARD_SCROLL_SPEED = 950
-  const DEFAULT_KEYBOARD_SCROLL_ACCELERATION_MS = 1_000
-  const DEFAULT_KEYBOARD_SCROLL_SPEED_INCREASE = 50
-  const keyboardScrollSpeedKey = 'balance.admin.keyboardScrollSpeed.v1'
-  const keyboardScrollAccelerationKey = 'balance.admin.keyboardScrollAccelerationMs.v1'
-  const keyboardScrollSpeedIncreaseKey = 'balance.admin.keyboardScrollSpeedIncrease.v1'
-  let keyboardScrollSpeed = readKeyboardScrollSpeed()
-  let keyboardScrollAccelerationMs = readKeyboardScrollAccelerationMs()
-  let keyboardScrollSpeedIncrease = readKeyboardScrollSpeedIncrease()
+  const KEYBOARD_SCROLL_SPEED = 950
+  const KEYBOARD_SCROLL_ACCELERATION_MS = 1_000
+  const KEYBOARD_SCROLL_SPEED_INCREASE = 0.5
   const heldScrollKeys = new Set<string>()
   let keyboardScrollFrame: number | null = null
   let keyboardScrollStartTime = 0
@@ -217,64 +210,12 @@
   let keyboardScrollPosition = 0
   let pendingKeyboardScrollEvent: KeyboardEvent | null = null
 
-  function readKeyboardScrollSpeed() {
-    if (import.meta.env.DEV) {
-      try {
-        const value = Number(localStorage.getItem(keyboardScrollSpeedKey))
-        if (Number.isFinite(value) && value >= 50 && value <= 3000) return value
-      } catch { /* Storage may be unavailable. */ }
-    }
-    return DEFAULT_KEYBOARD_SCROLL_SPEED
-  }
-
-  function setKeyboardScrollSpeed(value: number) {
-    if (!Number.isFinite(value)) return
-    keyboardScrollSpeed = Math.max(50, Math.min(3000, value))
-    try { localStorage.setItem(keyboardScrollSpeedKey, String(keyboardScrollSpeed)) } catch { /* Keep the session value. */ }
-  }
-
-  function readKeyboardScrollAccelerationMs() {
-    if (import.meta.env.DEV) {
-      try {
-        const stored = localStorage.getItem(keyboardScrollAccelerationKey)
-        const value = stored === null ? Number.NaN : Number(stored)
-        if (Number.isFinite(value) && value >= 0 && value <= 10_000) return value
-      } catch { /* Storage may be unavailable. */ }
-    }
-    return DEFAULT_KEYBOARD_SCROLL_ACCELERATION_MS
-  }
-
-  function setKeyboardScrollAccelerationMs(value: number) {
-    if (!Number.isFinite(value)) return
-    keyboardScrollAccelerationMs = Math.max(0, Math.min(10_000, value))
-    try { localStorage.setItem(keyboardScrollAccelerationKey, String(keyboardScrollAccelerationMs)) } catch { /* Keep the session value. */ }
-  }
-
-  function readKeyboardScrollSpeedIncrease() {
-    if (import.meta.env.DEV) {
-      try {
-        const stored = localStorage.getItem(keyboardScrollSpeedIncreaseKey)
-        const value = stored === null ? Number.NaN : Number(stored)
-        if (Number.isFinite(value) && value >= 0 && value <= 300) return value
-      } catch { /* Storage may be unavailable. */ }
-    }
-    return DEFAULT_KEYBOARD_SCROLL_SPEED_INCREASE
-  }
-
-  function setKeyboardScrollSpeedIncrease(value: number) {
-    if (!Number.isFinite(value)) return
-    keyboardScrollSpeedIncrease = Math.max(0, Math.min(300, value))
-    try { localStorage.setItem(keyboardScrollSpeedIncreaseKey, String(keyboardScrollSpeedIncrease)) } catch { /* Keep the session value. */ }
-  }
-
   function keyboardScrollDistanceAt(elapsedMs: number) {
     const elapsed = Math.max(0, elapsedMs)
-    const increase = keyboardScrollSpeedIncrease / 100
-    if (keyboardScrollAccelerationMs === 0) return keyboardScrollSpeed * (1 + increase) * elapsed / 1000
-    const rampElapsed = Math.min(elapsed, keyboardScrollAccelerationMs)
-    const rampBonusMs = increase * rampElapsed * rampElapsed / (2 * keyboardScrollAccelerationMs)
-    const fullSpeedBonusMs = increase * Math.max(0, elapsed - keyboardScrollAccelerationMs)
-    return keyboardScrollSpeed * (elapsed + rampBonusMs + fullSpeedBonusMs) / 1000
+    const rampElapsed = Math.min(elapsed, KEYBOARD_SCROLL_ACCELERATION_MS)
+    const rampBonusMs = KEYBOARD_SCROLL_SPEED_INCREASE * rampElapsed * rampElapsed / (2 * KEYBOARD_SCROLL_ACCELERATION_MS)
+    const fullSpeedBonusMs = KEYBOARD_SCROLL_SPEED_INCREASE * Math.max(0, elapsed - KEYBOARD_SCROLL_ACCELERATION_MS)
+    return KEYBOARD_SCROLL_SPEED * (elapsed + rampBonusMs + fullSpeedBonusMs) / 1000
   }
 
   function isKeyboardScrollKey(event: KeyboardEvent) {
@@ -317,7 +258,6 @@
     keyboardScrollFrame = requestAnimationFrame(advanceKeyboardScroll)
   }
 
-  const defaultIridescentGradient = createDefaultIridescentGradient()
   const GOAL_HISTORY_HEIGHT_KEY = 'balance:goalHistoryHeight'
   const GOAL_RHYTHM_HIDDEN_UNTIL_KEY = 'balance:goalRhythmHiddenUntil'
   const DISMISSED_UPDATE_VERSION_KEY = 'balance:dismissedUpdateVersion'
@@ -467,7 +407,6 @@
   let lastObservedTodayKey = ''
   let historicalThemeId: string | null = null
   let displayedThemeId: PresetThemeId = DEFAULT_PRESET_THEME_ID
-  let iridescentGradient = createDefaultIridescentGradient()
   let completionTrackingReady = false
   let planCompletionById = new Map<Id, boolean>()
   let listCompletionById = new Map<Id, boolean>()
@@ -903,7 +842,6 @@ return rows`
   }
   $: doneTintColor = deviceAppearance.doneTintColor
   $: checkboxColor = deviceAppearance.checkboxColor
-  $: iridescentGradient = deviceAppearance.iridescentGradient
   $: historicalThemeId = view === 'today'
     && !celebrationPreview
     && displayedPlanDate < currentDay
@@ -925,7 +863,6 @@ return rows`
     currentDay,
     effectiveThemeId,
   )
-  $: applyIridescentGradient(iridescentGradient)
   $: if ($plannerStore.preferences.databaseLoadingMessages !== previousDatabaseLoadingMessages) {
     previousDatabaseLoadingMessages = $plannerStore.preferences.databaseLoadingMessages
     databaseLoadingMessages = $plannerStore.preferences.databaseLoadingMessages
@@ -2999,74 +2936,6 @@ return rows`
     })
   }
 
-  function adjustedIridescentBaseColor(
-    hue: number,
-    saturation: number,
-    lightness: number,
-    preferences: IridescentGradientPreferences,
-  ): string {
-    const adjustedSaturation = Math.max(0, Math.min(100, saturation * preferences.backgroundSaturation / 100))
-    const adjustedLightness = Math.max(0, Math.min(100, lightness + preferences.backgroundLightness))
-    return `hsl(${hue} ${adjustedSaturation.toFixed(1)}% ${adjustedLightness.toFixed(1)}%)`
-  }
-
-  function applyIridescentGradient(preferences: IridescentGradientPreferences) {
-    const root = document.documentElement
-    const colorNames = ['pink', 'aqua', 'gold']
-    const isDefault = JSON.stringify(preferences) === JSON.stringify(defaultIridescentGradient)
-    const defaultLightColors = ['rgb(242 76 159 / 0.13)', 'rgb(57 197 214 / 0.14)', 'rgb(240 162 62 / 0.13)']
-    const defaultDarkColors = ['rgb(240 71 164 / 0.15)', 'rgb(51 198 218 / 0.14)', 'rgb(246 170 66 / 0.11)']
-    const darkAdjustments = [
-      { hue: -3, saturation: 0, lightness: -1, strength: 15 / 13 },
-      { hue: 0, saturation: 4, lightness: 0, strength: 1 },
-      { hue: 1, saturation: 5, lightness: 2, strength: 11 / 13 },
-    ]
-    preferences.colors.forEach((color, index) => {
-      const alpha = Math.max(0, Math.min(1, color.strength / 100 * preferences.contrast / 100))
-      const dark = darkAdjustments[index]
-      const darkAlpha = Math.max(0, Math.min(1, alpha * dark.strength))
-      root.style.setProperty(
-        `--iridescent-${colorNames[index]}`,
-        isDefault ? defaultLightColors[index] : `hsl(${color.hue} ${color.saturation}% ${color.lightness}% / ${alpha})`,
-      )
-      root.style.setProperty(
-        `--iridescent-${colorNames[index]}-dark`,
-        isDefault
-          ? defaultDarkColors[index]
-          : `hsl(${(color.hue + dark.hue + 360) % 360} ${Math.max(0, Math.min(100, color.saturation + dark.saturation))}% ${Math.max(0, Math.min(100, color.lightness + dark.lightness))}% / ${darkAlpha})`,
-      )
-    })
-    root.style.setProperty('--iridescent-angle', `${preferences.angle}deg`)
-    root.style.setProperty('--iridescent-pink-reach', `${preferences.reach}%`)
-    root.style.setProperty('--iridescent-aqua-reach', `${Math.max(16, preferences.reach - 2)}%`)
-    root.style.setProperty('--iridescent-gold-reach', `${Math.min(70, preferences.reach + 2)}%`)
-
-    const lightBases = [[280, 50, 96.9, '#f8f3fb'], [195, 44.4, 96.5, '#f2f8fa'], [38, 52.4, 95.9, '#faf6ef']] as const
-    const darkBases = [[273, 25.5, 8.4, '#15101b'], [201, 30.4, 9, '#10191e'], [35, 27.3, 8.6, '#1c1710']] as const
-    lightBases.forEach(([hue, saturation, lightness, original], index) => {
-      root.style.setProperty(
-        `--iridescent-base-light-${index + 1}`,
-        isDefault ? original : adjustedIridescentBaseColor(hue, saturation, lightness, preferences),
-      )
-    })
-    darkBases.forEach(([hue, saturation, lightness, original], index) => {
-      root.style.setProperty(
-        `--iridescent-base-dark-${index + 1}`,
-        isDefault ? original : adjustedIridescentBaseColor(hue, saturation, lightness, preferences),
-      )
-    })
-  }
-
-  function previewIridescentGradient(value: IridescentGradientPreferences) {
-    iridescentGradient = normalizeIridescentGradient(value)
-  }
-
-  function commitIridescentGradient(value: IridescentGradientPreferences) {
-    const normalized = normalizeIridescentGradient(value)
-    iridescentGradient = normalized
-    commitDeviceAppearance({ iridescentGradient: normalized })
-  }
-
   function resetCompletedItemColors() {
     commitDeviceAppearance({ doneTintColor: '', checkboxColor: '' })
   }
@@ -3565,8 +3434,7 @@ return rows`
       value === 'buckets' ||
       value === 'metrics' ||
       value === 'goals' ||
-      value === 'settings' ||
-      (import.meta.env.DEV && value === 'admin')
+      value === 'settings'
     )
   }
 
@@ -7194,9 +7062,6 @@ return rows`
       <button data-nav-view="buckets" class:active={selectedNavView === 'buckets'} type="button" title="Buckets (Alt+B)" aria-keyshortcuts="Alt+B" on:click={() => selectMobileDrawerView('buckets')}><span class="nav-label"><NavIcon name="buckets" />Buckets</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('B')}</kbd></button>
       <button data-nav-view="situate" class:active={selectedNavView === 'situate'} type="button" title="Situate (Alt+Z)" aria-keyshortcuts="Alt+Z" on:click={() => selectMobileDrawerView('situate')}><span class="nav-label"><NavIcon name="situate" />Situate</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('Z')}</kbd></button>
       <button data-nav-view="settings" class:active={selectedNavView === 'settings'} type="button" title="Settings (Alt+S)" aria-keyshortcuts="Alt+S" on:click={() => selectMobileDrawerView('settings')}><span class="nav-label"><NavIcon name="settings" />Settings</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('S')}</kbd></button>
-      {#if import.meta.env.DEV}
-        <button data-nav-view="admin" class:active={selectedNavView === 'admin'} type="button" on:click={() => selectMobileDrawerView('admin')}><span class="nav-label"><NavIcon name="admin" />Admin Settings</span></button>
-      {/if}
       {#if !isAndroid}
         <button
           class="mobile-undo-button"
@@ -8240,45 +8105,6 @@ return rows`
             {/if}
           </div>
         {/each}
-      </div>
-    {/if}
-
-    {#if import.meta.env.DEV && view === 'admin'}
-      <header class="page-header"><div><h2>Admin Settings</h2></div></header>
-      <div class="settings-panel">
-        <p>Development only. Tune values here, then use what works as the defaults you ship.</p>
-        <section class="settings-section">
-          <div><h3>Keyboard scrolling</h3><p>Hold W/S or the up/down arrows with no task selected or text field focused. Speed rises linearly, then remains constant.</p></div>
-          <label class="field">
-            <span>Scroll speed (px/s)</span>
-            <input type="number" min="50" max="3000" step="50" value={keyboardScrollSpeed}
-              on:change={(event) => setKeyboardScrollSpeed(Number(event.currentTarget.value))} />
-          </label>
-          <p>Default: {DEFAULT_KEYBOARD_SCROLL_SPEED} px/s. Saved on this device for development.</p>
-          <div class="settings-actions"><button type="button" disabled={keyboardScrollSpeed === DEFAULT_KEYBOARD_SCROLL_SPEED}
-            on:click={() => setKeyboardScrollSpeed(DEFAULT_KEYBOARD_SCROLL_SPEED)}>Reset scroll speed</button></div>
-          <label class="field">
-            <span>Acceleration duration (ms)</span>
-            <input type="number" min="0" max="10000" step="50" value={keyboardScrollAccelerationMs}
-              on:change={(event) => setKeyboardScrollAccelerationMs(Number(event.currentTarget.value))} />
-          </label>
-          <p>Default: {DEFAULT_KEYBOARD_SCROLL_ACCELERATION_MS} ms.</p>
-          <div class="settings-actions"><button type="button" disabled={keyboardScrollAccelerationMs === DEFAULT_KEYBOARD_SCROLL_ACCELERATION_MS}
-            on:click={() => setKeyboardScrollAccelerationMs(DEFAULT_KEYBOARD_SCROLL_ACCELERATION_MS)}>Reset acceleration duration</button></div>
-          <label class="field">
-            <span>Maximum speed increase (%)</span>
-            <input type="number" min="0" max="300" step="5" value={keyboardScrollSpeedIncrease}
-              on:change={(event) => setKeyboardScrollSpeedIncrease(Number(event.currentTarget.value))} />
-          </label>
-          <p>Default: {DEFAULT_KEYBOARD_SCROLL_SPEED_INCREASE}% above the chosen speed.</p>
-          <div class="settings-actions"><button type="button" disabled={keyboardScrollSpeedIncrease === DEFAULT_KEYBOARD_SCROLL_SPEED_INCREASE}
-            on:click={() => setKeyboardScrollSpeedIncrease(DEFAULT_KEYBOARD_SCROLL_SPEED_INCREASE)}>Reset speed increase</button></div>
-        </section>
-        <section class="settings-section">
-          <div><h3>Gradient studio</h3><p>Choose Iridescent in Settings to preview changes across the app.</p></div>
-          <IridescentGradientSettings value={iridescentGradient} defaults={defaultIridescentGradient}
-            onPreview={previewIridescentGradient} onCommit={commitIridescentGradient} />
-        </section>
       </div>
     {/if}
 

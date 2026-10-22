@@ -1,5 +1,5 @@
 // Navigation links contain only stable IDs or dates, never private record text.
-export const LINKABLE_VIEWS = ['situate', 'next', 'today', 'templates', 'listTemplates', 'lists', 'notes', 'projects', 'prioritize', 'buckets', 'metrics', 'goals', 'settings', 'admin'] as const
+export const LINKABLE_VIEWS = ['situate', 'next', 'today', 'templates', 'listTemplates', 'lists', 'notes', 'projects', 'prioritize', 'buckets', 'metrics', 'goals', 'settings'] as const
 export type LinkableView = typeof LINKABLE_VIEWS[number]
 export type NavigationTarget =
   | { kind: 'page'; view: LinkableView }

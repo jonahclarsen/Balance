@@ -1,9 +1,5 @@
 import { invoke, isTauri } from '@tauri-apps/api/core'
-import {
-  createDefaultIridescentGradient,
-  normalizeColorOverride,
-  normalizeIridescentGradient,
-} from './preferences'
+import { normalizeColorOverride } from './preferences'
 import {
   DEFAULT_THEME_ID,
   normalizeThemeId,
@@ -30,7 +26,6 @@ export function createDefaultDeviceAppearance(): DeviceAppearancePreferences {
     randomThemeStartDate: '',
     doneTintColor: '',
     checkboxColor: '',
-    iridescentGradient: createDefaultIridescentGradient(),
   }
 }
 
@@ -46,7 +41,6 @@ export function normalizeDeviceAppearance(value: unknown): DeviceAppearancePrefe
     randomThemeStartDate: normalizeStartDate(appearance.randomThemeStartDate),
     doneTintColor: normalizeColorOverride(appearance.doneTintColor),
     checkboxColor: normalizeColorOverride(appearance.checkboxColor),
-    iridescentGradient: normalizeIridescentGradient(appearance.iridescentGradient),
   }
 }
 
@@ -85,7 +79,6 @@ export function deviceAppearanceFromLegacyPreferences(
     randomThemeStartDate: preferences.randomThemeStartDate,
     doneTintColor: preferences.doneTintColor,
     checkboxColor: preferences.checkboxColor,
-    iridescentGradient: preferences.iridescentGradient,
   })
 }
 

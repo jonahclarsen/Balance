@@ -16882,15 +16882,7 @@ mod tests {
             "themeId": "graphite",
             "randomThemeStartDate": "",
             "doneTintColor": "",
-            "checkboxColor": "",
-            "iridescentGradient": {
-                "contrast": 100,
-                "backgroundSaturation": 100,
-                "backgroundLightness": 0,
-                "angle": 145,
-                "reach": 34,
-                "colors": []
-            }
+            "checkboxColor": ""
         });
         let mut appearance_open_ms = Vec::with_capacity(SAMPLE_COUNT);
         let mut appearance_write_ms = Vec::with_capacity(SAMPLE_COUNT);

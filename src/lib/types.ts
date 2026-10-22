@@ -293,7 +293,6 @@ export type ReplicatedPreferences = {
   doneTintColor: string
   checkboxColor: string
   databaseLoadingMessages: string[]
-  iridescentGradient: IridescentGradientPreferences
 }
 
 export type DeviceAppearancePreferences = {
@@ -305,26 +304,9 @@ export type DeviceAppearancePreferences = {
   randomThemeStartDate: string
   doneTintColor: string
   checkboxColor: string
-  iridescentGradient: IridescentGradientPreferences
 }
 
 export type ColorSchemePreference = 'system' | 'light' | 'dark'
-
-export type IridescentGradientColor = {
-  hue: number
-  saturation: number
-  lightness: number
-  strength: number
-}
-
-export type IridescentGradientPreferences = {
-  contrast: number
-  backgroundSaturation: number
-  backgroundLightness: number
-  angle: number
-  reach: number
-  colors: [IridescentGradientColor, IridescentGradientColor, IridescentGradientColor]
-}
 
 export type ImageAsset = {
   id: string
