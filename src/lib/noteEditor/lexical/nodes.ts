@@ -202,6 +202,7 @@ export class NoteContentNode extends ElementNode {
   createDOM(): HTMLElement {
     const dom = document.createElement('div')
     dom.className = 'note-block'
+    dom.append(createCollapseButton())
     const block = this.getParent()
     if ($isNoteBlockNode(block) && block.__kind === 'checklist') dom.append(createCheckbox(block.__done))
     const text = document.createElement('div')
@@ -257,6 +258,31 @@ export class NoteContentNode extends ElementNode {
   exportJSON(): SerializedElementNode {
     return super.exportJSON()
   }
+}
+
+// Like the checkbox, this control belongs to the content node's DOM, outside
+// its editable slot. Creating it during reconciliation avoids mutation loops.
+function createCollapseButton(): HTMLButtonElement {
+  const button = document.createElement('button')
+  button.type = 'button'
+  button.className = 'note-collapse'
+  button.contentEditable = 'false'
+  button.hidden = true
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+  svg.setAttribute('viewBox', '0 0 16 16')
+  svg.setAttribute('width', '12')
+  svg.setAttribute('height', '12')
+  svg.setAttribute('aria-hidden', 'true')
+  const path = document.createElementNS(svg.namespaceURI, 'path')
+  path.setAttribute('d', 'm5 3 5 5-5 5')
+  path.setAttribute('fill', 'none')
+  path.setAttribute('stroke', 'currentColor')
+  path.setAttribute('stroke-width', '1.5')
+  path.setAttribute('stroke-linecap', 'round')
+  path.setAttribute('stroke-linejoin', 'round')
+  svg.append(path)
+  button.append(svg)
+  return button
 }
 
 function createCheckbox(done: boolean): HTMLInputElement {

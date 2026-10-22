@@ -412,3 +412,37 @@
     animation: none !important;
   }
 }
+
+/* Fold controls stay outside the text and checkbox gutter. */
+.lexical-note-editor .note-collapse {
+  position: absolute;
+  left: -20px;
+  top: 6px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.lexical-note-editor .note-collapse:hover {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.lexical-note-editor .note-collapse[aria-expanded='true'] svg {
+  transform: rotate(90deg);
+}
+
+.lexical-note-editor .note-collapsed > .note-children {
+  display: none;
+}
+
+.lexical-note-editor .note-collapse[hidden] {
+  display: none;
+}

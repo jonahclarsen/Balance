@@ -10,6 +10,8 @@
 // `callbacks.onDocumentChanged` and serializes blocks on `readBlocks()`.
 // Lexical's history is not registered; the app owns undo.
 
+import { get } from 'svelte/store'
+import { collapsedNoteItemIds, setNoteItemCollapsed } from '../../collapsedNoteItems'
 import { isQuoteKey } from '../../quoteSelection'
 import { inlineCodeOpening, isBacktickKey } from '../../inlineCode'
 import {
@@ -247,6 +249,7 @@ function $removeLineBreakBeforeCaret(selection: RangeSelection): void {
 class LexicalNoteEditorView implements NoteEditorView {
   readonly name = 'lexical' as const
 
+  private collapsedIds = get(collapsedNoteItemIds)
   private editor: LexicalEditor | null = null
   private host: HTMLElement | null = null
   private root: HTMLDivElement | null = null
@@ -317,6 +320,10 @@ class LexicalNoteEditorView implements NoteEditorView {
       this.registerCommands(editor),
       editor.registerUpdateListener((payload) => this.handleUpdate(payload)),
     )
+    this.teardown.push(collapsedNoteItemIds.subscribe((ids) => {
+      this.collapsedIds = ids
+      editor.getEditorState().read(() => this.$decorate())
+    }))
     this.attachDOMListeners(root)
     const images = imageEditing(root, () => this.resyncImages(), {
       insertHTML: (html, range) => {
@@ -552,6 +559,7 @@ class LexicalNoteEditorView implements NoteEditorView {
     editor.update(() => {
       const target = $blocksInOrder().find((block) => (block.getItemId() ?? this.adoptedIds.get(block.getKey())) === caret.itemId)
       if (!target) return
+      this.$revealBlock(target)
       const content = $contentOf(target)
       $selectOffset(target, $internalOffset(content, caret.start), $internalOffset(content, caret.end))
     }, { discrete: true, tag: SILENT_TAG })
@@ -842,7 +850,7 @@ class LexicalNoteEditorView implements NoteEditorView {
     listen('mousedown', (event) => {
       const target = event.target as HTMLElement
       // A checkbox press keeps the caret / row selection where it is.
-      if (target.closest('.note-check')) event.preventDefault()
+      if (target.closest('.note-check, .note-collapse')) event.preventDefault()
     }, { capture: true })
     listen('click', (event) => this.handleClick(event), { capture: true })
     listen('mousemove', (event) => this.trackLinkHover(event))
@@ -916,7 +924,17 @@ class LexicalNoteEditorView implements NoteEditorView {
     const silent = tags.has(SILENT_TAG)
     const changed = dirtyElements.size > 0 || dirtyLeaves.size > 0
 
-    editorState.read(() => this.$decorate())
+    editorState.read(() => {
+      const selection = $currentRange()
+      if (selection) {
+        const edges = $selectionEdges(selection)
+        if (edges) {
+          this.$revealBlock(edges.anchor.block)
+          this.$revealBlock(edges.focus.block)
+        }
+      }
+      this.$decorate()
+    })
 
     if (!silent && changed && !this.isComposing()) {
       if (inputType === 'insertText' && this.tryAutoformat(editorState)) return
@@ -996,6 +1014,15 @@ class LexicalNoteEditorView implements NoteEditorView {
           }
           const textDom = blockDom?.querySelector<HTMLElement>(':scope > .note-text')
           if (textDom) setData(textDom, 'placeholder', empty ? (kind === 'heading' ? 'Heading' : 'Type / for styles') : null)
+          const hasChildren = $childBlocks(block).length > 0
+          const collapsed = hasChildren && this.$isCollapsed(block)
+          dom.classList.toggle('note-collapsed', collapsed)
+          const toggle = blockDom?.querySelector<HTMLButtonElement>(':scope > .note-collapse')
+          if (toggle) {
+            toggle.hidden = !hasChildren
+            setAttr(toggle, 'aria-label', collapsed ? 'Show children' : 'Hide children')
+            setAttr(toggle, 'aria-expanded', String(!collapsed))
+          }
           const check = blockDom?.querySelector<HTMLInputElement>(':scope > input.note-check')
           if (check) syncCheckbox(check, block.getDone())
           dom.classList.toggle('note-empty-block', empty)
@@ -1006,6 +1033,54 @@ class LexicalNoteEditorView implements NoteEditorView {
       }
     }
     visit(blocks, 0)
+  }
+
+  private $collapseId(block: NoteBlockNode): string {
+    return block.getItemId() ?? this.adoptedIds.get(block.getKey()) ?? block.getKey()
+  }
+
+  private $isCollapsed(block: NoteBlockNode): boolean {
+    return this.collapsedIds.has(this.$collapseId(block))
+  }
+
+  private $revealBlock(block: NoteBlockNode) {
+    for (const parent of block.getParents()) {
+      if ($isNoteBlockNode(parent) && this.$isCollapsed(parent)) {
+        setNoteItemCollapsed(this.$collapseId(parent), false)
+      }
+    }
+  }
+
+  private $setCollapsed(block: NoteBlockNode, collapsed: boolean) {
+    const selection = $currentRange()
+    if (collapsed && selection) {
+      const edges = $selectionEdges(selection)
+      if (edges && [edges.anchor.block, edges.focus.block].some((edge) =>
+        edge.getParents().some((parent) => parent.is(block)))) $selectEnd(block)
+    }
+    setNoteItemCollapsed(this.$collapseId(block), collapsed)
+  }
+
+  private $toggleChildren() {
+    const selection = $currentRange()
+    if (!selection) return
+    const edges = $selectionEdges(selection)
+    if (!edges) return
+    const rows = this.$rowSelection(selection, edges)
+    if (rows && rows.length > 1) {
+      const parents = rows.filter((block) => $childBlocks(block).length > 0)
+      const collapse = parents.some((block) => !this.$isCollapsed(block))
+      for (const block of parents) this.$setCollapsed(block, collapse)
+      return
+    }
+    const block = edges.focus.block
+    const target = $childBlocks(block).length > 0 ? block : $parentBlock(block)
+    if (target) this.$setCollapsed(target, !this.$isCollapsed(target))
+  }
+
+  private $visibleBlocks(): NoteBlockNode[] {
+    return $blocksInOrder().filter((block) => !block.getParents().some((parent) =>
+      $isNoteBlockNode(parent) && this.$isCollapsed(parent)))
   }
 
   private tryAutoformat(editorState: EditorState): boolean {
@@ -1237,6 +1312,12 @@ class LexicalNoteEditorView implements NoteEditorView {
     const plain = !mod && !event.altKey && !event.shiftKey
     if (!event.isComposing && !this.isComposing()) this.$syncSelectionFromDOM()
 
+    if (mod && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'r') {
+      event.preventDefault()
+      if (!event.repeat) this.$toggleChildren()
+      return true
+    }
+
     if (isQuoteKey(event)) {
       const selection = $currentRange()
       const edges = selection && !selection.isCollapsed() ? $selectionEdges(selection) : null
@@ -1328,7 +1409,7 @@ class LexicalNoteEditorView implements NoteEditorView {
         if (!selection) return
         const point = $blockPoint(selection.focus)
         if (!point) return
-        const order = $blocksInOrder()
+        const order = this.$visibleBlocks()
         const index = order.findIndex((block) => block.is(point.block))
         const target = order[index + (event.key === 'ArrowUp' ? -1 : 1)]
         if (target) $selectOffset(target, Math.min(point.offset, $caretLength($contentOf(target))))
@@ -1631,6 +1712,16 @@ class LexicalNoteEditorView implements NoteEditorView {
     const target = event.target as HTMLElement
     const editor = this.editor
     if (!editor) return
+    const toggle = target.closest<HTMLButtonElement>('.note-collapse')
+    if (toggle) {
+      event.preventDefault()
+      event.stopPropagation()
+      editor.update(() => {
+        const block = $blockOf($getNearestNodeFromDOMNode(toggle))
+        if (block) this.$setCollapsed(block, !this.$isCollapsed(block))
+      }, { discrete: true, tag: SILENT_TAG })
+      return
+    }
     const check = target.closest<HTMLInputElement>('input.note-check')
     if (check) {
       event.stopPropagation()

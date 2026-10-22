@@ -60,6 +60,13 @@ Mod+Enter, which toggle every checklist block the caret or selection touches
 (a mixed selection is checked first). External URLs and Balance app links retain their navigation
 behavior. Search and document find include the note body.
 
+Rows with children have a caret; Mod+R folds or unfolds the current row, or
+its parent when the current row has no children. Folding from a child moves the
+caret to the parent. Collapsed IDs live in `balance.collapsedNoteItems` in
+localStorage, outside planner records, sync, clipboard, and undo. Explicit caret
+navigation to a child reveals its ancestors. Fold controls belong to the custom
+content node's DOM, outside its editable slot, just like checkboxes.
+
 ## Clipboard and images
 
 `externalNotePaste.ts`, `noteClipboard.ts`, and macOS
