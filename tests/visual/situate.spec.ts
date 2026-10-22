@@ -147,6 +147,20 @@ test('long quiz questions wrap onto more lines instead of scrolling', async ({pa
   expect(grown.scroll).toBeLessThanOrEqual(grown.height)
 })
 
+test('mode descriptions grow with their lines and keep them in the preview', async ({page}) => {
+  await page.getByRole('button',{name:'Edit Dolo',exact:true}).click()
+  const field=page.getByRole('dialog',{name:'Edit Dolo'}).getByLabel('Description',{exact:true})
+  await field.fill('One')
+  const oneLine=await field.evaluate(el=>el.clientHeight)
+  await field.fill('One\nTwo\nThree')
+  const grown=await field.evaluate(el=>({height:el.clientHeight,scroll:el.scrollHeight}))
+  expect(grown.height).toBeGreaterThan(oneLine)
+  expect(grown.scroll).toBeLessThanOrEqual(grown.height)
+  await page.keyboard.press('Escape')
+  const preview=page.locator('article').filter({has:page.getByRole('heading',{name:'Dolo',exact:true})}).locator('.description')
+  await expect.poll(()=>preview.evaluate(el=>(el as HTMLElement).innerText)).toBe('One\nTwo\nThree')
+})
+
 test('reminder modes show only while on and open their description', async ({page}) => {
   const sidebar=page.getByLabel('Situate modes')
   await expect(sidebar.getByRole('button',{name:'No Active Project',exact:true})).toHaveCount(0)

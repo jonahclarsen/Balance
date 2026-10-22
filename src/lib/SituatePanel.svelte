@@ -109,7 +109,7 @@
   .meta { display:flex; align-items:center; gap:8px; margin:0; color:var(--muted); font-size:13px; }
   .meta > span:first-child, .meta > span { display:inline-flex; align-items:center; gap:4px; }
   .when { margin:0; font-size:13px; }
-  .description { margin:0; font-size:13px; color:var(--muted); }
+  .description { margin:0; font-size:13px; color:var(--muted); white-space:pre-line; }
   .actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:4px; }
   article .actions button { font-size:14px; padding:6px 12px; }
   .sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }

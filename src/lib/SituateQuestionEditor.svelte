@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Question } from './situate/core'
+  import { autoGrow } from './autoGrow'
   export let questions: Question[]
   export let label: string
   export let hint = ''
@@ -7,18 +8,6 @@
   function add() { questions = [...questions, { id: crypto.randomUUID(), text: '', required: true }] }
   function remove(id: string) { questions = questions.filter(q => q.id !== id).map(q => q.when?.id === id ? { ...q, when: undefined } : q) }
   function update(id: string, patch: Partial<Question>) { questions = questions.map(q => q.id === id ? { ...q, ...patch } : q) }
-  // Questions are one paragraph: long text wraps onto more lines instead of scrolling.
-  function grow(node: HTMLTextAreaElement, _value: string) {
-    const fit = () => {
-      node.style.height = 'auto'
-      const style = getComputedStyle(node)
-      node.style.height = `${node.scrollHeight + parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth)}px`
-    }
-    const observer = new ResizeObserver(fit)
-    observer.observe(node)
-    fit()
-    return { update: fit, destroy: () => observer.disconnect() }
-  }
 </script>
 <div class="quiz-editor" role="group" aria-label={label}>
   <div class="quiz-heading"><h4>{label}</h4>{#if hint}<span>{hint}</span>{/if}</div>
@@ -27,7 +16,7 @@
       <li>
         <span class="number">{i + 1}</span>
         <div class="body">
-          <textarea rows="1" value={question.text} maxlength="2000" placeholder="Question" aria-label={`${label} question ${i + 1}`} use:grow={question.text} on:keydown={e => { if (e.key === 'Enter') e.preventDefault() }} on:input={e => update(question.id, { text: e.currentTarget.value.replace(/\s*\n\s*/g, ' ') })}></textarea>
+          <textarea rows="1" value={question.text} maxlength="2000" placeholder="Question" aria-label={`${label} question ${i + 1}`} use:autoGrow={question.text} on:keydown={e => { if (e.key === 'Enter') e.preventDefault() }} on:input={e => update(question.id, { text: e.currentTarget.value.replace(/\s*\n\s*/g, ' ') })}></textarea>
           <div class="rules">
             <span class="rule-label">Pass on</span>
             <div class="choice" role="group" aria-label="Answer that passes">{#each answers as answer}<button type="button" aria-pressed={question.required === answer.value} on:click={() => update(question.id, { required: answer.value })}>{answer.label}</button>{/each}</div>
