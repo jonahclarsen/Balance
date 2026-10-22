@@ -244,7 +244,11 @@ type BackendHistoryResult = {
   state: AppState | null
   canRedo: boolean
   operationType?: string
+  previousRevision?: number
+  revision?: number
 }
+
+type PersistResult = { accepted: boolean; previousRevision: number; revision: number }
 
 export type RecoveryKeyStatus = {
   confirmed: boolean
@@ -346,6 +350,10 @@ let persistenceTarget: 'tauri' | 'localStorage' | null = null
 // The raw native snapshot the store was last loaded from. An identical reread
 // holds nothing the store lacks, so it is not parsed again.
 let lastAppliedNativeState: string | null = null
+// The database revision whose changes the store fully holds, or null when
+// another writer may have changed the database since the last full read.
+// Refreshes skip rereading the workspace while it is current.
+let knownNativeRevision: number | null = null
 let persistenceReady = false
 let pendingOperations = new Map<string, Operation>()
 let operationFlushActive = false
@@ -369,6 +377,11 @@ export const databaseLoadProgress = writable<DatabaseLoadProgress>({
 export function onPersistedOperation(listener: () => void): () => void {
   persistedOperationListeners.add(listener)
   return () => persistedOperationListeners.delete(listener)
+}
+
+// A write advances the known revision only if nothing else wrote before it.
+function advanceKnownNativeRevision(previousRevision: unknown, revision: unknown): void {
+  knownNativeRevision = typeof revision === 'number' && previousRevision === knownNativeRevision ? revision : null
 }
 
 function notifyPersistedOperation(): void {
@@ -410,17 +423,18 @@ function parseStoredState(raw: string | null): AppState | null {
   }
 }
 
-async function parseNativeStoredState(raw: string | null): Promise<{ state: AppState; canRedo: boolean } | null> {
+async function parseNativeStoredState(raw: string | null): Promise<{ state: AppState; canRedo: boolean; revision: number | null } | null> {
   if (!raw) return null
-  const stored = JSON.parse(raw) as AppState & { canRedo?: unknown }
+  const stored = JSON.parse(raw) as AppState & { canRedo?: unknown; stateRevision?: unknown }
   if (stored.schemaVersion !== 1) return null
-  const { canRedo, ...parsed } = stored
+  const { canRedo, stateRevision, ...parsed } = stored
+  const revision = typeof stateRevision === 'number' ? stateRevision : null
   const steps = normalizeStateSteps({ ...parsed, historyRevision: parsed.historyRevision || 0,
     activePlanDate: localActivePlanDate(), operations: parsed.operations || [] })
   let sliceStarted = performance.now()
   for (;;) {
     const step = steps.next()
-    if (step.done) return { state: step.value, canRedo: canRedo === true }
+    if (step.done) return { state: step.value, canRedo: canRedo === true, revision }
     if (performance.now() - sliceStarted >= 8) {
       // A resolved Promise only queues another microtask and still starves
       // input. Return to the WebView event loop between history records.
@@ -454,6 +468,7 @@ async function hydratePersistence(store: Writable<AppState>): Promise<void> {
     if (parsed) {
       store.set(parsed)
       lastAppliedNativeState = stored
+      knownNativeRevision = snapshot.revision
     } else {
       await invoke('initialize_app_state', { stateJson: JSON.stringify({ ...get(store), activePlanDate: '' }) })
     }
@@ -629,10 +644,15 @@ async function flushOperationsNow(): Promise<void> {
       for (let index = 0; index < operations.length; index += 1) {
         const operation = operations[index]
         try {
-          const accepted = await invoke<boolean | undefined>('persist_operation', { operationJson: JSON.stringify(operation) })
+          const result = await invoke<PersistResult | boolean | null | undefined>('persist_operation', { operationJson: JSON.stringify(operation) })
+          const accepted = typeof result === 'boolean' ? result : result?.accepted
+          advanceKnownNativeRevision(typeof result === 'object' ? result?.previousRevision : null, typeof result === 'object' ? result?.revision : null)
           // A second frontend can race the preflight check. Native persistence
           // rejects it atomically; reconcile the optimistic state after flushing.
-          if (accepted === false) lastAppliedNativeState = null
+          if (accepted === false) {
+            lastAppliedNativeState = null
+            knownNativeRevision = null
+          }
           if (accepted === false) void plannerStore.reloadFromBackend().catch((error) => {
             console.error('Could not reload after duplicate Siri delivery', error)
           })
@@ -744,8 +764,16 @@ function createPlannerStore() {
 
       const mutationRevisionBeforeRead = localMutationRevision
       const requestRevisionBeforeRead = backendReloadRequestRevision
-      const stored = await invoke<string | null>('read_app_state')
+      const knownRevisionBeforeRead = knownNativeRevision
+      const stored = await invoke<string | null>('read_app_state', { knownRevision: knownRevisionBeforeRead })
       const mutationChanged = mutationRevisionBeforeRead !== localMutationRevision
+
+      // Every change in the database is already in the store, typically
+      // because the only writes since the last read were this store's own.
+      if (stored === null && knownRevisionBeforeRead !== null) {
+        if (requestRevisionBeforeRead === backendReloadRequestRevision) return
+        continue
+      }
 
       // Nothing was persisted since the store was loaded, so edits made during
       // the read are still newer than it. Parsing years of history blocks input.
@@ -776,6 +804,7 @@ function createPlannerStore() {
 
       lastOperationMergeKey = null
       lastAppliedNativeState = stored
+      knownNativeRevision = snapshot.revision
       store.update((current) => {
         // Focus/resume can refresh an unchanged database. Keep the validated
         // history snapshots and their shared collection references in that case;
@@ -3328,6 +3357,8 @@ function createPlannerStore() {
             store.update((current) => ({ ...parsed, historyRevision: current.historyRevision + 1 }))
           }
         }
+        if (result.state) knownNativeRevision = result.revision ?? null
+        else advanceKnownNativeRevision(result.previousRevision, result.revision)
         redoAvailableState.set(result.canRedo)
         notifyPersistedOperation()
         return operationType
@@ -3381,6 +3412,8 @@ function createPlannerStore() {
             store.update((current) => ({ ...parsed, historyRevision: current.historyRevision + 1 }))
           }
         }
+        if (result.state) knownNativeRevision = result.revision ?? null
+        else advanceKnownNativeRevision(result.previousRevision, result.revision)
         redoAvailableState.set(result.canRedo)
         notifyPersistedOperation()
         return true
@@ -3411,6 +3444,7 @@ function createPlannerStore() {
         await flushOperations()
         const stateJson = await invoke<string | null>('restore_recovery_entry', { historyId })
         const parsed = parseStoredState(stateJson)
+        knownNativeRevision = null
         if (!parsed) return false
 
         lastOperationMergeKey = null

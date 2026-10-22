@@ -1446,3 +1446,47 @@ test(`a local ${action} during incremental history normalization survives the re
   }
 })
 }
+
+test('a refresh after only local saves skips rereading the workspace, while a foreign write still refreshes it', async ({ page }) => {
+  await page.goto('/?launch-then-hold=1')
+  await expect.poll(() => readSyncStatus(page)).toEqual({ running: false, initialSyncComplete: true })
+  const reload = () => page.evaluate(async () => {
+    const storePath = '/src/lib/store.ts'
+    const { plannerStore } = await import(/* @vite-ignore */ storePath)
+    await plannerStore.reloadFromBackend()
+    return (globalThis as any).__fullReads as Array<number | null>
+  })
+  await page.evaluate(() => {
+    // A native backend that reports its operation-log revision.
+    const runtime = globalThis as any
+    const original = runtime.__TAURI_INTERNALS__.invoke
+    runtime.__revision = 7
+    runtime.__fullReads = []
+    runtime.__TAURI_INTERNALS__.invoke = async (command: string, args?: Record<string, unknown>) => {
+      if (command === 'read_app_state') {
+        if (args?.knownRevision === runtime.__revision) return null
+        runtime.__fullReads.push(args?.knownRevision ?? null)
+        return JSON.stringify({ ...JSON.parse(runtime.__storedState), stateRevision: runtime.__revision })
+      }
+      if (command === 'persist_operation') {
+        await original(command, args)
+        return { accepted: true, previousRevision: runtime.__revision, revision: ++runtime.__revision }
+      }
+      return original(command, args)
+    }
+  })
+  expect(await reload()).toEqual([null])
+
+  await page.getByRole('textbox', { name: 'Plan item' }).first().fill('Edited just before sleeping')
+  expect(await reload()).toEqual([null])
+  expect(await page.evaluate(() => (globalThis as any).__storedState)).toContain('Edited just before sleeping')
+
+  const ownRevision = await page.evaluate(() => {
+    const runtime = globalThis as any
+    runtime.__storedState = runtime.__storedState.replaceAll('Edited just before sleeping', 'Changed on another device')
+    return runtime.__revision++
+  })
+  expect(ownRevision).toBeGreaterThan(7)
+  expect(await reload()).toEqual([null, ownRevision])
+  await expect(page.getByText('Changed on another device')).toBeVisible()
+})

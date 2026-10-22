@@ -1465,20 +1465,34 @@ struct DatabaseMaintenanceStatus {
     checkpoint_recommended: bool,
 }
 
+/// With `known_revision`, returns nothing when the workspace has not changed
+/// since that revision, so a refresh need not reread and reparse it.
 #[tauri::command]
-async fn read_app_state(app: tauri::AppHandle) -> Result<Option<String>, String> {
+async fn read_app_state(
+    app: tauri::AppHandle,
+    known_revision: Option<i64>,
+) -> Result<Option<String>, String> {
     run_startup_database_task(move || {
         let startup = take_startup_database_connection(&app, StartupDatabaseRead::AppState)?;
-        let result = read_app_state_from_database(&startup.connection).and_then(|state| {
-            state
+        let result = (|| {
+            let revision = state_revision(&startup.connection)?;
+            if known_revision == Some(revision) {
+                return Ok(None);
+            }
+            read_app_state_from_database(&startup.connection)?
                 .map(|mut value| {
                     value["canRedo"] = latest_redoable_history_entry(&startup.connection)?
                         .is_some()
                         .into();
+                    // Android startup reads can bypass a background writer's
+                    // lock. A revision that moved during the read is unknown.
+                    if state_revision(&startup.connection)? == revision {
+                        value["stateRevision"] = revision.into();
+                    }
                     Ok(value.to_string())
                 })
                 .transpose()
-        });
+        })();
         if result.is_ok() {
             if let Err(error) = task_notifications::publish(&startup.connection) {
                 log::warn!("Could not refresh task notifications: {error}");
@@ -1514,18 +1528,20 @@ async fn initialize_app_state(app: tauri::AppHandle, state_json: String) -> Resu
 }
 
 #[tauri::command]
-async fn persist_operation(app: tauri::AppHandle, operation_json: String) -> Result<bool, String> {
+async fn persist_operation(app: tauri::AppHandle, operation_json: String) -> Result<PersistResult, String> {
     let housekeeping_app = app.clone();
-    let accepted = run_database_task(move || {
+    let result = run_database_task(move || {
         let database_path = app_database_path(&app)?;
         let recovery_key = database_recovery_key(&database_path)?;
         let mut connection = open_database_at(&database_path, &recovery_key)?;
         let operation = parse_json(&operation_json)?;
-        persist_operation_once(&mut connection, &operation)
+        let previous_revision = state_revision(&connection)?;
+        let accepted = persist_operation_once(&mut connection, &operation)?;
+        Ok(PersistResult { accepted, previous_revision, revision: state_revision(&connection)? })
     })
     .await?;
     schedule_meaningful_database_housekeeping(&housekeeping_app);
-    Ok(accepted)
+    Ok(result)
 }
 
 /// CI-only bulk fixture setup for the Android emulator profile. Production
@@ -1587,8 +1603,9 @@ async fn undo_last_operation(
         let database_path = app_database_path(&app)?;
         let recovery_key = database_recovery_key(&database_path)?;
         let mut connection = open_database_at(&database_path, &recovery_key)?;
+        let previous_revision = state_revision(&connection)?;
         let result = undo_last_operation_for_ui(&mut connection, expected_operation_id.as_deref())?;
-        Ok(result.map(|value| value.to_string()))
+        with_revisions(&connection, result, previous_revision)
     })
     .await?;
     if result.is_some() {
@@ -1607,8 +1624,9 @@ async fn redo_last_operation(
         let database_path = app_database_path(&app)?;
         let recovery_key = database_recovery_key(&database_path)?;
         let mut connection = open_database_at(&database_path, &recovery_key)?;
+        let previous_revision = state_revision(&connection)?;
         let result = redo_last_operation_for_ui(&mut connection, expected_operation_id.as_deref())?;
-        Ok(result.map(|value| value.to_string()))
+        with_revisions(&connection, result, previous_revision)
     })
     .await?;
     if result.is_some() {
@@ -3081,6 +3099,36 @@ fn read_app_state_from_database(connection: &Connection) -> Result<Option<Value>
     read_app_state_from_database_with_progress(connection, |_, _| {})
 }
 
+fn state_revision(connection: &Connection) -> Result<i64, String> {
+    connection
+        .query_row("select value from state_revision where singleton = 1", [], |row| row.get(0))
+        .map_err(|error| error.to_string())
+}
+
+fn with_revisions(
+    connection: &Connection,
+    result: Option<Value>,
+    previous_revision: i64,
+) -> Result<Option<String>, String> {
+    result
+        .map(|mut value| {
+            value["previousRevision"] = previous_revision.into();
+            value["revision"] = state_revision(connection)?.into();
+            Ok(value.to_string())
+        })
+        .transpose()
+}
+
+/// A frontend that holds the snapshot at `previousRevision` also holds every
+/// change up to `revision` when the only write in between was its own.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PersistResult {
+    accepted: bool,
+    previous_revision: i64,
+    revision: i64,
+}
+
 fn read_app_state_from_database_with_progress(
     connection: &Connection,
     mut progress: impl FnMut(u8, &'static str),
@@ -3400,6 +3448,21 @@ fn initialize_database(connection: &Connection) -> Result<(), String> {
           on history_entries(updated_at_ms desc, sequence desc, id desc)
           where undone != 0;
         create index if not exists idx_state_entities_order on state_entities(collection, position, entity_key);
+
+        -- Every change to the workspace passes through the operation log, so
+        -- this counter moves whenever another writer (sync, a background pass,
+        -- a second window) changes what read_app_state would return.
+        create table if not exists state_revision (
+          singleton integer primary key check (singleton = 1),
+          value integer not null
+        );
+        insert or ignore into state_revision (singleton, value) values (1, 0);
+        create trigger if not exists state_revision_operation_insert after insert on operations
+          begin update state_revision set value = value + 1; end;
+        create trigger if not exists state_revision_operation_update after update on operations
+          begin update state_revision set value = value + 1; end;
+        create trigger if not exists state_revision_operation_delete after delete on operations
+          begin update state_revision set value = value + 1; end;
       ",
         )
         .map_err(|error| error.to_string())?;
@@ -3976,6 +4039,9 @@ fn replace_app_state(connection: &mut Connection, state: &Value) -> Result<(), S
     tx.execute("delete from history_entries", [])
         .map_err(|error| error.to_string())?;
     tx.execute("delete from operations", [])
+        .map_err(|error| error.to_string())?;
+    // An empty operation log fires no trigger, yet the workspace was replaced.
+    tx.execute("update state_revision set value = value + 1", [])
         .map_err(|error| error.to_string())?;
 
     set_metadata(&tx, "device_id", required_string(state, "deviceId")?)?;
@@ -13055,6 +13121,36 @@ mod tests {
             error.contains("file is not a database") || error.contains("SQL logic error"),
             "{error}"
         );
+    }
+
+    #[test]
+    fn state_revision_moves_with_every_workspace_change_but_not_reads() {
+        let database = TestDatabase::new("state-revision");
+        let recovery_key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        let empty = state_revision(&connection).unwrap();
+        replace_app_state(&mut connection, &test_state("Revision test")).unwrap();
+        let replaced = state_revision(&connection).unwrap();
+        assert!(replaced > empty, "replacing the workspace must invalidate every snapshot");
+
+        let edit = json!({
+            "id": "op_device_test_2", "deviceId": "device_test", "sequence": 2,
+            "type": "patch_plan_item", "timestamp": "2026-05-21T00:01:00Z",
+            "payload": {"planId": "plan_today", "itemId": "plan_item_wake", "patch": {"text": "Synthetic edit", "html": "Synthetic edit"}}
+        });
+        assert!(persist_operation_once(&mut connection, &edit).unwrap());
+        let edited = state_revision(&connection).unwrap();
+        assert!(edited > replaced);
+        read_app_state_from_database(&connection).unwrap().unwrap();
+        drop(connection);
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        assert_eq!(state_revision(&connection).unwrap(), edited, "opening and reading are not changes");
+
+        undo_last_operation_in_database(&mut connection).unwrap().unwrap();
+        let undone = state_revision(&connection).unwrap();
+        assert!(undone > edited);
+        sync::checkpoint_operation_log_preserving_history(&connection).unwrap();
+        assert!(state_revision(&connection).unwrap() > undone);
     }
 
     #[test]
