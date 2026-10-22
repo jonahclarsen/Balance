@@ -869,7 +869,7 @@ return rows`
   $: metricOverlayAnswers =
     metricOverlay && metricOverlayMetric ? answersForEntry($plannerStore.metricEntries, metricOverlay.metricId, metricOverlay.date) : {}
   $: canGenerateDisplayedDay = displayedPlanDate >= currentDay || !activePlan
-  $: generateButtonLabel = displayedPlanDate === currentDay ? 'Generate today' : 'Generate selected day'
+  $: generateButtonLabel = 'Generate day'
   $: activeGoalCount = goals.filter((goal) => isGoalActiveOnDate(goal, currentDay)).length
   $: sortedGoals = sortGoalsByUrgency(goals, goalCompletions, currentDay)
   $: lockGoalOrderForCurrentVisit(view, sortedGoals)
