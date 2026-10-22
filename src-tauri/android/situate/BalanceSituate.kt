@@ -78,6 +78,8 @@ object BalanceSituate {
         SituateAccessibility.enforceCurrent()
         BalanceWidgets.refreshAllAsync(context)
     }
+    // Rust calls this by name through JNI; R8 cannot see that reference.
+    @androidx.annotation.Keep
     @JvmStatic fun call(context: Context, action: String, query: String): String {
         when (action) {
             "refresh" -> {

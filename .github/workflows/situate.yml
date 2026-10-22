@@ -27,7 +27,7 @@ jobs:
       - run: pnpm check
       - run: pnpm test:unit
       - run: pnpm test:relay
-      - run: node --test .github/scripts/configure-android-situate.test.mjs .github/scripts/configure-android-widgets.test.mjs integrations/situate/chrome/policy.test.mjs
+      - run: node --test .github/scripts/android-jni-entry-points.test.mjs .github/scripts/configure-android-situate.test.mjs .github/scripts/configure-android-widgets.test.mjs integrations/situate/chrome/policy.test.mjs
       - run: python3 -m unittest discover -s integrations/situate -p 'test_*.py'
       - run: cargo test --manifest-path src-tauri/Cargo.toml
       - run: node scripts/test-macos-task-notifications.mjs

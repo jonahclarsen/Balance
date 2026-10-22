@@ -195,10 +195,12 @@ pub(crate) fn situate_save(
     {
         return Err("Invalid Situate rules".into());
     }
-    write(&path, &document)?;
-    let _ = app.emit("situate-rules-changed", document["revision"].clone());
+    // Hand Android the rules first: if enforcement can't take them, the save
+    // fails whole instead of leaving the stored revision ahead of the window.
     #[cfg(target_os = "android")]
     android::call("refresh", &json!({"document": document}).to_string())?;
+    write(&path, &document)?;
+    let _ = app.emit("situate-rules-changed", document["revision"].clone());
     Ok(())
 }
 #[tauri::command]

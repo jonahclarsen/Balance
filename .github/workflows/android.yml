@@ -16,6 +16,11 @@ on:
         required: false
         default: false
         type: boolean
+      minify_release:
+        description: Shrink the manual release APK with R8 like a tagged release
+        required: false
+        default: false
+        type: boolean
       run_ui_pairing:
         description: Run the slower camera and UI Automator pairing journey
         required: false
@@ -232,7 +237,7 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           # R8 is expensive and only useful for production artifacts. Tags keep
           # it enabled; manually requested development releases skip it.
-          BALANCE_ANDROID_MINIFY_RELEASE: ${{ github.ref_type == 'tag' && 'true' || 'false' }}
+          BALANCE_ANDROID_MINIFY_RELEASE: ${{ (github.ref_type == 'tag' || inputs.minify_release) && 'true' || 'false' }}
         run: |
           for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS; do
             if [[ -z "${!name}" ]]; then
@@ -277,6 +282,8 @@ jobs:
             echo "::error::The phone APK unexpectedly contains x86_64 libraries"
             exit 1
           fi
+
+          node .github/scripts/android-jni-entry-points.mjs "$APK_PATH"
 
           cp "$APK_PATH" balance-arm64.apk
 

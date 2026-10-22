@@ -45,6 +45,8 @@ object BalanceUpdater {
     }
 
     /** Called on a Rust blocking worker. Returns an empty string once Android has the APK. */
+    // Rust calls this by name through JNI; R8 cannot see that reference.
+    @androidx.annotation.Keep
     @JvmStatic fun install(tag: String): String {
         val app = context ?: return "Balance is still starting. Try again in a moment."
         if (!TAG_PATTERN.matches(tag)) return "GitHub's latest release has an unexpected version."

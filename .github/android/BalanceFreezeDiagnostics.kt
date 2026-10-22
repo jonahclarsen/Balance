@@ -46,6 +46,8 @@ object BalanceFreezeDiagnostics {
         main.removeCallbacks(pulse)
     }
     /** Called on a Rust blocking worker, then posts just the chooser to the UI. */
+    // Rust calls this by name through JNI; R8 cannot see that reference.
+    @androidx.annotation.Keep
     @JvmStatic fun share(report: String): Boolean {
         val app = context ?: return false
         return try {
