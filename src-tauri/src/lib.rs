@@ -169,10 +169,11 @@ const SYNC_LOG_DIRTY_SINCE_MS: &str = "sync_log_dirty_since_ms";
 const REPLICATED_PREFERENCES: &str = "replicated_preferences";
 const DEVICE_APPEARANCE: &str = "device_appearance";
 const DAY_THEME_PREFERENCE_PREFIX: &str = "dayTheme/";
-const ENTITY_COLLECTIONS: [&str; 16] = [
+const ENTITY_COLLECTIONS: [&str; 17] = [
     "images",
     "uneditedPlanItems",
     "templateQuestions",
+    "templateItemConditions",
     "templateListExpansions",
     "taskNotifications",
     "goals",
@@ -3126,6 +3127,7 @@ fn read_app_state_from_database_with_progress(
         "images": read_entity_collection(connection, "images")?,
         "uneditedPlanItems": read_entity_collection(connection, "uneditedPlanItems")?,
         "templateQuestions": read_entity_collection(connection, "templateQuestions")?,
+        "templateItemConditions": read_entity_collection(connection, "templateItemConditions")?,
         "templateListExpansions": read_entity_collection(connection, "templateListExpansions")?,
         "taskNotifications": read_entity_collection(connection, "taskNotifications")?,
         "projects": lists_metrics_data["projects"].clone(),
@@ -12172,6 +12174,33 @@ mod tests {
         assert_eq!(undone["templateQuestions"], json!([]));
         let redone = redo_last_operation_in_database(&mut connection).unwrap().unwrap();
         assert_eq!(redone["templateQuestions"], json!([question]));
+    }
+
+    #[test]
+    fn template_item_conditions_persist_and_round_trip_undo_redo() {
+        let database = TestDatabase::new("template-item-conditions");
+        let recovery_key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        let state = test_state("Synthetic template conditions");
+        replace_app_state(&mut connection, &state).unwrap();
+        let condition = json!({"id": "template_item_test", "noActiveProject": true});
+        let operation = json!({
+            "id": "template-condition-op", "deviceId": "device_test", "sequence": 2,
+            "type": "apply_entity_changes", "timestamp": "2026-10-21T08:00:00Z",
+            "payload": {"action": "set_template_item_no_active_project", "itemId": "template_item_test", "entityChanges": {
+                "version": 2, "deletes": [], "upserts": [{"collection": "templateItemConditions", "key": "template_item_test",
+                    "position": 0, "value": condition, "patches": [sync::entities::diff(&Value::Null, &condition)]}]
+            }}
+        });
+        persist_operation_to_database(&mut connection, &operation).unwrap();
+        drop(connection);
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        let loaded = read_app_state_from_database(&connection).unwrap().unwrap();
+        assert_eq!(loaded["templateItemConditions"], json!([condition]));
+        let undone = undo_last_operation_in_database(&mut connection).unwrap().unwrap();
+        assert_eq!(undone["templateItemConditions"], json!([]));
+        let redone = redo_last_operation_in_database(&mut connection).unwrap().unwrap();
+        assert_eq!(redone["templateItemConditions"], json!([condition]));
     }
 
     #[test]

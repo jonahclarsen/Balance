@@ -26,6 +26,14 @@ export type TemplateQuestion = {
   question: string
 }
 
+// Conditions on a template row, keyed by its ID like TemplateQuestion. A row
+// without conditions has no record.
+export type TemplateItemCondition = {
+  id: Id
+  // Left out of the day, with its children, when a project is active at noon.
+  noActiveProject?: boolean
+}
+
 // Per-option choices live outside relational templates for older-client compatibility.
 export type TemplateListExpansion = {
   id: Id
@@ -111,8 +119,6 @@ export type ListTemplateItem = {
   html: string
   probability: number
   alternatives?: ListTemplateItemAlternative[]
-  // Left out of generated lists while any project is active.
-  onlyWithoutActiveProject?: boolean
   children: ListTemplateItem[]
 }
 
@@ -401,6 +407,7 @@ export type AppState = {
   preferences: ReplicatedPreferences
   templates: DailyTemplate[]
   templateQuestions: TemplateQuestion[]
+  templateItemConditions: TemplateItemCondition[]
   templateListExpansions: TemplateListExpansion[]
   taskNotifications: TaskNotification[]
   plans: DailyPlan[]

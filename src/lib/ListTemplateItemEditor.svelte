@@ -58,7 +58,6 @@
     options?: TextChangeOptions,
   ) => void = () => {}
   export let deleteAlternative: (templateId: Id, itemId: Id, alternativeId: Id) => void = () => {}
-  export let setOnlyWithoutActiveProject: (templateId: Id, itemId: Id, enabled: boolean) => void = () => {}
   export let historyRevision: number
   export let selectedItemIds: Set<Id> = new Set()
   export let selectionDragging = false
@@ -470,17 +469,6 @@
         internalLinkSegments={linkifyItemText(item.text, listTemplates, metrics, notes)}
         onInternalLinkClick={(link) => onOpenLink(link)}
       />
-      {#if item.onlyWithoutActiveProject}
-        <button
-          class="active-project-gate"
-          type="button"
-          title="Only when no active project (click to turn off)"
-          aria-label="Only when no active project; turn off"
-          on:click={() => setOnlyWithoutActiveProject(templateId, item.id, false)}
-        >
-          <svg viewBox="0 0 28 14" aria-hidden="true"><rect x="1" y="1" width="12" height="12" rx="3" /><path d="m4 7 2 2 4-4" /><circle cx="21" cy="7" r="5.5" /><path d="m17.1 3.1 7.8 7.8" /></svg>
-        </button>
-      {/if}
       {#if alternatives.length > 0}
         <span class="wording-share" aria-label={`This wording: ${primaryShare}% of appearances`} title="Share of this item's appearances that use this wording; alternatives take the rest">
           ({primaryShare}%)
@@ -580,7 +568,6 @@
             {addAlternative}
             {patchAlternative}
             {deleteAlternative}
-            {setOnlyWithoutActiveProject}
             {historyRevision}
             {selectedItemIds}
             {selectionDragging}
@@ -603,17 +590,6 @@
 <style>
   .alternative-row :global(.template-text) { flex: 1; min-width: 0; }
   .alternative-label,
-  .active-project-gate {
-    display: inline-grid;
-    flex: 0 0 auto;
-    place-items: center;
-    padding: 3px 5px;
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    background: transparent;
-    color: var(--accent-strong);
-  }
-  .active-project-gate svg { width: 28px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
   .wording-share {
     flex: 0 0 auto;
     color: var(--muted);
@@ -623,7 +599,5 @@
   @media (max-width: 760px) {
     .alternative-label { display: none; }
     .wording-share { grid-column: 1; grid-row: 2; justify-self: start; }
-    .active-project-gate { grid-column: 1; grid-row: 2; justify-self: start; }
-    .active-project-gate ~ :is(.wording-share, .typical-duration) { margin-left: 46px; }
   }
 </style>

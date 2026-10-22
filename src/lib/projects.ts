@@ -1,4 +1,4 @@
-import type { ListTemplate, ListTemplateItem, Project } from './types'
+import type { DailyTemplate, Id, Project, TemplateItem, TemplateItemCondition } from './types'
 
 export const PROJECT_ACTIVE_DAY_COUNTS = [1, 2, 3, 4, 5] as const
 const ACTIVE_DAY_START_HOUR = 7
@@ -35,14 +35,20 @@ export function nextProjectExpiry(projects: Project[], now = Date.now()): number
   return next
 }
 
-function withoutActiveProjectItems(items: ListTemplateItem[]): ListTemplateItem[] {
+// Whether any project is active at noon on the given day.
+export function hasActiveProjectOn(projects: Project[], date: string): boolean {
+  const noon = new Date(`${date}T12:00:00`).getTime()
+  return projects.some((project) => isProjectActive(project, noon))
+}
+
+function withoutNoActiveProjectItems(items: TemplateItem[], gatedIds: Set<Id>): TemplateItem[] {
   let changed = false
   const kept = items.flatMap((item) => {
-    if (item.onlyWithoutActiveProject) {
+    if (gatedIds.has(item.id)) {
       changed = true
       return []
     }
-    const children = withoutActiveProjectItems(item.children)
+    const children = withoutNoActiveProjectItems(item.children, gatedIds)
     if (children === item.children) return [item]
     changed = true
     return [{ ...item, children }]
@@ -50,11 +56,10 @@ function withoutActiveProjectItems(items: ListTemplateItem[]): ListTemplateItem[
   return changed ? kept : items
 }
 
-// List templates as generation should see them right now.
-export function listTemplatesForGeneration(listTemplates: ListTemplate[], projects: Project[], now = Date.now()): ListTemplate[] {
-  if (!projects.some((project) => isProjectActive(project, now))) return listTemplates
-  return listTemplates.map((template) => {
-    const items = withoutActiveProjectItems(template.items)
-    return items === template.items ? template : { ...template, items }
-  })
+// The day template as generating `date` should see it, for both its quiz and its items.
+export function templateForGeneration(template: DailyTemplate, conditions: TemplateItemCondition[], projects: Project[], date: string): DailyTemplate {
+  const gatedIds = new Set(conditions.filter(({ noActiveProject }) => noActiveProject).map(({ id }) => id))
+  if (gatedIds.size === 0 || !hasActiveProjectOn(projects, date)) return template
+  const items = withoutNoActiveProjectItems(template.items, gatedIds)
+  return items === template.items ? template : { ...template, items }
 }

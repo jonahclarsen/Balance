@@ -47,7 +47,7 @@
     summarizeListTiming,
   } from './lib/listTiming'
   import ProjectsPanel from './lib/ProjectsPanel.svelte'
-  import { activeProjects } from './lib/projects'
+  import { activeProjects, templateForGeneration } from './lib/projects'
   import PrioritizePanel from './lib/PrioritizePanel.svelte'
   import BucketsPanel from './lib/BucketsPanel.svelte'
   import IdeaSortModal from './lib/IdeaSortModal.svelte'
@@ -657,6 +657,7 @@ return rows`
       cut: boolean
       listExpansions?: import('./lib/types').TemplateListExpansion[]
       questions?: import('./lib/types').TemplateQuestion[]
+      conditions?: import('./lib/types').TemplateItemCondition[]
     }
     | { kind: 'list-template'; items: ListTemplateItem[]; cut: boolean }
   type ItemClipboard = PlanItemClipboard | TemplateItemClipboard
@@ -3767,7 +3768,7 @@ return rows`
       .filter((item) => item.dayAssignmentDate !== date)
     if (propositions.length > 0 && !(await askIdeaSort(propositions, 'Sort new ideas', (itemId) => plannerStore.assignIdeaToDay(itemId, date)))) return
 
-    const steps = templateQuizSteps(template, $plannerStore.templateQuestions)
+    const steps = templateQuizSteps(templateForGeneration(template, $plannerStore.templateItemConditions, $plannerStore.projects, date), $plannerStore.templateQuestions)
     const quizAnswers = steps.length > 0 ? await askDayQuiz(template.name, steps) : {}
     if (!quizAnswers) return
 
@@ -5693,7 +5694,7 @@ return rows`
     const targetId = explicitTargetId ?? emptyPlaceholderId
     const placement = targetId && isEmptyTemplateLeaf(structured.kind, targetId) ? 'replace' : 'after'
     const pastedIds = structured.kind === 'day-template'
-      ? plannerStore.pasteTemplateItems(containerId, structured.items, targetId, placement, structured.listExpansions, structured.questions)
+      ? plannerStore.pasteTemplateItems(containerId, structured.items, targetId, placement, structured.listExpansions, structured.questions, structured.conditions)
       : plannerStore.pasteListTemplateItems(containerId, structured.items, targetId, placement)
     if (pastedIds.length === 0) return
 
@@ -6407,7 +6408,7 @@ return rows`
   }
 
   function writeTemplateItemsToSystemClipboard(clipboard: TemplateItemClipboard) {
-    if (clipboard.kind === 'day-template' && (!clipboard.listExpansions || !clipboard.questions)) {
+    if (clipboard.kind === 'day-template' && (!clipboard.listExpansions || !clipboard.questions || !clipboard.conditions)) {
       const itemIds = new Set<Id>()
       const optionIds = new Set<Id>()
       const visit = (items: TemplateItem[]) => items.forEach((item) => {
@@ -6421,6 +6422,8 @@ return rows`
         listExpansions: clipboard.listExpansions ?? $plannerStore.templateListExpansions
           .filter(({ id }) => optionIds.has(id)).map((record) => ({ ...record, listTemplateIds: [...record.listTemplateIds] })),
         questions: clipboard.questions ?? $plannerStore.templateQuestions
+          .filter(({ id }) => itemIds.has(id)).map((record) => ({ ...record })),
+        conditions: clipboard.conditions ?? $plannerStore.templateItemConditions
           .filter(({ id }) => itemIds.has(id)).map((record) => ({ ...record })),
       }
     }
@@ -7479,6 +7482,8 @@ return rows`
                 setListExpansion={plannerStore.setTemplateListExpansion}
                 templateQuestions={$plannerStore.templateQuestions}
                 setQuestion={plannerStore.setTemplateItemQuestion}
+                templateItemConditions={$plannerStore.templateItemConditions}
+                setNoActiveProject={plannerStore.setTemplateItemNoActiveProject}
               />
             {/each}
           </div>
@@ -7636,7 +7641,6 @@ return rows`
                 addAlternative={plannerStore.addListTemplateItemAlternative}
                 patchAlternative={plannerStore.patchListTemplateItemAlternative}
                 deleteAlternative={plannerStore.deleteListTemplateItemAlternative}
-                setOnlyWithoutActiveProject={plannerStore.setListTemplateItemOnlyWithoutActiveProject}
                 historyRevision={$plannerStore.historyRevision}
                 selectedItemIds={selectedItemIdSet}
                 selectionDragging={selectingItems}

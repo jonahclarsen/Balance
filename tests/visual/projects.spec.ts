@@ -15,7 +15,7 @@ async function readState(page: Page) {
     const { plannerStore } = await import(/* @vite-ignore */ path)
     let state: any
     plannerStore.subscribe((value: any) => { state = value })()
-    return structuredClone({ projects: state.projects, operation: state.operations.at(-1), lists: state.lists, listTemplates: state.listTemplates })
+    return structuredClone({ projects: state.projects, operation: state.operations.at(-1) })
   })
 }
 
@@ -146,48 +146,6 @@ test('retired check-ins complete projects that reached 100% and are then removed
     ['Synthetic finished', '2026-09-01T10:00:00.000Z'],
     ['Synthetic reopened', undefined],
   ])
-})
-
-test('list items can wait for no active project, shown by a row indicator', async ({ page }) => {
-  await page.goto('/')
-  await page.evaluate(() => localStorage.clear())
-  await page.reload()
-  await openView(page, 'Lists')
-  await page.getByRole('button', { name: '+ New list', exact: true }).click()
-  const editor = page.locator('[data-list-template-text-input]').first()
-  await editor.fill('Synthetic quiz')
-  await editor.blur()
-  const gate = page.locator('.active-project-gate')
-  await expect(gate).toHaveCount(0)
-  await editor.click({ button: 'right' })
-  const toggle = page.getByRole('menuitemcheckbox', { name: 'Only when no active project' })
-  await expect(toggle).toHaveAttribute('aria-checked', 'false')
-  await toggle.click()
-  await expect(gate).toBeVisible()
-  await editor.click({ button: 'right' })
-  await expect(toggle).toHaveAttribute('aria-checked', 'true')
-  await page.keyboard.press('Escape')
-
-  const generated = await page.evaluate(async () => {
-    const path = '/src/lib/store.ts'
-    const { plannerStore } = await import(/* @vite-ignore */ path)
-    let state: any
-    const read = () => { plannerStore.subscribe((value: any) => { state = value })(); return state }
-    const template = read().listTemplates[0].id
-    const items = (date: string) => {
-      const id = plannerStore.ensureListForDate(template, date)
-      return read().lists.find((list: any) => list.id === id).items.map((item: any) => item.text)
-    }
-    const idle = items('2026-01-01')
-    const project = plannerStore.addProject('Synthetic project')
-    plannerStore.setProjectActiveDays(project, 2)
-    return { idle, active: items('2026-01-02') }
-  })
-  expect(generated).toEqual({ idle: ['Synthetic quiz'], active: [] })
-
-  await gate.click()
-  await expect(gate).toHaveCount(0)
-  expect((await readState(page)).listTemplates[0].items[0]).not.toHaveProperty('onlyWithoutActiveProject')
 })
 
 for (const destination of ['page', 'project'] as const) {

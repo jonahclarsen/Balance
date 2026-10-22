@@ -7,7 +7,7 @@
   import RichTextEditor from './RichTextEditor.svelte'
   import TimeRange from './TimeRange.svelte'
   import TreeItemRow from './TreeItemRow.svelte'
-  import type { Id, ListTemplate, Metric, MoveDirection, MovePlacement, Note, TemplateItem, TemplateOption, TemplateListExpansion, TemplateQuestion } from './types'
+  import type { Id, ListTemplate, Metric, MoveDirection, MovePlacement, Note, TemplateItem, TemplateItemCondition, TemplateOption, TemplateListExpansion, TemplateQuestion } from './types'
 
   type TextChangeOptions = {
     mergeHistory?: boolean
@@ -68,6 +68,8 @@
   export let onOpenLink: (link: ItemLink) => void = () => {}
   export let templateQuestions: TemplateQuestion[] = []
   export let setQuestion: (itemId: Id, question: string | null) => void = () => {}
+  export let templateItemConditions: TemplateItemCondition[] = []
+  export let setNoActiveProject: (itemId: Id, enabled: boolean) => void = () => {}
 
   export let listExpansions: TemplateListExpansion[] = []
   export let setListExpansion: (optionId: Id, listTemplateId: Id, enabled: boolean) => void = () => {}
@@ -106,6 +108,7 @@
 
   let questionInput: HTMLInputElement | null = null
   $: question = templateQuestions.find(({ id }) => id === item.id)?.question
+  $: noActiveProject = Boolean(templateItemConditions.find(({ id }) => id === item.id)?.noActiveProject)
 
   async function addQuestion() {
     setQuestion(item.id, '')
@@ -488,6 +491,17 @@
   </div>
 
   <div class="template-actions">
+    {#if noActiveProject}
+      <button
+        class="active-project-gate"
+        type="button"
+        title="Only when no active project (click to turn off)"
+        aria-label="Only when no active project; turn off"
+        on:click={() => setNoActiveProject(item.id, false)}
+      >
+        <svg viewBox="0 0 28 14" aria-hidden="true"><rect x="1" y="1" width="12" height="12" rx="3" /><path d="m4 7 2 2 4-4" /><circle cx="21" cy="7" r="5.5" /><path d="m17.1 3.1 7.8 7.8" /></svg>
+      </button>
+    {/if}
     {#if question === undefined}
       <span class:bad-total={badProbabilityTotal} class="total">{probabilityTotal}%</span>
       <button
@@ -540,6 +554,8 @@
             {listExpansions}
             {setListExpansion}
             {setQuestion}
+            {templateItemConditions}
+            {setNoActiveProject}
           />
         {/each}
       </div>
@@ -561,6 +577,17 @@
   .list-expansion { display: inline-flex; align-items: center; gap: 3px; padding: 4px; margin: -4px; color: var(--muted); cursor: pointer; }
   .list-expansion input { margin: 0; cursor: pointer; }
   .list-expansion svg { width: 12px; height: 12px; cursor: pointer; }
+  .active-project-gate {
+    display: inline-grid;
+    flex: 0 0 auto;
+    place-items: center;
+    padding: 3px 5px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--accent-strong);
+  }
+  .active-project-gate svg { width: 28px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
   @media (max-width: 760px) {
     .template-option-editor { grid-column: 1 / -1; grid-row: 1; width: 100%; }
   }

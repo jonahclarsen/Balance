@@ -175,6 +175,7 @@ export function createInitialState(): AppState {
     plans: [],
     uneditedPlanItems: [],
     templateQuestions: [],
+    templateItemConditions: [],
     templateListExpansions: [],
     taskNotifications: [],
     listTemplates: [],

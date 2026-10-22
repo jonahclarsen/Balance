@@ -6,7 +6,6 @@
   import { linkAtElement, parseNavigationURL } from './navigationLinks'
   import { bucketsLinkFromURL } from './bucketLinks'
   import { plannerStore } from './store'
-  import { findListTemplateItem } from './planner'
 
   // A copy entry carries its link; a toggle carries its state and action.
   type Option = { label: string; url?: string; checked?: boolean; toggle?: () => void }
@@ -70,14 +69,12 @@
     previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
     const entries: Option[] = [{ label: 'Copy link', url }]
     const target = parseNavigationURL(url)
-    const listTemplateId = target?.kind === 'list-template' && target.itemId && event.target.closest('[data-list-template-item-id]') ? target.id : ''
-    const listItem = listTemplateId && target?.kind === 'list-template' && target.itemId
-      ? findListTemplateItem(get(plannerStore).listTemplates.find(({ id }) => id === listTemplateId)?.items ?? [], target.itemId)
-      : null
-    const listItemToggle: Option | null = listItem ? {
+    const templateItemId = target?.kind === 'day-template' && target.itemId && event.target.closest('[data-template-item-id]') ? target.itemId : ''
+    const gated = Boolean(templateItemId && get(plannerStore).templateItemConditions.find(({ id }) => id === templateItemId)?.noActiveProject)
+    const itemToggle: Option | null = templateItemId ? {
       label: 'Only when no active project',
-      checked: Boolean(listItem.onlyWithoutActiveProject),
-      toggle: () => plannerStore.setListTemplateItemOnlyWithoutActiveProject(listTemplateId, listItem.id, !listItem.onlyWithoutActiveProject),
+      checked: gated,
+      toggle: () => plannerStore.setTemplateItemNoActiveProject(templateItemId, !gated),
     } : null
     if (target?.kind === 'day-template' || target?.kind === 'list-template') {
       entries.push({ label: 'Copy review link', url: `balance://review/${target.kind === 'day-template' ? 'day' : 'list'}/${target.id}` })
@@ -93,14 +90,14 @@
         await nativeMenu?.close()
         nativeMenu = await Menu.new({ items: [
           ...entries.map(entry => ({ text: entry.label, action: () => { void copy(entry.url!) } })),
-          ...(listItemToggle ? [{ item: 'Separator' as const }, await CheckMenuItem.new({ text: listItemToggle.label, checked: listItemToggle.checked, action: listItemToggle.toggle })] : []),
+          ...(itemToggle ? [{ item: 'Separator' as const }, await CheckMenuItem.new({ text: itemToggle.label, checked: itemToggle.checked, action: itemToggle.toggle })] : []),
           ...(editable ? [{ item: 'Separator' as const }, { item: 'Cut' as const }, { item: 'Copy' as const }, { item: 'Paste' as const }, { item: 'SelectAll' as const }] : []),
         ] })
         await nativeMenu.popup()
         return
       } catch { /* Browser menu remains available if native menus are unavailable. */ }
     }
-    options = listItemToggle ? [...entries, listItemToggle] : entries
+    options = itemToggle ? [...entries, itemToggle] : entries
     const rect = event.target.getBoundingClientRect()
     x = event.clientX || rect.left
     y = event.clientY || rect.bottom

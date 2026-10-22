@@ -4,7 +4,7 @@ import { generatedItemMarkers, preservedPlanItems, reconcileUneditedPlanItems } 
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import { noteItemsEqual } from './noteEditor/noteItems'
 import { pickerColorToHex } from './colors'
-import { listTemplatesForGeneration, projectActiveUntil } from './projects'
+import { projectActiveUntil, templateForGeneration } from './projects'
 import { spreadPriorityItems } from './prioritize'
 import { get, writable, type Writable } from 'svelte/store'
 import {
@@ -139,6 +139,7 @@ import type {
   TemplateItem,
   TemplateOption,
   TemplateListExpansion,
+  TemplateItemCondition,
   TemplateQuestion,
   TemplateQuizAnswers,
   TaskNotification,
@@ -202,6 +203,7 @@ const ENTITY_COLLECTIONS = [
   'ideaBuckets',
   'uneditedPlanItems',
   'templateQuestions',
+  'templateItemConditions',
   'templateListExpansions',
   'taskNotifications',
 ] as const
@@ -1080,13 +1082,13 @@ function createPlannerStore() {
       if (!template) return
       const notifications: TaskNotification[] = []
       const generated = generatePlanFromTemplate(
-        template,
+        templateForGeneration(template, current.templateItemConditions, current.projects, date),
         date,
         dailyReminderForGeneratedPlan(current.plans, date),
         current.goals,
         current.goalCompletions,
         quizAnswers,
-        listTemplatesForGeneration(current.listTemplates, current.projects),
+        current.listTemplates,
         current.templateListExpansions,
         notifications,
       )
@@ -1727,6 +1729,25 @@ function createPlannerStore() {
       )
     },
 
+    // The record goes away once the row has no conditions left.
+    setTemplateItemNoActiveProject(itemId: Id, enabled: boolean) {
+      commitEntities('set_template_item_no_active_project', { itemId, enabled }, (state) => {
+        const existing = state.templateItemConditions.find(({ id }) => id === itemId)
+        if (Boolean(existing?.noActiveProject) === enabled) return state
+        const { noActiveProject: _noActiveProject, ...rest } = existing ?? { id: itemId }
+        const record: TemplateItemCondition = enabled ? { ...rest, noActiveProject: true } : rest
+        const others = state.templateItemConditions.filter(({ id }) => id !== itemId)
+        return {
+          ...state,
+          templateItemConditions: Object.keys(record).length === 1
+            ? others
+            : existing
+              ? state.templateItemConditions.map((candidate) => (candidate.id === itemId ? record : candidate))
+              : [...state.templateItemConditions, record],
+        }
+      }, { reconcileGoals: false })
+    },
+
     patchTemplateItem(templateId: Id, itemId: Id, patch: Partial<TemplateItem>, options: TextChangeOptions = {}) {
       const mergeOptions =
         options.mergeKey && options.mergeHistory !== false
@@ -1860,14 +1881,18 @@ function createPlannerStore() {
       placement: 'after' | 'replace',
       listExpansions: TemplateListExpansion[] = [],
       questions: TemplateQuestion[] = [],
+      conditions: TemplateItemCondition[] = [],
     ) {
       if (itemsToPaste.length === 0) return []
       const pastedItems = cloneTemplateItemsForPaste(itemsToPaste)
       const copiedExpansions: TemplateListExpansion[] = []
       const copiedQuestions: TemplateQuestion[] = []
+      const copiedConditions: TemplateItemCondition[] = []
       const copyChoices = (source: TemplateItem[], pasted: TemplateItem[]) => source.forEach((item, index) => {
         const question = questions.find(({ id }) => id === item.id)
         if (question) copiedQuestions.push({ ...question, id: pasted[index].id })
+        const condition = conditions.find(({ id }) => id === item.id)
+        if (condition) copiedConditions.push({ ...condition, id: pasted[index].id })
         item.options.forEach((option, optionIndex) => {
           const choice = listExpansions.find(({ id }) => id === option.id)
           if (choice) copiedExpansions.push({ ...choice, id: pasted[index].options[optionIndex].id, listTemplateIds: [...choice.listTemplateIds] })
@@ -1887,6 +1912,7 @@ function createPlannerStore() {
           ...next,
           templateListExpansions: copiedExpansions.length === 0 ? next.templateListExpansions : [...next.templateListExpansions, ...copiedExpansions],
           templateQuestions: copiedQuestions.length === 0 ? next.templateQuestions : [...next.templateQuestions, ...copiedQuestions],
+          templateItemConditions: copiedConditions.length === 0 ? next.templateItemConditions : [...next.templateItemConditions, ...copiedConditions],
         }
       })
       return pastedItems.map((item) => item.id)
@@ -2660,19 +2686,6 @@ function createPlannerStore() {
       )
     },
 
-    setListTemplateItemOnlyWithoutActiveProject(templateId: Id, itemId: Id, enabled: boolean) {
-      commitEntities('set_list_template_item_only_without_active_project', { templateId, itemId, enabled }, (state) =>
-        updateListTemplate(state, templateId, (template) => {
-          const items = updateListTemplateItem(template.items, itemId, (item) => {
-            if (Boolean(item.onlyWithoutActiveProject) === enabled) return item
-            const { onlyWithoutActiveProject: _onlyWithoutActiveProject, ...rest } = item
-            return enabled ? { ...rest, onlyWithoutActiveProject: true } : rest
-          })
-          return items === template.items ? template : { ...template, updatedAt: nowISO(), items }
-        }),
-      )
-    },
-
     addListTemplateItemAlternative(templateId: Id, itemId: Id) {
       const template = get(store).listTemplates.find((candidate) => candidate.id === templateId)
       const item = template ? findListTemplateItemLocation(template.items, itemId)?.item : undefined
@@ -3001,7 +3014,7 @@ function createPlannerStore() {
       const existing = current.lists.find((list) => list.listTemplateId === listTemplateId && list.date === date)
       if (existing) return existing.id
 
-      const template = listTemplatesForGeneration(current.listTemplates, current.projects).find((candidate) => candidate.id === listTemplateId)
+      const template = current.listTemplates.find((candidate) => candidate.id === listTemplateId)
       if (!template) return null
 
       const notifications: TaskNotification[] = []
@@ -4049,6 +4062,7 @@ export async function inspectDatabase(): Promise<DatabaseInspection | null> {
       plans: parsed.plans ?? [],
       uneditedPlanItems: [],
       templateQuestions: [],
+      templateItemConditions: [],
       templateListExpansions: [],
       taskNotifications: [],
       listTemplates: [],
@@ -4126,6 +4140,7 @@ function* normalizeStateSteps(state: AppState): Generator<void, AppState, void> 
     images: state.images ?? [],
     uneditedPlanItems: state.uneditedPlanItems ?? [],
     templateQuestions: state.templateQuestions ?? [],
+    templateItemConditions: state.templateItemConditions ?? [],
     templateListExpansions: state.templateListExpansions ?? [],
     taskNotifications: state.taskNotifications ?? [],
     projects: state.projects ?? [],
