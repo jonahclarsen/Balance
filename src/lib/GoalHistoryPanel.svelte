@@ -336,7 +336,7 @@
         class="goal-history-hide-button"
         type="button"
         aria-label="Hide goal rhythm for 6 hours"
-        aria-keyshortcuts={hideShortcutLabel ? 'Alt+A' : undefined}
+        aria-keyshortcuts={hideShortcutLabel ? 'Alt+K' : undefined}
         title={`Hide goal rhythm for 6 hours${hideShortcutLabel ? ` (${hideShortcutLabel})` : ''}`}
         on:click={onHide}
       >

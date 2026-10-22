@@ -47,7 +47,7 @@ test('quick-added ideas land in Proposition Party and move with timed unlocks', 
   test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
   await open(page)
 
-  await page.keyboard.press('Alt+K')
+  await page.keyboard.press('Alt+A')
   const input = page.getByRole('textbox', { name: 'New idea' })
   await expect(input).toBeFocused()
   await input.fill('Synthetic idea one')

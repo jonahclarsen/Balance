@@ -631,7 +631,7 @@ test('goal rhythm marks past days with unchecked tasks with a red X', async ({ p
   await expect(head(unfinished)).not.toHaveClass(/incomplete/)
 })
 
-test('Alt+A and the close button hide goal rhythm for 6 hours', async ({ page }) => {
+test('Alt+K and the close button hide goal rhythm for 6 hours', async ({ page }) => {
   await page.clock.install()
   const goalRhythm = page.getByRole('region', { name: 'Goal history' })
   const goalSearch = page.getByRole('searchbox', { name: 'Search goals' })
@@ -644,7 +644,7 @@ test('Alt+A and the close button hide goal rhythm for 6 hours', async ({ page })
       testWindow.goalSearchInputEvents = (testWindow.goalSearchInputEvents ?? 0) + 1
     })
   })
-  await goalSearch.press('Alt+a')
+  await goalSearch.press('Alt+k')
   expect(
     await page.evaluate(
       () => (window as typeof window & { goalSearchInputEvents?: number }).goalSearchInputEvents,
@@ -663,7 +663,7 @@ test('Alt+A and the close button hide goal rhythm for 6 hours', async ({ page })
   await page.reload()
   await expect(page.getByRole('region', { name: 'Daily plan' })).toBeVisible()
   expect(await goalRhythm.count()).toBe(0)
-  await page.keyboard.press('Alt+a')
+  await page.keyboard.press('Alt+k')
   await expect(goalRhythm).toBeVisible()
 
   const altLeftAllowed = await goalSearch.evaluate((element) =>
@@ -679,9 +679,9 @@ test('Alt+A and the close button hide goal rhythm for 6 hours', async ({ page })
   expect(altLeftAllowed).toBe(true)
   expect(altRightAllowed).toBe(true)
 
-  await page.keyboard.press('Alt+a')
+  await page.keyboard.press('Alt+k')
   await expect(goalRhythm).toHaveCount(0)
-  await page.keyboard.press('Alt+a')
+  await page.keyboard.press('Alt+k')
   await expect(goalRhythm).toBeVisible()
 })
 
@@ -2129,7 +2129,7 @@ test('clicking a plan item goal badge reveals that goal in the rhythm panel', as
   await expect.poll(() => goalRhythmRowIsFullyVisible(page, 'Exercise')).toBe(false)
   await expect(goalRow).not.toHaveClass(/goal-row-focus/)
 
-  await page.keyboard.press('Alt+a')
+  await page.keyboard.press('Alt+k')
   await expect(page.locator('.goal-history-panel')).toHaveCount(0)
   await page.evaluate(() => {
     const testWindow = window as Window & {

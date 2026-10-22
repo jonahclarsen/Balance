@@ -3308,7 +3308,7 @@ return rows`
     document.querySelector<HTMLElement>('.quick-add-dialog [data-rich-text-input]')?.focus()
   }
 
-  // Closing hands focus and the caret back to wherever Option+K was pressed.
+  // Closing hands focus and the caret back to wherever Option+A was pressed.
   function closeQuickAdd() {
     if (quickAddSaving) return
     quickAddPendingId = null
@@ -4001,7 +4001,7 @@ return rows`
     }
 
     if (
-      event.code === 'KeyA' &&
+      event.code === 'KeyK' &&
       event.altKey &&
       !primaryModifier &&
       !event.shiftKey
@@ -4015,7 +4015,7 @@ return rows`
     // The sort modal owns the keyboard while open (its own window listener).
     if (ideaSortVisible) return
 
-    if (event.altKey && !primaryModifier && !event.shiftKey && event.code === 'KeyK') {
+    if (event.altKey && !primaryModifier && !event.shiftKey && event.code === 'KeyA') {
       event.preventDefault()
       if (!event.repeat) void openQuickAdd()
       return
@@ -7131,13 +7131,13 @@ return rows`
       <button
         class="sidebar-add-idea-button"
         type="button"
-        title="Add idea (Alt+K)"
+        title="Add idea (Alt+A)"
         aria-label="Add idea"
-        aria-keyshortcuts="Alt+K"
+        aria-keyshortcuts="Alt+A"
         on:click={() => { void openQuickAdd() }}
       >
         <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
-        <kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('K')}</kbd>
+        <kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('A')}</kbd>
       </button>
     </div>
 
@@ -8671,7 +8671,7 @@ return rows`
         onOpenDate={openDateInToday}
         onResizeStart={startGoalHistoryResize}
         onHide={hideGoalRhythm}
-        hideShortcutLabel={isMobile ? null : altShortcutLabel('A')}
+        hideShortcutLabel={isMobile ? null : altShortcutLabel('K')}
         scrollRequest={goalRhythmScrollRequest}
       />
     </RecentPage>
