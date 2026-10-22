@@ -28,7 +28,7 @@
   }
 </script>
 {#if $quizRequest && mode}
-  <OverlayModal title={mode.name} eyebrow={site ?? 'A moment to choose'} onClose={() => quizRequest.set(null)} maxWidth={520} cover="viewport">
+  <OverlayModal title={mode.name} eyebrow={site ?? ''} onClose={() => quizRequest.set(null)} maxWidth={520} cover="viewport">
     <div class="quiz" style:--mode={mode.color}>
       {#if error}<p role="alert">{error}</p>
       {:else if progress.denied}
