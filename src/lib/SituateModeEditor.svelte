@@ -123,7 +123,7 @@
   p.muted { margin:0; font-size:13px; }
   .heads-up { display:flex; flex-wrap:wrap; align-items:center; gap:8px; font-size:13px; color:var(--muted); }
   .hours { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--muted); }
-  .quizzes { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .quizzes { display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start; }
   .error { margin:0; color:var(--danger); }
   @media (max-width:640px) { .quizzes, .basics { grid-template-columns:1fr; } }
 </style>

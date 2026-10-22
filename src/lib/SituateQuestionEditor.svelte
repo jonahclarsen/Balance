@@ -11,6 +11,7 @@
 </script>
 <div class="quiz-editor" role="group" aria-label={label}>
   <div class="quiz-heading"><h4>{label}</h4>{#if hint}<span>{hint}</span>{/if}</div>
+  <div class="card">
   <ol>
     {#each questions as question, i (question.id)}
       <li>
@@ -32,14 +33,16 @@
       </li>
     {/each}
   </ol>
-  <button type="button" class="add" on:click={add}>+ Question</button>
+  <button type="button" class="add" aria-label="Add question" on:click={add}><span class="plus" aria-hidden="true">+</span>Question</button>
+  </div>
 </div>
 <style>
-  .quiz-editor { display:grid; gap:8px; }
+  .quiz-editor { display:grid; gap:8px; align-content:start; }
   .quiz-heading { display:flex; align-items:baseline; gap:8px; }
   h4 { margin:0; font-size:14px; }
   .quiz-heading span { color:var(--muted); font-size:12px; }
-  ol { list-style:none; margin:0; padding:0; border:1px solid var(--line); border-radius:10px; background:var(--paper-strong); }
+  .card { border:1px solid var(--line); border-radius:10px; background:var(--paper-strong); overflow:hidden; }
+  ol { list-style:none; margin:0; padding:0; }
   ol:empty { display:none; }
   li { display:grid; grid-template-columns:24px minmax(0,1fr) 30px; gap:8px; align-items:start; padding:10px; }
   li + li { border-top:1px solid var(--row-border); }
@@ -53,5 +56,8 @@
   .choice button { border:none; background:transparent; padding:3px 10px; border-radius:6px; font-size:12px; color:var(--muted); }
   .choice button[aria-pressed='true'] { background:var(--active-nav); color:var(--accent-strong); font-weight:650; }
   select { font-size:12px; padding:4px 6px; }
-  .add { justify-self:start; font-size:13px; padding:5px 10px; }
+  .add { display:flex; align-items:center; gap:8px; width:100%; padding:8px 10px; border:none; border-radius:0; background:transparent; color:var(--muted); font-size:13px; text-align:left; }
+  ol:not(:empty) + .add { border-top:1px solid var(--row-border); }
+  .add:hover { background:var(--active-nav); color:var(--accent-strong); }
+  .plus { display:grid; place-items:center; width:22px; height:22px; margin-left:1px; border:1px dashed var(--line); border-radius:50%; font-size:14px; line-height:1; }
 </style>

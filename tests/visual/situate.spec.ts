@@ -21,7 +21,7 @@ test('mode edits save as you go, including conditional questions', async ({page}
   const dialog=page.getByRole('dialog',{name:'Edit Dolo'})
   const day=dialog.getByRole('group',{name:'Day',exact:true})
   await day.getByRole('group',{name:'Answer that passes'}).getByRole('button',{name:'No',exact:true}).click()
-  await day.getByRole('button',{name:'+ Question'}).click()
+  await day.getByRole('button',{name:'Add question'}).click()
   await day.getByLabel('Day question 2',{exact:true}).fill('Have you stood up?')
   await day.getByLabel('Ask when').selectOption({label:'If 1 is no'})
   await page.keyboard.press('Escape')
@@ -126,7 +126,7 @@ test('entertainment access passes one site in every mode and leaves the modes on
 
 test('one entertainment quiz is edited for every mode', async ({page}) => {
   const quiz=page.getByRole('group',{name:'Quiz',exact:true})
-  await quiz.getByRole('button',{name:'+ Question'}).click()
+  await quiz.getByRole('button',{name:'Add question'}).click()
   await quiz.getByLabel('Quiz question 3',{exact:true}).fill('Is it short?')
   await expect.poll(()=>page.evaluate(()=>JSON.parse(localStorage.getItem('balance-situate-v1')!).accessQuiz.length)).toBe(3)
   await page.reload();await openView(page,'Situate')
