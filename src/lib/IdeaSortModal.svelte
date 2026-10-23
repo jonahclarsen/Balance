@@ -13,6 +13,8 @@
   export let queue: IdeaItem[]
   export let buckets: IdeaBucket[]
   export let title: string
+  // Ideas an earlier pass already sorted, so progress continues across passes.
+  export let sortedBefore = 0
   export let renderIdeaHTML: (item: IdeaItem) => string
   export let onOpenLink: (link: ItemLink) => void
   // Hidden while another page is open; the sort resumes where it left off.
@@ -38,7 +40,9 @@
   let editing = false
   let editDraft = ''
   let editInput: HTMLTextAreaElement | null = null
-  let decisions: Record<Id, IdeaBucketKind> = {}
+  // Every way an idea leaves the queue counts as sorted, so the total stays
+  // fixed and progress only moves forward until Back undoes a decision.
+  const total = sortedBefore + queue.length
   // Each decision records where its ideas were, so Back can undo it instead of
   // leaving the idea in both its old and new place.
   type Undo = { index: number; queue: IdeaItem[]; snapshots: IdeaSnapshot[]; noteId: Id | null }
@@ -51,6 +55,7 @@
   let shaking: IdeaBucketKind | null = null
   let shakeTimer: number | null = null
 
+  $: sorted = sortedBefore + history.length
   $: queued = queue[index]
   $: current = queued ? findIdea(buckets, queued.id)?.item ?? queued : undefined
   $: options = step === 'yes' ? (['possible', 'genuine'] as const) : step === 'no' ? (['trash', 'afterlife'] as const) : []
@@ -99,7 +104,6 @@
     }
     record(snapshot(current.id))
     onDecide(current.id, kind)
-    decisions = { ...decisions, [current.id]: kind }
     advance()
   }
 
@@ -120,8 +124,6 @@
     if (!last) return
     history = history.slice(0, -1)
     onRestore(last.snapshots, last.noteId)
-    const { [last.queue[last.index]!.id]: _undone, ...remaining } = decisions
-    decisions = remaining
     queue = last.queue
     index = last.index
     resetCard(index)
@@ -246,7 +248,7 @@
   onClose={() => onFinish(false)}
 >
   <div class="paste-review">
-    <ProgressBar done={index} total={queue.length} label="Ideas sorted" />
+    <ProgressBar done={sorted} {total} label="Ideas sorted" />
     <div class="paste-review-list" aria-label="Idea being sorted">
       {#if current}
         {#key current.id}
@@ -330,6 +332,6 @@
       </div>
     {/if}
 
-    <p class="paste-review-hint">{Object.keys(decisions).length}/{queue.length} sorted</p>
+    <p class="paste-review-hint">{sorted}/{total} sorted</p>
   </div>
 </OverlayModal>

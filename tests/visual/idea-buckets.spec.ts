@@ -167,7 +167,7 @@ test('Back undoes the previous sort decision so an idea never lands in two place
   await expectIdea(page, 1, 2)
   await page.keyboard.press('y')
   await page.keyboard.press('d')
-  await expectIdea(page, 1, 1)
+  await expectIdea(page, 2, 2)
   await page.keyboard.press('b')
   await expectIdea(page, 1, 2)
   await expect(sorter(page).locator('.idea-sort-card')).toContainText('Synthetic first')
@@ -207,7 +207,7 @@ test('Back after a note or a bucket returns the idea to Proposition Party', asyn
   await page.keyboard.press('p')
   await page.keyboard.press('y')
   await page.keyboard.press('n')
-  await expectIdea(page, 2, 2)
+  await expectIdea(page, 3, 3)
   await expect(sorter(page).locator('.idea-sort-card')).toContainText('Synthetic third')
   expect(await notes()).toBe(initialNotes + 1)
 
@@ -267,7 +267,7 @@ test('the sorter stays with its page and cuts ideas to Trash and the clipboard',
 
   await page.keyboard.press('y')
   await page.keyboard.press('x')
-  await expectIdea(page, 1, 1)
+  await expectIdea(page, 2, 2)
   await expect(sorter(page).locator('.idea-sort-card')).toContainText('Synthetic stay')
   expect(await buckets(page)).toMatchObject({ proposition: ['Synthetic stay'], trash: ['Synthetic cut me'] })
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain('Synthetic cut child')
@@ -301,7 +301,7 @@ test('sorting moves ideas into new notes with their formatting and children, and
   await card(page, 'proposition').getByRole('button', { name: 'Sort', exact: true }).click()
   await sorter(page).getByRole('button', { name: 'Yes (Y)' }).click()
   await sorter(page).getByRole('button', { name: 'Add to new note (N)' }).click()
-  await expectIdea(page, 1, 1)
+  await expectIdea(page, 2, 2)
   await expect(sorter(page).locator('.idea-sort-card')).toContainText('Synthetic second note')
   expect(await buckets(page)).toMatchObject({ proposition: ['Synthetic second note'] })
 
@@ -355,7 +355,7 @@ test('a day generation sort can add ideas to the new day', async ({ page }, test
   await expectIdea(page, 1, 2)
   await page.keyboard.press('y')
   await page.keyboard.press('d')
-  await expectIdea(page, 1, 1)
+  await expectIdea(page, 2, 2)
   await expect(sorter(page).locator('.idea-sort-card')).toContainText('Synthetic later')
   await page.keyboard.press('n')
   await page.keyboard.press('t')
@@ -393,7 +393,7 @@ test('day choices survive closing, navigation and reload without applying to ano
   await page.keyboard.press('Escape')
   await storeCall(page, "plannerStore.setActivePlanDate('2026-10-08')")
   await generateDay(page)
-  await expectIdea(page, 1, 1)
+  await expectIdea(page, 2, 2)
   await expect(sorter(page).locator('.idea-sort-card')).toContainText('Synthetic remaining')
   await page.keyboard.press('n')
   await page.keyboard.press('t')
@@ -401,6 +401,31 @@ test('day choices survive closing, navigation and reload without applying to ano
   const plan = page.getByRole('region', { name: 'Daily plan' })
   await expect(plan.locator('[data-plan-text-input]').first()).toHaveText('Synthetic reserved')
   expect(await buckets(page)).toMatchObject({ proposition: [], trash: ['Synthetic remaining'] })
+})
+
+test('a day keeps its sort progress across trash, cut and reopening', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
+  await open(page)
+  await storeCall(page, `
+    plannerStore.addIdea('Synthetic trash')
+    plannerStore.addIdea('Synthetic cut')
+    plannerStore.addIdea('Synthetic later')
+  `)
+  const hint = sorter(page).locator('.paste-review-hint')
+  await generateDay(page)
+  await page.keyboard.press('n')
+  await page.keyboard.press('t')
+  await page.keyboard.press('y')
+  await page.keyboard.press('x')
+  await expectIdea(page, 3, 3)
+  await expect(hint).toHaveText('2/3 sorted')
+  await page.keyboard.press('Escape')
+
+  // Reopening the same day continues, and a new idea joins the total.
+  await storeCall(page, "plannerStore.addIdea('Synthetic new')")
+  await generateDay(page)
+  await expectIdea(page, 3, 4)
+  await expect(hint).toHaveText('2/4 sorted')
 })
 
 test('pasted lists import as ideas and open the sorter; trash clears after 30 days', async ({ page }, testInfo) => {

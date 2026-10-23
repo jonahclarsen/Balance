@@ -331,6 +331,9 @@
   // to it. Keyed by item context like the in-memory caret and selection maps.
   const TODAY_ITEM_POSITIONS_KEY = 'balance:todayItemPositions'
   const MAX_TODAY_ITEM_POSITIONS = 7
+  // Every idea a day's "Sort new ideas" pass has shown, keyed by that day, so
+  // progress keeps counting sorted ideas after the sorter is closed and reopened.
+  const NEW_IDEA_SORTS_KEY = 'balance:newIdeaSorts'
   let mobileDrawerOpen = false
   let mobileDrawerPressing = false
   let mobileDrawerPressPointerId: number | null = null
@@ -427,7 +430,7 @@
   // A sort belongs to the page it was opened on: it hides while another page is
   // open and picks up where it left off on return.
   // Sorts run during day generation can also pick ideas for the new day.
-  let ideaSort: { queue: import('./lib/types').IdeaItem[]; title: string; view: View; addToDay?: (itemId: Id) => void; resolve: (completed: boolean) => void } | null = null
+  let ideaSort: { queue: import('./lib/types').IdeaItem[]; title: string; view: View; sortedBefore: number; addToDay?: (itemId: Id) => void; resolve: (completed: boolean) => void } | null = null
   $: ideaSortVisible = Boolean(ideaSort && view === ideaSort.view)
   let ideaImportOpen = false
   // Tracks each plan item's done state so we can fire a goal burst the moment an
@@ -3236,11 +3239,32 @@ return rows`
     plannerStore.ensureIdeaReviewGoal()
   }
 
-  function askIdeaSort(queue: import('./lib/types').IdeaItem[], title: string, addToDay?: (itemId: Id) => void): Promise<boolean> {
+  function askIdeaSort(queue: import('./lib/types').IdeaItem[], title: string, addToDay?: (itemId: Id) => void, sortedBefore = 0): Promise<boolean> {
     ideaSort?.resolve(false)
     return new Promise((resolve) => {
-      ideaSort = { queue, title, view, addToDay, resolve }
+      ideaSort = { queue, title, view, sortedBefore, addToDay, resolve }
     })
+  }
+
+  // Ideas the day's earlier passes showed that are no longer waiting count as
+  // sorted, however they left: a bucket, Cut, a note or the day itself.
+  function startNewIdeaSort(date: string, queue: import('./lib/types').IdeaItem[]): number {
+    let sorts: Record<string, Id[]> = {}
+    try {
+      const parsed: unknown = JSON.parse(localStorage.getItem(NEW_IDEA_SORTS_KEY) ?? '{}')
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) sorts = parsed as Record<string, Id[]>
+    } catch {
+      // Progress starts over for this pass.
+    }
+    const today = todayISO()
+    const recent = Object.fromEntries(Object.entries(sorts).filter(([day, ids]) => day >= today && Array.isArray(ids)))
+    const shown = new Set([...(recent[date] ?? []), ...queue.map((item) => item.id)])
+    try {
+      localStorage.setItem(NEW_IDEA_SORTS_KEY, JSON.stringify({ ...recent, [date]: [...shown] }))
+    } catch {
+      // Progress is still right for this pass.
+    }
+    return shown.size - queue.length
   }
 
   function finishIdeaSort(completed: boolean) {
@@ -3644,7 +3668,9 @@ return rows`
     // either the sorter or the quiz preserves choices for this specific date.
     const propositions = bucketItems($plannerStore.ideaBuckets, 'proposition')
       .filter((item) => item.dayAssignmentDate !== date)
-    if (propositions.length > 0 && !(await askIdeaSort(propositions, 'Sort new ideas', (itemId) => plannerStore.assignIdeaToDay(itemId, date)))) return
+    if (propositions.length > 0 && !(await askIdeaSort(
+      propositions, 'Sort new ideas', (itemId) => plannerStore.assignIdeaToDay(itemId, date), startNewIdeaSort(date, propositions),
+    ))) return
 
     const steps = templateQuizSteps(templateForGeneration(template, $plannerStore.templateItemConditions, $plannerStore.projects, date), $plannerStore.templateQuestions)
     const quizAnswers = steps.length > 0 ? await askDayQuiz(template.name, steps) : {}
@@ -8672,6 +8698,7 @@ return rows`
           queue={ideaSort.queue}
           buckets={$plannerStore.ideaBuckets}
           title={ideaSort.title}
+          sortedBefore={ideaSort.sortedBefore}
           renderIdeaHTML={(item) => renderItemDisplayHTML(item.html, item.text, linkifyItemText(item.text, listTemplates, metrics, notes))}
           onOpenLink={(link) => openLink(link, null)}
           active={ideaSortVisible}
