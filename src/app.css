@@ -5492,6 +5492,14 @@ body.mobile-checkbox-dragging {
     justify-self: start;
   }
 
+  .template-main[data-list-template-item-id] .option-row {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+
+  .template-main[data-list-template-item-id] .option-row > .add-alternative {
+    grid-column: 3;
+  }
+
   .list-history-heading {
     align-items: stretch;
     flex-direction: column;

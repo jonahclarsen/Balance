@@ -6,7 +6,7 @@
   import ProbabilitySlider from './ProbabilitySlider.svelte'
   import RichTextEditor from './RichTextEditor.svelte'
   import TreeItemRow from './TreeItemRow.svelte'
-  import type { Id, ListTemplate, ListTemplateItem, ListTemplateItemAlternative, Metric, MoveDirection, MovePlacement, Note } from './types'
+  import type { Id, ListTemplate, ListTemplateItem, ListTemplateItemAlternative, Metric, MoveDirection, MovePlacement, Note, TemplateQuestion } from './types'
 
   type TextChangeOptions = {
     imageEdit?: boolean
@@ -58,6 +58,8 @@
     options?: TextChangeOptions,
   ) => void = () => {}
   export let deleteAlternative: (templateId: Id, itemId: Id, alternativeId: Id) => void = () => {}
+  export let templateQuestions: TemplateQuestion[] = []
+  export let setQuestion: (itemId: Id, question: string | null) => void = () => {}
   export let historyRevision: number
   export let selectedItemIds: Set<Id> = new Set()
   export let selectionDragging = false
@@ -86,6 +88,15 @@
   $: alternatives = item.alternatives ?? []
   $: if (item.probability < NORMAL_MIN_LIST_ITEM_PROBABILITY) allowsLowProbability = true
   $: primaryShare = listItemPrimaryShare(item)
+  $: question = templateQuestions.find(({ id }) => id === item.id)?.question
+
+  let questionInput: HTMLInputElement | null = null
+
+  async function addQuestion() {
+    setQuestion(item.id, '')
+    await tick()
+    questionInput?.focus()
+  }
 
   // Each wording's chance of being picked; children follow whichever is picked.
   $: variantChances = new Map(listItemVariants(item).map((variant) => [variant.id, variant.chance]))
@@ -444,6 +455,29 @@
   {onSelectionPointerEnter}
 >
   <div class="option-stack">
+    {#if question !== undefined}
+      <div class="question-row">
+        <span class="question-mark" aria-hidden="true">?</span>
+        <input
+          bind:this={questionInput}
+          class="question-input"
+          type="text"
+          value={question}
+          placeholder="Question asked when generating the list"
+          aria-label="Question asked when generating the list"
+          on:input={(event) => setQuestion(item.id, event.currentTarget.value)}
+        />
+        <button
+          class="icon-button danger"
+          type="button"
+          title="Remove question"
+          aria-label="Remove question"
+          on:click={() => setQuestion(item.id, null)}
+        >
+          ×
+        </button>
+      </div>
+    {/if}
     <div class="option-row">
       <RichTextEditor
         className="template-text"
@@ -451,7 +485,7 @@
         inputId={item.id}
         html={item.html}
         text={item.text}
-        placeholder="List item"
+        placeholder={question === undefined ? 'List item' : alternatives.length === 0 ? 'Added when you answer yes; leave blank to type the answer' : 'Answer'}
         ariaLabel="List item"
         {revision}
         onChange={handleTextChange}
@@ -487,11 +521,22 @@
         generousHitbox
         onChange={handleProbabilityChange}
       />
+      {#if question === undefined}
+        <button
+          class="icon-button quiet add-question"
+          type="button"
+          title="Ask a question when generating the list"
+          aria-label="Ask a question when generating the list"
+          on:click={addQuestion}
+        >
+          ?
+        </button>
+      {/if}
       <button
         class="icon-button quiet add-alternative"
         type="button"
-        title="Add alternative"
-        aria-label="Add alternative"
+        title={question === undefined ? 'Add alternative' : 'Add answer'}
+        aria-label={question === undefined ? 'Add alternative' : 'Add answer'}
         on:click={handleAddAlternative}
       >
         ±
@@ -506,7 +551,7 @@
           inputId={alternative.id}
           html={alternative.html}
           text={alternative.text}
-          placeholder="Alternative"
+          placeholder={question === undefined ? 'Alternative' : 'Answer'}
           ariaLabel="List item alternative"
           singleLine
           {revision}
@@ -568,6 +613,8 @@
             {addAlternative}
             {patchAlternative}
             {deleteAlternative}
+            {templateQuestions}
+            {setQuestion}
             {historyRevision}
             {selectedItemIds}
             {selectionDragging}

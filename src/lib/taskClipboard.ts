@@ -1,5 +1,5 @@
-import { createListTemplateItem, createTemplateItem, escapeHTML, htmlToPlainText, htmlToPlainTextWithBreaks, sanitizeInlineHTML } from './planner'
-import type { ListTemplateItem, NoteItemKind, PlanItem, TemplateItem } from './types'
+import { createListTemplateItem, createListTemplateItemAlternative, createTemplateItem, createTemplateOption, escapeHTML, htmlToPlainText, htmlToPlainTextWithBreaks, sanitizeInlineHTML } from './planner'
+import type { Id, ListTemplateItem, NoteItemKind, PlanItem, TemplateItem } from './types'
 
 // A marked block avoids interpreting ordinary multiline prose as planner rows.
 // Newlines inside a task stay real newlines (continuation lines indented past
@@ -224,17 +224,36 @@ export function planItemsToListTemplateItems(items: PlanItem[]): ListTemplateIte
 }
 
 // List rows have one choice; day alternatives become individual list rows.
-export function templateItemsToListTemplateItems(items: TemplateItem[]): ListTemplateItem[] {
-  return items.flatMap((item) => item.options.map((option) => ({
-    ...createListTemplateItem(), text: option.text, html: option.html,
-    probability: option.probability, children: templateItemsToListTemplateItems(item.children),
-  })))
+// A question row instead becomes one item answering with its wordings, keeping
+// the row's ID so its question can follow it.
+export function templateItemsToListTemplateItems(items: TemplateItem[], questionIds: ReadonlySet<Id> = new Set()): ListTemplateItem[] {
+  return items.flatMap((item) => {
+    if (questionIds.has(item.id)) {
+      const [first, ...rest] = item.options
+      const share = Math.floor(100 / item.options.length)
+      return [{
+        ...createListTemplateItem(), id: item.id, text: first?.text ?? '', html: first?.html ?? '',
+        ...(rest.length > 0 ? { alternatives: rest.map(({ text, html }) => ({ ...createListTemplateItemAlternative(text, share), html })) } : {}),
+        children: templateItemsToListTemplateItems(item.children, questionIds),
+      }]
+    }
+    return item.options.map((option) => ({
+      ...createListTemplateItem(), text: option.text, html: option.html,
+      probability: option.probability, children: templateItemsToListTemplateItems(item.children, questionIds),
+    }))
+  })
 }
 
-export function listTemplateItemsToTemplateItems(items: ListTemplateItem[]): TemplateItem[] {
+// A question item's wordings become the day row's answers.
+export function listTemplateItemsToTemplateItems(items: ListTemplateItem[], questionIds: ReadonlySet<Id> = new Set()): TemplateItem[] {
   return items.map((item) => {
     const row = createTemplateItem()
+    const children = listTemplateItemsToTemplateItems(item.children, questionIds)
+    if (questionIds.has(item.id)) {
+      const options = [item, ...(item.alternatives ?? [])].map(({ text, html }) => ({ ...createTemplateOption(text, 0), html }))
+      return { ...row, id: item.id, options, children }
+    }
     Object.assign(row.options[0]!, { text: item.text, html: item.html, probability: item.probability })
-    return { ...row, children: listTemplateItemsToTemplateItems(item.children) }
+    return { ...row, children }
   })
 }

@@ -117,7 +117,7 @@
   import { keepBelowPinnedParents, revealCaret, scrollMovedItemsIntoView, type ItemRowKind } from './lib/itemScroll'
   import { focusTaskBelow, focusTaskById, TASK_COMPLETION_FOCUS_EVENT, type TaskCaretOffsets, type TaskCompletionFocusDetail } from './lib/taskCompletionFocus'
   import { rememberFocusReturn, type FocusReturn } from './lib/focusReturn'
-  import { buildItemTimeWarnings, createPlanItem, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatMinutes, formatPlanTitle, hasActiveTimeRange, hasIncompletePlanItems, itemLinkFromURL, linkifyItemText, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, sanitizeInlineHTML, templateQuizSteps, todayISO, totalWordCount, type ItemLink, type TemplateQuizStep, type TemplateReviewKind } from './lib/planner'
+  import { buildItemTimeWarnings, createPlanItem, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatMinutes, formatPlanTitle, hasActiveTimeRange, hasIncompletePlanItems, itemLinkFromURL, linkifyItemText, listTemplateQuizSteps, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, sanitizeInlineHTML, templateQuizSteps, todayISO, totalWordCount, type ItemLink, type TemplateQuizStep, type TemplateReviewKind } from './lib/planner'
   import { hexToPickerColor, pickerColorToHex, type PickerColor } from './lib/colors'
   import { automaticSyncStatus, requestSync, startAutomaticSync } from './lib/syncScheduler'
   import { DEFAULT_DATABASE_LOADING_MESSAGES, replicatedDayTheme } from './lib/preferences'
@@ -425,7 +425,7 @@
   let celebrationPreviewAnnouncementTimer: number | null = null
   let goalBurst: GoalBurst | null = null
   let goalDoabilityReviews: GoalDoabilityReview[] = []
-  let dayQuiz: { templateName: string; steps: TemplateQuizStep[]; resolve: (answers: TemplateQuizAnswers | null) => void } | null = null
+  let dayQuiz: { title: string; steps: TemplateQuizStep[]; resolve: (answers: TemplateQuizAnswers | null) => void } | null = null
   // One-card-at-a-time idea sorting; resolves true once every queued idea has a bucket.
   // A sort belongs to the page it was opened on: it hides while another page is
   // open and picks up where it left off on return.
@@ -606,7 +606,7 @@ return rows`
       questions?: import('./lib/types').TemplateQuestion[]
       conditions?: import('./lib/types').TemplateItemCondition[]
     }
-    | { kind: 'list-template'; items: ListTemplateItem[]; cut: boolean }
+    | { kind: 'list-template'; items: ListTemplateItem[]; cut: boolean; questions?: import('./lib/types').TemplateQuestion[] }
   type ItemClipboard = PlanItemClipboard | TemplateItemClipboard
   type ClipboardContents = { imageDataURL?: string | null; structuredPayload: string | null; plainText: string | null; html: string | null }
   // Browser-only fallback for Vite/Playwright, where native pasteboard commands do
@@ -1741,8 +1741,7 @@ return rows`
         view = 'notes'
       } else unavailableLink()
     } else if (link.kind === 'list') {
-      const listId = plannerStore.ensureListForDate(link.listTemplateId, date)
-      if (listId) {
+      ensureListForDate(link.listTemplateId, date, (listId) => {
         const instance = $plannerStore.lists.find((list) => list.id === listId)
         selectedListOverlayItemIdsByList = {
           ...selectedListOverlayItemIdsByList,
@@ -1753,7 +1752,7 @@ return rows`
         delete listOverlayScrollTopsByList[listId]
         delete listOverlayBottomCollapsesByList[listId]
         listOverlay = { listId, date, opener }
-      }
+      })
     } else if (view === 'listTemplates') {
       // While authoring a list template, a quiz link edits the quiz instead of taking it.
       if (metrics.some((metric) => metric.id === link.metricId)) {
@@ -3672,8 +3671,13 @@ return rows`
       propositions, 'Sort new ideas', (itemId) => plannerStore.assignIdeaToDay(itemId, date), startNewIdeaSort(date, propositions),
     ))) return
 
-    const steps = templateQuizSteps(templateForGeneration(template, $plannerStore.templateItemConditions, $plannerStore.projects, date), $plannerStore.templateQuestions)
-    const quizAnswers = steps.length > 0 ? await askDayQuiz(template.name, steps) : {}
+    const steps = templateQuizSteps(
+      templateForGeneration(template, $plannerStore.templateItemConditions, $plannerStore.projects, date),
+      $plannerStore.templateQuestions,
+      $plannerStore.listTemplates,
+      $plannerStore.templateListExpansions,
+    )
+    const quizAnswers = steps.length > 0 ? await askDayQuiz(`Plan your day · ${template.name}`, steps) : {}
     if (!quizAnswers) return
 
     if (date < todayISO() && $plannerStore.plans.some((plan) => plan.date === date)) return
@@ -3704,11 +3708,25 @@ return rows`
     for (const { bucket, item } of found) plannerStore.removeIdeaAfterTransfer(bucket.id, item.id)
   }
 
-  function askDayQuiz(templateName: string, steps: TemplateQuizStep[]): Promise<TemplateQuizAnswers | null> {
+  function askDayQuiz(title: string, steps: TemplateQuizStep[]): Promise<TemplateQuizAnswers | null> {
     dayQuiz?.resolve(null)
     return new Promise((resolve) => {
-      dayQuiz = { templateName, steps, resolve }
+      dayQuiz = { title, steps, resolve }
     })
+  }
+
+  // Asks a new list's questions before generating it. Without questions the
+  // list is ready right away; closing the quiz leaves it ungenerated.
+  function ensureListForDate(listTemplateId: Id, date: string, onReady: (listId: Id) => void = () => {}) {
+    const template = $plannerStore.listTemplates.find(({ id }) => id === listTemplateId)
+    const exists = $plannerStore.lists.some((list) => list.listTemplateId === listTemplateId && list.date === date)
+    const steps = template && !exists ? listTemplateQuizSteps(template, $plannerStore.templateQuestions) : []
+    const generate = (quizAnswers: TemplateQuizAnswers | null) => {
+      const listId = quizAnswers && plannerStore.ensureListForDate(listTemplateId, date, quizAnswers)
+      if (listId) onReady(listId)
+    }
+    if (template && steps.length > 0) void askDayQuiz(template.name, steps).then(generate)
+    else generate({})
   }
 
   function finishDayQuiz(answers: TemplateQuizAnswers | null) {
@@ -5593,10 +5611,12 @@ return rows`
     const surface = activeItemSurface()
     const containerId = activeItemContainerId()
     const source = parseTemplateItemClipboard(clipboard.structuredPayload)
-    const structured = source && surface === 'list-template' && source.kind === 'day-template'
-      ? { kind: 'list-template' as const, items: templateItemsToListTemplateItems(source.items), cut: source.cut }
+    // Questions follow rows between day and list templates.
+    const questionIds = new Set(source?.questions?.map(({ id }) => id))
+    const structured: TemplateItemClipboard | null = source && surface === 'list-template' && source.kind === 'day-template'
+      ? { kind: 'list-template', items: templateItemsToListTemplateItems(source.items, questionIds), cut: source.cut, questions: source.questions }
       : source && surface === 'day-template' && source.kind === 'list-template'
-        ? { kind: 'day-template' as const, items: listTemplateItemsToTemplateItems(source.items), cut: source.cut }
+        ? { kind: 'day-template', items: listTemplateItemsToTemplateItems(source.items, questionIds), cut: source.cut, questions: source.questions }
         : source ?? templateClipboardFromPlanItems(clipboard, surface)
     if (!structured || structured.kind !== surface || !containerId) {
       pastePlainClipboardIntoActiveEditor(clipboard)
@@ -5609,7 +5629,7 @@ return rows`
     const placement = targetId && isEmptyTemplateLeaf(structured.kind, targetId) ? 'replace' : 'after'
     const pastedIds = structured.kind === 'day-template'
       ? plannerStore.pasteTemplateItems(containerId, structured.items, targetId, placement, structured.listExpansions, structured.questions, structured.conditions)
-      : plannerStore.pasteListTemplateItems(containerId, structured.items, targetId, placement)
+      : plannerStore.pasteListTemplateItems(containerId, structured.items, targetId, placement, structured.questions)
     if (pastedIds.length === 0) return
 
     selectedItemIds = pastedIds
@@ -6322,6 +6342,15 @@ return rows`
   }
 
   function writeTemplateItemsToSystemClipboard(clipboard: TemplateItemClipboard) {
+    if (clipboard.kind === 'list-template' && !clipboard.questions) {
+      const itemIds = new Set<Id>()
+      const visit = (items: ListTemplateItem[]) => items.forEach((item) => {
+        itemIds.add(item.id)
+        visit(item.children)
+      })
+      visit(clipboard.items)
+      clipboard = { ...clipboard, questions: $plannerStore.templateQuestions.filter(({ id }) => itemIds.has(id)).map((record) => ({ ...record })) }
+    }
     if (clipboard.kind === 'day-template' && (!clipboard.listExpansions || !clipboard.questions || !clipboard.conditions)) {
       const itemIds = new Set<Id>()
       const optionIds = new Set<Id>()
@@ -7554,6 +7583,8 @@ return rows`
                 addAlternative={plannerStore.addListTemplateItemAlternative}
                 patchAlternative={plannerStore.patchListTemplateItemAlternative}
                 deleteAlternative={plannerStore.deleteListTemplateItemAlternative}
+                templateQuestions={$plannerStore.templateQuestions}
+                setQuestion={plannerStore.setTemplateItemQuestion}
                 historyRevision={$plannerStore.historyRevision}
                 selectedItemIds={selectedItemIdSet}
                 selectionDragging={selectingItems}
@@ -7722,7 +7753,7 @@ return rows`
           <button
             class="primary"
             type="button"
-            on:click={() => plannerStore.ensureListForDate(listViewTemplateId, $plannerStore.activePlanDate)}
+            on:click={() => ensureListForDate(listViewTemplateId, $plannerStore.activePlanDate)}
           >
             Generate list
           </button>
@@ -8593,7 +8624,7 @@ return rows`
     {/if}
 
     {#if dayQuiz}
-      <OverlayModal title={`Plan your day · ${dayQuiz.templateName}`} z={70} onClose={() => finishDayQuiz(null)}>
+      <OverlayModal title={dayQuiz.title} z={70} onClose={() => finishDayQuiz(null)}>
         <TemplateDayQuiz steps={dayQuiz.steps} onComplete={finishDayQuiz} />
       </OverlayModal>
     {/if}

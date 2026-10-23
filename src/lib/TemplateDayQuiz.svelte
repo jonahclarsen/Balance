@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { TemplateQuizStep } from './planner'
+  import { isTemplateQuizStepAsked, type TemplateQuizStep } from './planner'
   import type { Id, TemplateQuizAnswers } from './types'
 
   export let steps: TemplateQuizStep[]
@@ -9,7 +9,7 @@
   let index = 0
 
   // A nested question is moot once any question above it answered "none".
-  $: visibleSteps = steps.filter((step) => step.questionAncestorIds.every((id) => answers[id] !== null))
+  $: visibleSteps = steps.filter((step) => isTemplateQuizStepAsked(step, answers))
   $: step = visibleSteps[index]
   $: typed = step?.typedAnswerPrefix != null
   $: yesNo = !typed && step?.options.length === 1
@@ -46,7 +46,7 @@
 
   function advance() {
     // Read the filter after this answer: it may have hidden later questions.
-    const remaining = steps.filter((candidate) => candidate.questionAncestorIds.every((id) => answers[id] !== null))
+    const remaining = steps.filter((candidate) => isTemplateQuizStepAsked(candidate, answers))
     if (index >= remaining.length - 1) {
       onComplete(answers)
       return

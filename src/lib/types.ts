@@ -18,9 +18,10 @@ export type TemplateItem = {
   children: TemplateItem[]
 }
 
-// Turns a template row into a question asked when a day is generated. The row's
-// options become the answers (plus "none"), replacing its probability roll.
-// Keyed by the template item's ID in a generic entity collection.
+// Turns a template row into a question asked when a day or list is generated.
+// The row's options (a list item's wordings) become the answers (plus "none"),
+// replacing its probability roll. Keyed by the day or list template item's ID in
+// a generic entity collection.
 export type TemplateQuestion = {
   id: Id
   question: string

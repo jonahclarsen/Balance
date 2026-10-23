@@ -1845,7 +1845,8 @@ function createPlannerStore() {
       }, { reconcileGoals: false })
     },
 
-    // A null question removes it. Keep deleted-row records for undo.
+    // Day and list template rows alike. A null question removes it. Keep
+    // deleted-row records for undo.
     setTemplateItemQuestion(itemId: Id, question: string | null) {
       commitEntities(
         'set_template_item_question',
@@ -3029,14 +3030,27 @@ function createPlannerStore() {
       return rootIds
     },
 
-    pasteListTemplateItems(templateId: Id, itemsToPaste: ListTemplateItem[], targetId: Id | null, placement: 'after' | 'replace') {
+    pasteListTemplateItems(
+      templateId: Id,
+      itemsToPaste: ListTemplateItem[],
+      targetId: Id | null,
+      placement: 'after' | 'replace',
+      questions: TemplateQuestion[] = [],
+    ) {
       if (itemsToPaste.length === 0) return []
       const pastedItems = cloneListTemplateItemsForPaste(itemsToPaste)
+      const copiedQuestions: TemplateQuestion[] = []
+      const copyQuestions = (source: ListTemplateItem[], pasted: ListTemplateItem[]) => source.forEach((item, index) => {
+        const question = questions.find(({ id }) => id === item.id)
+        if (question) copiedQuestions.push({ ...question, id: pasted[index].id })
+        copyQuestions(item.children, pasted[index].children)
+      })
+      copyQuestions(itemsToPaste, pastedItems)
       const archivedAt = nowISO()
       const archivedDate = calendarDateISO()
       const archiveId = createId('archived_list_item')
-      commitEntities('paste_list_template_items', { templateId, targetId, placement, items: pastedItems, archiveId, archivedAt, archivedDate }, (state) =>
-        updateListTemplate(state, templateId, (template) => {
+      commitEntities('paste_list_template_items', { templateId, targetId, placement, items: pastedItems, archiveId, archivedAt, archivedDate }, (state) => {
+        const next = updateListTemplate(state, templateId, (template) => {
           const archivedTemplate = placement === 'replace' && targetId
             ? archiveListTemplateItemSnapshot(template, targetId, archiveId, archivedAt, archivedDate)
             : template
@@ -3045,8 +3059,9 @@ function createPlannerStore() {
             updatedAt: archivedAt,
             items: pasteListTemplateItemsIntoTree(template.items, pastedItems, targetId, placement),
           }
-        }),
-      )
+        })
+        return next === state || copiedQuestions.length === 0 ? next : { ...next, templateQuestions: [...next.templateQuestions, ...copiedQuestions] }
+      })
       return pastedItems.map((item) => item.id)
     },
 
@@ -3147,7 +3162,7 @@ function createPlannerStore() {
 
     // ---- List instances (reuse PlanItem tree functions) ----
 
-    ensureListForDate(listTemplateId: Id, date: string): Id | null {
+    ensureListForDate(listTemplateId: Id, date: string, quizAnswers: TemplateQuizAnswers = {}): Id | null {
       const current = get(store)
       const existing = current.lists.find((list) => list.listTemplateId === listTemplateId && list.date === date)
       if (existing) return existing.id
@@ -3156,7 +3171,7 @@ function createPlannerStore() {
       if (!template) return null
 
       const notifications: TaskNotification[] = []
-      const generated = generateListFromTemplate(template, date, notifications)
+      const generated = generateListFromTemplate(template, date, notifications, quizAnswers)
       commitEntities('generate_list', { listTemplateId, date, generated }, (state) => {
         if (state.lists.some((list) => list.listTemplateId === listTemplateId && list.date === date)) return state
         return { ...state, lists: [...state.lists, generated], taskNotifications: [...state.taskNotifications, ...notifications] }

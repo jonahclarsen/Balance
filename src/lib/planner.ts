@@ -409,34 +409,100 @@ export type TemplateQuizStep = {
   // Questions nested under another question row are asked only when an
   // answer to every such ancestor keeps the row in the day.
   questionAncestorIds: Id[]
+  // Set on a list's questions asked for a day whose question row places that
+  // list: answering the row with an option that doesn't place it skips them.
+  placedBy: { itemId: Id; optionIds: Id[] } | null
   // Set when the row's only answer is blank: the typed answer is appended to
   // this, the question plus a space unless the question already ends in one.
   typedAnswerPrefix: string | null
 }
 
-export function templateQuizSteps(template: DailyTemplate, questions: TemplateQuestion[]): TemplateQuizStep[] {
-  const byItem = new Map(
-    questions.filter(({ question }) => question.trim() !== '').map(({ id, question }) => [id, question]),
-  )
+export function isTemplateQuizStepAsked(step: TemplateQuizStep, answers: TemplateQuizAnswers): boolean {
+  if (!step.questionAncestorIds.every((id) => answers[id] !== null)) return false
+  if (!step.placedBy || !(step.placedBy.itemId in answers)) return true
+  const answer = answers[step.placedBy.itemId]
+  return typeof answer === 'string' && step.placedBy.optionIds.includes(answer)
+}
+
+function questionsByItem(questions: TemplateQuestion[]): Map<Id, string> {
+  return new Map(questions.filter(({ question }) => question.trim() !== '').map(({ id, question }) => [id, question]))
+}
+
+function templateQuizStep(
+  itemId: Id,
+  question: string,
+  options: TemplateOption[],
+  questionAncestorIds: Id[],
+  placedBy: TemplateQuizStep['placedBy'],
+): TemplateQuizStep {
+  const typed = options.length === 1 && isTemplateOptionTextEmpty(options[0])
+  const prefix = question.trimStart()
+  return {
+    itemId,
+    question: question.trim(),
+    options,
+    questionAncestorIds,
+    placedBy,
+    typedAnswerPrefix: typed ? (/\s$/.test(prefix) ? prefix : `${prefix} `) : null,
+  }
+}
+
+// Lists that a day row places are asked about right after the row, once each.
+export function templateQuizSteps(
+  template: DailyTemplate,
+  questions: TemplateQuestion[],
+  listTemplates: ListTemplate[] = [],
+  listExpansions: TemplateListExpansion[] = [],
+): TemplateQuizStep[] {
+  const byItem = questionsByItem(questions)
+  const askedListIds = new Set<Id>()
   const steps: TemplateQuizStep[] = []
   function visit(items: TemplateItem[], ancestors: Id[]) {
     for (const item of items) {
       const question = byItem.get(item.id)
+      if (question !== undefined) steps.push(templateQuizStep(item.id, question, item.options, ancestors, null))
+      const childAncestors = question === undefined ? ancestors : [...ancestors, item.id]
+      const placingOptionIds = new Map<Id, Id[]>()
+      for (const option of item.options) {
+        const expansion = listExpansions.find(({ id }) => id === option.id)
+        for (const list of detectedTemplateLists(option.text, listTemplates)) {
+          if (expansion?.listTemplateIds.includes(list.id)) placingOptionIds.set(list.id, [...(placingOptionIds.get(list.id) ?? []), option.id])
+        }
+      }
+      for (const [listId, optionIds] of placingOptionIds) {
+        const list = listTemplates.find(({ id }) => id === listId)
+        if (!list || askedListIds.has(listId)) continue
+        askedListIds.add(listId)
+        steps.push(...listTemplateQuizSteps(list, questions, childAncestors, question === undefined ? null : { itemId: item.id, optionIds }))
+      }
+      visit(item.children, childAncestors)
+    }
+  }
+  visit(template.items, [])
+  return steps
+}
+
+// A list question's answers are the item's wordings; picking one places it
+// regardless of its odds.
+export function listTemplateQuizSteps(
+  template: ListTemplate,
+  questions: TemplateQuestion[],
+  questionAncestorIds: Id[] = [],
+  placedBy: TemplateQuizStep['placedBy'] = null,
+): TemplateQuizStep[] {
+  const byItem = questionsByItem(questions)
+  const steps: TemplateQuizStep[] = []
+  function visit(items: ListTemplateItem[], ancestors: Id[]) {
+    for (const item of items) {
+      const question = byItem.get(item.id)
       if (question !== undefined) {
-        const typed = item.options.length === 1 && isTemplateOptionTextEmpty(item.options[0])
-        const prefix = question.trimStart()
-        steps.push({
-          itemId: item.id,
-          question: question.trim(),
-          options: item.options,
-          questionAncestorIds: ancestors,
-          typedAnswerPrefix: typed ? (/\s$/.test(prefix) ? prefix : `${prefix} `) : null,
-        })
+        const options = listItemVariants(item).map(({ chance, ...variant }) => ({ ...variant, probability: Math.round(chance * 100) }))
+        steps.push(templateQuizStep(item.id, question, options, ancestors, placedBy))
       }
       visit(item.children, question === undefined ? ancestors : [...ancestors, item.id])
     }
   }
-  visit(template.items, [])
+  visit(template.items, questionAncestorIds)
   return steps
 }
 
@@ -474,7 +540,7 @@ function generatePlanItems(
       // Fresh planner IDs keep repeated references independent of list instances.
       const expanded = linkedLists.flatMap((list) => {
         const listNotifications: TaskNotification[] = []
-        const generatedList = generateListFromTemplate(list, date, listNotifications)
+        const generatedList = generateListFromTemplate(list, date, listNotifications, quizAnswers)
         const ids = new Map<Id, Id>()
         const copy = (items: PlanItem[]): PlanItem[] => items.map((entry) => {
           const id = createId('item')
@@ -2369,14 +2435,19 @@ export function splitListTemplateItem(
 // List instances (generated checklists; reuse PlanItem)
 // ---------------------------------------------------------------------------
 
-export function generateListFromTemplate(template: ListTemplate, date: string, notifications: TaskNotification[] = []): ListInstance {
+export function generateListFromTemplate(
+  template: ListTemplate,
+  date: string,
+  notifications: TaskNotification[] = [],
+  quizAnswers: TemplateQuizAnswers = {},
+): ListInstance {
   const id = createId('list')
   return {
     id,
     date,
     listTemplateId: template.id,
     createdAt: nowISO(),
-    items: generateListItems(template.items, Math.random().toString(36).slice(2, 10), date, id, notifications),
+    items: generateListItems(template.items, Math.random().toString(36).slice(2, 10), date, id, notifications, quizAnswers),
   }
 }
 
@@ -2461,9 +2532,24 @@ export function createListTemplateItemAlternative(text = '', probability = 50): 
   return { id: createId('list_alt'), text, html: escapeHTML(text), probability }
 }
 
-function generateListItems(items: ListTemplateItem[], suffix: string, date: string, listId: Id, notifications: TaskNotification[]): PlanItem[] {
+// An answered question decides the wording; an unanswered one keeps its odds.
+function answeredListItemVariant(item: ListTemplateItem, answer: TemplateQuizAnswers[Id]): ListItemVariant | null {
+  if (answer === null) return null
+  if (typeof answer === 'object') return { id: item.id, text: answer.text, html: escapeHTML(answer.text), chance: 1 }
+  const variant = listItemVariants(item).find(({ id }) => id === answer)
+  return variant && !isListItemVariantEmpty(variant) ? variant : null
+}
+
+function generateListItems(
+  items: ListTemplateItem[],
+  suffix: string,
+  date: string,
+  listId: Id,
+  notifications: TaskNotification[],
+  quizAnswers: TemplateQuizAnswers,
+): PlanItem[] {
   return items.flatMap((item) => {
-    const variant = pickListItemVariant(item)
+    const variant = item.id in quizAnswers ? answeredListItemVariant(item, quizAnswers[item.id]) : pickListItemVariant(item)
     if (!variant) return []
     const expanded = expandTemplateTimes(variant.text, variant.html || escapeHTML(variant.text), date)
     // Rows keep the picked wording's id so task timing stays separate per wording.
@@ -2474,7 +2560,7 @@ function generateListItems(items: ListTemplateItem[], suffix: string, date: stri
         ...createPlanItem(expanded.text),
         id,
         html: expanded.html,
-        children: generateListItems(item.children, suffix, date, listId, notifications),
+        children: generateListItems(item.children, suffix, date, listId, notifications, quizAnswers),
       },
     ]
   })
