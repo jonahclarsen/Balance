@@ -78,6 +78,8 @@ test('completed and archived projects move to dated sections and support undo, r
   await details.getByRole('textbox', { name: 'Description' }).blur()
   await details.getByRole('button', { name: 'Mark active', exact: true }).click()
   await details.getByRole('button', { name: '3 days', exact: true }).click()
+  await expect(page.locator('#active-projects-title')).toHaveText('Active 1')
+  await expect(open.locator('.project-card')).toHaveText(['Synthetic shed'])
   await details.getByRole('button', { name: 'Complete', exact: true }).click()
   await expect(details.getByText('Completed Sep 8')).toBeVisible()
   await details.getByRole('button', { name: 'Close', exact: true }).click()

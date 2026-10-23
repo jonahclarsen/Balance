@@ -138,14 +138,19 @@
     />
     <button class="primary" type="submit" disabled={!name.trim()}>Add</button>
   </form>
-  <section class="project-section" aria-labelledby="open-projects-title">
-    <h3 id="open-projects-title">Open <span class="count">{open.length}</span></h3>
-    {#if active.length}
-      <div class="project-list" aria-label="Active projects" use:projectReordering={openProject}>{#each active as project (project.id)}<ProjectCard {project} active note={`until ${weekday(project.activeUntil!)}`} highlighted={highlightedId === project.id} onOpen={openProject} />{/each}</div>
-    {/if}
-    <div class="project-list" use:projectReordering={openProject}>{#each inactive as project (project.id)}<ProjectCard {project} highlighted={highlightedId === project.id} onOpen={openProject} />{/each}</div>
-    {#if !open.length}<p class="muted">None.</p>{/if}
-  </section>
+  {#if active.length}
+    <section class="project-section" aria-labelledby="active-projects-title">
+      <h3 id="active-projects-title">Active <span class="count">{active.length}</span></h3>
+      <div class="project-list" use:projectReordering={openProject}>{#each active as project (project.id)}<ProjectCard {project} active note={`until ${weekday(project.activeUntil!)}`} highlighted={highlightedId === project.id} onOpen={openProject} />{/each}</div>
+    </section>
+  {/if}
+  {#if inactive.length || !active.length}
+    <section class="project-section" aria-labelledby="open-projects-title">
+      <h3 id="open-projects-title">Open <span class="count">{inactive.length}</span></h3>
+      <div class="project-list" use:projectReordering={openProject}>{#each inactive as project (project.id)}<ProjectCard {project} highlighted={highlightedId === project.id} onOpen={openProject} />{/each}</div>
+      {#if !open.length}<p class="muted">None.</p>{/if}
+    </section>
+  {/if}
   {#if completed.length}
     <section class="project-section" aria-labelledby="completed-projects-title">
       <h3 id="completed-projects-title">Completed <span class="count">{completed.length}</span></h3>
@@ -225,7 +230,6 @@
   .project-section h3 { margin: 0 0 8px; font-size: 13px; font-weight: 600; color: var(--muted); }
   .project-section h3 .count { margin-left: 4px; font-weight: 400; font-variant-numeric: tabular-nums; }
   .project-list { position: relative; display: grid; gap: 6px; }
-  .project-list + .project-list:not(:empty) { margin-top: 6px; }
   .project-list :global(.project-card) { cursor: pointer; touch-action: pan-y; }
   .project-list :global(.project-card.project-dragging) { position: relative; z-index: 2; cursor: grabbing; box-shadow: 0 12px 32px rgba(0, 0, 0, .22); pointer-events: none; }
   .project-list :global(.project-card.project-settling) { position: relative; z-index: 2; }
