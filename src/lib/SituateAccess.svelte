@@ -2,9 +2,8 @@
   import { onDestroy } from 'svelte'
   import { get } from 'svelte/store'
   import { situate, mutateSituate } from './situate/store'
-  import { regenerate, validate, type Question } from './situate/core'
+  import { validate, type Question } from './situate/core'
   import SituateQuestionEditor from './SituateQuestionEditor.svelte'
-  import SituateDragValue from './SituateDragValue.svelte'
   // One quiz for every mode that blocks a site; edits save shortly after they are made.
   let draft: Question[] = structuredClone(get(situate).accessQuiz)
   let saved = JSON.stringify(draft)
@@ -29,17 +28,12 @@
     mutateSituate(d => ({ ...d, accessQuiz })).catch(e => { error = String(e); saved = '' })
   }
   onDestroy(flush)
-  function setMinutes(accessMinutes: number) {
-    mutateSituate(d => regenerate({ ...d, settings: { ...d.settings, accessMinutes } })).then(() => error = '').catch(e => error = String(e))
-  }
 </script>
 <div class="access">
-  <div class="inline"><span>One site for</span><SituateDragValue kind="minutes" max={240} label="Entertainment access" value={$situate.settings.accessMinutes} onChange={setMinutes} /></div>
   <SituateQuestionEditor label="Quiz" bind:questions={draft} />
   {#if error}<p class="error" role="alert">{error}</p>{/if}
 </div>
 <style>
   .access { display:grid; gap:14px; max-width:520px; }
-  .inline { display:flex; flex-wrap:wrap; align-items:center; gap:6px; font-size:13px; color:var(--muted); }
   .error { margin:0; color:var(--danger); }
 </style>

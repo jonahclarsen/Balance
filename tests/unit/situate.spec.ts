@@ -69,13 +69,15 @@ test('entertainment branches allow work or permitted care only, scoped to one ta
   expect(quizProgress(questions(d,d.modes[0],now,target),{visual:true}).next?.id).toBe('care')
   expect(() => grant(d,'dolo',{visual:true,care:false},now,now,target)).toThrow('Complete')
   for(const answers of [{visual:false},{visual:true,care:true}]) {
-    const allowed=grant(d,'dolo',answers,now,now,target)
+    expect(() => grant(d,'dolo',answers,now,now,target)).toThrow('how long')
+    const allowed=grant(d,'dolo',answers,now,now,target,15)
     expect(isActive(allowed,d.modes[0],'mac',now,target)).toBe(false)
     expect(isActive(allowed,d.modes[0],'mac',now,'domain:reddit.com')).toBe(true)
     expect(isActive(allowed,d.modes[1],'mac',now,target)).toBe(false)
     expect(isActive(allowed,d.modes[1],'mac',now,'domain:claude.ai')).toBe(true)
     expect(isActive(allowed,d.modes[0],'mac',now+15*60000,target)).toBe(true)
   }
+  expect(grant(d,'dolo',{visual:false},now,now,target,60).grants[0].until-now).toBe(60*60000)
   expect(() => questions(d,d.modes[0],now,'domain:reddit.com')).toThrow('mode quiz')
 })
 test('modes need a color and at least one device', () => {
@@ -156,7 +158,7 @@ test('older rules gain messaging apps and colors once, keeping Dolo\'s entertain
   const d=fixture();const [dolo,touch]=d.modes
   const doloQuiz=[{ id:'mine', text:'Mine?', required:true }]
   const { accessQuiz:_accessQuiz, ...unshared }=d
-  const legacy={ ...unshared, presets:undefined, enabled:true, settings:{ ...d.settings, accessMinutes:undefined, latitude:49, longitude:-123 }, grants:[{ mode:'dolo', epoch:1, until:2 }],
+  const legacy={ ...unshared, presets:undefined, enabled:true, settings:{ ...d.settings, accessMinutes:15, latitude:49, longitude:-123 }, grants:[{ mode:'dolo', epoch:1, until:2 }],
     modes:[{ ...dolo, color:undefined, description:undefined, accessQuiz:doloQuiz, categories:['social'], targets:dolo.targets.filter(t=>t.value!=='com.whatsapp'&&t.value!=='org.thoughtcrime.securesms') }, { ...touch, accessQuiz:[{ id:'other', text:'Other?', required:true }] }, ...d.modes.slice(2)] } as unknown as typeof d
   const upgraded=upgradePresets(legacy)
   validate(upgraded)
@@ -169,7 +171,7 @@ test('older rules gain messaging apps and colors once, keeping Dolo\'s entertain
   expect(upgradePresets({ ...legacy, modes:legacy.modes.map(m=>({ ...m, accessQuiz:undefined })) } as typeof d).accessQuiz).toEqual(d.accessQuiz)
   expect(upgraded.modes[0]).not.toHaveProperty('categories')
   expect(upgraded).not.toHaveProperty('enabled')
-  expect(upgraded.settings.accessMinutes).toBe(15)
+  expect(upgraded.settings).not.toHaveProperty('accessMinutes')
   expect(upgraded.modes[0].description).toBe(dolo.description)
   expect(upgraded.settings).not.toHaveProperty('latitude')
   expect(upgraded.grants).toEqual([{ mode:'dolo', target:'', epoch:1, until:2 }])

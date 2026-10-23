@@ -118,10 +118,26 @@ test('entertainment access passes one site in every mode and leaves the modes on
   const quiz=page.getByRole('dialog',{name:'Touch grass quiz',exact:true})
   await quiz.getByRole('button',{name:'Yes',exact:true}).click()
   await quiz.getByRole('button',{name:'Yes',exact:true}).click()
+  await expect(quiz.getByRole('heading',{name:'How long?'})).toBeVisible()
+  await quiz.getByRole('button',{name:'60 min',exact:true}).click()
   await expect(quiz).toBeHidden()
   const doc=await page.evaluate(()=>JSON.parse(localStorage.getItem('balance-situate-v1')!))
+  const until=new Date(2026,9,17,13).getTime()
   expect(doc.grants).toEqual(expect.arrayContaining(['dolo','touch-grass'].map(mode=>expect.objectContaining({mode,target:'domain:youtube.com'}))))
   expect(doc.grants).toHaveLength(2)
+  for(const g of doc.grants) expect(g.until).toBeGreaterThanOrEqual(until)
+})
+test('work use skips the follow-up and asks how long', async ({page}) => {
+  await page.goto('/situate.html?mode=dolo&target=domain%3Ayoutube.com&widget=1')
+  const quiz=page.getByRole('dialog',{name:'Dolo quiz',exact:true})
+  await expect(quiz.getByText('Question 1 of 2')).toBeVisible()
+  await quiz.getByRole('button',{name:'No',exact:true}).click()
+  await expect(quiz.getByRole('heading',{name:'How long?'})).toBeVisible()
+  await expect(quiz.getByRole('button',{name:'Continue'})).toHaveCount(0)
+  await quiz.getByRole('button',{name:'5 min',exact:true}).click()
+  await expect(quiz).toBeHidden()
+  const doc=await page.evaluate(()=>JSON.parse(localStorage.getItem('balance-situate-v1')!))
+  for(const g of doc.grants as {until:number}[]) { expect(g.until).toBeGreaterThanOrEqual(new Date(2026,9,17,12,5).getTime()); expect(g.until).toBeLessThan(new Date(2026,9,17,12,6).getTime()) }
 })
 
 test('one entertainment quiz is edited for every mode', async ({page}) => {

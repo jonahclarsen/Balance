@@ -39,8 +39,8 @@ to **Only by hand** to keep it off until you turn it on. Overlapping modes must 
 be passed. A **Heads-up** notifies 15 or 5 minutes before an off mode comes back on,
 whether at its scheduled time or when a pass ends.
 
-Entertainment has a separate 15-minute pass for one site, offered from a blocked
-site's gate or the Mac app prompt. One quiz, edited under **Entertainment access**,
+Entertainment has a separate pass for one site, offered from a blocked site's gate
+or the Mac app prompt. After its quiz, choose 5, 15, or 60 minutes. One quiz, edited under **Entertainment access**,
 covers every mode that blocks the site, so passing it once unblocks the site in all
 of them. Answer no to “Is this visual entertainment?” for work use. Answering yes
 requires confirming a meal, dishes, bath, or toothbrushing. Each mode's day and night

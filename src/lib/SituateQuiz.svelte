@@ -1,28 +1,38 @@
 <script lang="ts">
+  import { fade } from 'svelte/transition'
   import OverlayModal from './OverlayModal.svelte'
   import { situate, quizRequest, answerQuiz } from './situate/store'
-  import { questions, quizProgress, type Answers } from './situate/core'
+  import { ACCESS_MINUTES, questions, quizProgress, type Answers, type Question } from './situate/core'
   let answers: Answers = {}
   let error = ''
   let busy = false
   let previous: unknown
-  $: if ($quizRequest !== previous) { previous = $quizRequest; answers = {}; error = '' }
+  // The question stays in place while a final answer is saved, so nothing flashes before closing.
+  let last: Question | undefined
+  $: if ($quizRequest !== previous) { previous = $quizRequest; answers = {}; error = ''; last = undefined }
   $: mode = $situate.modes.find(m => m.id === $quizRequest?.mode)
   $: quiz = mode && $quizRequest ? getQuiz() : []
   $: progress = quizProgress(quiz, answers)
+  // An entertainment pass asks how long it is needed once the quiz is passed.
+  $: choosing = !!$quizRequest?.target && !progress.next && !progress.denied
+  $: shown = progress.next ?? last
+  // Count only questions that can still be asked, so a skipped follow-up is not counted.
+  $: askable = (q: Question) => !q.when || typeof answers[q.when.id] !== 'boolean' || answers[q.when.id] === q.when.answer
+  $: total = quiz.filter(askable).length
   function getQuiz() {
     try { return questions($situate, mode!, Date.now(), $quizRequest!.target) }
     catch (e) { error = String(e); return [] }
   }
   async function answer(value: boolean) {
     if (!progress.next || busy) return
+    last = progress.next
     answers = { ...answers, [progress.next.id]: value }
     const next = quizProgress(quiz, answers)
-    if (!next.next && !next.denied) await finish()
+    if (!next.next && !next.denied && !$quizRequest?.target) await finish()
   }
-  async function finish() {
+  async function finish(minutes?: number) {
     busy = true
-    try { await answerQuiz(answers) } catch (e) { error = String(e) }
+    try { await answerQuiz(answers, minutes) } catch (e) { error = String(e) }
     finally { busy = false }
   }
 </script>
@@ -33,11 +43,19 @@
       {:else if progress.denied}
         <h2>Keep this boundary for now.</h2><p class="muted">You can come back when you’ve done what you intended.</p>
         <button class="done" type="button" on:click={() => quizRequest.set(null)}>Okay</button>
-      {:else if progress.next}
-        <p class="muted">Question {quiz.indexOf(progress.next) + 1} of {quiz.length}</p>
-        <h2>{progress.next.text}</h2>
-        <div class="answers"><button disabled={busy} type="button" on:click={() => answer(false)}>No</button><button disabled={busy} type="button" on:click={() => answer(true)}>Yes</button></div>
-      {:else}<button disabled={busy} type="button" on:click={finish}>Continue</button>{/if}
+      {:else if choosing}
+        <div in:fade={{ duration: 140 }}>
+          <p class="muted" aria-hidden="true">&nbsp;</p>
+          <h2>How long?</h2>
+          <div class="answers">{#each ACCESS_MINUTES as minutes}<button disabled={busy} type="button" on:click={() => finish(minutes)}>{minutes} min</button>{/each}</div>
+        </div>
+      {:else if shown}
+        {#key shown.id}<div in:fade={{ duration: 140 }}>
+          <p class="muted">Question {quiz.slice(0, quiz.indexOf(shown) + 1).filter(askable).length} of {total}</p>
+          <h2>{shown.text}</h2>
+          <div class="answers"><button disabled={busy || !progress.next} type="button" on:click={() => answer(false)}>No</button><button disabled={busy || !progress.next} type="button" on:click={() => answer(true)}>Yes</button></div>
+        </div>{/key}
+      {/if}
     </div>
   </OverlayModal>
 {/if}

@@ -17,7 +17,7 @@ export type Mode = {
 export type Settings = {
   wakeMinutes: number; eveningMinutes: number; sunsetOffset: number; lateOffset: number
   lateMinutes: number
-  nightMinutes: number; lateNightMinutes: number; accessMinutes: number
+  nightMinutes: number; lateNightMinutes: number
 }
 export type Epoch = { at: number; end: number; phase: 'day' | 'night'; late: number }
 export type Window = { mode: string; at: number; end: number }
@@ -46,7 +46,9 @@ export const CATEGORIES: { id: Category; label: string; color: string }[] = [
   { id: 'custom', label: 'Other', color: '#5f7d8c' },
 ]
 const target = (category: Category, kind: Target['kind'], value: string): Target => ({ id: `${kind}:${value}`, category, kind, value })
-const PRESETS = 10
+const PRESETS = 11
+/** Lengths offered for an entertainment pass, chosen after its quiz. */
+export const ACCESS_MINUTES = [5, 15, 60]
 const emergency: Question = { ...q('emergency', 'Is this an emergency?'), when: { id: 'planned', answer: false }, minutes: 5 }
 // Google Messages, WhatsApp, Messenger, Instagram, the Feurstagram clone and Signal on Android and Mac.
 const messagingApps = ['com.google.android.apps.messaging', 'com.whatsapp', 'net.whatsapp.WhatsApp', 'com.facebook.orca', 'com.facebook.archon', 'com.facebook.archon.developerID', 'com.burbn.instagram', 'com.instagram.android.feurstagram', 'org.thoughtcrime.securesms', 'org.whispersystems.signal-desktop']
@@ -66,7 +68,7 @@ export function defaults(now = Date.now()): Document {
   const thrust = [q('thrust', 'Did you do one thrust? Get up and thrust your chosen object in and out of your bag.')]
   const doc: Document = {
     version: 1, revision: 0, presets: PRESETS, generatedAt: now, manual: {}, grants: [], epochs: [], windows: [], accessQuiz: entertainment,
-    settings: { wakeMinutes: 420, eveningMinutes: 1290, sunsetOffset: 240, lateOffset: 480, lateMinutes: 150, nightMinutes: 60, lateNightMinutes: 30, accessMinutes: 15 },
+    settings: { wakeMinutes: 420, eveningMinutes: 1290, sunsetOffset: 240, lateOffset: 480, lateMinutes: 150, nightMinutes: 60, lateNightMinutes: 30 },
     modes: [
       { id: 'dolo', name: 'Dolo', description: 'Social and messaging apps, plus entertainment.', color: PRESET_COLORS.dolo, platforms: ['mac', 'android'], scheduled: true, dayQuiz: thrust, nightQuiz: thrust, targets: targets.filter(t => t.category !== 'ai') },
       { id: 'touch-grass', name: 'Touch grass', description: 'AI chats and entertainment.', color: PRESET_COLORS['touch-grass'], platforms: ['mac', 'android'], scheduled: true, eveningOnly: true, headsUp: [15, 5], dayQuiz: [q('planned', 'Have you planned tomorrow?'), emergency], nightQuiz: [q('peed', 'Have you just peed?'), q('bed', 'Have you spent one minute in bed with the lights off and Herdr muted?')], targets: targets.filter(t => t.category !== 'social') },
@@ -77,7 +79,7 @@ export function defaults(now = Date.now()): Document {
   }
   return regenerate(doc, now)
 }
-type Legacy = { categories?: unknown; enabled?: unknown; latitude?: unknown; longitude?: unknown; accessQuiz?: Question[] }
+type Legacy = { categories?: unknown; enabled?: unknown; latitude?: unknown; longitude?: unknown; accessMinutes?: unknown; accessQuiz?: Question[] }
 export function upgradePresets(doc: Document): Document {
   const version = doc.presets ?? 1
   if (version >= PRESETS) return doc
@@ -86,7 +88,8 @@ export function upgradePresets(doc: Document): Document {
   // the sunset location from the time zone instead of entered coordinates; v6 adds descriptions
   // and v7 the reminder modes. v8 lets an emergency excuse Touch grass's planning question;
   // v9 turns Touch grass on only at evening, with 15- and 5-minute heads-ups; v10 replaces
-  // each mode's entertainment quiz with one shared quiz, keeping Dolo's.
+  // each mode's entertainment quiz with one shared quiz, keeping Dolo's; v11 asks each
+  // entertainment pass for its length instead of a fixed one.
   const preset = defaults(doc.generatedAt).modes
   const legacy = doc.modes as (Mode & Legacy)[]
   const accessQuiz = doc.accessQuiz ?? [legacy.find(m => m.id === 'dolo'), ...legacy].find(m => m?.accessQuiz?.length)?.accessQuiz ?? entertainment
@@ -99,8 +102,7 @@ export function upgradePresets(doc: Document): Document {
     return { ...mode, ...evening, dayQuiz, color: m.color ?? PRESET_COLORS[m.id] ?? MODE_COLORS[i % MODE_COLORS.length], description: m.description ?? fallback?.description ?? '', targets }
   })
   const { enabled: _enabled, ...rest } = doc as Document & Legacy
-  const { latitude: _latitude, longitude: _longitude, ...kept } = doc.settings as Settings & Legacy
-  const settings = { ...kept, accessMinutes: kept.accessMinutes ?? 15 }
+  const { latitude: _latitude, longitude: _longitude, accessMinutes: _accessMinutes, ...settings } = doc.settings as Settings & Legacy
   const grants = doc.grants.map(g => ({ ...g, target: g.target ?? '' }))
   const reminders = version < 7 ? preset.filter(p => p.reminder && !modes.some(m => m.id === p.id)) : []
   return { ...rest, presets: PRESETS, accessQuiz, settings, modes: [...modes, ...reminders], grants, windows: doc.windows ?? [] }
@@ -248,16 +250,18 @@ export function quizProgress(quiz: Question[], answers: Answers): { next?: Quest
   }
   return { denied: false }
 }
-export function grant(doc: Document, modeId: string, answers: Answers, startedAt: number, now = Date.now(), targetId = ''): Document {
+/** An entertainment pass (targetId) lasts the chosen ACCESS_MINUTES. */
+export function grant(doc: Document, modeId: string, answers: Answers, startedAt: number, now = Date.now(), targetId = '', chosen?: number): Document {
   const mode = doc.modes.find(m => m.id === modeId)
   const e = epoch(doc, now)
   if (!mode || !e || epoch(doc, startedAt)?.at !== e.at || startedAt < (doc.manual[modeId] ?? 0)) throw new Error('The rules changed. Please start the quiz again.')
   const quiz = questions(doc, mode, now, targetId)
   const progress = quizProgress(quiz, answers)
   if (progress.denied || progress.next) throw new Error('Complete the quiz before continuing.')
+  if (targetId && !ACCESS_MINUTES.includes(chosen!)) throw new Error('Choose how long you need.')
   const s = doc.settings
   const limit = Math.min(...quiz.filter(q => asked(q, answers)).map(q => q.minutes ?? Infinity))
-  const minutes = Math.min(limit, targetId ? s.accessMinutes : mode.id === 'touch-grass' && e.phase === 'night' ? now >= e.late ? s.lateNightMinutes : s.nightMinutes : Infinity)
+  const minutes = Math.min(limit, targetId ? chosen! : mode.id === 'touch-grass' && e.phase === 'night' ? now >= e.late ? s.lateNightMinutes : s.nightMinutes : Infinity)
   const until = !mode.scheduled && !targetId && minutes === Infinity ? Number.MAX_SAFE_INTEGER : Math.min(e.end, now + minutes * minute)
   // An entertainment pass covers the site in every mode that blocks it.
   const passed = targetId ? doc.modes.filter(m => m.targets.some(t => t.id === targetId && t.category === 'entertainment') && startedAt >= (doc.manual[m.id] ?? 0)).map(m => m.id) : [modeId]
@@ -282,7 +286,7 @@ export function validate(doc: Document): void {
   validateQuiz(doc.accessQuiz)
   const s = doc.settings
   for (const k of ['wakeMinutes', 'eveningMinutes', 'lateMinutes'] as const) if (!Number.isInteger(s[k]) || s[k] < 0 || s[k] >= 1440) throw new Error('Choose a valid clock time')
-  for (const k of ['nightMinutes', 'lateNightMinutes', 'accessMinutes'] as const) if (!Number.isFinite(s[k]) || s[k] < 1 || s[k] > 240) throw new Error('Allow between 1 and 240 minutes')
+  for (const k of ['nightMinutes', 'lateNightMinutes'] as const) if (!Number.isFinite(s[k]) || s[k] < 1 || s[k] > 240) throw new Error('Allow between 1 and 240 minutes')
   for (const k of ['sunsetOffset', 'lateOffset'] as const) if (!Number.isFinite(s[k]) || s[k] < 0 || s[k] > 1440) throw new Error('Sunset offsets must be between 0 and 24 hours')
   const ids = new Set<string>()
   for (const m of doc.modes) {

@@ -52,12 +52,12 @@ export function requestQuiz(mode: string, target = '') {
   quizRequest.set({ mode, target, startedAt: Date.now(), revision: get(situate).revision })
 }
 export function activateMode(mode: string) { return mutateSituate(current => enableMode(current, mode)) }
-export function answerQuiz(answers: Answers) {
+export function answerQuiz(answers: Answers, minutes?: number) {
   const request = get(quizRequest)
   if (!request) return Promise.resolve()
   return mutateSituate(current => {
     if(current.revision !== request.revision) throw new Error('Rules changed. Reopen the quiz.')
-    return grant(current, request.mode, answers, request.startedAt, Date.now(), request.target)
+    return grant(current, request.mode, answers, request.startedAt, Date.now(), request.target, minutes)
   }).then(() => quizRequest.set(null))
 }
 export function situateDeepLink(raw: string): boolean {
