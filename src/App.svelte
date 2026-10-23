@@ -261,6 +261,7 @@
   const GOAL_HISTORY_HEIGHT_KEY = 'balance:goalHistoryHeight'
   const GOAL_RHYTHM_HIDDEN_UNTIL_KEY = 'balance:goalRhythmHiddenUntil'
   const DISMISSED_UPDATE_VERSION_KEY = 'balance:dismissedUpdateVersion'
+  const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000
   const DATABASE_LOADING_MESSAGE_INTERVAL_MS = 10_000
   const WORD_CAP_UNLOCK_MS = 10_000
   const APP_DEFAULT_ZOOM = 1.1
@@ -500,6 +501,8 @@ return rows`
   // Stays set after "Not now" so Settings can still offer the update.
   let latestUpdate: AvailableUpdate | null = null
   let updateInstallState: 'idle' | 'downloading' | 'installing' = 'idle'
+  let updateChecksReady = false
+  let lastUpdateCheckAt = 0
   let updateInstallError = ''
   let exportSettingsStatus = ''
   let exportSettingsStatusIsError = false
@@ -2500,18 +2503,8 @@ return rows`
         })
 
         if (import.meta.env.PROD) {
-          void invoke<AvailableUpdate | null>('check_for_update').then((update) => {
-            if (mounted) latestUpdate = update
-            if (
-              mounted &&
-              update &&
-              localStorage.getItem(DISMISSED_UPDATE_VERSION_KEY) !== update.version
-            ) {
-              availableUpdate = update
-            }
-          }).catch((error) => {
-            console.error('Failed to check GitHub Releases', error)
-          })
+          updateChecksReady = true
+          checkForUpdate()
         }
       }
 
@@ -2624,7 +2617,24 @@ return rows`
     }
   })
 
+  // Android keeps the app alive in the background for days, so checking only at
+  // launch can miss a release for a long time. Re-check whenever the app is
+  // used again, at most every UPDATE_CHECK_INTERVAL_MS.
+  function checkForUpdate() {
+    if (!updateChecksReady || Date.now() - lastUpdateCheckAt < UPDATE_CHECK_INTERVAL_MS) return
+    lastUpdateCheckAt = Date.now()
+    void invoke<AvailableUpdate | null>('check_for_update').then((update) => {
+      latestUpdate = update
+      if (update && localStorage.getItem(DISMISSED_UPDATE_VERSION_KEY) !== update.version) {
+        availableUpdate = update
+      }
+    }).catch((error) => {
+      console.error('Failed to check GitHub Releases', error)
+    })
+  }
+
   function refreshCurrentDay() {
+    checkForUpdate()
     projectClock = Date.now()
     applyIridescentHueShift()
     restoreGoalRhythmHide()
