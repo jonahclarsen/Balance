@@ -74,7 +74,7 @@ test('day rail points toward today and disappears on today', async ({ page }, te
   await page.evaluate(() => localStorage.clear())
   await page.reload()
   if (testInfo.project.name === 'mobile') await page.getByRole('button', { name: 'Open navigation' }).click()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
   if (testInfo.project.name === 'mobile') {
     await page.getByRole('complementary').getByRole('button', { name: 'Close navigation' }).click()
   }
@@ -134,7 +134,7 @@ test('a Random day keeps its recorded theme after the 5am rollover', async ({ pa
 
   await expect(workspace).toHaveClass(/before-current-day-workspace/)
   await expectDayRail(workspace, 'before', testInfo.project.name === 'mobile')
-  await expect(page.locator('.sidebar-footer button.primary')).toContainText('Generate selected day')
+  await expect(page.locator('.sidebar-footer button.primary')).toContainText('Generate day')
   await expect(page.locator('html')).toHaveAttribute('data-theme', initialTheme!)
 })
 
@@ -415,7 +415,7 @@ test('sidebar has no standalone hide control', async ({ page }, testInfo) => {
 
   await expect(sidebar).toBeVisible()
   const templateSelectBox = await sidebar.getByRole('combobox').boundingBox()
-  const generateButtonBox = await sidebar.getByRole('button', { name: 'Generate today' }).boundingBox()
+  const generateButtonBox = await sidebar.getByRole('button', { name: 'Generate day' }).boundingBox()
   expect(templateSelectBox).not.toBeNull()
   expect(generateButtonBox).not.toBeNull()
   expect(Math.abs((templateSelectBox?.x ?? 0) - (generateButtonBox?.x ?? 0))).toBeLessThan(1)
@@ -590,7 +590,7 @@ test('core planner screens render and screenshot cleanly', async ({ page }, test
 
   await expect(page.getByRole('region', { name: 'Daily plan' })).toBeVisible()
   if (testInfo.project.name === 'mobile') await page.getByRole('button', { name: 'Open navigation', exact: true }).click()
-  const generateButton = page.getByRole('complementary').getByRole('button', { name: 'Generate today' })
+  const generateButton = page.getByRole('complementary').getByRole('button', { name: 'Generate day' })
   await expect(generateButton).toBeVisible()
   await expect(page.getByRole('region', { name: 'Daily plan' })).toHaveClass(/current-day-pane/)
 
@@ -845,22 +845,22 @@ test('empty days show every template and require an explicit selection', async (
   await expect(emptyState.getByRole('group', { name: 'Day template' })).toBeVisible()
   await expect(emptyState.getByRole('radio')).toHaveCount(2)
   await expect(emptyState.getByRole('radio', { checked: true })).toHaveCount(0)
-  await expect(emptyState.getByRole('button', { name: 'Generate today' })).toBeDisabled()
+  await expect(emptyState.getByRole('button', { name: 'Generate day' })).toBeDisabled()
   await emptyState.getByRole('radio', { name: 'Weekend' }).check()
-  await expect(emptyState.getByRole('button', { name: 'Generate today' })).toBeEnabled()
-  await emptyState.getByRole('button', { name: 'Generate today' }).click()
+  await expect(emptyState.getByRole('button', { name: 'Generate day' })).toBeEnabled()
+  await emptyState.getByRole('button', { name: 'Generate day' }).click()
   await expect(page.locator('[data-plan-text-input]').filter({ hasText: 'Rest' })).toBeVisible()
 
   await page.locator('.date-input').fill(addDays(firstDay, 1))
   await expect(page.locator('.date-input')).toHaveValue(addDays(firstDay, 1))
   await expect(page.locator('.empty-state').getByRole('radio', { checked: true })).toHaveCount(0)
-  await expect(page.locator('.empty-state').getByRole('button', { name: 'Generate selected day' })).toBeDisabled()
+  await expect(page.locator('.empty-state').getByRole('button', { name: 'Generate day' })).toBeDisabled()
 
   await page.reload()
   await expect(page.locator('.empty-state').getByRole('radio')).toHaveCount(2)
   await expect(page.locator('.empty-state').getByRole('radio', { checked: true })).toHaveCount(0)
   await page.locator('.empty-state').getByRole('radio', { name: 'Weekend' }).check()
-  await page.locator('.empty-state').getByRole('button', { name: 'Generate selected day' }).click()
+  await page.locator('.empty-state').getByRole('button', { name: 'Generate day' }).click()
   await expect(page.locator('[data-plan-text-input]').filter({ hasText: 'Rest' })).toBeVisible()
 })
 
@@ -1209,7 +1209,7 @@ test('daily reminder edits the selected day and future days inherit it', async (
   await page.evaluate(() => localStorage.clear())
   await page.reload()
 
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
   const currentDate = await page.locator('.date-input').inputValue()
   const nextDate = addDays(currentDate, 1)
 
@@ -1226,7 +1226,7 @@ test('daily reminder edits the selected day and future days inherit it', async (
     .toBe('Keep it concrete')
 
   await page.locator('.date-input').fill(nextDate)
-  await generateDay(page, 'Generate selected day')
+  await generateDay(page)
 
   await expect(page.getByRole('button', { name: /Keep it concrete/ })).toBeVisible()
   await expect
@@ -1668,7 +1668,7 @@ test('plan items can be nested and un-nested with the drag handle', async ({ pag
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
 
   const wakeRow = page.getByRole('listitem', { name: /Plan item: Wake up/ })
   const workRow = page.getByRole('listitem', { name: /Plan item: Work block/ })
@@ -1768,7 +1768,7 @@ test('tab indents a plan item only one level after a nested sibling', async ({ p
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
 
   await page.evaluate(() => {
     const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
@@ -1822,7 +1822,7 @@ test('a Today task can hide and show its subtasks', async ({ page }, testInfo) =
   await page.evaluate(() => localStorage.clear())
   await page.reload()
   if (testInfo.project.name === 'mobile') await page.getByRole('button', { name: 'Open navigation' }).click()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
 
   await page.evaluate(() => {
     const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
@@ -1884,7 +1884,7 @@ test('Cmd+R hides and shows the subtasks of every selected Today task', async ({
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
 
   await page.evaluate(() => {
     const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
@@ -2004,7 +2004,7 @@ test('shift-tab outdents a plan item without jumping below following siblings', 
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
 
   const topLevelBeforeOutdent = await topLevelTexts(page)
   const workIndex = topLevelBeforeOutdent.indexOf('Work block')
@@ -2089,7 +2089,7 @@ test('adding plan time starts with a shallower timed item and after a same-level
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
 
   for (const text of ['Wake up', 'Pick the first useful task', 'Write down next action']) {
     await focusInputByValue(page, text)
@@ -2122,7 +2122,7 @@ test('keyboard shortcuts add, adjust, and remove time while editing a plan item'
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
   await expect(page.getByRole('heading', { name: 'Some Shortcuts' })).toHaveCount(0)
 
   await focusInputByValue(page, 'Pick the first useful task')
@@ -2193,7 +2193,7 @@ test('time adjustment shortcuts on an untimed subtask adjust the nearest timed p
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
 
   await focusInputByValue(page, 'Work block')
   await page.keyboard.press('Alt+Shift+t')
@@ -2217,7 +2217,7 @@ test('removing time clears stored values, supports undo, and re-adds a fresh ran
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
 
   await focusInputByValue(page, 'Pick the first useful task')
   await page.keyboard.press('Alt+Shift+t')
@@ -2557,7 +2557,7 @@ test('alt-dragging a plan start time changes only the start time', async ({ page
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
 
   const pickRow = page.getByRole('listitem', { name: /Plan item: Pick the first useful task/ })
   await pickRow.getByRole('button', { name: 'Add time range' }).click()
@@ -2584,7 +2584,7 @@ test('clicking and dragging a desktop time request native haptics', async ({ pag
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
 
   const pickRow = page.getByRole('listitem', { name: /Plan item: Pick the first useful task/ })
   await pickRow.getByRole('button', { name: 'Add time range' }).click()
@@ -2635,7 +2635,7 @@ test('clicking a desktop time leaves already-enabled system haptics unchanged', 
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
 
   const pickRow = page.getByRole('listitem', { name: /Plan item: Pick the first useful task/ })
   await pickRow.getByRole('button', { name: 'Add time range' }).click()
@@ -2724,7 +2724,7 @@ test('quick repeated plan time drags undo as one entry', async ({ page, isMobile
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
 
   const pickRow = page.getByRole('listitem', { name: /Plan item: Pick the first useful task/ })
   await pickRow.getByRole('button', { name: 'Add time range' }).click()
@@ -2746,7 +2746,7 @@ test('dragging a selected plan end time shifts selected timed tasks together', a
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
 
   const pickRow = page.getByRole('listitem', { name: /Plan item: Pick the first useful task/ })
   const writeRow = page.getByRole('listitem', { name: /Plan item: Write down next action/ })
@@ -2924,7 +2924,7 @@ test('plan item text fields support arrow focus and option-arrow sibling moves',
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
 
   await focusInputByValue(page, 'Wake up')
   await page.keyboard.press('ArrowDown')
@@ -3149,7 +3149,7 @@ test('plan item text fields support left and right boundary focus', async ({ pag
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
 
   const topLevel = await topLevelTexts(page)
   await focusInputByValue(page, topLevel[0])
@@ -3851,7 +3851,7 @@ test('enter splits plan items and shift-enter inserts a line break', async ({ pa
   await page.evaluate(() => localStorage.clear())
   await page.reload()
   if (testInfo.project.name === 'mobile') await page.getByRole('button', { name: 'Open navigation' }).click()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
   if (testInfo.project.name === 'mobile') await page.getByRole('complementary').getByRole('button', { name: 'Close navigation' }).click()
 
   await focusInputByValue(page, 'Wake up')
@@ -3873,7 +3873,7 @@ test('a trailing soft line break restores its caret after tabbing away', async (
   await page.evaluate(() => localStorage.clear())
   await page.reload()
   if (testInfo.project.name === 'mobile') await page.getByRole('button', { name: 'Open navigation' }).click()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
   if (testInfo.project.name === 'mobile') {
     await page.getByRole('complementary').getByRole('button', { name: 'Close navigation' }).click()
   }
@@ -3915,7 +3915,7 @@ test('enter on an empty plan item focuses a new blank sibling below it', async (
   await page.evaluate(() => localStorage.clear())
   await page.reload()
   if (testInfo.project.name === 'mobile') await page.getByRole('button', { name: 'Open navigation' }).click()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
   if (testInfo.project.name === 'mobile') {
     await page.getByRole('complementary').getByRole('button', { name: 'Close navigation' }).click()
   }
@@ -3956,7 +3956,7 @@ test('enter at the start of a parent plan item inserts a blank sibling above it'
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
 
   await focusInputByValue(page, 'Work block')
   await setCaretOffsetInFocusedEditor(page, 0)
@@ -3993,7 +3993,7 @@ test('enter in the middle of a parent plan item moves children to the second spl
   await page.evaluate(() => localStorage.clear())
   await page.reload()
   if (testInfo.project.name === 'mobile') await page.getByRole('button', { name: 'Open navigation' }).click()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
   if (testInfo.project.name === 'mobile') await page.getByRole('complementary').getByRole('button', { name: 'Close navigation' }).click()
 
   await focusInputByValue(page, 'Work block')
@@ -4030,7 +4030,7 @@ test('enter at the end of a parent plan item moves children to the new blank sib
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
 
   await focusInputByValue(page, 'Work block')
   await setCaretOffsetInFocusedEditor(page, 'Work block'.length)
@@ -4066,7 +4066,7 @@ test('enter at the end of a collapsed parent keeps children and focuses a new si
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
 
   await page.getByRole('button', { name: 'Hide subtasks', exact: true }).click()
   await focusInputByValue(page, 'Work block')
@@ -4104,7 +4104,7 @@ test('backspace at the start of a plan item removes an empty item above it', asy
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
 
   await focusInputByValue(page, 'Work block')
   await setCaretOffsetInFocusedEditor(page, 0)
@@ -4154,7 +4154,7 @@ test('backspace after a leading blank line removes the newline without merging t
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
 
   const before = await topLevelTexts(page)
   await focusInputByValue(page, before[1])
@@ -4175,7 +4175,7 @@ test('backspace at the start of a plan item merges it into the item above', asyn
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
 
   const before = await topLevelTexts(page)
   await focusInputByValue(page, before[1])
@@ -4199,7 +4199,7 @@ test('cmd backspace at the end of a plan item deletes the whole task', async ({ 
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
 
   const before = await topLevelTexts(page)
   await focusInputByValue(page, before[1])
@@ -4316,7 +4316,7 @@ test('adding an item focuses its editor at the caret', async ({ page }, testInfo
   await page.evaluate(() => localStorage.clear())
   await page.reload()
   if (testInfo.project.name === 'mobile') await page.getByRole('button', { name: 'Open navigation' }).click()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
   if (testInfo.project.name === 'mobile') {
     await page.getByRole('complementary').getByRole('button', { name: 'Close navigation' }).click()
   }
@@ -4343,7 +4343,7 @@ test('option backspace clears freshly typed new plan items without leaving newli
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
 
   const attempts: Array<{ source: 'add-button' | 'enter-split'; text: string; preflight?: () => Promise<void> }> = []
   // Repeat both creation paths to catch stale editor state without a 60-item stress loop.
@@ -4395,7 +4395,7 @@ test('backspacing bold multi-line content to empty leaves no phantom newline', a
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
 
   await page.getByRole('button', { name: '+ Add item' }).click()
   await page.locator('[data-plan-text-input]').last().focus()
@@ -4446,7 +4446,7 @@ test('cmd shift a selects the focused plan item instead of its text', async ({ p
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
 
   await focusInputByValue(page, 'Wake up')
   await page.keyboard.press('Meta+Shift+A')
@@ -4462,7 +4462,7 @@ test('a page restores its selected task after visiting another page', async ({ p
   await page.evaluate(() => localStorage.clear())
   await page.reload()
   if (testInfo.project.name === 'mobile') await page.getByRole('button', { name: 'Open navigation' }).click()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
   if (testInfo.project.name === 'mobile') {
     await page.getByRole('complementary').getByRole('button', { name: 'Close navigation' }).click()
   }
@@ -4485,7 +4485,7 @@ test('a page restores its task caret after visiting another page', async ({ page
   await page.evaluate(() => localStorage.clear())
   await page.reload()
   if (testInfo.project.name === 'mobile') await page.getByRole('button', { name: 'Open navigation' }).click()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
   if (testInfo.project.name === 'mobile') {
     await page.getByRole('complementary').getByRole('button', { name: 'Close navigation' }).click()
   }
@@ -4510,7 +4510,7 @@ test('arrow keys enter a selected plan item at the matching text boundary', asyn
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
 
   const text = 'Wake up'
   for (const [key, caretOffset] of [
@@ -4615,7 +4615,7 @@ test('cutting a whole plan item focuses the item below it at the start', async (
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
 
   const before = await topLevelTexts(page)
   await focusInputByValue(page, before[0])
@@ -4635,7 +4635,7 @@ test('pasting plan items into an empty focused item replaces it', async ({ page 
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
 
   const before = await topLevelTexts(page)
   await focusInputByValue(page, before[0])
@@ -4656,7 +4656,7 @@ test('pasting a plan item at caret offset zero inserts it above the focused item
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
 
   const before = await topLevelTexts(page)
   await focusInputByValue(page, before[0])
@@ -4679,7 +4679,7 @@ test('clicking a paste target immediately after whole-item copy honors the click
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
 
   const before = await topLevelTexts(page)
   const copiedRow = page.getByRole('listitem', { name: 'Plan item: Work block' })
@@ -4706,7 +4706,7 @@ test('Paste and Match Style inserts copied item text into the focused item inste
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
 
   const before = await topLevelTexts(page)
   const copiedText = before[0]
@@ -4733,7 +4733,7 @@ test('replacing the system clipboard prevents stale structured task paste', asyn
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
 
   const before = await topLevelTexts(page)
   await focusInputByValue(page, before[0])
@@ -4756,7 +4756,7 @@ test('pasting a moved group again keeps it as structured task items', async ({ p
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
 
   // Make the default plan three adjacent leaf tasks so the scenario stays below
   // the cross-day review threshold and exercises the cut clipboard directly.
@@ -4776,7 +4776,7 @@ test('pasting a moved group again keeps it as structured task items', async ({ p
   await expect.poll(async () => activePlanTopLevelTexts(page)).toEqual([])
 
   await page.keyboard.press('Alt+KeyW')
-  await generateDay(page, 'Generate selected day')
+  await generateDay(page)
   const priorDayItems = await activePlanTopLevelTexts(page)
   await focusInputByValue(page, priorDayItems.at(-1) as string)
   await setCaretOffsetInFocusedEditor(page, priorDayItems.at(-1)!.length)
@@ -4802,7 +4802,7 @@ test('pasting four items on the day they were copied bypasses review', async ({ 
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
 
   const before = await topLevelTexts(page)
   // Move + Work block (including Work block's two children) is four reviewable items.
@@ -4823,7 +4823,7 @@ test('pasting three items onto a different day bypasses review', async ({ page }
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
 
   const sourceItems = await topLevelTexts(page)
   // Work block and its two children is exactly three reviewable items.
@@ -4832,7 +4832,7 @@ test('pasting three items onto a different day bypasses review', async ({ page }
   await page.keyboard.press('Meta+C')
 
   await page.keyboard.press('Alt+KeyW')
-  await generateDay(page, 'Generate selected day')
+  await generateDay(page)
   const targetItems = await topLevelTexts(page)
   await page.keyboard.press('Escape')
   await focusInputByValue(page, targetItems.at(-1) as string)
@@ -4847,7 +4847,7 @@ test('pasting four or more items onto a different day opens a review queue', asy
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
 
   const before = await topLevelTexts(page)
 
@@ -4857,7 +4857,7 @@ test('pasting four or more items onto a different day opens a review queue', asy
   await page.keyboard.press('Meta+C')
 
   await page.keyboard.press('Alt+KeyW')
-  await generateDay(page, 'Generate selected day')
+  await generateDay(page)
   const targetItems = await topLevelTexts(page)
 
   // Pasting 4+ items on another day opens the review modal instead of inserting directly.
@@ -4936,7 +4936,7 @@ test('plan item rich text preserves paste formatting and supports shortcuts', as
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
 
   await focusInputByValue(page, 'Wake up')
   await page.evaluate(async () => {
@@ -5079,7 +5079,7 @@ test('template options use rich text formatting and generate formatted plan item
     .poll(async () => storedHTMLForFocusedTemplateOption(page))
     .toContain('<strong>Template</strong> <em>Link</em>')
 
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
   await expect(page.locator('[data-plan-text-input]').first()).toBeVisible()
   await expect.poll(async () => firstPlanItemHTML(page)).toContain('<strong>Template</strong> <em>Link</em>')
 })
@@ -5229,7 +5229,7 @@ test('generating from a future date uses the selected date and latest template e
 
   await page.locator('input[type="date"]').fill('2030-01-15')
   await showPrimaryNavigation(page)
-  await expect(page.getByRole('complementary', { name: 'Primary navigation drawer' }).getByRole('button', { name: 'Generate selected day', exact: true })).toBeVisible()
+  await expect(page.getByRole('complementary', { name: 'Primary navigation drawer' }).getByRole('button', { name: 'Generate day', exact: true })).toBeVisible()
 
   await openView(page, 'Days')
   await focusTemplateOptionByValue(page, 'Wake up')
@@ -5237,7 +5237,7 @@ test('generating from a future date uses the selected date and latest template e
   await page.keyboard.type('Future plan item')
   await expect.poll(async () => storedTextForFocusedTemplateOption(page)).toBe('Future plan item')
 
-  await generateDay(page, 'Generate selected day')
+  await generateDay(page)
 
   await expect(page.locator('input[type="date"]')).toHaveValue('2030-01-15')
   await expect
@@ -5283,7 +5283,7 @@ test('blank template options show skip placeholder and skip generated plan item'
     localStorage.setItem('balance.appState.v1', JSON.stringify(state))
   })
   await page.reload()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
 
   await expect.poll(async () => topLevelTexts(page)).not.toContain('Wake up')
   await expect.poll(async () => topLevelTexts(page)).not.toContain('')
@@ -5293,7 +5293,7 @@ test('typing in rich plan item text keeps the caret at the insertion point', asy
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
 
   await focusInputByValue(page, 'Wake up')
   await page.keyboard.press('Meta+A')
@@ -5307,7 +5307,7 @@ test('rich plan item text restores the caret after focus returns', async ({ page
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
 
   await focusInputByValue(page, 'Wake up')
   await setCaretOffsetInFocusedEditor(page, 4)
@@ -5346,7 +5346,7 @@ test('rich plan item text restores the caret after visibility returns', async ({
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
 
   await focusInputByValue(page, 'Wake up')
   await setCaretOffsetInFocusedEditor(page, 4)
@@ -5380,7 +5380,7 @@ test('rich plan item text restores the caret after tabbing away mid-edit', async
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
 
   await focusInputByValue(page, 'Wake up')
   await setCaretOffsetInFocusedEditor(page, 4)
@@ -5434,7 +5434,7 @@ test('global undo and redo batch text edits', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
 
   await focusInputByValue(page, 'Wake up')
   await page.keyboard.press('Meta+A')
@@ -5461,7 +5461,7 @@ test('global undo reverts pasted rich text edits', async ({ page, browserName })
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
 
   await focusInputByValue(page, 'Wake up')
   await page.keyboard.press('Meta+A')
@@ -5485,7 +5485,7 @@ test('global undo and redo apply to item movement', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
   const initialOrder = await topLevelTexts(page)
   const movedOrder = [initialOrder[1], initialOrder[0], ...initialOrder.slice(2)]
 

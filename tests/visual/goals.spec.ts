@@ -696,7 +696,7 @@ test('clicking a goal rhythm date opens that day in Today view', async ({ page }
 })
 
 test('a matching plan item previews its goal, then shows completion when checked', async ({ page }, testInfo) => {
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
   await createGoal(page, 'Exercise', 1, 'lift, swim')
 
   await openView(page, 'Today')
@@ -787,7 +787,7 @@ test('a matching plan item previews its goal, then shows completion when checked
 })
 
 test('the goal burst always clears its canvas, even after a frame fails', async ({ page }) => {
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
   await createGoal(page, 'Exercise', 1, 'lift, swim')
 
   await openView(page, 'Today')
@@ -821,7 +821,7 @@ test('the goal burst always clears its canvas, even after a frame fails', async 
 })
 
 test('a not-yet-due goal previews when its single-word term matches at a word boundary', async ({ page }) => {
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
   await createGoal(page, 'DJ practice', 7, 'dj')
   await openView(page, 'Today')
 
@@ -925,7 +925,7 @@ test('direct edits to an older plan item can complete an overdue goal', async ({
 
 test('task typing only rescans goals when its match result changes', async ({ page }) => {
   const matchTerm = 'needle-goal-token'
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
   await createGoal(page, 'Needle', 1, matchTerm)
   await openView(page, 'Today')
 
@@ -966,7 +966,7 @@ test('task typing only rescans goals when its match result changes', async ({ pa
 })
 
 test('old goal snapshots survive rule edits and archived goals leave rhythm', async ({ page }, testInfo) => {
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
   await createGoal(page, 'Exercise', 3, 'lift, swim')
   await openView(page, 'Today')
 
@@ -1580,7 +1580,7 @@ test('n goals template items use goal names instead of matching terms', async ({
   }, today)
   await page.reload()
 
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
 
   await expect(page.getByRole('listitem', { name: 'Plan item: Write music' })).toBeVisible()
   await expect(page.getByRole('listitem', { name: 'Plan item: beat' })).toHaveCount(0)
@@ -1648,9 +1648,9 @@ test(`day generation opens the goal doability review for legacy overdue and repe
   if (testInfo.project.name === 'mobile') {
     const emptyState = page.locator('.empty-state')
     await emptyState.getByRole('radio', { name: 'Default day' }).check()
-    await emptyState.getByRole('button', { name: /Generate (today|selected day)/ }).click()
+    await emptyState.getByRole('button', { name: 'Generate day' }).click()
   } else {
-    await page.getByRole('complementary').getByRole('button', { name: /Generate (today|selected day)/ }).click()
+    await page.getByRole('complementary').getByRole('button', { name: 'Generate day' }).click()
   }
 
   const modal = page.getByRole('dialog', { name: 'Are your goals attainable?' })
@@ -2077,7 +2077,7 @@ test('goal rhythm uses one smooth scroll surface across its name and timeline pa
 test('clicking a plan item goal badge reveals that goal in the rhythm panel', async ({ page }) => {
   await selectDeviceThemeForTest(page, 'iridescent')
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'iridescent')
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
   await createGoal(page, 'Exercise', 1, 'lift, swim')
   await openView(page, 'Today')
 
@@ -2219,7 +2219,7 @@ test('clicking a plan item goal badge reveals that goal in the rhythm panel', as
 })
 
 test('clicking an unchecked goal preview reveals that goal in the rhythm panel', async ({ page }) => {
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
   await createGoal(page, 'Exercise', 1, 'lift, swim')
   await openView(page, 'Today')
 
@@ -2368,7 +2368,7 @@ test('goal rhythm copy button copies the goal name without opening the row', asy
 })
 
 test('dragging a goal rhythm goal onto a task appends its copy text', async ({ page }) => {
-  await generateDay(page, 'Generate today')
+  await generateDay(page)
   await createGoal(page, 'Exercise', 3, 'lift, swim')
   await openView(page, 'Today')
 

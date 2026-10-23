@@ -11,7 +11,7 @@ test('undo opens the sidebar page that owns the restored change', async ({ page 
   await page.evaluate(() => localStorage.clear())
   await page.reload()
 
-  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate day' }).click()
   const planItem = page.locator('[data-plan-text-input]').first()
   await planItem.fill('Restored on Today')
   await expect.poll(() => page.evaluate(() => {

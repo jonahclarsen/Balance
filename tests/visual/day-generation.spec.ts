@@ -32,10 +32,10 @@ test('past days can be generated once but existing past plans are kept', async (
   await page.locator('.date-input').fill('2026-09-17')
   if (await page.getByRole('button', { name: 'Open navigation' }).isVisible()) {
     await page.getByRole('button', { name: 'Open navigation' }).click()
-    await expect(page.getByRole('button', { name: 'Generate selected day' })).toBeDisabled()
+    await expect(page.getByRole('button', { name: 'Generate day' })).toBeDisabled()
     await page.getByRole('button', { name: 'Close navigation', exact: true }).first().click()
   } else {
-    await expect(page.getByRole('button', { name: 'Generate selected day' })).toBeDisabled()
+    await expect(page.getByRole('button', { name: 'Generate day' })).toBeDisabled()
   }
   await expect(page.locator('[data-plan-text-input]:visible').first()).toBeVisible()
 })

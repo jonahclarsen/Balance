@@ -388,7 +388,7 @@ test('day choices survive closing, navigation and reload without applying to ano
   await page.reload()
   // The reservation is scoped to October 8; October 9 must ask again.
   await storeCall(page, "plannerStore.setActivePlanDate('2026-10-09')")
-  await generateDay(page, 'Generate selected day')
+  await generateDay(page)
   await expect(sorter(page).locator('.idea-sort-card')).toContainText('Synthetic reserved')
   await page.keyboard.press('Escape')
   await storeCall(page, "plannerStore.setActivePlanDate('2026-10-08')")

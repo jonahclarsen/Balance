@@ -14,7 +14,7 @@ for (const [pageName, selector] of [
     await page.reload()
     if (info.project.name === 'mobile') await page.getByRole('button', { name: 'Open navigation' }).click()
     if (pageName === 'Today') {
-      await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+      await page.getByRole('complementary').getByRole('button', { name: 'Generate day' }).click()
       if (info.project.name === 'mobile') await page.getByRole('complementary').getByRole('button', { name: 'Close navigation' }).click()
     } else {
       await page.getByRole('button', { name: pageName, exact: true }).click()

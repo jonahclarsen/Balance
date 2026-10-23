@@ -183,7 +183,7 @@ test('Alt+F opens a labeled Goal Stats link from the active Today task', async (
   await page.evaluate(() => localStorage.clear())
   await page.reload()
 
-  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' })
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate day' })
     .evaluate((button: HTMLButtonElement) => button.click())
   const taskInput = page.locator('[data-plan-text-input]').first()
   await taskInput.fill('Review goal progress')
@@ -581,7 +581,7 @@ async function generateToday(page: import('@playwright/test').Page) {
   await openPrimaryView(page, 'Today')
   const emptyState = page.locator('.empty-state')
   await emptyState.getByRole('radio', { name: 'Default day' }).check()
-  await emptyState.getByRole('button', { name: 'Generate today' }).click()
+  await emptyState.getByRole('button', { name: 'Generate day' }).click()
 }
 
 test('list overlay selects its first item when initially opened', async ({ page }) => {

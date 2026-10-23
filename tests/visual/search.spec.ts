@@ -6,7 +6,7 @@ test('search finds saved days, list history, and editable lists without Enter', 
   await page.reload()
 
   if (isMobile) await page.getByRole('button', { name: 'Open navigation', exact: true }).click()
-  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate day' }).click()
   await page.evaluate(() => {
     const key = 'balance.appState.v1'
     const state = JSON.parse(localStorage.getItem(key) || '{}')

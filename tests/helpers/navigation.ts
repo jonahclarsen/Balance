@@ -23,7 +23,7 @@ export async function openView(page: Page, name: string) {
   }
 }
 
-export async function generateDay(page: Page, name = 'Generate today') {
+export async function generateDay(page: Page, name = 'Generate day') {
   const drawer = page.getByRole('complementary', { name: 'Primary navigation drawer' })
   const button = drawer.getByRole('button', { name, exact: true })
   const menu = page.getByRole('button', { name: 'Open navigation', exact: true })
