@@ -5388,6 +5388,10 @@ return rows`
     if (items.length > 0) writePlanItemsToSystemClipboard({ items, cut: false, sourceDate: plan.date })
   }
 
+  function insertGoalTask(planId: Id, goalName: string, targetId: Id, placement: 'before' | 'after') {
+    plannerStore.pastePlanItems(planId, [createPlanItem(goalName)], targetId, placement)
+  }
+
   async function pastePlanItemFromMenu(planId: Id, itemId: Id) {
     const clipboard = await readSystemClipboard()
     const structured = parsePlanItemClipboard(clipboard.structuredPayload) ?? plainPlanItemClipboard(clipboard.plainText)
@@ -7245,6 +7249,7 @@ return rows`
                     {goalCompletions}
                     planDate={plan.date}
                     onGoalBadgeClick={focusGoalInRhythm}
+                    {insertGoalTask}
                     {listTemplates}
                     {metrics}
                     {notes}

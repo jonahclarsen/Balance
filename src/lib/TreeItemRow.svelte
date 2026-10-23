@@ -33,7 +33,8 @@
   export let onRowDragOver: (event: DragEvent) => void = () => {}
   export let onRowDragLeave: (event: DragEvent) => void = () => {}
   export let onRowDrop: (event: DragEvent) => void = () => {}
-  export let dropTarget = false
+  // An external drop (a goal from Goal Rhythm) hovering this row.
+  export let dropPlacement: MovePlacement | null = null
 
   type DropTarget = { element: HTMLElement; containerId: Id; targetId: Id; placement: MovePlacement }
 
@@ -233,7 +234,9 @@
     class:whole-row-selection={wholeRowSelection}
     class:done
     class:selected
-    class:goal-drop-target={dropTarget}
+    class:goal-drop-target={dropPlacement === 'inside'}
+    class:drop-before={dropPlacement === 'before'}
+    class:drop-after={dropPlacement === 'after'}
     data-item-container-id={containerId}
     data-plan-item-id={kind === 'plan' ? itemId : undefined}
     data-plan-item-depth={kind === 'plan' ? depth : undefined}

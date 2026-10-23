@@ -76,6 +76,9 @@
   export let onCutItem: (planId: Id, itemId: Id) => void = () => {}
   export let onTextShiftArrow: (itemId: Id, direction: MoveDirection) => void = () => {}
   export let onGoalBadgeClick: (goalId: Id) => void = () => {}
+  // Dropping a goal near a row's top or bottom edge makes it a new task there;
+  // without this, the whole row appends the goal name instead.
+  export let insertGoalTask: ((planId: Id, goalName: string, targetId: Id, placement: 'before' | 'after') => void) | null = null
   // Internal links: a plan/list item whose text matches a list template name or
   // contains a metric name becomes a clickable opener.
   export let listTemplates: ListTemplate[] = []
@@ -845,6 +848,18 @@
   // Counts nested dragenter/dragleave pairs so moving across the row's
   // children does not flicker its drop highlight.
   let goalDragDepth = 0
+  let goalDropPlacement: MovePlacement = 'inside'
+
+  // Same edge bands as dragging a task, so the line lands where it would for
+  // a moved task; the middle still appends to this task's text.
+  function goalPlacementForEvent(event: DragEvent): MovePlacement {
+    if (!insertGoalTask) return 'inside'
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+    const y = event.clientY - rect.top
+    if (y < rect.height * 0.28) return 'before'
+    if (y > rect.height * 0.72) return 'after'
+    return 'inside'
+  }
 
   function handleGoalDragEnter(event: DragEvent) {
     if (locked || !hasGoalDrag(event)) return
@@ -856,6 +871,7 @@
     if (locked || !hasGoalDrag(event)) return
     event.preventDefault()
     event.dataTransfer!.dropEffect = 'copy'
+    goalDropPlacement = goalPlacementForEvent(event)
   }
 
   function handleGoalDragLeave(event: DragEvent) {
@@ -869,6 +885,11 @@
     if (locked) return
     const goalName = event.dataTransfer!.getData(GOAL_DRAG_TYPE)
     if (!goalName) return
+    const placement = goalPlacementForEvent(event)
+    if (placement !== 'inside' && insertGoalTask) {
+      insertGoalTask(planId, goalName, item.id, placement)
+      return
+    }
     // A focused editor keeps its live DOM over incoming props, so let it
     // persist and release focus before the appended text arrives.
     const row = event.currentTarget as HTMLElement
@@ -937,7 +958,7 @@
   onRowDragOver={handleGoalDragOver}
   onRowDragLeave={handleGoalDragLeave}
   onRowDrop={handleGoalDrop}
-  dropTarget={goalDragDepth > 0}
+  dropPlacement={goalDragDepth > 0 ? goalDropPlacement : null}
 >
   <TaskCheckbox
     checked={item.done}
@@ -1189,6 +1210,7 @@
             {onCutItem}
             {onTextShiftArrow}
             {onGoalBadgeClick}
+            {insertGoalTask}
             {listTemplates}
             {metrics}
             {notes}

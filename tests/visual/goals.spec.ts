@@ -2395,6 +2395,36 @@ test('dragging a goal rhythm goal onto a task appends its copy text', async ({ p
   await expect(page.locator('.primary-nav > button.active')).toContainText('Today')
 })
 
+test('dragging a goal rhythm goal to a task edge inserts it as its own task', async ({ page }) => {
+  await generateDay(page)
+  await createGoal(page, 'Exercise', 3, 'lift, swim')
+  await openView(page, 'Today')
+
+  const readRootItems = () => page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    return (state.plans?.[0]?.items ?? []).map((item: { id: string; text: string }) => ({ id: item.id, text: item.text }))
+  })
+  const before = await readRootItems()
+  expect(before.length).toBeGreaterThan(1)
+
+  const goalRow = page.locator('.goal-history-name[data-goal-id]', { hasText: 'Exercise' })
+  const taskRow = page.locator(`[data-plan-item-id="${before[1].id}"]`)
+  const box = (await taskRow.boundingBox())!
+  await goalRow.hover()
+  await page.mouse.down()
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 5 })
+  await expect(taskRow).toHaveClass(/goal-drop-target/)
+  await page.mouse.move(box.x + box.width / 2, box.y + 2, { steps: 3 })
+  await expect(taskRow).toHaveClass(/drop-before/)
+  await expect(taskRow).not.toHaveClass(/goal-drop-target/)
+  await page.mouse.up()
+
+  await expect.poll(async () => (await readRootItems()).map((item: { text: string }) => item.text))
+    .toEqual([before[0].text, 'Exercise', ...before.slice(1).map((item: { text: string }) => item.text)])
+  await expect(taskRow.locator('.item-text')).toHaveText(before[1].text)
+  await expect(taskRow).not.toHaveClass(/drop-before/)
+})
+
 test('goal rhythm uses dark segment and open-circle colors in dark mode', async ({ page }) => {
   await page.addInitScript(() => { Math.random = () => 165 / 360 })
   await page.reload()
