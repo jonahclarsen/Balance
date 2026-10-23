@@ -188,13 +188,14 @@ object BalanceWidgets {
             }
         }
         renderProjects(context, views, snapshot)
-        val situateIntent = Intent(context, MainActivity::class.java).setData(android.net.Uri.parse("balance://situate"))
-        views.setOnClickPendingIntent(R.id.widget_situate_controls, PendingIntent.getActivity(context, 6799, situateIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
         views.setTextViewText(
             R.id.widget_title,
             snapshot.title.ifBlank { "Today’s plan" },
         )
         views.setTextViewText(R.id.widget_date, "TODAY")
+        val headingVisibility = if (snapshot.hasPlan && !snapshot.unavailable) View.VISIBLE else View.GONE
+        views.setViewVisibility(R.id.widget_date, headingVisibility)
+        views.setViewVisibility(R.id.widget_title, headingVisibility)
         views.setTextViewText(R.id.widget_progress, compactStatus(snapshot))
         views.setContentDescription(R.id.widget_progress, status(snapshot))
         views.setViewVisibility(
@@ -727,7 +728,6 @@ ${projectRows(theme)}
 
     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
         ${[1,2,3].map(index => `<TextView android:id="@+id/widget_situate_${index}" android:background="@drawable/balance_widget_${theme.id}_pill" android:layout_marginEnd="6dp" android:layout_width="wrap_content" android:layout_height="wrap_content" android:minHeight="48dp" android:gravity="center" android:paddingHorizontal="8dp" android:textSize="12sp" android:textColor="${theme.accent}" android:visibility="gone" />`).join('\n')}
-        <TextView android:id="@+id/widget_situate_controls" android:layout_width="wrap_content" android:layout_height="48dp" android:gravity="center" android:paddingHorizontal="8dp" android:text="Situate" android:textSize="12sp" android:textColor="${theme.accent}" />
     </LinearLayout>
 
     <TextView

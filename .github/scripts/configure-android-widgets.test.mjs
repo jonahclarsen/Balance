@@ -174,6 +174,14 @@ class BalanceSyncWorker {
       /R\.id\.widget_progress_glow,[\s\S]*?if \(showProgress\) View\.VISIBLE else View\.GONE/,
     )
     assert.doesNotMatch(kotlin, /Start today/)
+    // An unplanned or locked day shows no "TODAY" heading or fallback title.
+    assert.match(
+      kotlin,
+      /val headingVisibility = if \(snapshot\.hasPlan && !snapshot\.unavailable\) View\.VISIBLE else View\.GONE/,
+    )
+    assert.match(kotlin, /setViewVisibility\(R\.id\.widget_date, headingVisibility\)/)
+    assert.match(kotlin, /setViewVisibility\(R\.id\.widget_title, headingVisibility\)/)
+    assert.doesNotMatch(kotlin, /widget_situate_controls/)
     assert.match(kotlin, /R\.id\.widget_task_surface/)
     assert.match(kotlin, /R\.id\.widget_all_done/)
     assert.match(kotlin, /R\.id\.widget_item_time_10/)
@@ -218,6 +226,7 @@ class BalanceSyncWorker {
       /android:id="@\+id\/widget_brand"[\s\S]*?android:fontFamily="sans-serif-rounded"[\s\S]*?android:text="Balance"[\s\S]*?android:textColor="#292332"[\s\S]*?android:textStyle="bold"/,
     )
     assert.match(violetLayout, /android:text="TODAY"/)
+    assert.doesNotMatch(violetLayout, /android:text="Situate"/)
     // Active projects sit at the top, under the brand, and stay hidden until rendered.
     assert.ok(violetLayout.indexOf('@+id/widget_brand') < violetLayout.indexOf('@+id/widget_projects'))
     assert.ok(violetLayout.indexOf('@+id/widget_projects') < violetLayout.indexOf('@+id/widget_date'))
