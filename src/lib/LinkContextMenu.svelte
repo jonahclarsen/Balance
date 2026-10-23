@@ -63,6 +63,9 @@
   async function open(event: MouseEvent) {
     // Shift preserves the browser's menu, including its spelling tools.
     if (event.shiftKey || !(event.target instanceof Element)) return
+    // A long press in a field keeps the platform's cut/copy/paste menu.
+    const touch = (event as PointerEvent).pointerType === 'touch' || (event as MouseEvent & { sourceCapabilities?: { firesTouchEvents?: boolean } }).sourceCapabilities?.firesTouchEvents
+    if (touch && event.target.closest('input, textarea, [contenteditable="true"]')) return
     const url = linkAtElement(event.target)
     if (!url) return
     event.preventDefault()
