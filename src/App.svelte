@@ -7073,14 +7073,6 @@ return rows`
     inert={mobileDrawerPressing}
     bind:this={mobileDrawerEl}
   >
-    {#if sidebarActiveProjects.length}
-      <ul class="sidebar-active-projects" aria-label="Active projects">
-        {#each sidebarActiveProjects as project (project.id)}
-          <li><button type="button" style:--project-color={project.color} data-balance-link={`balance://projects/${project.id}`} on:click={() => openActiveProject(project.id)}><span class="project-dot" aria-hidden="true"></span><span class="sidebar-active-project-name">{project.name}</span></button></li>
-        {/each}
-      </ul>
-    {/if}
-
     <div class="sidebar-quick-actions">
       <button
         class="sidebar-search-button"
@@ -7115,6 +7107,13 @@ return rows`
         {/if}
       </div>
       <p class="muted">Focus on what matters today</p>
+      {#if sidebarActiveProjects.length}
+        <ul class="sidebar-active-projects" aria-label="Active projects">
+          {#each sidebarActiveProjects as project (project.id)}
+            <li><button type="button" style:--project-color={project.color} data-balance-link={`balance://projects/${project.id}`} on:click={() => openActiveProject(project.id)}><span class="project-dot" aria-hidden="true"></span><span class="sidebar-active-project-name">{project.name}</span></button></li>
+          {/each}
+        </ul>
+      {/if}
       <SituatePills />
     </div>
 

@@ -7206,10 +7206,6 @@ textarea.note-title {
     padding-left: 128px;
   }
 
-  .app-shell.macos-titlebar-overlay .sidebar > .sidebar-active-projects:first-child {
-    padding-left: 128px;
-  }
-
   body {
     padding-top: 0;
     overflow-x: hidden;
@@ -7377,11 +7373,6 @@ textarea.note-title {
     height: auto;
     min-height: 48px;
     margin-bottom: 0;
-    padding-left: 44px;
-  }
-
-  /* Clear the drawer's close button when the previews come first. */
-  .sidebar > .sidebar-active-projects:first-child {
     padding-left: 44px;
   }
 
@@ -7656,7 +7647,7 @@ textarea.note-title {
 .sidebar-active-projects {
   display: grid;
   gap: 4px;
-  margin: 0;
+  margin: 8px 0 0;
   padding: 0;
   list-style: none;
 }
