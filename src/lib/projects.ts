@@ -35,10 +35,29 @@ export function nextProjectExpiry(projects: Project[], now = Date.now()): number
   return next
 }
 
+function noonOn(date: string): number {
+  return new Date(`${date}T12:00:00`).getTime()
+}
+
 // Whether any project is active at noon on the given day.
 export function hasActiveProjectOn(projects: Project[], date: string): boolean {
-  const noon = new Date(`${date}T12:00:00`).getTime()
-  return projects.some((project) => isProjectActive(project, noon))
+  return projects.some((project) => isProjectActive(project, noonOn(date)))
+}
+
+// Picked while generating a day, active days count from 7 a.m. that day, so
+// picking one day tonight covers all of tomorrow.
+export function projectActiveUntilOn(date: string, days: number): string {
+  return projectActiveUntil(days, new Date(noonOn(date)))
+}
+
+// Open projects whose active stretch is over by noon on the given day.
+export function endedProjectsOn(projects: Project[], date: string): Project[] {
+  return projects.filter((project) => isProjectOpen(project) && project.activeUntil && Date.parse(project.activeUntil) <= noonOn(date))
+}
+
+// Generating a day with open projects but none active by noon asks for new ones.
+export function needsProjectPick(projects: Project[], date: string): boolean {
+  return projects.some(isProjectOpen) && !hasActiveProjectOn(projects, date)
 }
 
 function withoutNoActiveProjectItems(items: TemplateItem[], gatedIds: Set<Id>): TemplateItem[] {

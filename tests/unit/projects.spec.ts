@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { activeProjects, nextProjectExpiry, projectActiveUntil, templateForGeneration } from '../../src/lib/projects'
+import { activeProjects, endedProjectsOn, needsProjectPick, nextProjectExpiry, projectActiveUntil, projectActiveUntilOn, templateForGeneration } from '../../src/lib/projects'
 import type { DailyTemplate, Project, TemplateItem } from '../../src/lib/types'
 
 const project = (patch: Partial<Project> = {}): Project => ({ id: 'project', name: 'Project', description: '', color: '#336699', archived: false, createdAt: '', updatedAt: '', ...patch })
@@ -38,4 +38,14 @@ test('gated day rows and their children drop out while a project is active at no
   const filtered = templateForGeneration(template, conditions, projects, '2026-10-20')
   expect(filtered.items.map(({ id }) => id)).toEqual(['keep'])
   expect(filtered.items[0].children).toEqual([])
+})
+
+test('a day with open projects but none active by noon asks for a pick, counted from 7 a.m. that day', () => {
+  const endsMorning = new Date(2026, 9, 21, 7).toISOString()
+  const projects = [project({ id: 'ending', activeUntil: endsMorning }), project({ id: 'idle' }), project({ id: 'done', activeUntil: endsMorning, completedAt: '2026-10-20' })]
+  expect(needsProjectPick(projects, '2026-10-20')).toBe(false)
+  expect(needsProjectPick(projects, '2026-10-21')).toBe(true)
+  expect(endedProjectsOn(projects, '2026-10-21').map(({ id }) => id)).toEqual(['ending'])
+  expect(needsProjectPick([project({ completedAt: '2026-10-20' })], '2026-10-21')).toBe(false)
+  expect(new Date(projectActiveUntilOn('2026-10-21', 2)).getTime()).toBe(new Date(2026, 9, 23, 7).getTime())
 })

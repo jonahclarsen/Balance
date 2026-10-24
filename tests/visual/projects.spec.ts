@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { openView, showPrimaryNavigation } from '../helpers/navigation'
+import { generateDay, openView, showPrimaryNavigation } from '../helpers/navigation'
 
 test.use({ timezoneId: 'America/Vancouver' })
 
@@ -447,4 +447,55 @@ test('undo in an unsaved project field undoes typing, and undoing an add leaves 
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await page.locator('.project-card', { hasText: 'Synthetic kept' }).click()
   await expect(description).toHaveValue('One\n\nTwo')
+})
+
+test('generating a day with no project active by noon settles ended projects and picks new ones', async ({ page }) => {
+  // 9 p.m. in Vancouver on the 9th, generating the 10th.
+  await page.clock.install({ time: new Date('2026-09-10T04:00:00Z') })
+  await page.goto('/')
+  await openView(page, 'Projects')
+  for (const name of ['Synthetic ended', 'Synthetic kept', 'Synthetic next']) await addProject(page, name)
+  await page.evaluate(async () => {
+    const path = '/src/lib/store.ts'
+    const { plannerStore } = await import(/* @vite-ignore */ path)
+    let state: any
+    plannerStore.subscribe((value: any) => { state = value })()
+    // Both end at 7 a.m. on the 10th, before noon on the generated day.
+    for (const project of state.projects.filter((project: any) => project.name !== 'Synthetic next')) plannerStore.setProjectActiveDays(project.id, 1)
+    plannerStore.setActivePlanDate('2026-09-10')
+  })
+
+  await generateDay(page)
+  const pick = page.getByRole('dialog', { name: 'Pick projects', exact: true })
+  await expect(pick.locator('.pick')).toHaveText(['Synthetic endedended', 'Synthetic keptended', 'Synthetic next'])
+  const days = pick.getByRole('group', { name: 'Days active' }).getByRole('button')
+  await expect(days.first()).toBeDisabled()
+
+  // Closing skips generating the day.
+  await pick.getByRole('button', { name: 'Close', exact: true }).click()
+  await expect(pick).toBeHidden()
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('balance.appState.v1')!).plans.length)).toBe(0)
+
+  await generateDay(page)
+  await pick.locator('li', { hasText: 'Synthetic ended' }).getByRole('button', { name: 'Complete', exact: true }).click()
+  await pick.getByRole('button', { name: /^Synthetic next/ }).click()
+  await pick.getByRole('textbox', { name: 'New project name' }).fill('Synthetic new')
+  await pick.getByRole('button', { name: 'Add', exact: true }).click()
+  await pick.getByRole('button', { name: '2 days', exact: true }).click()
+  await expect(pick).toBeHidden()
+
+  const { projects } = await readState(page)
+  const byName = Object.fromEntries(projects.map((project: any) => [project.name, project]))
+  expect(byName['Synthetic ended'].completedAt).toBeTruthy()
+  expect(byName['Synthetic ended'].activeUntil).toBeUndefined()
+  expect(byName['Synthetic kept'].completedAt).toBeUndefined()
+  expect(byName['Synthetic kept'].activeUntil).toBeUndefined()
+  // Two days from 7 a.m. on the generated day.
+  expect(byName['Synthetic next'].activeUntil).toBe('2026-09-12T14:00:00.000Z')
+  expect(byName['Synthetic new'].activeUntil).toBe('2026-09-12T14:00:00.000Z')
+  await expect(page.getByRole('region', { name: 'Daily plan' })).toBeVisible()
+
+  // With a project active by noon, generating again asks nothing.
+  await generateDay(page)
+  await expect(pick).toBeHidden()
 })

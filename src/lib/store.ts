@@ -4,7 +4,7 @@ import { generatedItemMarkers, preservedPlanItems, reconcileUneditedPlanItems } 
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import { noteItemsEqual } from './noteEditor/noteItems'
 import { pickerColorToHex } from './colors'
-import { projectActiveUntil, templateForGeneration } from './projects'
+import { projectActiveUntil, projectActiveUntilOn, templateForGeneration } from './projects'
 import { spreadPriorityItems } from './prioritize'
 import { get, writable, type Writable } from 'svelte/store'
 import {
@@ -2259,6 +2259,25 @@ function createPlannerStore() {
           if (project.id !== projectId || project.archived || project.completedAt) return project
           const { activeUntil: _activeUntil, ...rest } = project
           return { ...rest, ...(activeUntil ? { activeUntil } : {}), updatedAt: nowISO() }
+        }),
+      }))
+    },
+
+    // One undo step for a generated day's project pick: ended projects are
+    // completed, archived or reopened, then the picks are active from that day.
+    reviewProjects(date: string, endings: Record<Id, 'completed' | 'archived' | 'open'>, activeIds: Id[], days: number) {
+      const timestamp = nowISO()
+      const activeUntil = projectActiveUntilOn(date, days)
+      commitEntities('review_projects', { date, endings, activeIds, days }, (state) => ({
+        ...state,
+        projects: state.projects.map((project) => {
+          const ending = endings[project.id]
+          const picked = activeIds.includes(project.id)
+          if ((!ending && !picked) || project.archived || project.completedAt) return project
+          const { activeUntil: _activeUntil, ...rest } = project
+          if (ending === 'completed') return { ...rest, completedAt: timestamp, updatedAt: timestamp }
+          if (ending === 'archived') return { ...rest, archived: true, archivedAt: timestamp, updatedAt: timestamp }
+          return { ...rest, ...(picked ? { activeUntil } : {}), updatedAt: timestamp }
         }),
       }))
     },

@@ -46,7 +46,7 @@
     summarizeListTiming,
   } from './lib/listTiming'
   import ProjectsPanel from './lib/ProjectsPanel.svelte'
-  import { activeProjects, templateForGeneration } from './lib/projects'
+  import { activeProjects, needsProjectPick, templateForGeneration } from './lib/projects'
   import PrioritizePanel from './lib/PrioritizePanel.svelte'
   import BucketsPanel from './lib/BucketsPanel.svelte'
   import IdeaSortModal from './lib/IdeaSortModal.svelte'
@@ -73,6 +73,7 @@
   import CelebrationSettings from './lib/CelebrationSettings.svelte'
   import GoalBurst from './lib/GoalBurst.svelte'
   import GoalDoabilityModal from './lib/GoalDoabilityModal.svelte'
+  import ProjectPickModal from './lib/ProjectPickModal.svelte'
   import GoalStatsModal from './lib/GoalStatsModal.svelte'
   import { randomIridescentSelectionAnimationDelay, restartElementAnimations } from './lib/iridescentSelectionAnimation'
   import {
@@ -426,6 +427,7 @@
   let celebrationPreviewAnnouncementTimer: number | null = null
   let goalBurst: GoalBurst | null = null
   let goalDoabilityReviews: GoalDoabilityReview[] = []
+  let projectPick: { date: string; resolve: (picked: boolean) => void } | null = null
   let dayQuiz: { title: string; steps: TemplateQuizStep[]; resolve: (answers: TemplateQuizAnswers | null) => void } | null = null
   // One-card-at-a-time idea sorting; resolves true once every queued idea has a bucket.
   // A sort belongs to the page it was opened on: it hides while another page is
@@ -3671,6 +3673,7 @@ return rows`
     if (propositions.length > 0 && !(await askIdeaSort(
       propositions, 'Sort new ideas', (itemId) => plannerStore.assignIdeaToDay(itemId, date), startNewIdeaSort(date, propositions),
     ))) return
+    if (needsProjectPick($plannerStore.projects, date) && !(await askProjectPick(date))) return
 
     const steps = templateQuizSteps(
       templateForGeneration(template, $plannerStore.templateItemConditions, $plannerStore.projects, date),
@@ -3707,6 +3710,19 @@ return rows`
     const items = found.map(({ item: { bucketedAt: _bucketedAt, dayAssignmentDate: _dayAssignmentDate, ...item } }) => item)
     plannerStore.pastePlanItems(plan.id, items, plan.items[0]?.id ?? null, 'before')
     for (const { bucket, item } of found) plannerStore.removeIdeaAfterTransfer(bucket.id, item.id)
+  }
+
+  function askProjectPick(date: string): Promise<boolean> {
+    projectPick?.resolve(false)
+    return new Promise((resolve) => {
+      projectPick = { date, resolve }
+    })
+  }
+
+  function finishProjectPick(picked: boolean) {
+    const pick = projectPick
+    projectPick = null
+    pick?.resolve(picked)
   }
 
   function askDayQuiz(title: string, steps: TemplateQuizStep[]): Promise<TemplateQuizAnswers | null> {
@@ -8624,6 +8640,19 @@ return rows`
         />
       </OverlayModal>
       {/key}
+    {/if}
+
+    {#if projectPick}
+      <ProjectPickModal
+        projects={$plannerStore.projects}
+        date={projectPick.date}
+        onAdd={(name) => plannerStore.addProject(name)}
+        onDone={(endings, activeIds, days) => {
+          if (projectPick) plannerStore.reviewProjects(projectPick.date, endings, activeIds, days)
+          finishProjectPick(true)
+        }}
+        onClose={() => finishProjectPick(false)}
+      />
     {/if}
 
     {#if dayQuiz}
