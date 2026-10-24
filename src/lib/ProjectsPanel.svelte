@@ -99,7 +99,11 @@
   }
   function activate(project: Project, days: number) {
     plannerStore.setProjectActiveDays(project.id, days)
-    pickingDays = false
+    closeDetails()
+  }
+  function setStatus(project: Project, status: 'open' | 'completed' | 'archived') {
+    plannerStore.setProjectStatus(project.id, status)
+    closeDetails()
   }
   async function deleteForever(project: Project) {
     const prompt = `Delete “${project.name}” forever? You can still undo this action.`
@@ -182,20 +186,20 @@
           event.preventDefault()
           closeDetails()
         }}
-        onChange={(html, text) => { if (text.trim()) plannerStore.updateProject(project.id, { name: text.trim(), nameHtml: html }) }}
+        onChange={(html, text) => { if (text.trim() && (text.trim() !== project.name || html !== (project.nameHtml ?? escapeHTML(project.name)))) plannerStore.updateProject(project.id, { name: text.trim(), nameHtml: html }) }}
       /></div>
       <label>Description<textarea value={project.description} on:input={(event) => plannerStore.updateProject(project.id, { description: event.currentTarget.value })}></textarea></label>
       {#if project.archived}
         <p class="project-status">Archived{project.archivedAt ? ` ${shortDate(project.archivedAt)}` : ''}</p>
         <div class="project-actions">
-          <button type="button" on:click={() => plannerStore.setProjectStatus(project.id, 'open')}>Restore</button>
+          <button type="button" on:click={() => setStatus(project, 'open')}>Restore</button>
           <button class="ghost danger" type="button" on:click={() => deleteForever(project)}>Delete forever</button>
         </div>
       {:else if project.completedAt}
         <p class="project-status">Completed {shortDate(project.completedAt)}</p>
         <div class="project-actions">
-          <button type="button" on:click={() => plannerStore.setProjectStatus(project.id, 'open')}>Reopen</button>
-          <button type="button" on:click={() => plannerStore.setProjectStatus(project.id, 'archived')}>Archive</button>
+          <button type="button" on:click={() => setStatus(project, 'open')}>Reopen</button>
+          <button type="button" on:click={() => setStatus(project, 'archived')}>Archive</button>
         </div>
       {:else}
         {#if detailsActive}<p class="project-status">Active until {activeEnd(project.activeUntil!)}</p>{/if}
@@ -209,9 +213,9 @@
         {/if}
         <div class="project-actions">
           {#if !pickingDays}<button class="primary" type="button" on:click={() => pickingDays = true}>{detailsActive ? 'Change' : 'Mark active'}</button>{/if}
-          {#if detailsActive}<button type="button" on:click={() => plannerStore.setProjectActiveDays(project.id, 0)}>Stop</button>{/if}
-          <button type="button" on:click={() => plannerStore.setProjectStatus(project.id, 'completed')}>Complete</button>
-          <button type="button" on:click={() => plannerStore.setProjectStatus(project.id, 'archived')}>Archive</button>
+          {#if detailsActive}<button type="button" on:click={() => activate(project, 0)}>Stop</button>{/if}
+          <button type="button" on:click={() => setStatus(project, 'completed')}>Complete</button>
+          <button type="button" on:click={() => setStatus(project, 'archived')}>Archive</button>
         </div>
       {/if}
     </div>
