@@ -1,11 +1,11 @@
 <script lang="ts">
   import { tick } from 'svelte'
   import AlarmClockIcon from './AlarmClockIcon.svelte'
-  import { defaultTemplateItemTimeRange, hasActiveTimeRange, detectedTemplateLists, linkifyItemText, type ItemLink, type ItemTimeWarning } from './planner'
+  import { defaultTemplateItemTimeRange, hasActiveTimeRange, detectedTemplateLists, linkifyItemText, MAX_TIMELINE_MINUTES, type ItemLink, type ItemTimeWarning } from './planner'
   import { scrollMovedItemsIntoView } from './itemScroll'
   import ProbabilitySlider from './ProbabilitySlider.svelte'
   import RichTextEditor from './RichTextEditor.svelte'
-  import TimeRange from './TimeRange.svelte'
+  import TimeRange, { type TimeShiftTarget } from './TimeRange.svelte'
   import TreeItemRow from './TreeItemRow.svelte'
   import type { Id, ListTemplate, Metric, MoveDirection, MovePlacement, Note, TemplateItem, TemplateItemCondition, TemplateOption, TemplateListExpansion, TemplateQuestion } from './types'
 
@@ -139,6 +139,44 @@
       { startMinutes, endMinutes },
       { mergeKey: `template-item-time:${templateId}:${item.id}`, mergeWindowMs: TIME_DRAG_MERGE_WINDOW_MS },
     )
+  }
+
+  function selectedTimeShiftTargets(): TimeShiftTarget[] | null {
+    if (!selected || selectedItemIds.size < 2) return null
+
+    const targets = collectSelectedTimedItems(allItems, selectedItemIds)
+    return targets.some((target) => target.itemId === item.id) ? targets : null
+  }
+
+  function collectSelectedTimedItems(items: TemplateItem[], selectedIds: Set<Id>): TimeShiftTarget[] {
+    const targets: TimeShiftTarget[] = []
+
+    for (const templateItem of items) {
+      if (selectedIds.has(templateItem.id) && hasActiveTimeRange(templateItem)) {
+        targets.push({
+          itemId: templateItem.id,
+          startMinutes: templateItem.startMinutes,
+          endMinutes: templateItem.endMinutes,
+        })
+      }
+
+      targets.push(...collectSelectedTimedItems(templateItem.children, selectedIds))
+    }
+
+    return targets
+  }
+
+  function shiftSelectedTimeRanges(targets: TimeShiftTarget[], delta: number) {
+    const earliestStart = Math.min(...targets.map((target) => target.startMinutes))
+    const latestEnd = Math.max(...targets.map((target) => target.endMinutes))
+    const clampedDelta = Math.max(-earliestStart, Math.min(delta, MAX_TIMELINE_MINUTES - latestEnd))
+
+    for (const target of targets) {
+      patchItem(templateId, target.itemId, {
+        startMinutes: target.startMinutes + clampedDelta,
+        endMinutes: target.endMinutes + clampedDelta,
+      })
+    }
   }
 
   function handleProbabilityChange(optionIndex: number, probability: number) {
@@ -388,6 +426,8 @@
         precedesAncestor={timeWarning?.precedesAncestor}
         exceedsAncestor={timeWarning?.exceedsAncestor}
         onChange={patchTimeRange}
+        getShiftTargets={selectedTimeShiftTargets}
+        onShift={shiftSelectedTimeRanges}
         onRemove={() => patchItem(templateId, item.id, { startMinutes: null, endMinutes: null, timeHidden: null })}
       />
     {:else}

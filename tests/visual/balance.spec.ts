@@ -2248,14 +2248,13 @@ test('removing time clears stored values, supports undo, and re-adds a fresh ran
   await expect.poll(async () => planItemTimeRange(page, 'Pick the first useful task')).toEqual([540, 600])
 })
 
-test('keyboard probability shortcuts work at the day-template caret without changing time', async ({ page }) => {
+test('day-template caret shortcuts change probability until the item has a time pill', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
   await openView(page, 'Days')
 
   await focusTemplateOptionByValue(page, 'Pick the first useful task')
-  await page.keyboard.press('Alt+Shift+t')
   const row = page.locator('[data-template-item-id]').filter({ has: page.getByRole('textbox', { name: 'Template item', exact: true }).filter({ hasText: 'Pick the first useful task' }) }).last()
   const probability = row.locator('input[type="range"]').first()
   for (const modifier of ['Alt+', 'Alt+Shift+', 'Meta+', 'Meta+Shift+']) {
@@ -2264,13 +2263,22 @@ test('keyboard probability shortcuts work at the day-template caret without chan
     await page.keyboard.press(`${modifier}]`)
     await expect(probability).toHaveValue('100')
   }
+  await expect.poll(async () => templateItemTimeRange(page, 'Pick the first useful task')).toEqual([null, null])
 
+  await page.keyboard.press('Alt+Shift+t')
   await expect.poll(async () => templateItemTimeRange(page, 'Pick the first useful task')).toEqual([540, 600])
+  await page.keyboard.press('Alt+[')
+  await expect.poll(async () => templateItemTimeRange(page, 'Pick the first useful task')).toEqual([525, 600])
+  await page.keyboard.press('Meta+]')
+  await expect.poll(async () => templateItemTimeRange(page, 'Pick the first useful task')).toEqual([525, 615])
+  await page.keyboard.press('Alt+Shift+]')
+  await expect.poll(async () => templateItemTimeRange(page, 'Pick the first useful task')).toEqual([540, 630])
+  await expect(probability).toHaveValue('100')
 
   await page.keyboard.press('Alt+Shift+t')
   await expect.poll(async () => templateItemTimeRange(page, 'Pick the first useful task')).toEqual([null, null])
   await page.keyboard.press('ControlOrMeta+z')
-  await expect.poll(async () => templateItemTimeRange(page, 'Pick the first useful task')).toEqual([540, 600])
+  await expect.poll(async () => templateItemTimeRange(page, 'Pick the first useful task')).toEqual([540, 630])
   await page.getByRole('listitem', { name: /Template item: Pick the first useful task/ })
     .getByTitle('Remove time', { exact: true }).click()
   await expect.poll(async () => templateItemTimeRange(page, 'Pick the first useful task')).toEqual([null, null])
@@ -2279,6 +2287,41 @@ test('keyboard probability shortcuts work at the day-template caret without chan
   await focusTemplateOptionByValue(page, 'Pick the first useful task')
   await page.keyboard.press('Alt+Shift+t')
   await expect.poll(async () => templateItemTimeRange(page, 'Pick the first useful task')).toEqual([540, 600])
+})
+
+test('selected timed day-template items move their time pills together', async ({ page, isMobile }) => {
+  test.skip(isMobile, 'Mobile uses a time editor rather than desktop time dragging')
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await openView(page, 'Days')
+
+  const pickRow = page.getByRole('listitem', { name: /Template item: Pick the first useful task/ })
+  const writeRow = page.getByRole('listitem', { name: /Template item: Write down next action/ })
+  await pickRow.getByRole('button', { name: 'Add time range' }).click()
+  await writeRow.getByRole('button', { name: 'Add time range' }).click()
+  await expect.poll(async () => templateItemTimeRange(page, 'Write down next action')).toEqual([600, 660])
+
+  await pickRow.getByRole('button', { name: 'Select item' }).click()
+  await page.keyboard.down('Shift')
+  try {
+    await writeRow.getByRole('button', { name: 'Select item' }).click()
+  } finally {
+    await page.keyboard.up('Shift')
+  }
+
+  await verticalDrag(page, pickRow.getByRole('button', { name: '10am' }), -20)
+  await expect.poll(async () => [
+    await templateItemTimeRange(page, 'Pick the first useful task'),
+    await templateItemTimeRange(page, 'Write down next action'),
+  ]).toEqual([[570, 630], [630, 690]])
+
+  const probability = pickRow.locator('.option-stack > .option-row:first-child input[type="range"]')
+  await page.keyboard.press(']')
+  await expect.poll(async () => templateItemTimeRange(page, 'Write down next action')).toEqual([645, 690])
+  await page.keyboard.press('Shift+[')
+  await expect.poll(async () => templateItemTimeRange(page, 'Write down next action')).toEqual([645, 675])
+  await expect(probability).toHaveValue('100')
 })
 
 test('adding time to deeper descendants reuses the previous timed task start', async ({ page }) => {

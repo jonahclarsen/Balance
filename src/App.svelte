@@ -4242,7 +4242,9 @@ return rows`
       !listOverlayVisible &&
       (activeItemSurface() === 'day-template' || activeItemSurface() === 'list-template') &&
       !(event.altKey && primaryModifier) &&
-      (event.code === 'BracketLeft' || event.code === 'BracketRight')
+      (event.code === 'BracketLeft' || event.code === 'BracketRight') &&
+      // Day-template items with a time pill take the time shortcuts below instead.
+      !timeItemsForIds(activeTimeTargetIds()).some(hasActiveTimeRange)
     ) {
       event.preventDefault()
       event.stopPropagation()
