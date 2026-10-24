@@ -85,7 +85,7 @@ async function openReviewWithLongItems(page: import('@playwright/test').Page) {
   await page.locator('[data-plan-text-input]').first().focus()
   await page.keyboard.press('Meta+V')
 
-  await expect(page.getByRole('dialog', { name: /Item 1 of 4/ })).toBeVisible()
+  await expect(page.getByRole('dialog', { name: 'Review pasted items' })).toBeVisible()
   await expect(page.locator('.paste-review-item')).toHaveCount(4)
 }
 

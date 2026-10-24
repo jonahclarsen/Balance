@@ -8766,8 +8766,7 @@ return rows`
 
 {#if pasteReview}
   <OverlayModal
-    eyebrow="Review pasted items"
-    title={`Item ${pasteReview.index + 1} of ${pasteReview.nodes.length}`}
+    title="Review pasted items"
     cover="viewport"
     z={100}
     maxWidth={620}

@@ -4994,7 +4994,7 @@ test('pasting four or more items onto a different day opens a review queue', asy
   await setCaretOffsetInFocusedEditor(page, targetItems.at(-1)!.length)
   await page.keyboard.press('Meta+V')
 
-  await expect(page.getByRole('dialog', { name: /Item 1 of 4/ })).toBeVisible()
+  await expect(page.getByRole('dialog', { name: 'Review pasted items' })).toBeVisible()
   await expect(topLevelTexts(page)).resolves.toEqual(targetItems)
   await expect(page.locator('.paste-review-item')).toHaveCount(4)
   await expect(page.locator('.paste-review-item.current')).toContainText(before[1])
@@ -5019,12 +5019,12 @@ test('pasting four or more items onto a different day opens a review queue', asy
 
   // Enter is inert during the cooldown: the queue stays on item 1.
   await page.keyboard.press('Enter')
-  await expect(page.getByRole('dialog', { name: /Item 1 of 4/ })).toBeVisible()
+  await expect(page.locator('.paste-review-item').nth(0)).toHaveClass(/\bcurrent\b/)
 
   // Keep item 1 once the cooldown arms Enter.
   await armed().waitFor()
   await page.keyboard.press('Enter')
-  await expect(page.getByRole('dialog', { name: /Item 2 of 4/ })).toBeVisible()
+  await expect(page.locator('.paste-review-item').nth(1)).toHaveClass(/\bcurrent\b/)
   await expect
     .poll(async () =>
       page.locator('.paste-review-list').evaluate((list) => {
@@ -5045,11 +5045,11 @@ test('pasting four or more items onto a different day opens a review queue', asy
   await page.keyboard.press('Enter')
 
   // Skip is allowed during the cooldown.
-  await expect(page.getByRole('dialog', { name: /Item 3 of 4/ })).toBeVisible()
+  await expect(page.locator('.paste-review-item').nth(2)).toHaveClass(/\bcurrent\b/)
   await page.keyboard.press('ArrowLeft')
   await expect(page.locator('.paste-review-item.rejecting')).toBeVisible()
 
-  await expect(page.getByRole('dialog', { name: /Item 4 of 4/ })).toBeVisible()
+  await expect(page.locator('.paste-review-item').nth(3)).toHaveClass(/\bcurrent\b/)
   await page.keyboard.press('ArrowLeft')
 
   // Modal closes and only the kept items (item 1 + edited item 2) are appended.
