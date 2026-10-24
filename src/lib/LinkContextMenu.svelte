@@ -4,7 +4,7 @@
   import { get } from 'svelte/store'
   import { CheckMenuItem, Menu } from '@tauri-apps/api/menu'
   import { linkAtElement, parseNavigationURL } from './navigationLinks'
-  import { bucketsLinkFromURL } from './bucketLinks'
+  import { ideasLinkFromURL } from './ideaLinks'
   import { plannerStore } from './store'
 
   // A copy entry carries its link; a toggle carries its state and action.
@@ -81,11 +81,11 @@
     } : null
     if (target?.kind === 'day-template' || target?.kind === 'list-template') {
       entries.push({ label: 'Copy review link', url: `balance://review/${target.kind === 'day-template' ? 'day' : 'list'}/${target.id}` })
-    } else if (url === 'balance://page/buckets' || url === 'balance://buckets') {
-      entries.push({ label: 'Copy review link', url: 'balance://buckets/review' })
-    } else if (target?.kind === 'bucket') {
-      const reviewURL = `balance://buckets/review/${target.id}`
-      if (bucketsLinkFromURL(reviewURL)) entries.push({ label: 'Copy review link', url: reviewURL })
+    } else if ((target?.kind === 'page' && target.view === 'ideas') || ideasLinkFromURL(url) === 'page') {
+      entries.push({ label: 'Copy review link', url: 'balance://ideas/review' })
+    } else if (target?.kind === 'idea-group') {
+      const reviewURL = `balance://ideas/review/${target.id}`
+      if (ideasLinkFromURL(reviewURL)) entries.push({ label: 'Copy review link', url: reviewURL })
     }
     if (isTauri() && !/Android|iPhone|iPad/.test(navigator.userAgent)) {
       try {

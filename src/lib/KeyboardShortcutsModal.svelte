@@ -73,7 +73,7 @@
         { keys: ['alt', 'N'], label: 'Open Notes' },
         { keys: ['alt', 'P'], label: 'Open Projects' },
         { keys: ['alt', 'R'], label: 'Open Prioritize' },
-        { keys: ['alt', 'B'], label: 'Open Buckets' },
+        { keys: ['alt', 'B'], label: 'Open Ideas' },
         { keys: ['alt', 'D'], label: 'Open Days' },
         { keys: ['alt', 'E'], label: 'Open Lists' },
         { keys: ['alt', 'V'], label: 'Open Quizzes' },
@@ -127,7 +127,7 @@
       ],
     },
     {
-      title: 'Buckets',
+      title: 'Ideas',
       shortcuts: [
         { keys: ['G / P / A / T / U'], label: 'Move the selected idea to Genuinely / Possibly / Afterlife / Trash / Proposition Party' },
         { keys: ['up'], label: 'Select the previous / next idea', alt: ['down'] },

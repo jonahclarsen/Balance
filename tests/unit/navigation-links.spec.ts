@@ -1,23 +1,31 @@
 import { expect, test } from '@playwright/test'
 import { LINKABLE_VIEWS, navigationURL, parseNavigationURL } from '../../src/lib/navigationLinks'
 import { internalLinkId, itemLinkFromURL, linkifyItemText, resolveItemLinks } from '../../src/lib/planner'
-import { BUCKET_REVIEW_LABELS, bucketsLinkFromURL } from '../../src/lib/bucketLinks'
+import { IDEA_REVIEW_LABELS, ideasLinkFromURL } from '../../src/lib/ideaLinks'
 
-test('bucket review links preserve the selected bucket in plain text and internal anchors', () => {
+test('group review links preserve the selected group in plain text and internal anchors', () => {
   for (const kind of ['genuine', 'possible', 'afterlife'] as const) {
-    const url = `balance://buckets/review/${kind}`
-    const link = { kind: 'buckets', review: kind, label: BUCKET_REVIEW_LABELS[kind] } as const
-    expect(bucketsLinkFromURL(url)).toBe(kind)
+    const url = `balance://ideas/review/${kind}`
+    const link = { kind: 'ideas', review: kind, label: IDEA_REVIEW_LABELS[kind] } as const
+    expect(ideasLinkFromURL(url)).toBe(kind)
     expect(itemLinkFromURL(url)).toEqual(link)
     expect(resolveItemLinks(`Review (${url}).`, [], [])).toEqual([link])
     expect(linkifyItemText(url, [], [])).toEqual([{ text: url, link }])
-    expect(itemLinkFromURL(`balance://buckets/${internalLinkId(link)}`)).toEqual(link)
+    expect(itemLinkFromURL(`balance://ideas/${internalLinkId(link)}`)).toEqual(link)
   }
-  expect(itemLinkFromURL('balance://buckets/review')).toEqual(itemLinkFromURL('balance://buckets/review/genuine'))
-  expect(itemLinkFromURL('balance://buckets')).toEqual({ kind: 'buckets', review: null, label: 'Buckets' })
+  expect(itemLinkFromURL('balance://ideas/review')).toEqual(itemLinkFromURL('balance://ideas/review/genuine'))
+  expect(itemLinkFromURL('balance://ideas')).toEqual({ kind: 'ideas', review: null, label: 'Ideas' })
   for (const suffix of ['trash', 'proposition', 'unknown', 'possible/more', 'possible?other=1', 'afterlife#more']) {
-    expect(itemLinkFromURL(`balance://buckets/review/${suffix}`)).toBeNull()
+    expect(itemLinkFromURL(`balance://ideas/review/${suffix}`)).toBeNull()
   }
+})
+
+test('links saved while Ideas was called Buckets still open it', () => {
+  expect(itemLinkFromURL('balance://buckets')).toEqual(itemLinkFromURL('balance://ideas'))
+  expect(itemLinkFromURL('balance://buckets/review')).toEqual(itemLinkFromURL('balance://ideas/review/genuine'))
+  expect(itemLinkFromURL('balance://buckets/review/possible')).toEqual(itemLinkFromURL('balance://ideas/review/possible'))
+  expect(parseNavigationURL('balance://page/buckets')).toEqual({ kind: 'page', view: 'ideas' })
+  expect(parseNavigationURL('balance://bucket/trash')).toEqual({ kind: 'idea-group', id: 'trash' })
 })
 
 test('navigation routes round trip dates, page names and generated row IDs', () => {
@@ -27,7 +35,7 @@ test('navigation routes round trip dates, page names and generated row IDs', () 
   for (const kind of ['day-template', 'list-template', 'note', 'list', 'quiz', 'prioritize'] as const) {
     expect(parseNavigationURL(navigationURL(kind, 'synthetic_id', 'row_123.generated-456'))).toEqual({ kind, id: 'synthetic_id', itemId: 'row_123.generated-456' })
   }
-  for (const kind of ['task', 'goal', 'bucket'] as const) expect(parseNavigationURL(navigationURL(kind, 'synthetic_id'))).toEqual({ kind, id: 'synthetic_id' })
+  for (const kind of ['task', 'goal', 'idea-group'] as const) expect(parseNavigationURL(navigationURL(kind, 'synthetic_id'))).toEqual({ kind, id: 'synthetic_id' })
 })
 
 test('malformed navigation URLs cannot navigate to an accepted prefix', () => {

@@ -18,11 +18,11 @@ const repeats = Number(process.env.BALANCE_LIFECYCLE_REPEATS ?? 20)
 const offlineBackgroundSeconds = Number(process.env.BALANCE_OFFLINE_BACKGROUND_SECONDS ?? 0)
 assert([0, 600].includes(offlineBackgroundSeconds))
 assert(Number.isInteger(repeats) && repeats > 0 && repeats <= 200)
-assert(['activity', 'process', 'worker-start', 'offline-buckets', 'offline-history', 'offline-notifications', 'offline-latency'].includes(scenario))
+assert(['activity', 'process', 'worker-start', 'offline-ideas', 'offline-history', 'offline-notifications', 'offline-latency'].includes(scenario))
 const report = { scenario, cases: [], hypothesis: {
   activity: 'Destroying the last Android activity must exit without native finalizer races and reopen with saved edits intact.',
   process: 'Background process reclamation while offline prevents a fresh native/JS startup.',
-  'offline-buckets': 'An acknowledged bucket Save must survive immediate WebView destruction and offline reopening.',
+  'offline-ideas': 'An acknowledged idea Save must survive immediate WebView destruction and offline reopening.',
   'offline-notifications': 'Resuming while native reminders are being registered must not block the Android UI thread.',
   'offline-history': 'Offline startup and resume must remain responsive with a year of synthetic history, including slower WebView CPUs.',
   'offline-latency': 'Saving an idea or a note edit must be as quick offline, or with a hanging relay, as online, including across screen sleep.',
@@ -269,12 +269,12 @@ try {
       assert(result.newJsContext, 'Fault injection must actually recreate the WebView, not just resume it')
       assert(result.frameMs < 5000 && result.nativeAndDbMs < 5000, 'Resume blocked for at least five seconds')
     }
-  } else if (scenario === 'offline-buckets') {
+  } else if (scenario === 'offline-ideas') {
     await radios(true)
     await waitFor(() => invoke('get_sync_network_offline'), 'OS offline')
     const expected = []
     for (let i = 0; i < repeats; i++) {
-      const text = `Synthetic offline bucket idea ${i}`
+      const text = `Synthetic offline idea ${i}`
       await client.evaluate(`document.querySelector('button[aria-label="Add idea"]').click()`)
       await waitFor(() => client.evaluate(`Boolean(document.querySelector('.quick-add-dialog [contenteditable="true"]'))`), 'Quick Add editor')
       await client.evaluate(`(() => {
@@ -316,7 +316,7 @@ try {
       launchApp()
       await connect()
       const reopened = JSON.parse(await invoke('read_app_state'))
-      for (const idea of expected) assert(reopened.ideaBuckets.some(bucket => bucket.items.some(item => item.text === idea)), `Acknowledged offline Save lost after process death: ${idea}`)
+      for (const idea of expected) assert(reopened.ideaBuckets.some(group => group.items.some(item => item.text === idea)), `Acknowledged offline Save lost after process death: ${idea}`)
       const result = {i, offline: true, savedIdeas: expected.length, startupMs: Math.round(performance.now() - start), ...await responsive()}
       report.cases.push(result)
       console.log(JSON.stringify(result))
@@ -330,7 +330,7 @@ try {
       await connect()
       assert(await invoke('get_sync_network_offline'), 'Ten-minute fixture must remain offline')
       const saved = JSON.parse(await invoke('read_app_state'))
-      for (const idea of expected) assert(saved.ideaBuckets.some(bucket => bucket.items.some(item => item.text === idea)), `Ten-minute offline resume lost ${idea}`)
+      for (const idea of expected) assert(saved.ideaBuckets.some(group => group.items.some(item => item.text === idea)), `Ten-minute offline resume lost ${idea}`)
       report.offlineBackground = {seconds: offlineBackgroundSeconds, savedIdeas: expected.length,
         resumeMs: Math.round(performance.now() - start), ...await responsive()}
       assert(report.offlineBackground.frameMs < 2000 && report.offlineBackground.nativeAndDbMs < 5000, 'Ten-minute offline resume froze editing')
@@ -514,7 +514,7 @@ try {
     }
     await setCondition('online')
     const final = JSON.parse(await invoke('read_app_state', {}, 60000))
-    for (const idea of saved) assert(final.ideaBuckets.some(bucket => bucket.items.some(item => item.text === idea)), `Lost ${idea}`)
+    for (const idea of saved) assert(final.ideaBuckets.some(group => group.items.some(item => item.text === idea)), `Lost ${idea}`)
     report.freezeDiagnostics = await invoke('export_freeze_diagnostics', {}, 60000).catch(error => String(error))
     const summary = {}
     for (const entry of report.cases) {

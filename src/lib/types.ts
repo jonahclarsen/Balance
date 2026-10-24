@@ -352,22 +352,22 @@ export type PriorityItem = {
   goalId?: Id
 }
 
-export type IdeaBucketKind = 'proposition' | 'genuine' | 'possible' | 'afterlife' | 'trash'
+export type IdeaGroupKind = 'proposition' | 'genuine' | 'possible' | 'afterlife' | 'trash'
 
 // Ideas reuse the plan-item tree so the Today row editor renders them.
 export type IdeaItem = PlanItem & {
-  // When the idea entered its current bucket; Trash items expire 30 days after.
+  // When the idea entered its current group; Trash items expire 30 days after. Stored under its original name.
   bucketedAt?: string
   // Reserved while generation is unfinished; only this date skips sorting it.
   dayAssignmentDate?: string
 }
 
 // Where an idea sat before a sort decision moved it.
-export type IdeaSnapshot = { kind: IdeaBucketKind; index: number; item: IdeaItem }
+export type IdeaSnapshot = { kind: IdeaGroupKind; index: number; item: IdeaItem }
 
-export type IdeaBucket = {
+export type IdeaGroup = {
   id: Id
-  kind: IdeaBucketKind
+  kind: IdeaGroupKind
   items: IdeaItem[]
 }
 
@@ -402,7 +402,8 @@ export type AppState = {
   projects: Project[]
   projectCheckIns: ProjectCheckIn[]
   prioritySessions: PrioritySession[]
-  ideaBuckets: IdeaBucket[]
+  // Stored as the ideaBuckets collection, with bucket_<kind> record IDs.
+  ideaBuckets: IdeaGroup[]
   notes: Note[]
   goals: Goal[]
   goalCompletions: GoalCompletion[]

@@ -48,11 +48,11 @@
   import ProjectsPanel from './lib/ProjectsPanel.svelte'
   import { activeProjects, needsProjectPick, templateForGeneration } from './lib/projects'
   import PrioritizePanel from './lib/PrioritizePanel.svelte'
-  import BucketsPanel from './lib/BucketsPanel.svelte'
+  import IdeasPanel from './lib/IdeasPanel.svelte'
   import IdeaSortModal from './lib/IdeaSortModal.svelte'
   import IdeaImportModal from './lib/IdeaImportModal.svelte'
-  import { bucketItems, findIdea, IDEA_BUCKETS, IDEA_REVIEW_GOAL_NAME } from './lib/ideaBuckets'
-  import { BUCKET_REVIEW_LABELS, type BucketReviewKind } from './lib/bucketLinks'
+  import { ideaGroupItems, findIdea, IDEA_GROUPS, IDEA_REVIEW_GOAL_NAME } from './lib/ideas'
+  import { IDEA_REVIEW_LABELS, type IdeaReviewKind } from './lib/ideaLinks'
   import { prioritizeReveal } from './lib/prioritize'
   import NotesPanel from './lib/NotesPanel.svelte'
   import ImaxButton from './lib/ImaxButton.svelte'
@@ -179,7 +179,7 @@
     { id: 'dark', name: 'Dark', description: 'Always use dark mode' },
   ]
 
-  type View = 'situate' | 'next' | 'today' | 'templates' | 'listTemplates' | 'lists' | 'notes' | 'projects' | 'prioritize' | 'buckets' | 'metrics' | 'goals' | 'settings'
+  type View = 'situate' | 'next' | 'today' | 'templates' | 'listTemplates' | 'lists' | 'notes' | 'projects' | 'prioritize' | 'ideas' | 'metrics' | 'goals' | 'settings'
   type Opener = { container: 'plan' | 'list'; containerId: Id; itemId: Id }
   type ExportSettings = {
     exportDirectory: string
@@ -429,7 +429,7 @@
   let goalDoabilityReviews: GoalDoabilityReview[] = []
   let projectPick: { date: string; resolve: (picked: boolean) => void } | null = null
   let dayQuiz: { title: string; steps: TemplateQuizStep[]; resolve: (answers: TemplateQuizAnswers | null) => void } | null = null
-  // One-card-at-a-time idea sorting; resolves true once every queued idea has a bucket.
+  // One-card-at-a-time idea sorting; resolves true once every queued idea has a group.
   // A sort belongs to the page it was opened on: it hides while another page is
   // open and picks up where it left off on return.
   // Sorts run during day generation can also pick ideas for the new day.
@@ -1267,7 +1267,7 @@ return rows`
     const attribute = {
       today: 'data-plan-item-id', lists: 'data-plan-item-id', templates: 'data-template-item-id',
       listTemplates: 'data-list-template-item-id', notes: 'data-note-item-id',
-      projects: 'data-project-id', prioritize: 'data-priority-id', buckets: 'data-plan-item-id', metrics: 'data-metric-question-id', goals: 'data-goal-id',
+      projects: 'data-project-id', prioritize: 'data-priority-id', ideas: 'data-plan-item-id', metrics: 'data-metric-question-id', goals: 'data-goal-id',
     }[nextView]
     const targetId = nextView === 'goals' ? entityId : itemId
     const row = targetId ? workspaceEl?.querySelector<HTMLElement>(
@@ -1276,7 +1276,7 @@ return rows`
     const containerSelector = {
       today: `[data-plan-item-scope="${CSS.escape(entityId)}"]`, lists: '.list-panel',
       templates: '.template-panel', listTemplates: '.template-panel',
-      projects: `#project-${CSS.escape(entityId)}`, prioritize: '.priority-list', buckets: `[data-plan-item-scope="${CSS.escape(entityId)}"]`, notes: '.note-document', metrics: '.metric-card', goals: '.goal-list',
+      projects: `#project-${CSS.escape(entityId)}`, prioritize: '.priority-list', ideas: `[data-plan-item-scope="${CSS.escape(entityId)}"]`, notes: '.note-document', metrics: '.metric-card', goals: '.goal-list',
     }[nextView]
     const target = (metricOverlay ? document.querySelector<HTMLElement>('.metric-quiz') : row) ??
       workspaceEl?.querySelector<HTMLElement>(containerSelector) ?? workspaceEl?.querySelector<HTMLElement>('h2')
@@ -1733,8 +1733,8 @@ return rows`
       linkedProjectId = ''
       view = 'projects'
       void tick().then(() => linkedProjectId = link.projectId)
-    } else if (link.kind === 'buckets') {
-      view = 'buckets'
+    } else if (link.kind === 'ideas') {
+      view = 'ideas'
       if (link.review) void startIdeaReview(link.review)
     } else if (link.kind === 'note') {
       const note = allNotes.find(note => note.id === link.noteId)
@@ -1811,14 +1811,14 @@ return rows`
     } else if (target.kind === 'task') {
       const plan = $plannerStore.plans.find(plan => findPlanItem(plan.items, target.id))
       const list = !plan && $plannerStore.lists.find(list => findPlanItem(list.items, target.id))
-      const idea = !plan && !list && $plannerStore.ideaBuckets.find(bucket => findPlanItem(bucket.items, target.id))
+      const idea = !plan && !list && $plannerStore.ideaBuckets.find(group => findPlanItem(group.items, target.id))
       if (plan) { revealTaskParents(plan.items, target.id); openDateInToday(plan.date) }
       else if (list) {
         revealTaskParents(list.items, target.id)
         plannerStore.setActivePlanDate(list.date)
         listViewTemplateId = list.listTemplateId
         openListHistory()
-      } else if (idea) { revealTaskParents(idea.items, target.id); view = 'buckets' }
+      } else if (idea) { revealTaskParents(idea.items, target.id); view = 'ideas' }
       else return unavailableLink()
       selector = `[data-plan-item-id="${CSS.escape(target.id)}"]`
     } else if (target.kind === 'note') {
@@ -1867,10 +1867,10 @@ return rows`
       view = 'prioritize'
       await tick()
       prioritizeReveal.set({ sessionId: target.id, itemId: target.itemId })
-    } else if (target.kind === 'bucket') {
-      if (!IDEA_BUCKETS.some(bucket => bucket.kind === target.id)) return unavailableLink()
-      view = 'buckets'
-      selector = `[data-bucket="${CSS.escape(target.id)}"]`
+    } else if (target.kind === 'idea-group') {
+      if (!IDEA_GROUPS.some(group => group.kind === target.id)) return unavailableLink()
+      view = 'ideas'
+      selector = `[data-idea-group="${CSS.escape(target.id)}"]`
     }
     if (!selector) return
     await tick()
@@ -3217,7 +3217,7 @@ return rows`
       // Retry the same idea rather than inserting a second copy.
       const pending = quickAddPendingId ? findIdea($plannerStore.ideaBuckets, quickAddPendingId) : null
       if (pending) {
-        plannerStore.patchIdeaItem(pending.bucket.id, pending.item.id, { text, html: quickAddHTML })
+        plannerStore.patchIdeaItem(pending.group.id, pending.item.id, { text, html: quickAddHTML })
       } else {
         quickAddPendingId = plannerStore.addIdea(text, 'proposition', quickAddHTML)
       }
@@ -3249,7 +3249,7 @@ return rows`
   }
 
   // Ideas the day's earlier passes showed that are no longer waiting count as
-  // sorted, however they left: a bucket, Cut, a note or the day itself.
+  // sorted, however they left: a group, Cut, a note or the day itself.
   function startNewIdeaSort(date: string, queue: import('./lib/types').IdeaItem[]): number {
     let sorts: Record<string, Id[]> = {}
     try {
@@ -3280,28 +3280,28 @@ return rows`
     if (!found) return
     const { bucketedAt: _bucketedAt, dayAssignmentDate: _dayAssignmentDate, ...item } = found.item
     writePlanItemsToSystemClipboard({ items: [item], cut: true, sourceDate: todayISO() })
-    plannerStore.moveIdeaToBucket(itemId, 'trash')
+    plannerStore.moveIdeaToGroup(itemId, 'trash')
   }
 
   // Only Genuinely Worth Doing counts toward the seeded weekly review goal.
-  async function startIdeaReview(kind: BucketReviewKind = 'genuine') {
-    const queue = bucketItems($plannerStore.ideaBuckets, kind)
+  async function startIdeaReview(kind: IdeaReviewKind = 'genuine') {
+    const queue = ideaGroupItems($plannerStore.ideaBuckets, kind)
     if (queue.length === 0) return
-    const completed = await askIdeaSort(queue, BUCKET_REVIEW_LABELS[kind])
+    const completed = await askIdeaSort(queue, IDEA_REVIEW_LABELS[kind])
     if (!completed || kind !== 'genuine') return
     const plan = $plannerStore.plans.find((candidate) => candidate.date === todayISO())
     if (plan) plannerStore.addCompletedPlanItem(plan.id, IDEA_REVIEW_GOAL_NAME)
   }
 
   function sortPropositions() {
-    const queue = bucketItems($plannerStore.ideaBuckets, 'proposition')
+    const queue = ideaGroupItems($plannerStore.ideaBuckets, 'proposition')
     if (queue.length > 0) void askIdeaSort(queue, 'Sort Proposition Party')
   }
 
   function importIdeas(items: PlanItem[]) {
     ideaImportOpen = false
     const ids = new Set(plannerStore.importIdeas(items))
-    const queue = bucketItems($plannerStore.ideaBuckets, 'proposition').filter((item) => ids.has(item.id))
+    const queue = ideaGroupItems($plannerStore.ideaBuckets, 'proposition').filter((item) => ids.has(item.id))
     if (queue.length > 0) void askIdeaSort(queue, 'Sort imported ideas')
   }
 
@@ -3467,7 +3467,7 @@ return rows`
       value === 'notes' ||
       value === 'projects' ||
       value === 'prioritize' ||
-      value === 'buckets' ||
+      value === 'ideas' ||
       value === 'metrics' ||
       value === 'goals' ||
       value === 'settings'
@@ -3665,10 +3665,10 @@ return rows`
       return
     }
 
-    // Every proposition must land in a bucket or the new day before it begins.
+    // Every proposition must land in a group or the new day before it begins.
     // Keep day reservations on the ideas until generation succeeds, so closing
     // either the sorter or the quiz preserves choices for this specific date.
-    const propositions = bucketItems($plannerStore.ideaBuckets, 'proposition')
+    const propositions = ideaGroupItems($plannerStore.ideaBuckets, 'proposition')
       .filter((item) => item.dayAssignmentDate !== date)
     if (propositions.length > 0 && !(await askIdeaSort(
       propositions, 'Sort new ideas', (itemId) => plannerStore.assignIdeaToDay(itemId, date), startNewIdeaSort(date, propositions),
@@ -3692,7 +3692,7 @@ return rows`
       todayISO(),
     )
     plannerStore.generatePlan(template.id, date, replaceExisting, quizAnswers)
-    const dayIdeaIds = bucketItems($plannerStore.ideaBuckets, 'proposition')
+    const dayIdeaIds = ideaGroupItems($plannerStore.ideaBuckets, 'proposition')
       .filter((item) => item.dayAssignmentDate === date).map((item) => item.id)
     moveIdeasToDay(dayIdeaIds, date)
     const { [date]: _generatedDate, ...remainingSelections } = emptyDayTemplateSelections
@@ -3704,12 +3704,12 @@ return rows`
   function moveIdeasToDay(itemIds: Id[], date: string) {
     const plan = $plannerStore.plans.find((candidate) => candidate.date === date)
     if (!plan) return
-    // Reserved ideas go above the template's items in their bucket order.
+    // Reserved ideas go above the template's items in their group order.
     const found = itemIds.flatMap((itemId) => findIdea($plannerStore.ideaBuckets, itemId) ?? [])
     if (found.length === 0) return
     const items = found.map(({ item: { bucketedAt: _bucketedAt, dayAssignmentDate: _dayAssignmentDate, ...item } }) => item)
     plannerStore.pastePlanItems(plan.id, items, plan.items[0]?.id ?? null, 'before')
-    for (const { bucket, item } of found) plannerStore.removeIdeaAfterTransfer(bucket.id, item.id)
+    for (const { group, item } of found) plannerStore.removeIdeaAfterTransfer(group.id, item.id)
   }
 
   function askProjectPick(date: string): Promise<boolean> {
@@ -4103,7 +4103,7 @@ return rows`
         KeyN: 'notes',
         KeyP: 'projects',
         KeyR: 'prioritize',
-        KeyB: 'buckets',
+        KeyB: 'ideas',
         KeyV: 'metrics',
         KeyZ: 'situate',
         KeyS: 'settings',
@@ -7146,7 +7146,7 @@ return rows`
       <button data-nav-view="goals" class:active={selectedNavView === 'goals'} type="button" title="Goals (Alt+G)" aria-keyshortcuts="Alt+G" on:click={() => selectMobileDrawerView('goals')}><span class="nav-label"><NavIcon name="goals" />Goals</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('G')}</kbd></button>
       <button data-nav-view="projects" class:active={selectedNavView === 'projects'} type="button" title="Projects (Alt+P)" aria-keyshortcuts="Alt+P" on:click={() => { linkedProjectId = ''; selectMobileDrawerView('projects') }}><span class="nav-label"><NavIcon name="projects" />Projects</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('P')}</kbd></button>
       <button data-nav-view="prioritize" class:active={selectedNavView === 'prioritize'} type="button" title="Prioritize (Alt+R)" aria-keyshortcuts="Alt+R" on:click={() => selectMobileDrawerView('prioritize')}><span class="nav-label"><NavIcon name="prioritize" />Prioritize</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('R')}</kbd></button>
-      <button data-nav-view="buckets" class:active={selectedNavView === 'buckets'} type="button" title="Buckets (Alt+B)" aria-keyshortcuts="Alt+B" on:click={() => selectMobileDrawerView('buckets')}><span class="nav-label"><NavIcon name="buckets" />Buckets</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('B')}</kbd></button>
+      <button data-nav-view="ideas" class:active={selectedNavView === 'ideas'} type="button" title="Ideas (Alt+B)" aria-keyshortcuts="Alt+B" on:click={() => selectMobileDrawerView('ideas')}><span class="nav-label"><NavIcon name="ideas" />Ideas</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('B')}</kbd></button>
       <button data-nav-view="situate" class:active={selectedNavView === 'situate'} type="button" title="Situate (Alt+Z)" aria-keyshortcuts="Alt+Z" on:click={() => selectMobileDrawerView('situate')}><span class="nav-label"><NavIcon name="situate" />Situate</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('Z')}</kbd></button>
       <button data-nav-view="settings" class:active={selectedNavView === 'settings'} type="button" title="Settings (Alt+S)" aria-keyshortcuts="Alt+S" on:click={() => selectMobileDrawerView('settings')}><span class="nav-label"><NavIcon name="settings" />Settings</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('S')}</kbd></button>
       {#if !isAndroid}
@@ -7212,7 +7212,7 @@ return rows`
       class:notes-view-workspace={view === 'notes'}
       class:list-template-workspace={view === 'templates' || view === 'listTemplates'}
       class:prioritize-workspace={view === 'prioritize'}
-      class:tree-sticky-workspace={view === 'today' || view === 'lists' || view === 'buckets'}
+      class:tree-sticky-workspace={view === 'today' || view === 'lists' || view === 'ideas'}
       class:before-current-day-workspace={view === 'today' && displayedPlanDate < currentDay}
       class:current-day-workspace={view === 'today' && displayedPlanDate === currentDay}
       class:after-current-day-workspace={view === 'today' && displayedPlanDate > currentDay}
@@ -7956,9 +7956,9 @@ return rows`
       />
     {/if}
 
-    {#if view === 'buckets'}
-      <BucketsPanel
-        buckets={$plannerStore.ideaBuckets}
+    {#if view === 'ideas'}
+      <IdeasPanel
+        groups={$plannerStore.ideaBuckets}
         {listTemplates}
         {metrics}
         {notes}
@@ -8758,16 +8758,16 @@ return rows`
       {#key ideaSort}
         <IdeaSortModal
           queue={ideaSort.queue}
-          buckets={$plannerStore.ideaBuckets}
+          groups={$plannerStore.ideaBuckets}
           title={ideaSort.title}
           sortedBefore={ideaSort.sortedBefore}
           renderIdeaHTML={(item) => renderItemDisplayHTML(item.html, item.text, linkifyItemText(item.text, listTemplates, metrics, notes))}
           onOpenLink={(link) => openLink(link, null)}
           active={ideaSortVisible}
-          onDecide={(itemId, kind) => plannerStore.moveIdeaToBucket(itemId, kind)}
+          onDecide={(itemId, kind) => plannerStore.moveIdeaToGroup(itemId, kind)}
           onAppendToPrevious={(itemId, previousId) => plannerStore.appendIdeaToPrevious(itemId, previousId)}
-          onEdit={(itemId, text) => { const found = findIdea($plannerStore.ideaBuckets, itemId); if (found) plannerStore.patchIdeaItem(found.bucket.id, itemId, { text, html: escapeHTML(text) }) }}
-          onToggleDone={(itemId, done) => { const found = findIdea($plannerStore.ideaBuckets, itemId); if (found) plannerStore.patchIdeaItem(found.bucket.id, itemId, { done }) }}
+          onEdit={(itemId, text) => { const found = findIdea($plannerStore.ideaBuckets, itemId); if (found) plannerStore.patchIdeaItem(found.group.id, itemId, { text, html: escapeHTML(text) }) }}
+          onToggleDone={(itemId, done) => { const found = findIdea($plannerStore.ideaBuckets, itemId); if (found) plannerStore.patchIdeaItem(found.group.id, itemId, { done }) }}
           onCut={cutSortedIdea}
           onAddToNote={plannerStore.moveIdeaToNewNote}
           onAddToDay={ideaSort.addToDay}

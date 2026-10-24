@@ -18,11 +18,11 @@ function fixture() {
     ['Missing task', 'balance://task/missing'],
     ['Settings page', 'balance://page/settings'],
     ['Paragraph', 'balance://note/destination?item=paragraph'],
-    ['Empty bucket', 'balance://bucket/trash'],
+    ['Empty group', 'balance://idea-group/trash'],
     ['Binned note', 'balance://note/binned'],
-    ['Review genuine', 'balance://buckets/review/genuine'],
-    ['Review possible', 'balance://buckets/review/possible'],
-    ['Review afterlife', 'balance://buckets/review/afterlife'],
+    ['Review genuine', 'balance://ideas/review/genuine'],
+    ['Review possible', 'balance://ideas/review/possible'],
+    ['Review afterlife', 'balance://ideas/review/afterlife'],
   ].map(([label, url]) => ({ ...createNoteItem(label), html: `<a href="${url}">${label}</a>` }))
   const destination = { ...createNote('Destination'), id: 'destination', items: [{ ...createNoteItem('A stable paragraph'), id: 'paragraph' }] }
   state.notes = [links, destination, { ...createNote('Binned destination'), id: 'binned', deletedAt: `${date}T17:00:00Z` }]
@@ -33,7 +33,7 @@ function fixture() {
   state.ideaBuckets = (['genuine', 'possible', 'afterlife'] as const).map(kind => ({
     id: `bucket_${kind}`, kind, items: [createPlanItem(`Synthetic ${kind} idea`)],
   }))
-  state.plans[0].items.push(createPlanItem('balance://buckets/review/possible'))
+  state.plans[0].items.push(createPlanItem('balance://ideas/review/possible'))
   return state
 }
 
@@ -113,8 +113,8 @@ test('context links choose the nearest object and return to tasks and note parag
   await page.locator('.note-document a').filter({ hasText: 'Settings page' }).click()
   await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible()
   await index(page)
-  await page.locator('.note-document a').filter({ hasText: 'Empty bucket' }).click()
-  await expect(page.locator('[data-bucket="trash"]')).toBeVisible()
+  await page.locator('.note-document a').filter({ hasText: 'Empty group' }).click()
+  await expect(page.locator('[data-idea-group="trash"]')).toBeVisible()
   await index(page)
   await page.locator('.note-document a').filter({ hasText: 'Binned note' }).click()
   await expect(page.getByRole('heading', { name: 'Binned destination', exact: true })).toBeVisible()
@@ -175,21 +175,21 @@ test('native launch queue routes navigation after loading the workspace', async 
   await page.evaluate(({ id, date }) => (window as any).__deliverLink(`balance://quiz/${id}?date=${date}`), { id: state.metrics[0].id, date })
   await expect(page.getByRole('dialog', { name: `Synthetic quiz · ${date}`, exact: true })).toBeVisible()
   await page.keyboard.press('Escape')
-  await page.evaluate(() => (window as any).__deliverLink('balance://buckets/review/afterlife'))
+  await page.evaluate(() => (window as any).__deliverLink('balance://ideas/review/afterlife'))
   await expect(page.locator('.idea-sort[role="dialog"]')).toContainText('Synthetic afterlife idea')
 })
 
-test('each bucket copies a review link that reviews only its own ideas', async ({ page }) => {
+test('each group copies a review link that reviews only its own ideas', async ({ page }) => {
   await seed(page)
   const dialog = page.locator('.idea-sort[role="dialog"]')
   for (const kind of ['possible', 'afterlife', 'genuine'] as const) {
-    await openView(page, 'Buckets')
-    await page.locator(`[data-bucket="${kind}"] h3`).click({ button: 'right' })
+    await openView(page, 'Ideas')
+    await page.locator(`[data-idea-group="${kind}"] h3`).click({ button: 'right' })
     await page.getByRole('menuitem', { name: 'Copy review link' }).click()
-    expect(await page.evaluate(() => (window as any).__copiedLink)).toBe(`balance://buckets/review/${kind}`)
+    expect(await page.evaluate(() => (window as any).__copiedLink)).toBe(`balance://ideas/review/${kind}`)
     if (kind === 'possible') {
       await openView(page, 'Today')
-      await page.locator('.day-pane a').filter({ hasText: 'balance://buckets/review/possible' }).click()
+      await page.locator('.day-pane a').filter({ hasText: 'balance://ideas/review/possible' }).click()
     } else {
       await index(page)
       await page.locator('.note-document a').filter({ hasText: `Review ${kind}` }).click()
@@ -204,9 +204,9 @@ test('each bucket copies a review link that reviews only its own ideas', async (
       return state.plans[0].items.filter((item: any) => item.done && item.text === 'Filter Genuinely Worth Doing').length
     })).toBe(kind === 'genuine' ? 1 : 0)
   }
-  // Sorting and trash stay separate from the three reviewable buckets.
+  // Sorting and trash stay separate from the three reviewable groups.
   for (const kind of ['proposition', 'trash']) {
-    await page.locator(`[data-bucket="${kind}"] h3`).click({ button: 'right' })
+    await page.locator(`[data-idea-group="${kind}"] h3`).click({ button: 'right' })
     await expect(page.getByRole('menuitem', { name: 'Copy review link' })).toHaveCount(0)
     await page.keyboard.press('Escape')
   }

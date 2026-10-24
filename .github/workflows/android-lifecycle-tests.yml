@@ -16,7 +16,7 @@ on:
         description: Lifecycle path to verify with synthetic data
         type: choice
         default: activity
-        options: [activity, process, worker-start, offline-buckets, offline-history, offline-notifications, offline-latency, startup-ab]
+        options: [activity, process, worker-start, offline-ideas, offline-history, offline-notifications, offline-latency, startup-ab]
       baseline_apk_run_id:
         description: For startup-ab, the lifecycle run whose APK is the baseline build
         type: string
@@ -27,7 +27,7 @@ on:
         default: "20"
         options: ["20", "100"]
       offline_background_seconds:
-        description: Offline background duration after bucket saves
+        description: Offline background duration after idea saves
         type: choice
         default: "0"
         options: ["0", "600"]
@@ -120,7 +120,7 @@ jobs:
         # Keep release coverage for teardown, durable capture, large offline
         # workspaces, returning after an edit, and the JNI callback that R8 can
         # otherwise remove.
-        scenario: ${{ fromJSON(inputs.scenario && format('["{0}"]', inputs.scenario) || '["activity","offline-buckets","offline-history","offline-notifications","offline-latency"]') }}
+        scenario: ${{ fromJSON(inputs.scenario && format('["{0}"]', inputs.scenario) || '["activity","offline-ideas","offline-history","offline-notifications","offline-latency"]') }}
     steps:
       - uses: actions/checkout@v6
       - name: Enable KVM

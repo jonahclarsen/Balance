@@ -34,7 +34,7 @@ export function historyFixture(days) {
     items: today.items.map((item, i) => ({...item, id: `history-list-item-${day}-${i}`,
       text: `Synthetic daily routine ${i}`, html: `Synthetic <em>daily routine</em> ${i}`})),
   }))
-  state.ideaBuckets = [{id: 'history-bucket', kind: 'proposition', items:
+  state.ideaBuckets = [{id: 'history-ideas', kind: 'proposition', items:
     Array.from({length: 100}, (_, i) => ({...today.items[0], id: `history-idea-${i}`,
       text: `Synthetic saved idea ${i}`, html: `Synthetic saved idea ${i}`}))}]
   state.notes = Array.from({length: 50}, (_, i) => ({id: `history-note-${i}`,

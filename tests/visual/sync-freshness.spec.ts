@@ -1273,20 +1273,20 @@ for (const failFirst of [false, true]) {
     await page.evaluate((failFirst) => {
       const runtime = window as any
       const original = runtime.__TAURI_INTERNALS__.invoke
-      runtime.__bucketSaveAttempts = []
-      runtime.__bucketSaveReleased = false
-      runtime.__releaseBucketSave = () => { runtime.__bucketSaveReleased = true }
+      runtime.__ideaSaveAttempts = []
+      runtime.__ideaSaveReleased = false
+      runtime.__releaseIdeaSave = () => { runtime.__ideaSaveReleased = true }
       runtime.__TAURI_INTERNALS__.invoke = async (command: string, args: any) => {
         if (command !== 'persist_operation') return original(command, args)
         const op = JSON.parse(args.operationJson)
         if (op.payload?.action !== 'add_idea') return original(command, args)
-        runtime.__bucketSaveAttempts.push(op)
+        runtime.__ideaSaveAttempts.push(op)
         // Hold every retry, including the store's automatic retry, until the
         // test releases it. Failed IPC can follow an already committed write.
-        while (!runtime.__bucketSaveReleased) await new Promise(resolve => setTimeout(resolve, 10))
-        if (failFirst && !runtime.__bucketSaveFailed) {
-          runtime.__bucketSaveFailed = true
-          runtime.__bucketSaveReleased = false
+        while (!runtime.__ideaSaveReleased) await new Promise(resolve => setTimeout(resolve, 10))
+        if (failFirst && !runtime.__ideaSaveFailed) {
+          runtime.__ideaSaveFailed = true
+          runtime.__ideaSaveReleased = false
           throw new Error('Synthetic disk write failure')
         }
         return original(command, args)
@@ -1294,19 +1294,19 @@ for (const failFirst of [false, true]) {
     }, failFirst)
     await page.getByRole('button', { name: 'Add idea', exact: true }).click()
     const input = page.getByRole('textbox', { name: 'New idea' })
-    await input.fill('Synthetic durable bucket idea')
+    await input.fill('Synthetic durable group idea')
     await page.getByRole('button', { name: 'Save', exact: true }).click()
-    await expect.poll(() => page.evaluate(() => (window as any).__bucketSaveAttempts.length)).toBe(1)
+    await expect.poll(() => page.evaluate(() => (window as any).__ideaSaveAttempts.length)).toBe(1)
     await expect(input).toBeVisible()
     await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
     await page.keyboard.press('Escape')
     await expect(input).toBeVisible()
-    await page.evaluate(() => (window as any).__releaseBucketSave())
+    await page.evaluate(() => (window as any).__releaseIdeaSave())
     if (failFirst) {
       await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeEnabled()
-      await expect(input).toHaveText('Synthetic durable bucket idea')
+      await expect(input).toHaveText('Synthetic durable group idea')
       await page.getByRole('button', { name: 'Save', exact: true }).click()
-      await page.evaluate(() => (window as any).__releaseBucketSave())
+      await page.evaluate(() => (window as any).__releaseIdeaSave())
     }
     await expect(input).toBeHidden()
     const result = await page.evaluate(async () => {
@@ -1314,8 +1314,8 @@ for (const failFirst of [false, true]) {
       const { plannerStore } = await import(/* @vite-ignore */ path)
       let state: any
       plannerStore.subscribe((value: any) => { state = value })()
-      return { ids: (window as any).__bucketSaveAttempts.map((op: any) => op.id),
-        matches: state.ideaBuckets.flatMap((bucket: any) => bucket.items).filter((item: any) => item.text === 'Synthetic durable bucket idea').length }
+      return { ids: (window as any).__ideaSaveAttempts.map((op: any) => op.id),
+        matches: state.ideaBuckets.flatMap((group: any) => group.items).filter((item: any) => item.text === 'Synthetic durable group idea').length }
     })
     expect(new Set(result.ids).size).toBe(1)
     expect(result.matches).toBe(1)

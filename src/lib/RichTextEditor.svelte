@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { bucketsLinkFromURL } from './bucketLinks'
+  import { ideasLinkFromURL } from './ideaLinks'
   import { isQuoteKey, wrapRangeInQuotes } from './quoteSelection'
   import { insertTextAroundCode, isBacktickKey, toggleSelectionCode } from './inlineCode'
   import { imageEditing } from './imageEditing'
@@ -622,7 +622,7 @@
 
   function insertClipboardContents(activeEditor: HTMLDivElement, clipboardText: string, clipboardHTML: string) {
 
-    if (clipboardText && (isGoalStatsURL(clipboardText) || templateReviewFromURL(clipboardText) || bucketsLinkFromURL(clipboardText) || isURL(clipboardText) || noteIdFromURL(clipboardText) || projectIdFromURL(clipboardText) !== null) && hasNonCollapsedSelectionInside(activeEditor)) {
+    if (clipboardText && (isGoalStatsURL(clipboardText) || templateReviewFromURL(clipboardText) || ideasLinkFromURL(clipboardText) || isURL(clipboardText) || noteIdFromURL(clipboardText) || projectIdFromURL(clipboardText) !== null) && hasNonCollapsedSelectionInside(activeEditor)) {
       pendingPasteInput = true
       document.execCommand('createLink', false, clipboardText.trim())
       persistPasteIfInputDidNotFire(activeEditor)

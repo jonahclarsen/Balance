@@ -1,7 +1,7 @@
 <script lang="ts">
   export let name:
     | 'next' | 'today' | 'templates' | 'listTemplates' | 'lists' | 'notes' | 'metrics'
-    | 'goals' | 'projects' | 'prioritize' | 'buckets' | 'situate' | 'settings'
+    | 'goals' | 'projects' | 'prioritize' | 'ideas' | 'situate' | 'settings'
 </script>
 <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
   {#if name === 'next'}<path d="M4 12h12M11 6l6 6-6 6M20 5v14" />
@@ -14,7 +14,7 @@
   {:else if name === 'goals'}<circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><path d="M12 12h.01" />
   {:else if name === 'projects'}<path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2.5h7.5A2.5 2.5 0 0 1 21 10v7.5a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z" />
   {:else if name === 'prioritize'}<path d="M7 20V4M3.5 7.5 7 4l3.5 3.5M13 6h7M13 12h5M13 18h3" />
-  {:else if name === 'buckets'}<path d="M4 9h16M5.5 9 7 20h10l1.5-11M8 9a4 4 0 0 1 8 0" />
+  {:else if name === 'ideas'}<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.6 10.8c.6.5 1 1.2 1 2V16h5.2v-.2c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z" />
   {:else if name === 'situate'}<circle cx="12" cy="12" r="9" /><path d="m15.5 8.5-2 5-5 2 2-5z" />
   {:else if name === 'settings'}<path d="M4 7h9M17 7h3M4 17h3M11 17h9" /><circle cx="15" cy="7" r="2" /><circle cx="9" cy="17" r="2" />{/if}
 </svg>

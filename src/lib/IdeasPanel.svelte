@@ -2,11 +2,11 @@
   import { onDestroy, tick } from 'svelte'
   import PlanItemEditor from './PlanItemEditor.svelte'
   import { plannerStore } from './store'
-  import { bucketUnlockDelay, findIdea, ideaBucketId, ideaBucketKindForKey, IDEA_BUCKETS, IDEA_TRASH_RETENTION_DAYS } from './ideaBuckets'
+  import { ideaUnlockDelay, findIdea, ideaGroupId, ideaGroupKindForKey, IDEA_GROUPS, IDEA_TRASH_RETENTION_DAYS } from './ideas'
   import type { ItemLink, ItemTimeWarning } from './planner'
-  import type { Id, IdeaBucket, IdeaBucketKind, ListTemplate, Metric, Note } from './types'
+  import type { Id, IdeaGroup, IdeaGroupKind, ListTemplate, Metric, Note } from './types'
 
-  export let buckets: IdeaBucket[]
+  export let groups: IdeaGroup[]
   export let listTemplates: ListTemplate[] = []
   export let metrics: Metric[] = []
   export let notes: Note[] = []
@@ -24,20 +24,20 @@
   let selectedAt = 0
   let unlockTimers: number[] = []
   let unlockTick = 0
-  let shaking: IdeaBucketKind | null = null
+  let shaking: IdeaGroupKind | null = null
   let shakeTimer: number | null = null
   let trashOpen = false
 
-  $: selected = selectedItemId ? findIdea(buckets, selectedItemId) : null
+  $: selected = selectedItemId ? findIdea(groups, selectedItemId) : null
   // Drop the selection once its idea disappears (undo, sync, purge).
-  $: dropMissingSelection(buckets)
+  $: dropMissingSelection(groups)
   $: selectedItemIdSet = new Set(selectedItemId ? [selectedItemId] : [])
-  // Missing buckets render empty; the map keeps the template reactive to `buckets`.
-  $: bucketsByKind = Object.fromEntries(IDEA_BUCKETS.map((meta) => [
-    meta.kind, buckets.find((bucket) => bucket.kind === meta.kind) ?? { id: ideaBucketId(meta.kind), kind: meta.kind, items: [] },
-  ])) as Record<IdeaBucketKind, IdeaBucket>
+  // Missing groups render empty; the map keeps the template reactive to `groups`.
+  $: groupsByKind = Object.fromEntries(IDEA_GROUPS.map((meta) => [
+    meta.kind, groups.find((group) => group.kind === meta.kind) ?? { id: ideaGroupId(meta.kind), kind: meta.kind, items: [] },
+  ])) as Record<IdeaGroupKind, IdeaGroup>
 
-  function dropMissingSelection(current: IdeaBucket[]) {
+  function dropMissingSelection(current: IdeaGroup[]) {
     if (selectedItemId && !findIdea(current, selectedItemId)) selectedItemId = null
   }
 
@@ -46,15 +46,15 @@
     selectedAt = Date.now()
     for (const timer of unlockTimers) window.clearTimeout(timer)
     unlockTimers = []
-    const origin = itemId ? findIdea(buckets, itemId)?.bucket.kind ?? null : null
-    for (const target of IDEA_BUCKETS) {
-      const delay = bucketUnlockDelay(origin, target.kind)
+    const origin = itemId ? findIdea(groups, itemId)?.group.kind ?? null : null
+    for (const target of IDEA_GROUPS) {
+      const delay = ideaUnlockDelay(origin, target.kind)
       if (delay > 0) unlockTimers.push(window.setTimeout(() => { unlockTick += 1 }, delay))
     }
   }
 
-  function locked(kind: IdeaBucketKind, _tick: number): boolean {
-    return Date.now() < selectedAt + bucketUnlockDelay(selected?.bucket.kind ?? null, kind)
+  function locked(kind: IdeaGroupKind, _tick: number): boolean {
+    return Date.now() < selectedAt + ideaUnlockDelay(selected?.group.kind ?? null, kind)
   }
 
   function handleSelectionPointerDown(itemId: Id, event: PointerEvent) {
@@ -65,26 +65,26 @@
     select(selectedItemId === itemId ? null : itemId)
   }
 
-  function shake(kind: IdeaBucketKind) {
+  function shake(kind: IdeaGroupKind) {
     shaking = kind
     if (shakeTimer !== null) window.clearTimeout(shakeTimer)
     shakeTimer = window.setTimeout(() => { shaking = null }, 420)
   }
 
-  function attemptMove(kind: IdeaBucketKind) {
-    if (!selected || selected.bucket.kind === kind) return
+  function attemptMove(kind: IdeaGroupKind) {
+    if (!selected || selected.group.kind === kind) return
     if (locked(kind, unlockTick)) {
       shake(kind)
       return
     }
-    plannerStore.moveIdeaToBucket(selected.item.id, kind)
+    plannerStore.moveIdeaToGroup(selected.item.id, kind)
     select(null)
   }
 
   function rootIdsInOrder(): Id[] {
-    return IDEA_BUCKETS
+    return IDEA_GROUPS
       .filter((meta) => meta.kind !== 'trash' || trashOpen)
-      .flatMap((meta) => bucketsByKind[meta.kind].items.map((item) => item.id))
+      .flatMap((meta) => groupsByKind[meta.kind].items.map((item) => item.id))
   }
 
   function moveSelection(direction: -1 | 1) {
@@ -115,18 +115,18 @@
       moveSelection(event.key === 'ArrowDown' ? 1 : -1)
       return
     }
-    const kind = ideaBucketKindForKey(event.key)
+    const kind = ideaGroupKindForKey(event.key)
     if (!kind) return
     event.preventDefault()
     event.stopPropagation()
     attemptMove(kind)
   }
 
-  async function addItem(bucketId: Id) {
-    plannerStore.addRootIdeaItem(bucketId)
+  async function addItem(groupId: Id) {
+    plannerStore.addRootIdeaItem(groupId)
     await tick()
     const input = Array.from(document.querySelectorAll<HTMLDivElement>(
-      `[data-plan-item-scope="${CSS.escape(bucketId)}"] [data-plan-text-focus-target]`,
+      `[data-plan-item-scope="${CSS.escape(groupId)}"] [data-plan-text-focus-target]`,
     )).at(-1)
     input?.focus()
   }
@@ -139,40 +139,40 @@
 
 <svelte:window on:keydown={handleKeydown} />
 
-<section class="buckets-panel">
+<section class="ideas-panel">
   <header class="page-header">
-    <h2>Buckets</h2>
+    <h2>Ideas</h2>
     <div class="template-panel-actions">
       <button type="button" on:click={onImport}>Import</button>
     </div>
   </header>
 
-  {#each IDEA_BUCKETS as meta (meta.kind)}
-    {@const bucket = bucketsByKind[meta.kind]}
-    <section class="bucket-card" data-bucket={meta.kind} data-balance-link={`balance://bucket/${meta.kind}`} aria-label={meta.label}>
-      <header class="bucket-card-header">
+  {#each IDEA_GROUPS as meta (meta.kind)}
+    {@const group = groupsByKind[meta.kind]}
+    <section class="idea-group-card" data-idea-group={meta.kind} data-balance-link={`balance://idea-group/${meta.kind}`} aria-label={meta.label}>
+      <header class="idea-group-card-header">
         {#if meta.kind === 'trash'}
-          <h3><button class="bucket-toggle" type="button" aria-expanded={trashOpen} on:click={() => { trashOpen = !trashOpen }}>{meta.label}</button></h3>
+          <h3><button class="idea-group-toggle" type="button" aria-expanded={trashOpen} on:click={() => { trashOpen = !trashOpen }}>{meta.label}</button></h3>
         {:else}
           <h3>{meta.label}</h3>
         {/if}
-        <span class="bucket-count">{bucket.items.length}</span>
+        <span class="idea-group-count">{group.items.length}</span>
         {#if meta.kind === 'proposition'}
-          <button class="ghost bucket-review-button" type="button" disabled={bucket.items.length === 0} on:click={onSortPropositions}>Sort</button>
+          <button class="ghost idea-group-review-button" type="button" disabled={group.items.length === 0} on:click={onSortPropositions}>Sort</button>
         {:else if meta.kind === 'genuine'}
-          <button class="ghost bucket-review-button" type="button" on:click={onReview}>Review</button>
+          <button class="ghost idea-group-review-button" type="button" on:click={onReview}>Review</button>
         {:else if meta.kind === 'trash'}
-          <span class="bucket-note">clears after {IDEA_TRASH_RETENTION_DAYS} days</span>
+          <span class="idea-group-note">clears after {IDEA_TRASH_RETENTION_DAYS} days</span>
         {/if}
       </header>
       {#if meta.kind !== 'trash' || trashOpen}
-        <div class="list-panel bucket-list" data-plan-item-scope={bucket.id}>
-          {#each bucket.items as item (item.id)}
+        <div class="list-panel idea-group-list" data-plan-item-scope={group.id}>
+          {#each group.items as item (item.id)}
             <PlanItemEditor
               {item}
-              allItems={bucket.items}
+              allItems={group.items}
               timeWarnings={noTimeWarnings}
-              planId={bucket.id}
+              planId={group.id}
               patchItem={plannerStore.patchIdeaItem}
               splitItem={plannerStore.splitIdeaItem}
               backspaceItemAtStart={plannerStore.backspaceIdeaItemAtStart}
@@ -196,14 +196,14 @@
               collapsible
             />
           {/each}
-          <button class="add-row" type="button" on:click={() => { void addItem(bucket.id) }}>+ Add item</button>
+          <button class="add-row" type="button" on:click={() => { void addItem(group.id) }}>+ Add item</button>
         </div>
-        {#if selected && selected.bucket.kind === meta.kind}
-          <div class="bucket-move-strip" role="group" aria-label="Move idea to">
-            {#each IDEA_BUCKETS.filter((target) => target.kind !== meta.kind) as target (target.kind)}
+        {#if selected && selected.group.kind === meta.kind}
+          <div class="idea-move-strip" role="group" aria-label="Move idea to">
+            {#each IDEA_GROUPS.filter((target) => target.kind !== meta.kind) as target (target.kind)}
               <button
                 type="button"
-                class="idea-bucket-button"
+                class="idea-group-button"
                 class:locked={locked(target.kind, unlockTick)}
                 class:shaking={shaking === target.kind}
                 aria-disabled={locked(target.kind, unlockTick) ? 'true' : undefined}
@@ -218,22 +218,22 @@
 </section>
 
 <style>
-  .buckets-panel { display: grid; gap: 12px; align-content: start; }
+  .ideas-panel { display: grid; gap: 12px; align-content: start; }
   .page-header h2 { margin: 0; }
-  .bucket-card {
+  .idea-group-card {
     border: 1px solid var(--line);
     border-radius: 8px;
     background: var(--paper);
     padding: 6px 10px 8px;
   }
-  .bucket-card-header {
+  .idea-group-card-header {
     display: flex;
     align-items: baseline;
     gap: 10px;
     min-height: 28px;
   }
-  .bucket-card-header h3 { margin: 0; font-size: 15px; }
-  .bucket-toggle {
+  .idea-group-card-header h3 { margin: 0; font-size: 15px; }
+  .idea-group-toggle {
     padding: 0;
     border: 0;
     background: none;
@@ -241,19 +241,19 @@
     font: inherit;
     cursor: pointer;
   }
-  .bucket-toggle::after { content: ' ▸'; color: var(--muted); }
-  .bucket-toggle[aria-expanded='true']::after { content: ' ▾'; }
-  .bucket-count { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
-  .bucket-note { margin-left: auto; color: var(--muted); font-size: 12px; }
-  .bucket-review-button { margin-left: auto; padding: 2px 8px; font-size: 13px; }
-  .bucket-list { padding: 0; }
-  .bucket-move-strip {
+  .idea-group-toggle::after { content: ' ▸'; color: var(--muted); }
+  .idea-group-toggle[aria-expanded='true']::after { content: ' ▾'; }
+  .idea-group-count { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .idea-group-note { margin-left: auto; color: var(--muted); font-size: 12px; }
+  .idea-group-review-button { margin-left: auto; padding: 2px 8px; font-size: 13px; }
+  .idea-group-list { padding: 0; }
+  .idea-move-strip {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
     padding: 6px 0 2px;
   }
-  .bucket-move-strip kbd {
+  .idea-move-strip kbd {
     margin-left: 4px;
     font-size: 11px;
     opacity: 0.7;

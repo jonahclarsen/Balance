@@ -2,7 +2,7 @@
   import { onMount, tick } from 'svelte'
   import OverlayModal from './OverlayModal.svelte'
   import { readExternalPasteContent } from './externalNotePaste'
-  import { countIdeas, parseIdeaImport, parseIdeaImportText } from './ideaBuckets'
+  import { countIdeas, parseIdeaImport, parseIdeaImportText } from './ideas'
   import type { PlanItem } from './types'
 
   // Pasting a list from Apple Notes or Notesnook turns each top-level bullet

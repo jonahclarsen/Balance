@@ -1,35 +1,35 @@
 import { expect, test } from '@playwright/test'
 import {
-  bucketUnlockDelay,
-  ideaBucketKindForKey,
+  ideaUnlockDelay,
+  ideaGroupKindForKey,
   ideaReviewGoalHue,
   isIdeaTrashExpired,
   needsIdeaReviewGoal,
   parseIdeaImportText,
-  IDEA_BUCKETS,
+  IDEA_GROUPS,
   IDEA_REVIEW_GOAL_ID,
   IDEA_TRASH_RETENTION_MS,
-} from '../../src/lib/ideaBuckets'
+} from '../../src/lib/ideas'
 import { createPlanItem } from '../../src/lib/planner'
 
-test('buckets have unique move keys and a fixed order', () => {
-  expect(IDEA_BUCKETS.map((bucket) => bucket.kind)).toEqual(['proposition', 'genuine', 'possible', 'afterlife', 'trash'])
-  expect(new Set(IDEA_BUCKETS.map((bucket) => bucket.key)).size).toBe(IDEA_BUCKETS.length)
-  expect(ideaBucketKindForKey('G')).toBe('genuine')
-  expect(ideaBucketKindForKey('x')).toBeNull()
+test('groups have unique move keys and a fixed order', () => {
+  expect(IDEA_GROUPS.map((group) => group.kind)).toEqual(['proposition', 'genuine', 'possible', 'afterlife', 'trash'])
+  expect(new Set(IDEA_GROUPS.map((group) => group.key)).size).toBe(IDEA_GROUPS.length)
+  expect(ideaGroupKindForKey('G')).toBe('genuine')
+  expect(ideaGroupKindForKey('x')).toBeNull()
 })
 
-test('leaving Proposition Party unlocks each bucket later the higher it sits', () => {
-  expect(bucketUnlockDelay('proposition', 'trash')).toBe(0)
-  expect(bucketUnlockDelay('proposition', 'afterlife')).toBeLessThan(bucketUnlockDelay('proposition', 'possible'))
-  expect(bucketUnlockDelay('proposition', 'possible')).toBeLessThan(bucketUnlockDelay('proposition', 'genuine'))
-  expect(bucketUnlockDelay('proposition', 'genuine')).toBe(3000)
+test('leaving Proposition Party unlocks each group later the higher it sits', () => {
+  expect(ideaUnlockDelay('proposition', 'trash')).toBe(0)
+  expect(ideaUnlockDelay('proposition', 'afterlife')).toBeLessThan(ideaUnlockDelay('proposition', 'possible'))
+  expect(ideaUnlockDelay('proposition', 'possible')).toBeLessThan(ideaUnlockDelay('proposition', 'genuine'))
+  expect(ideaUnlockDelay('proposition', 'genuine')).toBe(3000)
   for (const from of ['genuine', 'possible', 'afterlife', 'trash', null] as const) {
-    expect(bucketUnlockDelay(from, 'genuine')).toBe(0)
+    expect(ideaUnlockDelay(from, 'genuine')).toBe(0)
   }
 })
 
-test('trash ideas expire 30 days after they were bucketed', () => {
+test('trash ideas expire 30 days after they were sorted', () => {
   const bucketedAt = Date.parse('2026-09-01T12:00:00Z')
   const item = { ...createPlanItem('Synthetic trash'), bucketedAt: new Date(bucketedAt).toISOString() }
   expect(isIdeaTrashExpired(item, bucketedAt + IDEA_TRASH_RETENTION_MS - 1)).toBe(false)

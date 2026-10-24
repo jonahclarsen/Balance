@@ -7549,7 +7549,7 @@ textarea.note-title {
   font-weight: 700;
 }
 
-/* ---- Idea buckets ------------------------------------------------------- */
+/* ---- Idea groups ------------------------------------------------------- */
 
 .idea-sort .paste-review-list {
   max-height: 46dvh;
@@ -7587,16 +7587,16 @@ textarea.note-title {
 }
 
 /* Commitment buttons dim until their unlock delay passes; an early press shakes. */
-.idea-bucket-button.locked {
+.idea-group-button.locked {
   opacity: 0.45;
   cursor: default;
 }
 
-.idea-bucket-button.shaking {
-  animation: idea-bucket-shake 420ms ease;
+.idea-group-button.shaking {
+  animation: idea-group-shake 420ms ease;
 }
 
-@keyframes idea-bucket-shake {
+@keyframes idea-group-shake {
   0%, 100% { transform: translateX(0); }
   20% { transform: translateX(-5px); }
   40% { transform: translateX(5px); }
@@ -7605,7 +7605,7 @@ textarea.note-title {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .idea-bucket-button.shaking { animation: none; }
+  .idea-group-button.shaking { animation: none; }
 }
 
 .idea-import {

@@ -12,7 +12,7 @@ test('mobile header quick add saves ideas with Enter or Save and closes with Can
   const input = page.getByRole('textbox', { name: 'New idea' })
   const ideas = () => page.evaluate(() => {
     const state = JSON.parse(localStorage.getItem('balance.appState.v1')!)
-    return state.ideaBuckets.flatMap((bucket: any) => bucket.items.map((item: any) => `${bucket.kind}:${item.text}`))
+    return state.ideaBuckets.flatMap((group: any) => group.items.map((item: any) => `${group.kind}:${item.text}`))
   })
 
   await addButton.click()
@@ -41,6 +41,6 @@ test('mobile header quick add saves ideas with Enter or Save and closes with Can
   await expect(input).toBeHidden()
   expect(await ideas()).toHaveLength(2)
 
-  await openView(page, 'Buckets')
-  await expect(page.locator('.bucket-card[data-bucket="proposition"] [data-plan-text-input]')).toHaveText(['Synthetic enter idea', 'Synthetic save idea'])
+  await openView(page, 'Ideas')
+  await expect(page.locator('.idea-group-card[data-idea-group="proposition"] [data-plan-text-input]')).toHaveText(['Synthetic enter idea', 'Synthetic save idea'])
 })

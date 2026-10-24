@@ -1,5 +1,5 @@
 import { balanceURLMatches, parseNavigationURL } from './navigationLinks'
-import { BUCKET_REVIEW_LABELS, bucketsLinkFromURL, type BucketReviewKind } from './bucketLinks'
+import { IDEA_REVIEW_LABELS, ideasLinkFromURL, type IdeaReviewKind } from './ideaLinks'
 import { sanitizeImage } from './imageMarkup'
 import { isUnboldedBold, textStyleTags } from './textStyleTags'
 import type {
@@ -2678,7 +2678,7 @@ export type ItemLink =
   | { kind: 'metric'; metricId: Id; label: string }
   | { kind: 'note'; noteId: Id; label: string }
   | { kind: 'projects'; projectId: Id; label: string }
-  | { kind: 'buckets'; review: BucketReviewKind | null; label: string }
+  | { kind: 'ideas'; review: IdeaReviewKind | null; label: string }
   | { kind: 'templateReview'; templateKind: TemplateReviewKind; templateId: Id; label: string }
 
 export function itemLinkFromURL(value: string, notes: import('./types').Note[] = []): ItemLink | null {
@@ -2688,8 +2688,8 @@ export function itemLinkFromURL(value: string, notes: import('./types').Note[] =
   const projectId = projectIdFromURL(url)
   if (projectId !== null) return { kind: 'projects', projectId, label: 'Project vibes' }
   if (isGoalStatsURL(url)) return { kind: 'goalStats', label: 'Goal stats' }
-  const buckets = bucketsLinkFromURL(url)
-  if (buckets) return { kind: 'buckets', review: buckets === 'page' ? null : buckets, label: buckets === 'page' ? 'Buckets' : BUCKET_REVIEW_LABELS[buckets] }
+  const ideas = ideasLinkFromURL(url)
+  if (ideas) return { kind: 'ideas', review: ideas === 'page' ? null : ideas, label: ideas === 'page' ? 'Ideas' : IDEA_REVIEW_LABELS[ideas] }
   const review = templateReviewFromURL(url)
   if (review) return { kind: 'templateReview', templateKind: review.kind, templateId: review.templateId, label: templateReviewLabel(review.kind) }
   const target = parseNavigationURL(url)
@@ -2797,7 +2797,7 @@ export function detectedTemplateLists(text: string, listTemplates: ListTemplate[
 export function internalLinkId(link: ItemLink): string {
   if (link.kind === 'navigation') return link.url
   if (link.kind === 'goalStats') return 'stats'
-  if (link.kind === 'buckets') return link.review ? `review/${link.review}` : 'page'
+  if (link.kind === 'ideas') return link.review ? `review/${link.review}` : 'page'
   if (link.kind === 'templateReview') return `${link.templateKind}:${link.templateId}`
   if (link.kind === 'projects') return link.projectId || 'all'
   if (link.kind === 'list') return link.listTemplateId
@@ -2869,8 +2869,8 @@ export function itemLinkFromAnchor(anchor: HTMLElement): ItemLink | null {
   if (direct) return { ...direct, label: label || direct.label }
   if (kind === 'goalStats') return { kind: 'goalStats', label }
   if (kind === 'projects') return { kind, projectId: id === 'all' ? '' : id ?? '', label }
-  if (kind === 'buckets' && id) {
-    const link = itemLinkFromURL(id === 'page' ? 'balance://buckets' : `balance://buckets/${id}`)
+  if (kind === 'ideas' && id) {
+    const link = itemLinkFromURL(id === 'page' ? 'balance://ideas' : `balance://ideas/${id}`)
     return link ? { ...link, label } : null
   }
   if (kind === 'list' && id) return { kind, listTemplateId: id, label }

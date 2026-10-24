@@ -1,10 +1,10 @@
 // Navigation links contain only stable IDs or dates, never private record text.
-export const LINKABLE_VIEWS = ['situate', 'next', 'today', 'templates', 'listTemplates', 'lists', 'notes', 'projects', 'prioritize', 'buckets', 'metrics', 'goals', 'settings'] as const
+export const LINKABLE_VIEWS = ['situate', 'next', 'today', 'templates', 'listTemplates', 'lists', 'notes', 'projects', 'prioritize', 'ideas', 'metrics', 'goals', 'settings'] as const
 export type LinkableView = typeof LINKABLE_VIEWS[number]
 export type NavigationTarget =
   | { kind: 'page'; view: LinkableView }
   | { kind: 'day'; date: string }
-  | { kind: 'task' | 'day-template' | 'list-template' | 'list' | 'quiz' | 'goal' | 'bucket' | 'note' | 'prioritize'; id: string; itemId?: string; date?: string }
+  | { kind: 'task' | 'day-template' | 'list-template' | 'list' | 'quiz' | 'goal' | 'idea-group' | 'note' | 'prioritize'; id: string; itemId?: string; date?: string }
 
 const ID = /^[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)*$/
 export function navigationURL(kind: NavigationTarget['kind'], id: string, itemId?: string, date?: string): string {
@@ -27,18 +27,19 @@ export function parseNavigationURL(raw: string): NavigationTarget | null {
   if (url.protocol !== 'balance:' || url.username || url.password || url.port || url.hash) return null
   const parts = url.pathname.split('/').filter(Boolean)
   if (parts.length !== 1 || url.pathname !== `/${parts[0]}`) return null
-  const id = parts[0]
-  const kind = url.hostname
+  // Links copied before Buckets became Ideas keep opening it.
+  const id = url.hostname === 'page' && parts[0] === 'buckets' ? 'ideas' : parts[0]
+  const kind = url.hostname === 'bucket' ? 'idea-group' : url.hostname
   if (kind === 'page') return !url.search && LINKABLE_VIEWS.includes(id as LinkableView) ? { kind, view: id as LinkableView } : null
   if (kind === 'day') {
     return !url.search && isCalendarDate(id) ? { kind, date: id } : null
   }
-  if (!['task', 'day-template', 'list-template', 'list', 'quiz', 'goal', 'bucket', 'note', 'prioritize'].includes(kind) || !ID.test(id)) return null
+  if (!['task', 'day-template', 'list-template', 'list', 'quiz', 'goal', 'idea-group', 'note', 'prioritize'].includes(kind) || !ID.test(id)) return null
   const itemId = url.searchParams.get('item') ?? undefined
   const date = url.searchParams.get('date') ?? undefined
   if (date !== undefined && (kind !== 'quiz' || !isCalendarDate(date) || url.searchParams.getAll('date').length > 1)) return null
   if ([...url.searchParams.keys()].some(key => key !== 'item' && key !== 'date') || url.searchParams.getAll('item').length > 1 || (itemId !== undefined && !ID.test(itemId))) return null
-  if (itemId && ['task', 'goal', 'bucket'].includes(kind)) return null
+  if (itemId && ['task', 'goal', 'idea-group'].includes(kind)) return null
   return { kind: kind as Exclude<NavigationTarget['kind'], 'page' | 'day'>, id, ...(itemId ? { itemId } : {}), ...(date ? { date } : {}) }
 }
 

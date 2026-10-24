@@ -12400,33 +12400,33 @@ mod tests {
     }
 
     #[test]
-    fn idea_buckets_persist_and_round_trip_undo_redo() {
-        let database = TestDatabase::new("idea-buckets");
+    fn ideas_persist_and_round_trip_undo_redo() {
+        let database = TestDatabase::new("ideas");
         let recovery_key = generate_recovery_key();
         let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
-        let state = test_state("Synthetic idea buckets");
+        let state = test_state("Synthetic ideas");
         replace_app_state(&mut connection, &state).unwrap();
-        let bucket = json!({"id": "bucket_proposition", "kind": "proposition", "items": [
+        let group = json!({"id": "bucket_proposition", "kind": "proposition", "items": [
             {"id": "idea_test", "text": "Synthetic idea", "html": "Synthetic idea", "done": false,
              "startMinutes": null, "endMinutes": null, "children": [], "bucketedAt": "2026-10-08T08:00:00Z"}
         ]});
         let operation = json!({
-            "id": "idea-bucket-op", "deviceId": "device_test", "sequence": 2,
+            "id": "ideas-op", "deviceId": "device_test", "sequence": 2,
             "type": "apply_entity_changes", "timestamp": "2026-10-08T08:00:00Z",
             "payload": {"action": "add_idea", "kind": "proposition", "itemId": "idea_test", "entityChanges": {
                 "version": 2, "deletes": [], "upserts": [{"collection": "ideaBuckets", "key": "bucket_proposition",
-                    "position": 0, "value": bucket, "patches": [sync::entities::diff(&Value::Null, &bucket)]}]
+                    "position": 0, "value": group, "patches": [sync::entities::diff(&Value::Null, &group)]}]
             }}
         });
         persist_operation_to_database(&mut connection, &operation).unwrap();
         drop(connection);
         let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
         let loaded = read_app_state_from_database(&connection).unwrap().unwrap();
-        assert_eq!(loaded["ideaBuckets"], json!([bucket]));
+        assert_eq!(loaded["ideaBuckets"], json!([group]));
         let undone = undo_last_operation_in_database(&mut connection).unwrap().unwrap();
         assert_eq!(undone["ideaBuckets"], json!([]));
         let redone = redo_last_operation_in_database(&mut connection).unwrap().unwrap();
-        assert_eq!(redone["ideaBuckets"], json!([bucket]));
+        assert_eq!(redone["ideaBuckets"], json!([group]));
     }
 
     #[test]

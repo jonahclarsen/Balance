@@ -1,12 +1,12 @@
 import { parseNoteBlocksFromClipboard, type ParsedNoteClipboardItem } from './noteClipboard'
 import { createPlanItem, escapeHTML, htmlToPlainText, sanitizeInlineHTML } from './planner'
 import { parseTaskClipboardAsNoteBlocks } from './taskClipboard'
-import type { Goal, Id, IdeaBucket, IdeaBucketKind, IdeaItem, PlanItem } from './types'
+import type { Goal, Id, IdeaGroup, IdeaGroupKind, IdeaItem, PlanItem } from './types'
 
-export type IdeaBucketMeta = { kind: IdeaBucketKind; id: Id; label: string; key: string }
+export type IdeaGroupMeta = { kind: IdeaGroupKind; id: Id; label: string; key: string }
 
 // Display order. `key` is the plain letter that moves a selected idea here.
-export const IDEA_BUCKETS: readonly IdeaBucketMeta[] = [
+export const IDEA_GROUPS: readonly IdeaGroupMeta[] = [
   { kind: 'proposition', id: 'bucket_proposition', label: 'Proposition Party', key: 'u' },
   { kind: 'genuine', id: 'bucket_genuine', label: 'Genuinely Worth Doing', key: 'g' },
   { kind: 'possible', id: 'bucket_possible', label: 'Possibly Worth Doing', key: 'p' },
@@ -14,24 +14,24 @@ export const IDEA_BUCKETS: readonly IdeaBucketMeta[] = [
   { kind: 'trash', id: 'bucket_trash', label: 'Trash', key: 't' },
 ] as const
 
-export const IDEA_BUCKET_KINDS = IDEA_BUCKETS.map((bucket) => bucket.kind)
+export const IDEA_GROUP_KINDS = IDEA_GROUPS.map((group) => group.kind)
 
-export function ideaBucketMeta(kind: IdeaBucketKind): IdeaBucketMeta {
-  return IDEA_BUCKETS.find((bucket) => bucket.kind === kind)!
+export function ideaGroupMeta(kind: IdeaGroupKind): IdeaGroupMeta {
+  return IDEA_GROUPS.find((group) => group.kind === kind)!
 }
 
-export function ideaBucketId(kind: IdeaBucketKind): Id {
-  return ideaBucketMeta(kind).id
+export function ideaGroupId(kind: IdeaGroupKind): Id {
+  return ideaGroupMeta(kind).id
 }
 
-export function ideaBucketKindForKey(key: string): IdeaBucketKind | null {
-  return IDEA_BUCKETS.find((bucket) => bucket.key === key.toLowerCase())?.kind ?? null
+export function ideaGroupKindForKey(key: string): IdeaGroupKind | null {
+  return IDEA_GROUPS.find((group) => group.key === key.toLowerCase())?.kind ?? null
 }
 
 // Committing an idea takes progressively longer the higher it lands, so the
-// buttons unlock on a delay instead of being explained. The Buckets page applies
+// buttons unlock on a delay instead of being explained. The Ideas page applies
 // it only to ideas leaving Proposition Party; the sorter applies it after every answer.
-export const BUCKET_UNLOCK_MS: Record<IdeaBucketKind, number> = {
+export const IDEA_UNLOCK_MS: Record<IdeaGroupKind, number> = {
   proposition: 0,
   trash: 0,
   afterlife: 1000,
@@ -39,8 +39,8 @@ export const BUCKET_UNLOCK_MS: Record<IdeaBucketKind, number> = {
   genuine: 3000,
 }
 
-export function bucketUnlockDelay(from: IdeaBucketKind | null, to: IdeaBucketKind): number {
-  return from === 'proposition' ? BUCKET_UNLOCK_MS[to] : 0
+export function ideaUnlockDelay(from: IdeaGroupKind | null, to: IdeaGroupKind): number {
+  return from === 'proposition' ? IDEA_UNLOCK_MS[to] : 0
 }
 
 export const IDEA_TRASH_RETENTION_DAYS = 30
@@ -57,14 +57,14 @@ export function isIdeaTrashExpired(item: IdeaItem, now = Date.now()): boolean {
   return expiresAt !== null && expiresAt <= now
 }
 
-export function bucketItems(buckets: IdeaBucket[], kind: IdeaBucketKind): IdeaItem[] {
-  return buckets.find((bucket) => bucket.kind === kind)?.items ?? []
+export function ideaGroupItems(groups: IdeaGroup[], kind: IdeaGroupKind): IdeaItem[] {
+  return groups.find((group) => group.kind === kind)?.items ?? []
 }
 
-export function findIdea(buckets: IdeaBucket[], itemId: Id): { bucket: IdeaBucket; item: IdeaItem; index: number } | null {
-  for (const bucket of buckets) {
-    const index = bucket.items.findIndex((item) => item.id === itemId)
-    if (index !== -1) return { bucket, item: bucket.items[index]!, index }
+export function findIdea(groups: IdeaGroup[], itemId: Id): { group: IdeaGroup; item: IdeaItem; index: number } | null {
+  for (const group of groups) {
+    const index = group.items.findIndex((item) => item.id === itemId)
+    if (index !== -1) return { group, item: group.items[index]!, index }
   }
   return null
 }
@@ -73,8 +73,8 @@ export const IDEA_SORT_QUESTION = 'Is this worth the time and attention it would
 
 // ---- Review goal -----------------------------------------------------------
 
-export const BUCKETS_URL = 'balance://buckets'
-export const IDEA_REVIEW_URL = 'balance://buckets/review'
+export const IDEAS_URL = 'balance://ideas'
+export const IDEA_REVIEW_URL = 'balance://ideas/review'
 export const IDEA_REVIEW_GOAL_ID = 'goal_idea_review'
 export const IDEA_REVIEW_GOAL_NAME = 'Filter Genuinely Worth Doing'
 export const IDEA_REVIEW_GOAL_CADENCE_DAYS = 7

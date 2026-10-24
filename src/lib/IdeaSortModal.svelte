@@ -3,15 +3,15 @@
   import ProgressBar from './ProgressBar.svelte'
   import TaskCheckbox from './TaskCheckbox.svelte'
   import OverlayModal from './OverlayModal.svelte'
-  import { BUCKET_UNLOCK_MS, findIdea, ideaBucketMeta, IDEA_SORT_QUESTION } from './ideaBuckets'
+  import { IDEA_UNLOCK_MS, findIdea, ideaGroupMeta, IDEA_SORT_QUESTION } from './ideas'
   import type { ItemLink } from './planner'
   import { openClickedLink, openRenderedLinkFromShortcut } from './externalLinks'
-  import type { Id, IdeaBucket, IdeaBucketKind, IdeaItem, IdeaSnapshot } from './types'
+  import type { Id, IdeaGroup, IdeaGroupKind, IdeaItem, IdeaSnapshot } from './types'
 
   // Ideas are sorted one card at a time in their original order. Each card asks
-  // the key question; Yes picks a keep bucket, No picks a discard bucket.
+  // the key question; Yes picks a keep group, No picks a discard group.
   export let queue: IdeaItem[]
-  export let buckets: IdeaBucket[]
+  export let groups: IdeaGroup[]
   export let title: string
   // Ideas an earlier pass already sorted, so progress continues across passes.
   export let sortedBefore = 0
@@ -19,7 +19,7 @@
   export let onOpenLink: (link: ItemLink) => void
   // Hidden while another page is open; the sort resumes where it left off.
   export let active = true
-  export let onDecide: (itemId: Id, kind: IdeaBucketKind) => void
+  export let onDecide: (itemId: Id, kind: IdeaGroupKind) => void
   export let onAppendToPrevious: (itemId: Id, previousId: Id) => boolean
   export let onEdit: (itemId: Id, text: string) => void
   export let onToggleDone: (itemId: Id, done: boolean) => void
@@ -52,12 +52,12 @@
   let answeredAt = Date.now()
   let unlockTimers: number[] = []
   let unlockTick = 0
-  let shaking: IdeaBucketKind | null = null
+  let shaking: IdeaGroupKind | null = null
   let shakeTimer: number | null = null
 
   $: sorted = sortedBefore + history.length
   $: queued = queue[index]
-  $: current = queued ? findIdea(buckets, queued.id)?.item ?? queued : undefined
+  $: current = queued ? findIdea(groups, queued.id)?.item ?? queued : undefined
   $: options = step === 'yes' ? (['possible', 'genuine'] as const) : step === 'no' ? (['trash', 'afterlife'] as const) : []
   $: resetCard(index)
 
@@ -72,31 +72,31 @@
     for (const timer of unlockTimers) window.clearTimeout(timer)
     unlockTimers = []
     for (const kind of ['trash', 'afterlife', 'possible', 'genuine'] as const) {
-      const delay = BUCKET_UNLOCK_MS[kind]
+      const delay = IDEA_UNLOCK_MS[kind]
       if (delay > 0) unlockTimers.push(window.setTimeout(() => { unlockTick += 1 }, delay))
     }
   }
 
-  function locked(kind: IdeaBucketKind, _tick: number): boolean {
-    return Date.now() < answeredAt + BUCKET_UNLOCK_MS[kind]
+  function locked(kind: IdeaGroupKind, _tick: number): boolean {
+    return Date.now() < answeredAt + IDEA_UNLOCK_MS[kind]
   }
 
-  function shake(kind: IdeaBucketKind) {
+  function shake(kind: IdeaGroupKind) {
     shaking = kind
     if (shakeTimer !== null) window.clearTimeout(shakeTimer)
     shakeTimer = window.setTimeout(() => { shaking = null }, 420)
   }
 
   function snapshot(itemId: Id): IdeaSnapshot[] {
-    const found = findIdea(buckets, itemId)
-    return found ? [{ kind: found.bucket.kind, index: found.index, item: found.item }] : []
+    const found = findIdea(groups, itemId)
+    return found ? [{ kind: found.group.kind, index: found.index, item: found.item }] : []
   }
 
   function record(snapshots: IdeaSnapshot[], noteId: Id | null = null) {
     history = [...history, { index, queue, snapshots, noteId }]
   }
 
-  function choose(kind: IdeaBucketKind) {
+  function choose(kind: IdeaGroupKind) {
     if (!current) return
     if (locked(kind, unlockTick)) {
       shake(kind)
@@ -303,10 +303,10 @@
         <button class="primary" type="button" on:click={() => answer('yes')}>Yes (Y)</button>
       {:else}
         {#each options as kind (kind)}
-          {@const meta = ideaBucketMeta(kind)}
+          {@const meta = ideaGroupMeta(kind)}
           <button
             type="button"
-            class="idea-bucket-button"
+            class="idea-group-button"
             class:primary={kind === 'genuine' || kind === 'afterlife'}
             class:locked={locked(kind, unlockTick)}
             class:shaking={shaking === kind}

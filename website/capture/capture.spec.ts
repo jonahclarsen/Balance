@@ -76,7 +76,7 @@ test.describe('desktop', () => {
       ['Quizzes', 'mac-quizzes'],
       ['Goals', 'mac-goals'],
       ['Projects', 'mac-projects'],
-      ['Buckets', 'mac-buckets'],
+      ['Ideas', 'mac-ideas'],
       ['Situate', 'mac-situate'],
     ]) {
       await openView(page, view)

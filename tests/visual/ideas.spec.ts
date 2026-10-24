@@ -14,13 +14,13 @@ async function storeCall(page: Page, script: string) {
   }, script)
 }
 
-async function buckets(page: Page): Promise<Record<string, string[]>> {
+async function groups(page: Page): Promise<Record<string, string[]>> {
   return page.evaluate(async () => {
     const path = '/src/lib/store.ts'
     const { plannerStore } = await import(/* @vite-ignore */ path)
     let value: any
     plannerStore.subscribe((state: any) => { value = state })()
-    return Object.fromEntries(value.ideaBuckets.map((bucket: any) => [bucket.kind, bucket.items.map((item: any) => item.text)]))
+    return Object.fromEntries(value.ideaBuckets.map((group: any) => [group.kind, group.items.map((item: any) => item.text)]))
   })
 }
 
@@ -32,7 +32,7 @@ async function open(page: Page) {
   await expect(page.getByRole('region', { name: 'Daily plan' })).toBeVisible()
 }
 
-const card = (page: Page, kind: string) => page.locator(`.bucket-card[data-bucket="${kind}"]`)
+const card = (page: Page, kind: string) => page.locator(`.idea-group-card[data-idea-group="${kind}"]`)
 const rows = (page: Page, kind: string) => card(page, kind).locator('[data-plan-text-input]')
 const sorter = (page: Page) => page.locator('.idea-sort[role="dialog"]')
 // The sorter shows one card at a time; its progress bar counts the cards behind it.
@@ -56,9 +56,9 @@ test('quick-added ideas land in Proposition Party and move with timed unlocks', 
   await page.getByRole('button', { name: 'Add idea', exact: true }).click()
   await input.fill('Synthetic idea two')
   await page.getByRole('button', { name: 'Save', exact: true }).click()
-  expect(await buckets(page)).toEqual({ proposition: ['Synthetic idea one', 'Synthetic idea two'] })
+  expect(await groups(page)).toEqual({ proposition: ['Synthetic idea one', 'Synthetic idea two'] })
 
-  await openView(page, 'Buckets')
+  await openView(page, 'Ideas')
   await expect(rows(page, 'proposition')).toHaveText(['Synthetic idea one', 'Synthetic idea two'])
   await expect(card(page, 'proposition').locator('.add-time')).toHaveCount(0)
 
@@ -68,14 +68,14 @@ test('quick-added ideas land in Proposition Party and move with timed unlocks', 
   await expect(genuinely).toHaveAttribute('aria-disabled', 'true')
   await page.keyboard.press('g')
   await expect(genuinely).toHaveClass(/shaking/)
-  expect(await buckets(page)).toEqual({ proposition: ['Synthetic idea one', 'Synthetic idea two'] })
+  expect(await groups(page)).toEqual({ proposition: ['Synthetic idea one', 'Synthetic idea two'] })
   await page.clock.fastForward(3000)
   await expect(genuinely).not.toHaveAttribute('aria-disabled', 'true')
   await page.keyboard.press('g')
   await expect(rows(page, 'genuine')).toHaveText(['Synthetic idea one'])
   await expect(rows(page, 'proposition')).toHaveText(['Synthetic idea two'])
 
-  // Moves between the other buckets are instant and undo restores them.
+  // Moves between the other groups are instant and undo restores them.
   await card(page, 'genuine').getByRole('button', { name: 'Select item' }).click()
   await page.keyboard.press('a')
   await expect(rows(page, 'afterlife')).toHaveText(['Synthetic idea one'])
@@ -88,7 +88,7 @@ test('quick-added ideas land in Proposition Party and move with timed unlocks', 
   await page.keyboard.type(' edited')
   await page.reload()
   await expect(page.getByRole('region', { name: 'Daily plan' })).toBeVisible()
-  await openView(page, 'Buckets')
+  await openView(page, 'Ideas')
   await expect(rows(page, 'genuine')).toHaveText(['Synthetic idea one edited'])
 })
 
@@ -140,7 +140,7 @@ test('a new day sorts every proposition one card at a time', async ({ page }, te
   await page.keyboard.press('m')
   await expect(dialog).toBeHidden()
 
-  expect(await buckets(page)).toEqual({
+  expect(await groups(page)).toEqual({
     proposition: [], genuine: ['Synthetic keep'], afterlife: ['Synthetic drop'], possible: ['Synthetic frag edited ment'], trash: [],
   })
   await expect(page.getByRole('region', { name: 'Daily plan' }).locator('[data-plan-text-input]').first()).toBeVisible()
@@ -158,7 +158,7 @@ test('Back undoes the previous sort decision so an idea never lands in two place
     const { plannerStore } = await import(/* @vite-ignore */ path)
     let value: any
     plannerStore.subscribe((current: any) => { value = current })()
-    const ideas = value.ideaBuckets.flatMap((bucket: any) => bucket.items.map((item: any) => `${bucket.kind}:${item.text}${item.dayAssignmentDate ? '@day' : ''}`))
+    const ideas = value.ideaBuckets.flatMap((group: any) => group.items.map((item: any) => `${group.kind}:${item.text}${item.dayAssignmentDate ? '@day' : ''}`))
     return { ideas, notes: value.notes.length }
   })
   const initial = await state()
@@ -179,14 +179,14 @@ test('Back undoes the previous sort decision so an idea never lands in two place
   await page.keyboard.press('n')
   await page.keyboard.press('t')
   await expect(sorter(page)).toBeHidden()
-  expect(await buckets(page)).toMatchObject({ proposition: [], trash: ['Synthetic first', 'Synthetic second'] })
+  expect(await groups(page)).toMatchObject({ proposition: [], trash: ['Synthetic first', 'Synthetic second'] })
   await expect(page.getByRole('region', { name: 'Daily plan' }).getByText('Synthetic first')).toHaveCount(0)
 })
 
-test('Back after a note or a bucket returns the idea to Proposition Party', async ({ page }, testInfo) => {
+test('Back after a note or a group returns the idea to Proposition Party', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
   await open(page)
-  await openView(page, 'Buckets')
+  await openView(page, 'Ideas')
   await storeCall(page, `
     plannerStore.addIdea('Synthetic first')
     plannerStore.addIdea('Synthetic second')
@@ -214,18 +214,18 @@ test('Back after a note or a bucket returns the idea to Proposition Party', asyn
   await page.keyboard.press('b')
   await expect(sorter(page).locator('.idea-sort-card')).toContainText('Synthetic second')
   expect(await notes()).toBe(initialNotes)
-  expect(await buckets(page)).toMatchObject({ proposition: ['Synthetic second', 'Synthetic third'], possible: ['Synthetic first'] })
+  expect(await groups(page)).toMatchObject({ proposition: ['Synthetic second', 'Synthetic third'], possible: ['Synthetic first'] })
 
   await page.keyboard.press('b')
   await expectIdea(page, 1, 3)
   await expect(sorter(page).locator('.idea-sort-card')).toContainText('Synthetic first')
-  expect(await buckets(page)).toMatchObject({ proposition: ['Synthetic first', 'Synthetic second', 'Synthetic third'], possible: [] })
+  expect(await groups(page)).toMatchObject({ proposition: ['Synthetic first', 'Synthetic second', 'Synthetic third'], possible: [] })
   await expect(sorter(page).getByRole('button', { name: 'Back (B)' })).toBeDisabled()
 })
 
 test('the Proposition Party Sort button opens the sorter on demand', async ({ page }) => {
   await open(page)
-  await openView(page, 'Buckets')
+  await openView(page, 'Ideas')
   const sort = card(page, 'proposition').getByRole('button', { name: 'Sort', exact: true })
   await expect(sort).toBeDisabled()
 
@@ -241,14 +241,14 @@ test('the Proposition Party Sort button opens the sorter on demand', async ({ pa
   // A click outside the card closes the sorter, like every other modal.
   await page.locator('.overlay-backdrop:has(.idea-sort)').click({ position: { x: 4, y: 4 } })
   await expect(sorter(page)).toBeHidden()
-  expect(await buckets(page)).toMatchObject({ proposition: ['Synthetic sort two'], trash: ['Synthetic sort one'] })
+  expect(await groups(page)).toMatchObject({ proposition: ['Synthetic sort two'], trash: ['Synthetic sort one'] })
 })
 
 test('the sorter stays with its page and cuts ideas to Trash and the clipboard', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'The sidebar is a drawer on phones')
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
   await open(page)
-  await openView(page, 'Buckets')
+  await openView(page, 'Ideas')
   await storeCall(page, `
     const id = plannerStore.addIdea('Synthetic cut me', 'proposition', '<strong>Synthetic cut me</strong>')
     const child = plannerStore.addIdea('Synthetic cut child')
@@ -261,7 +261,7 @@ test('the sorter stays with its page and cuts ideas to Trash and the clipboard',
   // The sidebar stays usable; returning to the page resumes the same sort.
   await openView(page, 'Today')
   await expect(sorter(page)).toBeHidden()
-  await openView(page, 'Buckets')
+  await openView(page, 'Ideas')
   await expect(sorter(page)).toBeVisible()
   await expect(sorter(page).locator('.idea-sort-card')).toContainText('Synthetic cut me')
 
@@ -269,7 +269,7 @@ test('the sorter stays with its page and cuts ideas to Trash and the clipboard',
   await page.keyboard.press('x')
   await expectIdea(page, 2, 2)
   await expect(sorter(page).locator('.idea-sort-card')).toContainText('Synthetic stay')
-  expect(await buckets(page)).toMatchObject({ proposition: ['Synthetic stay'], trash: ['Synthetic cut me'] })
+  expect(await groups(page)).toMatchObject({ proposition: ['Synthetic stay'], trash: ['Synthetic cut me'] })
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain('Synthetic cut child')
   const cutIdea = await storeCall(page, `
     let state
@@ -280,11 +280,11 @@ test('the sorter stays with its page and cuts ideas to Trash and the clipboard',
 
   await page.keyboard.press('b')
   await expectIdea(page, 1, 2)
-  expect(await buckets(page)).toMatchObject({ proposition: ['Synthetic cut me', 'Synthetic stay'], trash: [] })
+  expect(await groups(page)).toMatchObject({ proposition: ['Synthetic cut me', 'Synthetic stay'], trash: [] })
   await page.keyboard.press('y')
   await page.keyboard.press('x')
   await page.reload()
-  expect(await buckets(page)).toMatchObject({ proposition: ['Synthetic stay'], trash: ['Synthetic cut me'] })
+  expect(await groups(page)).toMatchObject({ proposition: ['Synthetic stay'], trash: ['Synthetic cut me'] })
 })
 
 test('sorting moves ideas into new notes with their formatting and children, and supports undo', async ({ page }) => {
@@ -297,13 +297,13 @@ test('sorting moves ideas into new notes with their formatting and children, and
     plannerStore.moveIdeaItem('bucket_proposition', child, id, 'inside')
     plannerStore.addIdea('Synthetic second note')
   `)
-  await openView(page, 'Buckets')
+  await openView(page, 'Ideas')
   await card(page, 'proposition').getByRole('button', { name: 'Sort', exact: true }).click()
   await sorter(page).getByRole('button', { name: 'Yes (Y)' }).click()
   await sorter(page).getByRole('button', { name: 'Add to new note (N)' }).click()
   await expectIdea(page, 2, 2)
   await expect(sorter(page).locator('.idea-sort-card')).toContainText('Synthetic second note')
-  expect(await buckets(page)).toMatchObject({ proposition: ['Synthetic second note'] })
+  expect(await groups(page)).toMatchObject({ proposition: ['Synthetic second note'] })
 
   const notes = () => page.evaluate(async () => {
     const path = '/src/lib/store.ts'
@@ -325,12 +325,12 @@ test('sorting moves ideas into new notes with their formatting and children, and
 
   await storeCall(page, 'return plannerStore.undo()')
   expect(await notes()).toEqual(created)
-  expect(await buckets(page)).toMatchObject({ proposition: ['Synthetic second note'] })
+  expect(await groups(page)).toMatchObject({ proposition: ['Synthetic second note'] })
   await storeCall(page, 'return plannerStore.redo()')
   await page.reload()
   await expect(page.getByRole('region', { name: 'Daily plan' })).toBeVisible()
   expect(await notes()).toHaveLength(2)
-  expect(await buckets(page)).toMatchObject({ proposition: [] })
+  expect(await groups(page)).toMatchObject({ proposition: [] })
   await openView(page, 'Notes')
   await expect(page.locator('.note-text').first()).toHaveText('Synthetic second note')
 })
@@ -344,7 +344,7 @@ test('a day generation sort can add ideas to the new day', async ({ page }, test
   `)
 
   // Sorts outside generation have no day to add to.
-  await openView(page, 'Buckets')
+  await openView(page, 'Ideas')
   await card(page, 'proposition').getByRole('button', { name: 'Sort', exact: true }).click()
   await page.keyboard.press('y')
   await expect(sorter(page).getByRole('button', { name: 'Cut (X)' })).toBeVisible()
@@ -363,7 +363,7 @@ test('a day generation sort can add ideas to the new day', async ({ page }, test
 
   const plan = page.getByRole('region', { name: 'Daily plan' })
   await expect(plan.locator('[data-plan-text-input]').first()).toHaveText('Synthetic for today')
-  expect(await buckets(page)).toMatchObject({ proposition: [], trash: ['Synthetic later'] })
+  expect(await groups(page)).toMatchObject({ proposition: [], trash: ['Synthetic later'] })
 })
 
 test('day choices survive closing, navigation and reload without applying to another date', async ({ page }) => {
@@ -384,7 +384,7 @@ test('day choices survive closing, navigation and reload without applying to ano
   await page.keyboard.press('Escape')
   await storeCall(page, 'return plannerStore.redo()')
 
-  await openView(page, 'Buckets')
+  await openView(page, 'Ideas')
   await page.reload()
   // The reservation is scoped to October 8; October 9 must ask again.
   await storeCall(page, "plannerStore.setActivePlanDate('2026-10-09')")
@@ -400,7 +400,7 @@ test('day choices survive closing, navigation and reload without applying to ano
   await expect(sorter(page)).toBeHidden()
   const plan = page.getByRole('region', { name: 'Daily plan' })
   await expect(plan.locator('[data-plan-text-input]').first()).toHaveText('Synthetic reserved')
-  expect(await buckets(page)).toMatchObject({ proposition: [], trash: ['Synthetic remaining'] })
+  expect(await groups(page)).toMatchObject({ proposition: [], trash: ['Synthetic remaining'] })
 })
 
 test('a day keeps its sort progress across trash, cut and reopening', async ({ page }, testInfo) => {
@@ -431,7 +431,7 @@ test('a day keeps its sort progress across trash, cut and reopening', async ({ p
 test('pasted lists import as ideas and open the sorter; trash clears after 30 days', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
   await open(page)
-  await openView(page, 'Buckets')
+  await openView(page, 'Ideas')
   await page.getByRole('button', { name: 'Import', exact: true }).click()
   const paste = page.getByRole('textbox', { name: 'Ideas to import' })
   await expect(paste).toBeFocused()
@@ -475,7 +475,7 @@ test('pasted lists import as ideas and open the sorter; trash clears after 30 da
   await card(page, 'proposition').locator('[data-plan-item-id]').filter({ hasText: 'Synthetic delta' }).getByRole('button', { name: 'Select item' }).click()
   await page.keyboard.press('t')
   // Trash stays collapsed until its header is clicked.
-  await expect(card(page, 'trash').locator('.bucket-count')).toHaveText('1')
+  await expect(card(page, 'trash').locator('.idea-group-count')).toHaveText('1')
   await expect(rows(page, 'trash')).toHaveCount(0)
   await card(page, 'trash').getByRole('button', { name: 'Trash' }).click()
   await expect(rows(page, 'trash')).toHaveText(['Synthetic delta'])
@@ -496,15 +496,15 @@ test('the review goal seeds once with a link that runs the Genuinely review', as
   const goal = await page.evaluate(() => JSON.parse(localStorage.getItem('balance.appState.v1')!).goals.find((goal: any) => goal.id === 'goal_idea_review'))
   expect(goal).toBeTruthy()
   expect(goal.cadenceDays).toBe(7)
-  expect(goal.nameHtml).toContain('balance://buckets/review')
+  expect(goal.nameHtml).toContain('balance://ideas/review')
 
   await storeCall(page, "plannerStore.addIdea('Synthetic reviewed', 'genuine'); plannerStore.addIdea('Synthetic later', 'genuine')")
   // The goal name carries the link that starts the review.
   await openView(page, 'Goals')
-  await page.locator('.goal-name-input a[href="balance://buckets/review"]').click()
+  await page.locator('.goal-name-input a[href="balance://ideas/review"]').click()
   await expectIdea(page, 1, 2)
   await page.keyboard.press('Escape')
-  await expect(page.getByRole('heading', { name: 'Buckets', level: 2 })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Ideas', level: 2 })).toBeVisible()
   await page.getByRole('button', { name: 'Review', exact: true }).click()
   await expectIdea(page, 1, 2)
   // Editing starts with the caret after the text rather than selecting it.
@@ -523,13 +523,13 @@ test('the review goal seeds once with a link that runs the Genuinely review', as
   await page.clock.fastForward(3000)
   await page.keyboard.press('g')
   await expectIdea(page, 2, 2)
-  // Keeping an idea in Genuinely requeues it at the end of the bucket.
-  expect((await buckets(page)).genuine).toEqual(['Synthetic later', 'Synthetic reviewed'])
+  // Keeping an idea in Genuinely requeues it at the end of the group.
+  expect((await groups(page)).genuine).toEqual(['Synthetic later', 'Synthetic reviewed'])
   await page.keyboard.press('y')
   await page.clock.fastForward(3000)
   await page.keyboard.press('p')
   await expect(sorter(page)).toBeHidden()
-  expect((await buckets(page)).genuine).toEqual(['Synthetic reviewed'])
+  expect((await groups(page)).genuine).toEqual(['Synthetic reviewed'])
   const todayTasks = await page.evaluate(() => JSON.parse(localStorage.getItem('balance.appState.v1')!).plans[0].items.map((item: any) => [item.text, item.done]))
   expect(todayTasks).toContainEqual(['Filter Genuinely Worth Doing', true])
 })
@@ -540,8 +540,8 @@ test('sort new ideas opens web links by click and Option-F without advancing', a
     const id = plannerStore.addIdea('Synthetic first and second')
     let state
     plannerStore.subscribe(value => { state = value })()
-    const bucket = state.ideaBuckets.find(bucket => bucket.kind === 'proposition')
-    plannerStore.patchIdeaItem(bucket.id, id, {
+    const group = state.ideaBuckets.find(group => group.kind === 'proposition')
+    plannerStore.patchIdeaItem(group.id, id, {
       html: 'Synthetic <a href="https://example.com/first">first</a> and <a href="https://example.com/second">second</a>',
     })
   `)
@@ -591,14 +591,14 @@ test('idea deletion keeps content in Trash until it is deleted there', async ({ 
     plannerStore.moveIdeaItem('bucket_genuine', child, parent, 'inside')
     plannerStore.deleteIdeaItem('bucket_genuine', child)
   `)
-  expect(await buckets(page)).toMatchObject({ genuine: ['Synthetic parent'], trash: ['Synthetic child'] })
+  expect(await groups(page)).toMatchObject({ genuine: ['Synthetic parent'], trash: ['Synthetic child'] })
   await storeCall(page, `
     let state
     plannerStore.subscribe(value => { state = value })()
     const child = state.ideaBuckets.find(b => b.kind === 'trash').items[0]
     plannerStore.deleteIdeaItem('bucket_trash', child.id)
   `)
-  expect(await buckets(page)).toMatchObject({ trash: [] })
+  expect(await groups(page)).toMatchObject({ trash: [] })
   await storeCall(page, `
     let state
     plannerStore.subscribe(value => { state = value })()
@@ -607,7 +607,7 @@ test('idea deletion keeps content in Trash until it is deleted there', async ({ 
     plannerStore.moveIdeaItem('bucket_genuine', child, parent.id, 'inside')
     plannerStore.deleteIdeaItemPreservingChildren('bucket_genuine', parent.id)
   `)
-  expect(await buckets(page)).toMatchObject({ genuine: ['Synthetic retained child'], trash: ['Synthetic parent'] })
+  expect(await groups(page)).toMatchObject({ genuine: ['Synthetic retained child'], trash: ['Synthetic parent'] })
   await page.reload()
   const trashed = await storeCall(page, `
     let state

@@ -124,8 +124,8 @@ import type {
   DailyTemplate,
   Goal,
   Id,
-  IdeaBucket,
-  IdeaBucketKind,
+  IdeaGroup,
+  IdeaGroupKind,
   IdeaItem,
   IdeaSnapshot,
   ListInstance,
@@ -156,7 +156,7 @@ import type {
 import { dayThemePreferenceKey, normalizeReplicatedPreferences } from './preferences'
 import { isNoteTrashExpired } from './noteTrash'
 import { copyNoteItemsWithNewIds, noteVersionGroupId } from './noteVersions'
-import { findIdea, ideaBucketId, ideaReviewGoalHue, ideaReviewGoalNameHtml, IDEA_BUCKET_KINDS, IDEA_REVIEW_GOAL_CADENCE_DAYS, IDEA_REVIEW_GOAL_ID, IDEA_REVIEW_GOAL_NAME, isIdeaTrashExpired, needsIdeaReviewGoal } from './ideaBuckets'
+import { findIdea, ideaGroupId, ideaReviewGoalHue, ideaReviewGoalNameHtml, IDEA_GROUP_KINDS, IDEA_REVIEW_GOAL_CADENCE_DAYS, IDEA_REVIEW_GOAL_ID, IDEA_REVIEW_GOAL_NAME, isIdeaTrashExpired, needsIdeaReviewGoal } from './ideas'
 import { reconcileTaskNotifications } from './taskNotifications'
 
 const STORAGE_KEY = 'balance.appState.v1'
@@ -2378,41 +2378,41 @@ function createPlannerStore() {
       })
     },
 
-    // ---- Idea buckets (plan-item trees inside five fixed bucket records) ----
+    // ---- Idea groups (plan-item trees inside five fixed group records) ----
 
-    addIdea(text: string, kind: IdeaBucketKind = 'proposition', html?: string) {
+    addIdea(text: string, kind: IdeaGroupKind = 'proposition', html?: string) {
       const trimmed = text.trim()
       if (!trimmed) return null
       const item: IdeaItem = { ...createPlanItem(trimmed), ...(html ? { html } : {}), bucketedAt: nowISO() }
       commitEntities('add_idea', { kind, itemId: item.id }, (state) =>
-        updateBucket(state, kind, (bucket) => ({ ...bucket, items: [...bucket.items, item] })))
+        updateIdeaGroup(state, kind, (group) => ({ ...group, items: [...group.items, item] })))
       return item.id
     },
 
-    importIdeas(items: PlanItem[], kind: IdeaBucketKind = 'proposition') {
+    importIdeas(items: PlanItem[], kind: IdeaGroupKind = 'proposition') {
       if (items.length === 0) return []
       const bucketedAt = nowISO()
       const fresh = clonePlanItemsForPaste(items).map((item) => ({ ...item, bucketedAt }))
       commitEntities('import_ideas', { kind, count: fresh.length }, (state) =>
-        updateBucket(state, kind, (bucket) => ({ ...bucket, items: [...bucket.items, ...fresh] })))
+        updateIdeaGroup(state, kind, (group) => ({ ...group, items: [...group.items, ...fresh] })))
       return fresh.map((item) => item.id)
     },
 
     assignIdeaToDay(itemId: Id, date: string) {
       commitEntities('assign_idea_to_day', { itemId, date }, (state) => {
         const found = findIdea(state.ideaBuckets, itemId)
-        if (!found || found.bucket.kind !== 'proposition') return state
-        return updateBucket(state, 'proposition', (bucket) => ({
-          ...bucket,
-          items: bucket.items.map((item) => item.id === itemId ? { ...item, dayAssignmentDate: date } : item),
+        if (!found || found.group.kind !== 'proposition') return state
+        return updateIdeaGroup(state, 'proposition', (group) => ({
+          ...group,
+          items: group.items.map((item) => item.id === itemId ? { ...item, dayAssignmentDate: date } : item),
         }))
       })
     },
 
-    // Moves a root-level idea to the end of a bucket. Keeping an idea in its own
-    // bucket (a review answering Genuinely again) requeues it at the end. The
+    // Moves a root-level idea to the end of a group. Keeping an idea in its own
+    // group (a review answering Genuinely again) requeues it at the end. The
     // timestamp restarts the Trash countdown and records when the decision was made.
-    moveIdeaToBucket(itemId: Id, kind: IdeaBucketKind) {
+    moveIdeaToGroup(itemId: Id, kind: IdeaGroupKind) {
       let moved = false
       commitEntities('move_idea', { itemId, kind }, (state) => {
         const found = findIdea(state.ideaBuckets, itemId)
@@ -2420,13 +2420,13 @@ function createPlannerStore() {
         moved = true
         const { dayAssignmentDate: _dayAssignmentDate, ...unassigned } = found.item
         const item: IdeaItem = { ...unassigned, bucketedAt: nowISO() }
-        const removed = updateBucket(state, found.bucket.kind, (bucket) => ({ ...bucket, items: bucket.items.filter((candidate) => candidate.id !== itemId) }))
-        return updateBucket(removed, kind, (bucket) => ({ ...bucket, items: [...bucket.items, item] }))
+        const removed = updateIdeaGroup(state, found.group.kind, (group) => ({ ...group, items: group.items.filter((candidate) => candidate.id !== itemId) }))
+        return updateIdeaGroup(removed, kind, (group) => ({ ...group, items: [...group.items, item] }))
       })
       return moved
     },
 
-    // Undoes a sort decision: each idea returns to the bucket and position it
+    // Undoes a sort decision: each idea returns to the group and position it
     // held before, wherever the decision moved, merged or removed it.
     restoreSortedIdeas(snapshots: IdeaSnapshot[], noteId: Id | null) {
       commitEntities('restore_sorted_ideas', { itemIds: snapshots.map(({ item }) => item.id), noteId }, (state) => {
@@ -2435,10 +2435,10 @@ function createPlannerStore() {
           : state
         for (const { item } of snapshots) {
           const found = findIdea(next.ideaBuckets, item.id)
-          if (found) next = updateBucket(next, found.bucket.kind, (bucket) => ({ ...bucket, items: bucket.items.filter((candidate) => candidate.id !== item.id) }))
+          if (found) next = updateIdeaGroup(next, found.group.kind, (group) => ({ ...group, items: group.items.filter((candidate) => candidate.id !== item.id) }))
         }
         for (const { kind, index, item } of [...snapshots].sort((a, b) => a.index - b.index)) {
-          next = updateBucket(next, kind, (bucket) => ({ ...bucket, items: [...bucket.items.slice(0, index), item, ...bucket.items.slice(index)] }))
+          next = updateIdeaGroup(next, kind, (group) => ({ ...group, items: [...group.items.slice(0, index), item, ...group.items.slice(index)] }))
         }
         return next
       })
@@ -2457,17 +2457,17 @@ function createPlannerStore() {
         const html = [previous.item.html || escapeHTML(previous.item.text), current.item.html || escapeHTML(current.item.text)]
           .filter(Boolean).join(' ')
         const joined: IdeaItem = { ...previous.item, text, html, children: [...previous.item.children, ...current.item.children] }
-        const removed = updateBucket(state, current.bucket.kind, (bucket) => ({ ...bucket, items: bucket.items.filter((candidate) => candidate.id !== itemId) }))
-        return updateBucket(removed, previous.bucket.kind, (bucket) => ({ ...bucket, items: bucket.items.map((candidate) => candidate.id === previousId ? joined : candidate) }))
+        const removed = updateIdeaGroup(state, current.group.kind, (group) => ({ ...group, items: group.items.filter((candidate) => candidate.id !== itemId) }))
+        return updateIdeaGroup(removed, previous.group.kind, (group) => ({ ...group, items: group.items.map((candidate) => candidate.id === previousId ? joined : candidate) }))
       })
       return merged
     },
 
     purgeExpiredIdeas(now = Date.now()) {
       commitEntities('purge_expired_ideas', { now }, (state) =>
-        updateBucket(state, 'trash', (bucket) => {
-          const items = bucket.items.filter((item) => !isIdeaTrashExpired(item, now))
-          return items.length === bucket.items.length ? bucket : { ...bucket, items }
+        updateIdeaGroup(state, 'trash', (group) => {
+          const items = group.items.filter((item) => !isIdeaTrashExpired(item, now))
+          return items.length === group.items.length ? group : { ...group, items }
         }), { undoable: false })
     },
 
@@ -2484,32 +2484,32 @@ function createPlannerStore() {
       return true
     },
 
-    addRootIdeaItem(bucketId: Id) {
+    addRootIdeaItem(groupId: Id) {
       const item: IdeaItem = { ...createPlanItem(), bucketedAt: nowISO() }
-      commitEntities('add_idea_item', { bucketId, parentId: null, item }, (state) =>
-        updateBucketById(state, bucketId, (bucket) => ({ ...bucket, items: addPlanItem(bucket.items, null, item) })))
+      commitEntities('add_idea_item', { groupId, parentId: null, item }, (state) =>
+        updateIdeaGroupById(state, groupId, (group) => ({ ...group, items: addPlanItem(group.items, null, item) })))
       return item.id
     },
 
-    patchIdeaItem(bucketId: Id, itemId: Id, patch: Partial<Omit<PlanItem, 'id' | 'children'>>, options: TextChangeOptions = {}) {
+    patchIdeaItem(groupId: Id, itemId: Id, patch: Partial<Omit<PlanItem, 'id' | 'children'>>, options: TextChangeOptions = {}) {
       const isTextPatch = 'text' in patch || 'html' in patch
       const mergeOptions =
         options.mergeKey && options.mergeHistory !== false
           ? { mergeKey: options.mergeKey, mergeWindowMs: options.mergeWindowMs ?? TEXT_MERGE_WINDOW_MS }
           : isTextPatch && options.mergeHistory !== false
-            ? { mergeKey: `idea-item-text:${bucketId}:${itemId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS }
+            ? { mergeKey: `idea-item-text:${groupId}:${itemId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS }
             : {}
-      commitEntities('patch_idea_item', { bucketId, itemId, patch }, (state) =>
-        updateBucketById(state, bucketId, (bucket) => {
-          const items = updatePlanItem(bucket.items, itemId, (item) => applyPatch(item, patch))
-          return items === bucket.items ? bucket : { ...bucket, items }
+      commitEntities('patch_idea_item', { groupId, itemId, patch }, (state) =>
+        updateIdeaGroupById(state, groupId, (group) => {
+          const items = updatePlanItem(group.items, itemId, (item) => applyPatch(item, patch))
+          return items === group.items ? group : { ...group, items }
         }),
         mergeOptions,
       )
     },
 
     splitIdeaItem(
-      bucketId: Id,
+      groupId: Id,
       itemId: Id,
       before: Partial<Omit<PlanItem, 'id' | 'children'>>,
       after: { html: string; text: string },
@@ -2519,57 +2519,57 @@ function createPlannerStore() {
       const inserted = placement === 'before' ? before : after
       const moveChildrenToNewItem = shouldMoveChildrenToSplitItem(before, after)
       const newItem: IdeaItem = { ...createPlanItem(inserted.text ?? ''), html: inserted.html ?? '', bucketedAt: nowISO() }
-      commitEntities('split_idea_item', { bucketId, itemId, patch, newItem, placement, moveChildrenToNewItem }, (state) =>
-        updateBucketById(state, bucketId, (bucket) => {
-          const items = splitPlanItem(bucket.items, itemId, patch, newItem, placement, moveChildrenToNewItem)
-          return items === bucket.items ? bucket : { ...bucket, items }
+      commitEntities('split_idea_item', { groupId, itemId, patch, newItem, placement, moveChildrenToNewItem }, (state) =>
+        updateIdeaGroupById(state, groupId, (group) => {
+          const items = splitPlanItem(group.items, itemId, patch, newItem, placement, moveChildrenToNewItem)
+          return items === group.items ? group : { ...group, items }
         }),
       )
       return newItem.id
     },
 
-    deleteIdeaItem(bucketId: Id, itemId: Id) {
-      commitEntities('delete_idea_item', { bucketId, itemId }, (state) =>
-        deleteOrTrashIdea(state, bucketId, itemId, false))
+    deleteIdeaItem(groupId: Id, itemId: Id) {
+      commitEntities('delete_idea_item', { groupId, itemId }, (state) =>
+        deleteOrTrashIdea(state, groupId, itemId, false))
     },
 
-    deleteIdeaItemPreservingChildren(bucketId: Id, itemId: Id) {
-      commitEntities('delete_idea_item_preserving_children', { bucketId, itemId }, (state) =>
-        deleteOrTrashIdea(state, bucketId, itemId, true))
+    deleteIdeaItemPreservingChildren(groupId: Id, itemId: Id) {
+      commitEntities('delete_idea_item_preserving_children', { groupId, itemId }, (state) =>
+        deleteOrTrashIdea(state, groupId, itemId, true))
     },
 
     // Transfer callers have already inserted this content at its destination.
-    removeIdeaAfterTransfer(bucketId: Id, itemId: Id) {
-      commitEntities('remove_transferred_idea', { bucketId, itemId }, (state) =>
-        updateBucketById(state, bucketId, (bucket) => ({ ...bucket, items: deletePlanItem(bucket.items, itemId) })))
+    removeIdeaAfterTransfer(groupId: Id, itemId: Id) {
+      commitEntities('remove_transferred_idea', { groupId, itemId }, (state) =>
+        updateIdeaGroupById(state, groupId, (group) => ({ ...group, items: deletePlanItem(group.items, itemId) })))
     },
 
-    backspaceIdeaItemAtStart(bucketId: Id, itemId: Id) {
-      if (deferHistoryAction(() => plannerStore.backspaceIdeaItemAtStart(bucketId, itemId))) return null
-      const bucket = get(store).ideaBuckets.find((candidate) => candidate.id === bucketId)
-      if (!bucket) return null
-      const result = backspacePlanItemAtStartInTree(bucket.items, itemId)
+    backspaceIdeaItemAtStart(groupId: Id, itemId: Id) {
+      if (deferHistoryAction(() => plannerStore.backspaceIdeaItemAtStart(groupId, itemId))) return null
+      const group = get(store).ideaBuckets.find((candidate) => candidate.id === groupId)
+      if (!group) return null
+      const result = backspacePlanItemAtStartInTree(group.items, itemId)
       if (!result) return null
-      commitEntities('backspace_idea_item_at_start', { bucketId, itemId, ...result.operation }, (state) =>
-        updateBucketById(state, bucketId, (candidate) => candidate === bucket ? { ...candidate, items: result.items } : candidate))
+      commitEntities('backspace_idea_item_at_start', { groupId, itemId, ...result.operation }, (state) =>
+        updateIdeaGroupById(state, groupId, (candidate) => candidate === group ? { ...candidate, items: result.items } : candidate))
       return { focusItemId: result.focusItemId, focusOffset: result.focusOffset }
     },
 
-    moveIdeaItem(bucketId: Id, sourceId: Id, targetId: Id, placement: 'before' | 'after' | 'inside') {
-      commitEntities('move_idea_item', { bucketId, sourceId, targetId, placement }, (state) =>
-        updateBucketById(state, bucketId, (bucket) => ({ ...bucket, items: movePlanItem(bucket.items, sourceId, targetId, placement) })))
+    moveIdeaItem(groupId: Id, sourceId: Id, targetId: Id, placement: 'before' | 'after' | 'inside') {
+      commitEntities('move_idea_item', { groupId, sourceId, targetId, placement }, (state) =>
+        updateIdeaGroupById(state, groupId, (group) => ({ ...group, items: movePlanItem(group.items, sourceId, targetId, placement) })))
     },
 
-    moveIdeaItemWithinLevel(bucketId: Id, itemId: Id, direction: 'up' | 'down') {
-      commitEntities('move_idea_item_within_level', { bucketId, itemId, direction }, (state) =>
-        updateBucketById(state, bucketId, (bucket) => ({ ...bucket, items: movePlanItemWithinLevel(bucket.items, itemId, direction) })))
+    moveIdeaItemWithinLevel(groupId: Id, itemId: Id, direction: 'up' | 'down') {
+      commitEntities('move_idea_item_within_level', { groupId, itemId, direction }, (state) =>
+        updateIdeaGroupById(state, groupId, (group) => ({ ...group, items: movePlanItemWithinLevel(group.items, itemId, direction) })))
     },
 
-    outdentIdeaItem(bucketId: Id, itemId: Id) {
-      commitEntities('outdent_idea_item', { bucketId, itemId }, (state) =>
-        updateBucketById(state, bucketId, (bucket) => {
-          const items = outdentPlanItemInTree(bucket.items, itemId)
-          return items === bucket.items ? bucket : { ...bucket, items }
+    outdentIdeaItem(groupId: Id, itemId: Id) {
+      commitEntities('outdent_idea_item', { groupId, itemId }, (state) =>
+        updateIdeaGroupById(state, groupId, (group) => {
+          const items = outdentPlanItemInTree(group.items, itemId)
+          return items === group.items ? group : { ...group, items }
         }))
     },
 
@@ -2589,8 +2589,8 @@ function createPlannerStore() {
         const { bucketedAt: _bucketedAt, ...item } = found.item
         const note = { ...createNote(item.text), items: [toNoteItem(item)] }
         noteId = note.id
-        const removed = updateBucket(state, found.bucket.kind, (bucket) => ({
-          ...bucket, items: bucket.items.filter((candidate) => candidate.id !== itemId),
+        const removed = updateIdeaGroup(state, found.group.kind, (group) => ({
+          ...group, items: group.items.filter((candidate) => candidate.id !== itemId),
         }))
         return { ...removed, notes: [note, ...removed.notes] }
       })
@@ -3938,35 +3938,35 @@ function updateNote(state: AppState, noteId: Id, updater: (note: Note) => Note):
 
 // Only Trash can discard an idea. Row deletion elsewhere retains its content,
 // including nested ideas; preserving children leaves them at their original level.
-function deleteOrTrashIdea(state: AppState, bucketId: Id, itemId: Id, preserveChildren: boolean): AppState {
-  const bucket = state.ideaBuckets.find((candidate) => candidate.id === bucketId)
-  const item = bucket && findPlanItem(bucket.items, itemId)
-  if (!bucket || !item) return state
+function deleteOrTrashIdea(state: AppState, groupId: Id, itemId: Id, preserveChildren: boolean): AppState {
+  const group = state.ideaBuckets.find((candidate) => candidate.id === groupId)
+  const item = group && findPlanItem(group.items, itemId)
+  if (!group || !item) return state
   const remove = preserveChildren ? deletePlanItemPreservingChildren : deletePlanItem
-  const removed = updateBucketById(state, bucketId, (candidate) => ({ ...candidate, items: remove(candidate.items, itemId) }))
-  if (bucket.kind === 'trash') return removed
+  const removed = updateIdeaGroupById(state, groupId, (candidate) => ({ ...candidate, items: remove(candidate.items, itemId) }))
+  if (group.kind === 'trash') return removed
   const { dayAssignmentDate: _dayAssignmentDate, ...unassigned } = item as IdeaItem
   const trashed: IdeaItem = { ...unassigned, children: preserveChildren ? [] : item.children, bucketedAt: nowISO() }
-  return updateBucket(removed, 'trash', (trash) => ({ ...trash, items: [...trash.items, trashed] }))
+  return updateIdeaGroup(removed, 'trash', (trash) => ({ ...trash, items: [...trash.items, trashed] }))
 }
 
-// Buckets are fixed records created on first write, so missing ones are
+// Idea groups are fixed records created on first write, so missing ones are
 // materialized empty before the updater runs.
-function updateBucket(state: AppState, kind: IdeaBucketKind, updater: (bucket: IdeaBucket) => IdeaBucket): AppState {
-  const id = ideaBucketId(kind)
-  const existing = state.ideaBuckets.find((bucket) => bucket.id === id)
-  const bucket = existing ?? { id, kind, items: [] }
-  const nextBucket = updater(bucket)
-  if (nextBucket === bucket) return state
+function updateIdeaGroup(state: AppState, kind: IdeaGroupKind, updater: (group: IdeaGroup) => IdeaGroup): AppState {
+  const id = ideaGroupId(kind)
+  const existing = state.ideaBuckets.find((group) => group.id === id)
+  const group = existing ?? { id, kind, items: [] }
+  const nextGroup = updater(group)
+  if (nextGroup === group) return state
   const ideaBuckets = existing
-    ? state.ideaBuckets.map((candidate) => candidate === existing ? nextBucket : candidate)
-    : [...state.ideaBuckets, nextBucket]
+    ? state.ideaBuckets.map((candidate) => candidate === existing ? nextGroup : candidate)
+    : [...state.ideaBuckets, nextGroup]
   return { ...state, ideaBuckets }
 }
 
-function updateBucketById(state: AppState, bucketId: Id, updater: (bucket: IdeaBucket) => IdeaBucket): AppState {
-  const kind = IDEA_BUCKET_KINDS.find((candidate) => ideaBucketId(candidate) === bucketId)
-  return kind ? updateBucket(state, kind, updater) : state
+function updateIdeaGroupById(state: AppState, groupId: Id, updater: (group: IdeaGroup) => IdeaGroup): AppState {
+  const kind = IDEA_GROUP_KINDS.find((candidate) => ideaGroupId(candidate) === groupId)
+  return kind ? updateIdeaGroup(state, kind, updater) : state
 }
 
 function updateList(state: AppState, listId: Id, updater: (list: ListInstance) => ListInstance): AppState {
