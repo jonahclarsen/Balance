@@ -28,21 +28,20 @@ async function seedTemplates(page: Page) {
   await expect(page.getByLabel('Template name', { exact: true })).toHaveValue('Alpha')
   await page.keyboard.press('Meta+f')
   await page.getByLabel('Find text', { exact: true }).fill('needle')
-  await expect(page.locator('.find-status')).toHaveText('1/2 matches')
+  await expect(page.locator('.find-status')).toHaveText('1/2')
 }
 
 async function expectHighlight(page: Page, itemId: string | null) {
   await expect.poll(() => page.evaluate(() => {
     const highlight = CSS.highlights.get('balance-document-find-match')
-    if (!highlight) return null
-    return Array.from(highlight, (range) => {
+    return Array.from(highlight ?? [], (range) => {
       if (!(range instanceof Range)) return null
       return {
         text: range.toString().toLowerCase(),
         itemId: range.startContainer.parentElement?.closest('[data-template-item-id]')?.getAttribute('data-template-item-id'),
       }
     })
-  })).toEqual(itemId ? [{ text: 'needle', itemId }] : null)
+  })).toEqual(itemId ? [{ text: 'needle', itemId }] : [])
 }
 
 test('document find refreshes across matching and nonmatching day templates', async ({ page }) => {
@@ -51,9 +50,9 @@ test('document find refreshes across matching and nonmatching day templates', as
   await expectHighlight(page, 'alpha-1')
 
   for (const [name, status, itemId] of [
-    ['Beta', '1/1 matches', 'beta-0'],
-    ['Gamma', 'No matches', null],
-    ['Alpha', '1/2 matches', 'alpha-0'],
+    ['Beta', '1/1', 'beta-0'],
+    ['Gamma', '0/0', null],
+    ['Alpha', '1/2', 'alpha-0'],
   ] as const) {
     const tab = page.getByRole('button', { name, exact: true })
     await tab.click()
@@ -72,21 +71,21 @@ test('document find drops deleted matches and finds restored tasks', async ({ pa
   await first.click()
   await page.keyboard.press('Meta+Backspace')
   await expect(first).toHaveCount(0)
-  await expect(page.locator('.find-status')).toHaveText('1/1 matches')
+  await expect(page.locator('.find-status')).toHaveText('1/1')
   await expectHighlight(page, 'alpha-1')
 
   const second = page.locator('[data-template-option-text-input]').filter({ hasText: 'Needle second' })
   await second.click()
   await page.keyboard.press('Meta+Backspace')
   await expect(second).toHaveCount(0)
-  await expect(page.locator('.find-status')).toHaveText('No matches')
+  await expect(page.locator('.find-status')).toHaveText('0/0')
   await expectHighlight(page, null)
   await page.keyboard.press('Meta+z')
   await expect(second).toBeVisible()
   // Undo reveals its destination and closes find; reopening must start fresh.
   await page.keyboard.press('Meta+f')
   await page.getByLabel('Find text', { exact: true }).fill('needle')
-  await expect(page.locator('.find-status')).toHaveText('1/1 matches')
+  await expect(page.locator('.find-status')).toHaveText('1/1')
   await expectHighlight(page, 'alpha-1')
 })
 
@@ -95,11 +94,11 @@ test('document find refreshes edited text without stealing editor focus', async 
   const editor = page.locator('[data-template-option-text-input]').filter({ hasText: 'Needle first' })
   const editable = page.locator('[data-template-option-text-input-id="alpha-0-option"]')
   await editor.fill('Changed task')
-  await expect(page.locator('.find-status')).toHaveText('1/1 matches')
+  await expect(page.locator('.find-status')).toHaveText('1/1')
   await expectHighlight(page, 'alpha-1')
   await expect(editable).toBeFocused()
   await editable.fill('Needle replaced')
-  await expect(page.locator('.find-status')).toHaveText('2/2 matches')
+  await expect(page.locator('.find-status')).toHaveText('2/2')
   await expectHighlight(page, 'alpha-1')
   await expect(editable).toBeFocused()
   await page.getByLabel('Find text', { exact: true }).press('Enter')
@@ -116,19 +115,19 @@ test('document find survives rapid keyboard template switches followed by deleti
   await expect(page.getByLabel('Template name', { exact: true })).toHaveValue('Alpha')
   // A template switch refreshes find after layout. Wait for that refresh before
   // pressing Enter, otherwise it can reset the newly selected second match.
-  await expect(page.locator('.find-status')).toHaveText('1/2 matches')
+  await expect(page.locator('.find-status')).toHaveText('1/2')
   await expectHighlight(page, 'alpha-0')
   const input = page.getByLabel('Find text', { exact: true })
   await input.press('Enter')
   await expectHighlight(page, 'alpha-1')
   await page.locator('[data-template-option-text-input-id="alpha-1-option"]').click()
   await page.keyboard.press('Meta+Backspace')
-  await expect(page.locator('.find-status')).toHaveText('1/1 matches')
+  await expect(page.locator('.find-status')).toHaveText('1/1')
   await expectHighlight(page, 'alpha-0')
   await input.press('Shift+Enter')
   await expectHighlight(page, 'alpha-0')
   await input.fill('missing phrase')
-  await expect(page.locator('.find-status')).toHaveText('No matches')
+  await expect(page.locator('.find-status')).toHaveText('0/0')
   await input.fill('')
   await expect(page.locator('.find-status')).toBeEmpty()
   await expectHighlight(page, null)
@@ -149,15 +148,15 @@ test('find matches formatted phrases, line breaks and Unicode with accurate rang
   })
   const input = page.getByLabel('Find text', { exact: true })
   await input.fill('orchid bloom')
-  await expect(page.locator('.find-status')).toHaveText('1/3 matches')
+  await expect(page.locator('.find-status')).toHaveText('1/3')
   expect(await highlightedText(page)).toEqual(['Orchid bloom'])
   expect(await highlightedText(page, 'balance-document-find-all')).toHaveLength(3)
   await input.press('Shift+Enter')
-  await expect(page.locator('.find-status')).toHaveText('3/3 matches')
+  await expect(page.locator('.find-status')).toHaveText('3/3')
   await input.fill('orchidbloom')
-  await expect(page.locator('.find-status')).toHaveText('No matches')
+  await expect(page.locator('.find-status')).toHaveText('0/0')
   await input.fill('prefix 🪡')
-  await expect(page.locator('.find-status')).toHaveText('1/1 matches')
+  await expect(page.locator('.find-status')).toHaveText('1/1')
   expect(await highlightedText(page)).toEqual(['prefix 🪡'])
 })
 
@@ -172,12 +171,12 @@ test('find excludes navigation and hidden text and refreshes when visibility cha
     document.querySelector('.workspace')!.append(fixture)
   })
   await page.getByLabel('Find text', { exact: true }).fill('orchid')
-  await expect(page.locator('.find-status')).toHaveText('1/1 matches')
+  await expect(page.locator('.find-status')).toHaveText('1/1')
   await page.locator('[data-find-hidden]').evaluate((element) => (element as HTMLElement).style.display = 'block')
-  await expect(page.locator('.find-status')).toHaveText('1/2 matches')
+  await expect(page.locator('.find-status')).toHaveText('1/2')
   await page.addStyleTag({ content: '.find-test-hidden { display: none !important }' })
   await page.locator('[data-find-hidden]').evaluate((element) => element.classList.add('find-test-hidden'))
-  await expect(page.locator('.find-status')).toHaveText('1/1 matches')
+  await expect(page.locator('.find-status')).toHaveText('1/1')
 })
 
 test('find restores editor caret, selects the query on reopen and cleans up highlights', async ({ page }) => {
@@ -191,7 +190,7 @@ test('find restores editor caret, selects the query on reopen and cleans up high
   await page.keyboard.press('Control+f')
   const input = page.getByLabel('Find text', { exact: true })
   await input.fill('needle')
-  await expect(page.locator('.find-status')).toHaveText('1/2 matches')
+  await expect(page.locator('.find-status')).toHaveText('1/2')
   await page.keyboard.press('Control+f')
   expect(await input.evaluate((element: HTMLInputElement) => [element.selectionStart, element.selectionEnd])).toEqual([0, 6])
   await page.getByRole('button', { name: 'Close find', exact: true }).click()
@@ -208,7 +207,7 @@ test('find navigation reuses matches, supports standard shortcuts and leaves IME
   await input.dispatchEvent('keydown', { key: 'Enter', isComposing: true })
   await expectHighlight(page, 'alpha-0')
   await input.dispatchEvent('compositionend')
-  await expect(page.locator('.find-status')).toHaveText('1/2 matches')
+  await expect(page.locator('.find-status')).toHaveText('1/2')
   // Let composition's debounced search settle before measuring navigation.
   await expect.poll(() => highlightedText(page)).toEqual(['Needle'])
   await page.evaluate(() => {
@@ -260,7 +259,7 @@ test('find reveals the matching text inside a long zoomed scroll container', asy
     root.append(scroller)
   })
   await page.getByLabel('Find text', { exact: true }).fill('orchid destination')
-  await expect(page.locator('.find-status')).toHaveText('1/1 matches')
+  await expect(page.locator('.find-status')).toHaveText('1/1')
   await expect.poll(() => page.locator('[data-find-scroller]').evaluate((element) => {
     const target = element.querySelector('[data-find-target]')!.getBoundingClientRect()
     const viewport = element.getBoundingClientRect()
@@ -279,13 +278,13 @@ test('navigation immediately after removing the active match does not skip its s
   })
   const input = page.getByLabel('Find text', { exact: true })
   await input.fill('orchid')
-  await expect(page.locator('.find-status')).toHaveText('1/3 matches')
+  await expect(page.locator('.find-status')).toHaveText('1/3')
   await input.evaluate((element) => {
     document.querySelector('[data-find-remove]')!.remove()
     // Same turn: MutationObserver has not delivered the removal yet.
     element.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
   })
-  await expect(page.locator('.find-status')).toHaveText('1/2 matches')
+  await expect(page.locator('.find-status')).toHaveText('1/2')
   await expect.poll(() => page.evaluate(() => {
     const range = Array.from(CSS.highlights.get('balance-document-find-match') ?? [])[0]
     return range instanceof Range ? range.startContainer.textContent : null

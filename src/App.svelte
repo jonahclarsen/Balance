@@ -362,6 +362,7 @@
   let primaryNavEl: HTMLElement | null = null
   let documentFindOpen = false
   let documentFindBar: DocumentFindBar | null = null
+  let documentFindQuery = ''
   let shortcutsHelpOpen = false
   let workspaceEl: HTMLElement
   let scrollPositionsByPage: Record<string, number> = {}
@@ -6794,7 +6795,7 @@ return rows`
 <svelte:document on:selectionchange={rememberActiveItemCaret} on:visibilitychange={stopKeyboardScroll} />
 
 {#if documentFindOpen}
-  <DocumentFindBar bind:this={documentFindBar} root={workspaceEl} onClose={() => (documentFindOpen = false)} />
+  <DocumentFindBar bind:this={documentFindBar} bind:query={documentFindQuery} root={workspaceEl} onClose={() => (documentFindOpen = false)} />
 {/if}
 
 {#if $persistenceError}

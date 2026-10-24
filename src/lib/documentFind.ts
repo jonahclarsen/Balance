@@ -1,5 +1,9 @@
 type TextPiece = { node: Text; start: number; end: number }
 
+// Every highlighted range slows painting on older WebKit, and nobody steps
+// through more than this many matches.
+export const maxFindMatches = 1000
+
 // Keep offsets in the original UTF-16 text: lowercasing can change its length
 // (for example, İ becomes i + a combining dot).
 export function normalizeFindText(value: string) {
@@ -32,6 +36,11 @@ export function findTextRanges(root: HTMLElement, query: string): Range[] {
   let pieces: TextPiece[] = []
 
   function flush() {
+    if (ranges.length >= maxFindMatches) {
+      text = ''
+      pieces = []
+      return
+    }
     const normalized = normalizeFindText(text)
     let pieceIndex = 0
     let previousEnd = -1
@@ -49,6 +58,7 @@ export function findTextRanges(root: HTMLElement, query: string): Range[] {
       range.setStart(startPiece.node, start - startPiece.start)
       range.setEnd(endPiece.node, end - endPiece.start)
       if (range.getClientRects().length) ranges.push(range)
+      if (ranges.length >= maxFindMatches) break
       previousEnd = end
     }
     text = ''
@@ -89,19 +99,29 @@ export function findTextRanges(root: HTMLElement, query: string): Range[] {
   return ranges
 }
 
+// Like browser find, start from what is on screen instead of jumping to the top.
+export function firstVisibleFindIndex(ranges: readonly Range[]) {
+  if (!ranges.length) return -1
+  const index = ranges.findIndex((range) => range.getBoundingClientRect().bottom > 0)
+  return index === -1 ? 0 : index
+}
+
 export function scrollFindRangeIntoView(range: Range) {
   const element = range.startContainer.parentElement
   if (!element) return
   // Scroll the range, not the editor: a note can be much taller than its viewport.
+  // Matches already in view stay put, so stepping through them does not jump.
   for (let container: HTMLElement | null = element; container; container = container.parentElement) {
     const style = getComputedStyle(container)
     const rect = range.getBoundingClientRect()
     const bounds = container.getBoundingClientRect()
     const zoom = container.currentCSSZoom || 1
-    if (/(auto|scroll|overlay)/.test(style.overflowY) && container.scrollHeight > container.clientHeight) {
+    if (/(auto|scroll|overlay)/.test(style.overflowY) && container.scrollHeight > container.clientHeight
+      && (rect.top < bounds.top || rect.bottom > bounds.bottom)) {
       container.scrollTop += (rect.top - bounds.top - (bounds.height - rect.height) / 2) / zoom
     }
-    if (/(auto|scroll|overlay)/.test(style.overflowX) && container.scrollWidth > container.clientWidth) {
+    if (/(auto|scroll|overlay)/.test(style.overflowX) && container.scrollWidth > container.clientWidth
+      && (rect.left < bounds.left || rect.right > bounds.right)) {
       container.scrollLeft += (rect.left - bounds.left - (bounds.width - rect.width) / 2) / zoom
     }
   }

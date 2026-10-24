@@ -1107,7 +1107,7 @@ test('Cmd or Ctrl+F searches the current document instead of opening overall sea
   const findInput = find.getByLabel('Find text')
   await findInput.pressSequentially('Daily plan', { delay: 25 })
   await expect(findInput).toHaveValue('Daily plan')
-  await expect(find.locator('.find-status')).toHaveText('1/1 matches')
+  await expect(find.locator('.find-status')).toHaveText('1/1')
   await expect(findInput).toBeFocused()
   await expect.poll(() => findInput.evaluate((input) => (input as HTMLInputElement).selectionStart)).toBe('Daily plan'.length)
   await expect.poll(() => page.evaluate(() => {
@@ -1143,7 +1143,7 @@ test('Cmd or Ctrl+F scrolls an off-screen Today match into view', async ({ page 
   const findInput = find.getByLabel('Find text')
   await findInput.fill('hidden target')
 
-  await expect(find.locator('.find-status')).toHaveText('1/1 matches')
+  await expect(find.locator('.find-status')).toHaveText('1/1')
   await expect(target).toBeInViewport()
   await expect(findInput).toBeFocused()
   await expect.poll(() => page.evaluate(() => {
@@ -1172,20 +1172,105 @@ test('Cmd or Ctrl+F reports match position and wraps in both directions', async 
   const findInput = find.getByLabel('Find text')
   await findInput.fill('cycle target')
 
-  await expect(status).toHaveText('1/2 matches')
+  await expect(status).toHaveText('1/2')
   await expect(status).toBeVisible()
   await expect(firstTarget).toBeInViewport()
 
   await findInput.press('Enter')
-  await expect(status).toHaveText('2/2 matches')
+  await expect(status).toHaveText('2/2')
   await expect(lastTarget).toBeInViewport()
 
   await findInput.press('Enter')
-  await expect(status).toHaveText('1/2 matches')
+  await expect(status).toHaveText('1/2')
   await expect(firstTarget).toBeInViewport()
 
   await findInput.press('Shift+Enter')
-  await expect(status).toHaveText('2/2 matches')
+  await expect(status).toHaveText('2/2')
+  await expect(lastTarget).toBeInViewport()
+})
+
+test('Cmd or Ctrl+F clears stale highlights the way older WebKit can repaint', async ({ page }) => {
+  await seedPlanItems(page, ['Cycle target one', 'Cycle target two', 'Unrelated'])
+  // Safari/WKWebView 26 only repaints a highlight when its ranges change, so
+  // dropping or replacing a lit Highlight leaves its paint behind.
+  await page.evaluate(() => {
+    const registry = Object.getPrototypeOf(CSS.highlights) as { set: Function; delete: Function }
+    const { set, delete: remove } = registry
+    const violations: string[] = []
+    ;(window as unknown as { highlightViolations: string[] }).highlightViolations = violations
+    registry.set = function (this: HighlightRegistry, name: string, value: Highlight) {
+      const previous = this.get(name)
+      if (previous && previous !== value && previous.size) violations.push(`replaced ${name}`)
+      return set.call(this, name, value)
+    }
+    registry.delete = function (this: HighlightRegistry, name: string) {
+      if (this.get(name)?.size) violations.push(`deleted ${name}`)
+      return remove.call(this, name)
+    }
+  })
+  const lit = () => page.evaluate(() => ['balance-document-find-all', 'balance-document-find-match']
+    .map((name) => CSS.highlights.get(name)?.size ?? 0))
+
+  await page.keyboard.press('Meta+f')
+  const find = page.getByRole('search', { name: 'Find in current view' })
+  const findInput = find.getByLabel('Find text')
+  await findInput.pressSequentially('cycle', { delay: 20 })
+  await expect(find.locator('.find-status')).toHaveText('1/2')
+  await findInput.press('Enter')
+  await expect(find.locator('.find-status')).toHaveText('2/2')
+  await findInput.pressSequentially('zz', { delay: 20 })
+  await expect(find.locator('.find-status')).toHaveText('0/0')
+  expect(await lit()).toEqual([0, 0])
+  await findInput.fill('target')
+  await expect(find.locator('.find-status')).toHaveText('1/2')
+  expect(await lit()).toEqual([2, 1])
+  await page.keyboard.press('Escape')
+  await expect(find).toHaveCount(0)
+  expect(await lit()).toEqual([0, 0])
+  expect(await page.evaluate(() => (window as unknown as { highlightViolations: string[] }).highlightViolations)).toEqual([])
+})
+
+test('Cmd or Ctrl+F reopens with the last query and seeds it from selected text', async ({ page }) => {
+  await seedPlanItems(page, ['Water the orchid', 'Orchid repotting', 'Buy soil'])
+  await page.keyboard.press('Meta+f')
+  const find = page.getByRole('search', { name: 'Find in current view' })
+  const findInput = find.getByLabel('Find text')
+  await findInput.fill('orchid')
+  await expect(find.locator('.find-status')).toHaveText('1/2')
+  await page.keyboard.press('Escape')
+  await expect(find).toHaveCount(0)
+
+  await page.keyboard.press('Meta+f')
+  await expect(findInput).toHaveValue('orchid')
+  await expect(find.locator('.find-status')).toHaveText('1/2')
+  expect(await findInput.evaluate((input: HTMLInputElement) => [input.selectionStart, input.selectionEnd])).toEqual([0, 6])
+  await page.keyboard.press('Escape')
+
+  const soil = page.getByRole('listitem', { name: 'Plan item: Buy soil' }).locator('[data-plan-text-input]')
+  await soil.click()
+  await soil.evaluate((element) => {
+    const text = element.firstChild ?? element
+    const range = document.createRange()
+    range.setStart(text, 4)
+    range.setEnd(text, 8)
+    window.getSelection()?.removeAllRanges()
+    window.getSelection()?.addRange(range)
+  })
+  await page.keyboard.press('Meta+f')
+  await expect(findInput).toHaveValue('soil')
+  await expect(find.locator('.find-status')).toHaveText('1/1')
+})
+
+test('Cmd or Ctrl+F starts from the first match on screen', async ({ page }) => {
+  await seedPlanItems(page, Array.from({ length: 40 }, (_, index) =>
+    index === 0 || index === 38 ? `Cycle target ${index}` : `Filler task ${index + 1}`))
+  const lastTarget = page.getByRole('listitem', { name: 'Plan item: Cycle target 38' })
+  await lastTarget.scrollIntoViewIfNeeded()
+  await expect(page.getByRole('listitem', { name: 'Plan item: Cycle target 0' })).not.toBeInViewport()
+  await page.keyboard.press('Meta+f')
+  const find = page.getByRole('search', { name: 'Find in current view' })
+  await find.getByLabel('Find text').fill('cycle target')
+  await expect(find.locator('.find-status')).toHaveText('2/2')
   await expect(lastTarget).toBeInViewport()
 })
 
