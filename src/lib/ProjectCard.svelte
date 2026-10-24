@@ -65,7 +65,7 @@
 </div>
 
 <style>
-  div.project-card { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); user-select: none; -webkit-user-select: none; }
+  div.project-card { display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 40px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); user-select: none; -webkit-user-select: none; }
   div.project-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   div.project-card.active { border-color: color-mix(in srgb, var(--project-color) 55%, var(--line)); background: color-mix(in srgb, var(--project-color) 12%, var(--paper)); }
   div.project-card.highlighted { animation: project-highlight 1.6s ease-out; }

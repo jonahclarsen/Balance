@@ -365,6 +365,28 @@ test('rapid adding keeps the cursor in place, and the name field opens at its en
   expect(projects.find((project: any) => project.name.startsWith('Synthetic one')).name).toBe('Synthetic one plan')
 })
 
+test('long project descriptions truncate within the page and remain editable in full', async ({ page }) => {
+  await page.goto('/')
+  await openView(page, 'Projects')
+  await addProject(page, 'Synthetic long description')
+  const card = page.locator('.project-card', { hasText: 'Synthetic long description' })
+  await card.click()
+  const description = 'A very long first line with words '.repeat(100)
+  const details = page.getByRole('dialog')
+  await details.getByRole('textbox', { name: 'Description' }).fill(description)
+  await details.getByRole('textbox', { name: 'Description' }).press('Escape')
+  const preview = card.locator('.project-description')
+  await expect(preview).toHaveText(description.trim())
+  expect(await preview.evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true)
+  await expect(preview).toHaveCSS('text-overflow', 'ellipsis')
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
+  const cardBounds = await card.boundingBox()
+  const panelBounds = await page.locator('.projects-panel').boundingBox()
+  expect(cardBounds!.x + cardBounds!.width).toBeLessThanOrEqual(panelBounds!.x + panelBounds!.width + 1)
+  await card.click()
+  await expect(details.getByRole('textbox', { name: 'Description' })).toHaveValue(description)
+})
+
 test('undo in an unsaved project field undoes typing, and undoing an add leaves no unavailable notice', async ({ page }) => {
   await page.goto('/')
   await openView(page, 'Projects')
