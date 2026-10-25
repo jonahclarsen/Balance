@@ -616,3 +616,30 @@ test('idea deletion keeps content in Trash until it is deleted there', async ({ 
   `)
   expect(trashed).toMatchObject({ html: '<strong>Synthetic parent</strong>', children: [], bucketedAt: expect.any(String) })
 })
+
+test('Cmd+D toggles ideas done like Today tasks', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
+  await open(page)
+  await storeCall(page, `
+    plannerStore.addIdea('Synthetic first', 'genuine')
+    plannerStore.addIdea('Synthetic second', 'genuine')
+  `)
+  await openView(page, 'Ideas')
+  const ideaRows = card(page, 'genuine').locator('[data-plan-item-id]')
+  const checkbox = (index: number) => ideaRows.nth(index).getByRole('checkbox').first()
+
+  // Completing the idea being edited moves the caret to the idea below.
+  await rows(page, 'genuine').first().click()
+  await page.keyboard.press('ControlOrMeta+d')
+  await expect(checkbox(0)).toBeChecked()
+  await expect(rows(page, 'genuine').nth(1)).toBeFocused()
+
+  // A selected idea toggles and stays selected; undo restores it.
+  await card(page, 'genuine').getByRole('button', { name: 'Select item' }).nth(1).click()
+  await page.keyboard.press('ControlOrMeta+d')
+  await expect(checkbox(1)).toBeChecked()
+  await page.keyboard.press('ControlOrMeta+d')
+  await expect(checkbox(1)).not.toBeChecked()
+  await page.keyboard.press('ControlOrMeta+z')
+  await expect(checkbox(1)).toBeChecked()
+})

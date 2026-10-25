@@ -100,7 +100,7 @@
     {
       title: 'Editing items',
       shortcuts: [
-        { keys: ['mod', 'D'], label: 'Toggle done (keeps selected items selected)' },
+        { keys: ['mod', 'D'], label: 'Toggle done (keeps selected items selected; Today and Ideas)' },
         { keys: ['mod', 'D'], label: 'Toggle selected checkboxes (in Notes)', alt: ['mod', 'enter'] },
         { keys: ['mod', 'R'], label: 'Hide / show children of the active or selected items (Today and Notes)' },
         { keys: ['alt', 'F'], label: 'Open a link from the active task (web or any Balance destination; first web URL takes priority)' },

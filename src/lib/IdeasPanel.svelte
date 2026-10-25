@@ -2,6 +2,7 @@
   import { onDestroy, tick } from 'svelte'
   import PlanItemEditor from './PlanItemEditor.svelte'
   import { plannerStore } from './store'
+  import { focusTaskBelow } from './taskCompletionFocus'
   import { ideaUnlockDelay, findIdea, ideaGroupId, ideaGroupKindForKey, IDEA_GROUPS, IDEA_TRASH_RETENTION_DAYS } from './ideas'
   import type { ItemLink, ItemTimeWarning } from './planner'
   import type { Id, IdeaGroup, IdeaGroupKind, ListTemplate, Metric, Note } from './types'
@@ -100,7 +101,26 @@
     return active instanceof HTMLElement && (active.isContentEditable || active.matches('input, textarea, select'))
   }
 
+  // Cmd/Ctrl+D toggles done like on Today: the selected idea stays selected,
+  // and completing the idea being edited moves the caret to the one below.
+  function toggleDoneFromKeyboard(event: KeyboardEvent) {
+    const active = document.activeElement
+    const row = active instanceof Element ? active.closest<HTMLElement>('.ideas-panel [data-plan-item-id]') : null
+    const target = selectedItemId ?? row?.dataset.planItemId
+    const found = target ? findIdea(groups, target) : null
+    if (!found) return
+    event.preventDefault()
+    if (event.repeat) return
+    const done = !found.item.done
+    plannerStore.patchIdeaItem(found.group.id, found.item.id, { done })
+    if (done && !selectedItemId) void focusTaskBelow(found.group.id, [found.item.id])
+  }
+
   function handleKeydown(event: KeyboardEvent) {
+    if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'd') {
+      toggleDoneFromKeyboard(event)
+      return
+    }
     if (event.metaKey || event.ctrlKey || event.altKey || event.repeat || editingText()) return
     if (event.key === 'Escape') {
       if (selectedItemId) {
