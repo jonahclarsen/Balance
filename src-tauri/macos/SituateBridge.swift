@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 
 private var situateModes: [[String: Any]] = []
-private var situateObserver: NSObjectProtocol?
+private var situateObservers: [NSObjectProtocol] = []
 private var situatePrevious = Set<String>()
 private var situatePreviousSoon: [String: Int] = [:]
 private var situateShowing = false
@@ -30,33 +30,54 @@ func balanceSituateUpdate(_ raw: UnsafePointer<CChar>, _ announce: Bool) {
         }
         situatePrevious = active
         situatePreviousSoon = soon
-        if situateObserver == nil {
-            situateObserver = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { _ in enforceSituate() }
+        if situateObservers.isEmpty {
+            let center = NSWorkspace.shared.notificationCenter
+            func observe(_ name: Notification.Name, _ handle: @escaping (NSRunningApplication) -> Void) {
+                situateObservers.append(center.addObserver(forName: name, object: nil, queue: .main) { note in
+                    if let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication { handle(app) }
+                })
+            }
+            observe(NSWorkspace.didActivateApplicationNotification) { enforceSituate($0) }
+            // A blocked app can finish launching or unhide itself after it was hidden.
+            observe(NSWorkspace.didLaunchApplicationNotification) { hideSituate($0) }
+            observe(NSWorkspace.didUnhideApplicationNotification) { hideSituate($0) }
         }
-        enforceSituate()
+        if let app = NSWorkspace.shared.frontmostApplication { enforceSituate(app) }
     }
 }
-private func enforceSituate() {
-    guard !situateShowing, let app = NSWorkspace.shared.frontmostApplication,
-          let bundle = app.bundleIdentifier, bundle != "app.balance.local" else { return }
+private func situateBlock(_ app: NSRunningApplication) -> (mode: [String: Any], target: [String: Any])? {
+    guard let bundle = app.bundleIdentifier, bundle != "app.balance.local" else { return nil }
     for mode in situateModes {
-        guard let targets = mode["targets"] as? [[String: Any]],
-              let target = targets.first(where: { $0["kind"] as? String == "app" && $0["value"] as? String == bundle }) else { continue }
-        situateShowing = true
-        app.hide()
-        let alert = NSAlert()
-        alert.messageText = "\(mode["name"] as? String ?? "Situate") is on"
-        alert.informativeText = "Take a moment before opening this app. Your work is still there."
-        alert.addButton(withTitle: "Keep the boundary")
-        alert.addButton(withTitle: "Open quiz")
-        NSApp.activate(ignoringOtherApps: true)
-        if alert.runModal() == .alertSecondButtonReturn {
-            var url = URLComponents(string: "balance://situate")!
-            url.queryItems = [URLQueryItem(name: "mode", value: mode["id"] as? String)]
-            if target["category"] as? String == "entertainment" { url.queryItems?.append(URLQueryItem(name: "target", value: target["id"] as? String)) }
-            if let url = url.url { NSWorkspace.shared.open(url) }
-        }
-        situateShowing = false
-        return
+        if let target = (mode["targets"] as? [[String: Any]])?.first(where: { $0["kind"] as? String == "app" && $0["value"] as? String == bundle }) { return (mode, target) }
     }
+    return nil
+}
+private func hideSituate(_ app: NSRunningApplication) {
+    guard situateBlock(app) != nil else { return }
+    app.hide()
+    // A launching app ignores hide until it finishes and can show its first window later.
+    for delay in [0.3, 1.0, 2.5] {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { if !app.isHidden && situateBlock(app) != nil { app.hide() } }
+    }
+}
+private func enforceSituate(_ app: NSRunningApplication) {
+    guard let (mode, target) = situateBlock(app) else { return }
+    hideSituate(app)
+    guard !situateShowing else { return }
+    situateShowing = true
+    let alert = NSAlert()
+    alert.messageText = "\(mode["name"] as? String ?? "Situate") is on"
+    alert.informativeText = "Take a moment before opening this app. Your work is still there."
+    alert.addButton(withTitle: "Keep the boundary")
+    alert.addButton(withTitle: "Open quiz")
+    NSApp.activate(ignoringOtherApps: true)
+    if alert.runModal() == .alertSecondButtonReturn {
+        var url = URLComponents(string: "balance://situate")!
+        url.queryItems = [URLQueryItem(name: "mode", value: mode["id"] as? String)]
+        if target["category"] as? String == "entertainment" { url.queryItems?.append(URLQueryItem(name: "target", value: target["id"] as? String)) }
+        if let url = url.url { NSWorkspace.shared.open(url) }
+    }
+    situateShowing = false
+    // The app may have come forward behind the alert; it stays hidden until a pass unblocks it.
+    hideSituate(app)
 }
