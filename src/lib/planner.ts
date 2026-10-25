@@ -1053,7 +1053,7 @@ function containsActiveTimeRange(items: PlanItem[]): boolean {
   return items.some((item) => hasActiveTimeRange(item) || containsActiveTimeRange(item.children))
 }
 
-function isPlanItemTextEmpty(item: PlanItem): boolean {
+export function isPlanItemTextEmpty(item: PlanItem): boolean {
   return !item.html.includes('data-balance-image=') && item.text.trim() === '' && htmlToPlainText(item.html).trim() === ''
 }
 

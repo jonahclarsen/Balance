@@ -643,3 +643,36 @@ test('Cmd+D toggles ideas done like Today tasks', async ({ page }, testInfo) => 
   await page.keyboard.press('ControlOrMeta+z')
   await expect(checkbox(1)).toBeChecked()
 })
+
+test('deleting ideas from the keyboard moves them to Trash; blank rows are discarded', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
+  await open(page)
+  await openView(page, 'Ideas')
+  await storeCall(page, `
+    plannerStore.addIdea('Synthetic selected', 'genuine')
+    plannerStore.addIdea('Synthetic line end', 'genuine')
+    plannerStore.addIdea('Synthetic cleared', 'genuine')
+  `)
+  await expect(rows(page, 'genuine')).toHaveCount(3)
+
+  await card(page, 'genuine').locator('.select-handle').first().click()
+  await page.keyboard.press('Backspace')
+  expect(await groups(page)).toMatchObject({ genuine: ['Synthetic line end', 'Synthetic cleared'], trash: ['Synthetic selected'] })
+
+  await rows(page, 'genuine').first().click()
+  await page.keyboard.press('End')
+  await page.keyboard.press('Meta+Backspace')
+  expect(await groups(page)).toMatchObject({ genuine: ['Synthetic cleared'], trash: ['Synthetic selected', 'Synthetic line end'] })
+
+  await rows(page, 'genuine').first().click()
+  await page.keyboard.press('Meta+a')
+  await page.keyboard.press('Backspace')
+  await page.keyboard.press('Backspace')
+  expect(await groups(page)).toMatchObject({ genuine: [], trash: ['Synthetic selected', 'Synthetic line end'] })
+
+  // Deleting from Trash discards the idea.
+  await card(page, 'trash').getByRole('button', { name: 'Trash' }).click()
+  await card(page, 'trash').locator('.select-handle').first().click()
+  await page.keyboard.press('Backspace')
+  expect(await groups(page)).toMatchObject({ trash: ['Synthetic line end'] })
+})

@@ -30,6 +30,7 @@ import {
   calendarDateISO,
   deletePlanItem,
   deletePlanItemPreservingChildren,
+  isPlanItemTextEmpty,
   deletePlanItems,
   deleteTemplateItem,
   deleteTemplateItemPreservingChildren,
@@ -3938,15 +3939,17 @@ function updateNote(state: AppState, noteId: Id, updater: (note: Note) => Note):
 
 // Only Trash can discard an idea. Row deletion elsewhere retains its content,
 // including nested ideas; preserving children leaves them at their original level.
+// Blank rows hold nothing worth keeping, so they are discarded outright.
 function deleteOrTrashIdea(state: AppState, groupId: Id, itemId: Id, preserveChildren: boolean): AppState {
   const group = state.ideaBuckets.find((candidate) => candidate.id === groupId)
   const item = group && findPlanItem(group.items, itemId)
   if (!group || !item) return state
   const remove = preserveChildren ? deletePlanItemPreservingChildren : deletePlanItem
   const removed = updateIdeaGroupById(state, groupId, (candidate) => ({ ...candidate, items: remove(candidate.items, itemId) }))
-  if (group.kind === 'trash') return removed
+  const children = preserveChildren ? [] : item.children
+  if (group.kind === 'trash' || (isPlanItemTextEmpty(item) && children.length === 0)) return removed
   const { dayAssignmentDate: _dayAssignmentDate, ...unassigned } = item as IdeaItem
-  const trashed: IdeaItem = { ...unassigned, children: preserveChildren ? [] : item.children, bucketedAt: nowISO() }
+  const trashed: IdeaItem = { ...unassigned, children, bucketedAt: nowISO() }
   return updateIdeaGroup(removed, 'trash', (trash) => ({ ...trash, items: [...trash.items, trashed] }))
 }
 

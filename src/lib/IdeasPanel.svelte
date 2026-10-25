@@ -121,7 +121,15 @@
       toggleDoneFromKeyboard(event)
       return
     }
-    if (event.metaKey || event.ctrlKey || event.altKey || event.repeat || editingText()) return
+    if (event.ctrlKey || event.altKey || event.repeat || editingText()) return
+    // Backspace and Cmd+Backspace both delete a selected idea, to Trash unless it is already there.
+    if (selected && (event.key === 'Backspace' || event.key === 'Delete')) {
+      event.preventDefault()
+      plannerStore.deleteIdeaItem(selected.group.id, selected.item.id)
+      select(null)
+      return
+    }
+    if (event.metaKey) return
     if (event.key === 'Escape') {
       if (selectedItemId) {
         event.preventDefault()
