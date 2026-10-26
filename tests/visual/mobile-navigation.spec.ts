@@ -241,6 +241,40 @@ test('mobile menu retains a held touch with finger drift', async ({ page }, test
 })
 
 
+test('a tapped mobile navigation button stays selected from press to page', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile', 'This navigation only appears in compact layouts')
+  await page.goto('/')
+  await showPrimaryNavigation(page)
+  const nav = primaryNavigation(page)
+  const notes = nav.getByRole('button', { name: 'Notes', exact: true })
+  const today = nav.getByRole('button', { name: 'Today', exact: true })
+  const changes = await notes.evaluate(async (button) => {
+    const seen: boolean[] = []
+    const observer = new MutationObserver(() => seen.push(button.classList.contains('active')))
+    observer.observe(button, { attributes: true, attributeFilter: ['class'] })
+    const pointer = { bubbles: true, button: 0, pointerType: 'touch', isPrimary: true, pointerId: 7 }
+    button.dispatchEvent(new PointerEvent('pointerdown', pointer))
+    await new Promise((resolve) => requestAnimationFrame(resolve))
+    button.dispatchEvent(new PointerEvent('pointerup', pointer))
+    await new Promise((resolve) => requestAnimationFrame(resolve))
+    button.click()
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    observer.disconnect()
+    return seen
+  })
+  expect(changes).toEqual([true])
+  await expect(page.locator('.workspace')).toHaveClass(/notes-view-workspace/)
+
+  // A release that never becomes a click clears its preview.
+  await showPrimaryNavigation(page)
+  const pointer = { button: 0, pointerType: 'touch', isPrimary: true, pointerId: 8 }
+  await today.dispatchEvent('pointerdown', pointer)
+  await today.dispatchEvent('pointerup', pointer)
+  await expect(today).toHaveClass(/active/)
+  await expect(notes).toHaveClass(/active/)
+  await expect(today).not.toHaveClass(/active/)
+})
+
 test('mobile navigation paints selection before switching pages and cancels gesture previews', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'mobile', 'This navigation only appears in compact layouts')
   const session = await page.context().newCDPSession(page)
