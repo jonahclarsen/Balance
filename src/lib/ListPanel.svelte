@@ -415,6 +415,20 @@
       return
     }
 
+    // W/O move up and S/L move down, mirroring the arrow keys (as in the overlay).
+    const key = event.key.toLowerCase()
+    if (
+      !event.shiftKey &&
+      !event.altKey &&
+      !primaryModifier &&
+      (key === 'w' || key === 'o' || key === 's' || key === 'l') &&
+      !(event.target instanceof HTMLElement && event.target.closest('input, textarea, select, [contenteditable="true"]'))
+    ) {
+      event.preventDefault()
+      moveSelection(key === 'w' || key === 'o' ? -1 : 1)
+      return
+    }
+
     if (event.altKey && !primaryModifier && !event.shiftKey && event.code === 'KeyF' && openSelectedLink()) {
       event.preventDefault()
       event.stopPropagation()

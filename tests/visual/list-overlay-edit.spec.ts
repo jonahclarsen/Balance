@@ -643,6 +643,28 @@ test('W/O and S/L move the list overlay selection like the arrow keys', async ({
   await expect(milkRow).toHaveClass(/selected/)
 })
 
+test('W/O and S/L move the List History selection like the arrow keys', async ({ page }) => {
+  const dialog = await openThreeItemGroceriesOverlay(page)
+  await page.keyboard.press('Alt+h')
+  await expect(page.getByRole('heading', { name: 'List History', exact: true })).toBeVisible()
+  await expect(dialog).toBeHidden()
+  const panel = page.locator('.list-panel').filter({ visible: true })
+  const milkRow = panel.locator('.plan-row', { hasText: 'Milk' })
+  const eggsRow = panel.locator('.plan-row', { hasText: 'Eggs' })
+  const breadRow = panel.locator('.plan-row', { hasText: 'Bread' })
+
+  await milkRow.click()
+  await expect(milkRow).toHaveClass(/selected/)
+  await page.keyboard.press('s')
+  await expect(eggsRow).toHaveClass(/selected/)
+  await page.keyboard.press('l')
+  await expect(breadRow).toHaveClass(/selected/)
+  await page.keyboard.press('w')
+  await expect(eggsRow).toHaveClass(/selected/)
+  await page.keyboard.press('o')
+  await expect(milkRow).toHaveClass(/selected/)
+})
+
 test('ArrowDown checks the final list item when it cannot navigate farther', async ({ page }) => {
   const dialog = await openTwoItemGroceriesOverlay(page)
   const milkRow = dialog.locator('.plan-row', { hasText: 'Milk' })
