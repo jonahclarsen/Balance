@@ -12,6 +12,10 @@ const devToolsPort = 9225
 const recordingPath = '/sdcard/sidebar-tap.mp4'
 const destinations = ['notes', 'goals', 'settings', 'today']
 
+function log(message) {
+  console.log(`[sidebar-tap] ${message}`)
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
@@ -73,10 +77,15 @@ async function connect() {
     else request.resolve(message.result?.result?.value)
   })
   return {
-    evaluate(expression) {
+    evaluate(expression, timeoutMs = 10_000) {
       const id = nextId++
       socket.send(JSON.stringify({ id, method: 'Runtime.evaluate', params: { expression, awaitPromise: true, returnByValue: true } }))
-      return new Promise((resolve, reject) => pending.set(id, { resolve, reject }))
+      return new Promise((resolve, reject) => {
+        pending.set(id, { resolve, reject })
+        setTimeout(() => {
+          if (pending.delete(id)) reject(new Error(`DevTools evaluation timed out: ${expression.slice(0, 80)}`))
+        }, timeoutMs)
+      })
     },
     close: () => socket.close(),
   }
@@ -100,6 +109,7 @@ adb(['install', '-r', 'balance-debug.apk'])
 adb(['logcat', '-c'])
 adb(['shell', 'monkey', '-p', packageName, '-c', 'android.intent.category.LAUNCHER', '1'])
 let client = await connect()
+log('connected; waiting for debug startup profiles')
 // The debug APK runs native CI profiles at startup; begin after they release the database.
 await waitFor(() => adb(['logcat', '-d'], { allowFailure: true }).includes('BALANCE_SYNC_E2E: OK'), 'debug startup profiles', 120_000)
 // Generated CI database and test key only; never return or log the key.
@@ -109,11 +119,13 @@ await client.evaluate(`(async () => {
   if (!status.confirmed) await invoke('confirm_recovery_key', { recoveryKey: status.recoveryKey })
   setTimeout(() => location.reload(), 0)
   return true
-})()`)
+})()`, 60_000)
+log('recovery key confirmed; reloading')
 await sleep(500)
 client.close()
 client = await connect()
 await waitForApp(client)
+log('planner ready')
 
 const screen = adb(['shell', 'wm', 'size']).match(/(\d+)x(\d+)\s*$/m)
 const viewport = await client.evaluate(`({ width: innerWidth * devicePixelRatio, height: innerHeight * devicePixelRatio, theme: document.documentElement.dataset.theme ?? '' })`)
@@ -142,6 +154,7 @@ await client.evaluate(`(() => {
   return true
 })()`)
 
+log(`recording ${viewport.theme} theme`)
 const recorder = spawn('adb', ['shell', 'screenrecord', '--bit-rate', '20000000', '--time-limit', '60', recordingPath], { stdio: 'ignore' })
 await sleep(1_500)
 const taps = []
@@ -153,6 +166,7 @@ for (const destination of destinations) {
   await tap(client, `.primary-nav [data-nav-view="${destination}"]`)
   await waitFor(() => client.evaluate(`!document.querySelector('.sidebar')?.classList.contains('mobile-drawer-open')`), `${destination} to open`)
   await sleep(1_200)
+  log(`opened ${destination}`)
   const events = await client.evaluate(`window.__sidebarTapTrace.filter((event) => event.at >= ${startedAt})`)
   const selectionChanges = events.filter((event) => event.view === destination && ['selected', 'deselected'].includes(event.type))
   taps.push({
