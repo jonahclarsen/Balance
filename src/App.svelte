@@ -1021,7 +1021,15 @@ return rows`
       if (Math.hypot(event.clientX - press.x, event.clientY - press.y) > 10) reset()
     }
     function end(event: PointerEvent) {
-      if (press?.id === event.pointerId) reset()
+      if (press?.id !== event.pointerId) return
+      if (event.type === 'pointercancel') return reset()
+      // Keep a tap's selection through to its click instead of flipping back
+      // between release and navigation. Clear it if no navigation follows.
+      press = null
+      const revision = mobileNavRevision
+      setTimeout(() => {
+        if (!press && revision === mobileNavRevision) mobileNavPreview = null
+      }, 500)
     }
     node.addEventListener('pointerdown', down)
     window.addEventListener('pointermove', move)

@@ -7418,6 +7418,9 @@ textarea.note-title {
 
   .sidebar .primary-nav button {
     touch-action: manipulation;
+    /* The pressed button already shows its selection; Android's tap
+       highlight would flash over it. */
+    -webkit-tap-highlight-color: transparent;
     flex: none;
     width: 100%;
     min-height: 42px;
