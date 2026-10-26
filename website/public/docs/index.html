@@ -82,7 +82,7 @@
       <p>It unlocks your database from a backup or on a new device. Balance can’t recover it for you.</p>
 
       <h2 id="today">Today</h2>
-      <p>Pick a day template, then <strong>Generate today</strong>. Check tasks off as you go.</p>
+      <p>Pick a day template, then <strong>Generate day</strong>. Check tasks off as you go.</p>
       <figure class="pair">
         <div class="phone"><picture><source srcset="/images/android-today-dark.webp" media="(prefers-color-scheme: dark)"><img src="/images/android-today.webp" width="720" height="1598" alt="Today on Android" loading="lazy"></picture></div>
         <div class="phone"><picture><source srcset="/images/android-menu-dark.webp" media="(prefers-color-scheme: dark)"><img src="/images/android-menu.webp" width="720" height="1598" alt="Navigation drawer on Android" loading="lazy"></picture></div>
@@ -139,7 +139,7 @@
       <ul>
         <li><strong>Example:</strong> Exercise, every 2 days, matches <code>run, swim, yoga</code>. Checking “Run 5k” counts.</li>
         <li>Single words match whole words. Phrases match anywhere. Case doesn’t matter.</li>
-        <li><strong>Goal Rhythm</strong>, under Today, shows each goal’s days and what’s due. Drag a goal onto a task to add its name. <kbd>Alt</kbd>+<kbd>A</kbd> hides it for 6 hours.</li>
+        <li><strong>Goal Rhythm</strong>, under Today, shows each goal’s days and what’s due. Drag a goal onto a task to add its name, or between tasks to make it a task of its own. <kbd>Alt</kbd>+<kbd>A</kbd> hides it for 6 hours.</li>
         <li><strong>Stats</strong> charts completions over time.</li>
         <li>Today and the two days before recalculate; older days are kept as recorded.</li>
       </ul>
@@ -158,7 +158,7 @@
       </figure>
 
       <h2 id="lists">Lists</h2>
-      <p>Reusable checklists, such as an evening reset or packing list. Items have odds and alternative wordings, like day templates.</p>
+      <p>Reusable checklists, such as an evening reset or packing list. Items have odds, alternative wordings and questions, like day templates. Questions are asked when the list is generated, or in the day’s quiz when a day places the list.</p>
       <figure>
         <div class="mac"><div class="bar"><i></i><i></i><i></i></div><picture><source srcset="/images/mac-lists-dark.webp" media="(prefers-color-scheme: dark)"><img src="/images/mac-lists.webp" width="1920" height="1200" alt="Evening reset list template" loading="lazy"></picture></div>
       </figure>
@@ -240,7 +240,7 @@ npx wrangler secret put RELAY_SECRET</code></pre>
       </ul>
 
       <h2 id="situate">Situate</h2>
-      <p>Dolo blocks social and messaging apps. Touch grass blocks AI chats. Modes turn on at morning and evening, or only at evening like Touch grass, and a quiz turns one off until the next. A heads-up can warn you 15 or 5 minutes before one comes on. Entertainment sites get a separate short pass. Each mode has its own color, devices, quizzes and blocked apps and websites.</p>
+      <p>Dolo blocks social and messaging apps. Touch grass blocks AI chats. Modes turn on at morning and evening, or only at evening like Touch grass, and a quiz turns one off until the next. A heads-up can warn you 15 or 5 minutes before one comes on. Entertainment sites get a separate pass: after its quiz, choose 5, 15 or 60 minutes. Each mode has its own color, devices, quizzes and blocked apps and websites.</p>
       <p>On Mac, keep Balance running and install the Situate extension in Chrome or Brave for websites and selected Discord threads; Balance walks you through it. On Android, grant notification and app-blocking access. Notification history stays encrypted on the phone, with search, filters and export.</p>
       <p>Rules and passes are local to each device. Herdr and Cactus can read only the optional Situate status feed. <a href="https://github.com/jonahclarsen/Balance/blob/main/docs/situate.md">Setup and privacy details</a>.</p>
       <figure><div class="mac"><picture><source srcset="/images/mac-situate-dark.webp" media="(prefers-color-scheme: dark)"><img src="/images/mac-situate.webp" width="1920" height="1200" alt="Situate modes and schedule controls"></picture></div></figure>
