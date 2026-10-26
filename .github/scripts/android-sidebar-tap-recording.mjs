@@ -111,7 +111,10 @@ adb(['shell', 'monkey', '-p', packageName, '-c', 'android.intent.category.LAUNCH
 let client = await connect()
 log('connected; waiting for debug startup profiles')
 // The debug APK runs native CI profiles at startup; begin after they release the database.
-await waitFor(() => adb(['logcat', '-d'], { allowFailure: true }).includes('BALANCE_SYNC_E2E: OK'), 'debug startup profiles', 120_000)
+await waitFor(() => {
+  const logcat = adb(['logcat', '-d'], { allowFailure: true })
+  return logcat.includes('BALANCE_SYNC_E2E: OK') && logcat.includes('BALANCE_ANDROID_STARTUP_PROFILE:')
+}, 'debug startup profiles', 120_000)
 // Generated CI database and test key only; never return or log the key.
 await client.evaluate(`(async () => {
   const invoke = window.__TAURI_INTERNALS__.invoke
