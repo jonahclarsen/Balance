@@ -98,8 +98,11 @@ async function waitForApp(client) {
 // Taps through Android input, so the WebView gets genuine touch events,
 // tap highlighting and gesture-generated clicks.
 async function tap(client, selector) {
-  const point = await client.evaluate(`(() => {
-    const rect = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect()
+  const point = await client.evaluate(`(async () => {
+    const element = document.querySelector(${JSON.stringify(selector)})
+    element.scrollIntoView({ block: 'nearest' })
+    await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 300)))
+    const rect = element.getBoundingClientRect()
     return { x: (rect.left + rect.width / 2) * devicePixelRatio, y: (rect.top + rect.height / 2) * devicePixelRatio }
   })()`)
   adb(['shell', 'input', 'tap', String(Math.round(point.x)), String(Math.round(point.y))])
@@ -169,9 +172,9 @@ for (const destination of destinations) {
   await tap(client, `.primary-nav [data-nav-view="${destination}"]`)
   await waitFor(() => client.evaluate(`!document.querySelector('.sidebar')?.classList.contains('mobile-drawer-open')`), `${destination} to open`)
   await sleep(1_200)
-  log(`opened ${destination}`)
   const events = await client.evaluate(`window.__sidebarTapTrace.filter((event) => event.at >= ${startedAt})`)
   const selectionChanges = events.filter((event) => event.view === destination && ['selected', 'deselected'].includes(event.type))
+  log(`opened ${destination}; its selection went ${selectionChanges.map((event) => event.type).join(' -> ') || 'unchanged'}`)
   taps.push({
     destination,
     selectionChanges: selectionChanges.map((event) => event.type),
@@ -189,5 +192,4 @@ adb(['forward', '--remove', `tcp:${devToolsPort}`], { allowFailure: true })
 const flickers = taps.filter((entry) => entry.selectionChanges.length > 1)
 const report = { theme: viewport.theme, screen: `${screen[1]}x${screen[2]}`, taps, flickers: flickers.map((entry) => entry.destination) }
 await writeFile('android-sidebar-tap.json', `${JSON.stringify(report, null, 2)}\n`)
-for (const entry of taps) console.log(`[sidebar-tap] ${entry.destination}: ${entry.selectionChanges.join(' -> ') || 'no change'}`)
 if (flickers.length > 0) throw new Error(`Selection flickered while opening ${report.flickers.join(', ')}`)
