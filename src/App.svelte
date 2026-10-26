@@ -7478,6 +7478,16 @@ return rows`
           <h2>Lists</h2>
         </div>
         <div class="template-panel-actions">
+          {#if selectedListTemplate}
+            {@const template = selectedListTemplate}
+            <button
+              class="primary outlined"
+              type="button"
+              on:click={() => openLink({ kind: 'list', listTemplateId: template.id, label: template.name }, null, currentDay)}
+            >
+              View Today's List
+            </button>
+          {/if}
           <button class="primary outlined" type="button" on:click={openListHistory}>View List History →</button>
         </div>
       </header>

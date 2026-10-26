@@ -205,7 +205,15 @@
       scrollToPosition(scrollContainer, targetTop, behavior, targetBottomCollapse)
       return
     }
-    scrollToPosition(null, window.scrollY + rowRect.top - window.innerHeight * 0.08, behavior, 0)
+    // On mobile the page scrolls beneath the sticky app header, so measure the
+    // visible area from its bottom edge, as the modal does from its body.
+    const header = document.querySelector<HTMLElement>('.mobile-app-header')?.getBoundingClientRect()
+    const visibleTop = header && header.top <= 1 && header.bottom > 0 ? header.bottom : 0
+    const selectionTop = Math.max(
+      visibleTop + (window.innerHeight - visibleTop) * 0.08,
+      (pinnedParentsLine(row) ?? -Infinity) + 8,
+    )
+    scrollToPosition(null, Math.max(0, window.scrollY + rowRect.top - selectionTop), behavior, 0)
   }
 
   function scrollToPosition(
