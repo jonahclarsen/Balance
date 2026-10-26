@@ -127,7 +127,8 @@
 
     const nextIsEmpty = !html.includes('data-balance-image=') && text.trim() === '' && htmlToPlainText(html).trim() === ''
     const currentIsEmpty = !item.html.includes('data-balance-image=') && item.text.trim() === '' && htmlToPlainText(item.html).trim() === ''
-    if (nextIsEmpty && !currentIsEmpty && !options?.imageEdit) {
+    // A question's blank body is meaningful (type the answer), so clearing it is an edit.
+    if (nextIsEmpty && !currentIsEmpty && !options?.imageEdit && question === undefined) {
       pendingDeletion = true
       return
     }

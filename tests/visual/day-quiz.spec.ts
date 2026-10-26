@@ -134,3 +134,23 @@ test('a list question is asked when the list is generated', async ({ page }) => 
   await expect(list.getByText('Oat milk')).toBeVisible()
   await expect(list.getByText('Milk', { exact: true })).toHaveCount(0)
 })
+
+test('clearing a list question body keeps the question', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  await openView(page, 'Lists')
+  await page.getByRole('button', { name: '+ New list' }).click()
+  await page.getByLabel('List name').fill('Groceries')
+  const body = page.locator('[data-list-template-text-input]').first()
+  await body.fill('Milk')
+  await page.getByRole('button', { name: 'Ask a question when generating the list' }).click()
+  await page.keyboard.type('Which milk?')
+  await body.fill('')
+  await page.getByLabel('List name').click()
+
+  await expect(page.getByLabel('Question asked when generating the list')).toHaveValue('Which milk?')
+  await expect(page.locator('[data-list-template-text-input]')).toHaveCount(1)
+  await expect(body).toHaveText('')
+})
