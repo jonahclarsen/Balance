@@ -180,7 +180,9 @@ test('sidebar shows only modes that are on; reminders open their description', a
   // This file uses a desktop user agent, so on the narrow mobile layout the
   // pills live in the navigation drawer.
   const drawer=async (open:boolean) => {
-    if (testInfo.project.name==='mobile') await page.getByRole('button',{name:open?'Open navigation':'Close navigation',exact:true}).click()
+    if (testInfo.project.name!=='mobile') return
+    if (open) await page.getByRole('button',{name:'Open navigation',exact:true}).click()
+    else await page.getByRole('complementary').getByRole('button',{name:'Close navigation',exact:true}).click()
   }
   const sidebar=page.getByLabel('Situate modes')
   await drawer(true)
