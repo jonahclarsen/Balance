@@ -183,7 +183,9 @@
 
   function scrollRowNearTop(row: HTMLElement, behavior: ScrollBehavior) {
     const scrollContainer = findScrollContainer(row)
-    const rowRect = row.getBoundingClientRect()
+    // A parent row pinned above its children sits below its own place, so
+    // measure from its shell to scroll it back there in full.
+    const rowRect = (row.classList.contains('sticky-parent') && row.parentElement ? row.parentElement : row).getBoundingClientRect()
     if (scrollContainer) {
       const effectiveZoom = row.currentCSSZoom || 1
       const containerRect = scrollContainer.getBoundingClientRect()

@@ -85,3 +85,21 @@ test('editing a nested list row from the overlay reveals it below its pinned par
   await expect(page.locator(`${selector} [data-rich-text-input]`)).toBeFocused()
   await expect.poll(() => hiddenBehindParents(page, selector)).toBeLessThanOrEqual(0)
 })
+
+test('moving up from a child to its pinned parent in the list overlay shows the whole parent', async ({ page }) => {
+  await seed(page)
+  const dialog = await openOverlay(page)
+  await dialog.locator('[data-plan-item-id="Deep_3"] .item-text-display').click()
+  await expect.poll(() => hiddenBehindParents(page, '[role="dialog"] [data-plan-item-id="Deep_3"]')).toBeLessThanOrEqual(0)
+  for (const id of ['Deep_2', 'Deep_1', 'inner']) {
+    await page.keyboard.press('ArrowUp')
+    await expect(dialog.locator(`[data-plan-item-id="${id}"] .item-text-display`)).toBeFocused()
+  }
+  const inner = '[role="dialog"] [data-plan-item-id="inner"]'
+  // The parent sits in its own place, unclipped, rather than pinned above its children.
+  await expect.poll(() => page.locator(inner).evaluate((row) => (
+    Math.round(row.getBoundingClientRect().top - row.parentElement!.getBoundingClientRect().top)
+  ))).toBe(0)
+  await expect(page.locator(inner)).not.toHaveAttribute('style', /--tree-sticky-clip:/)
+  await expect.poll(() => hiddenBehindParents(page, inner)).toBeLessThanOrEqual(0)
+})
