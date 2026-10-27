@@ -626,8 +626,18 @@ class LexicalNoteEditorView implements NoteEditorView {
     return $blocksInOrder()[0] ?? null
   }
 
+  // A selection spanning several rows changes every row it touches and keeps
+  // the selection, so the rows can be switched again.
   setBlockKind(kind: NoteItemKind): void {
     this.runCommand(() => {
+      const selection = $currentRange()
+      const edges = selection ? $selectionEdges(selection) : null
+      if (edges && !edges.start.block.is(edges.end.block)) {
+        for (const block of $blocksBetween(edges.start.block, edges.end.block)) {
+          if (block.getKind() !== kind) block.setKind(kind)
+        }
+        return
+      }
       const block = this.$targetBlock() ?? $ensureAtLeastOneBlock()
       if (block.getKind() !== kind) block.setKind(kind)
       $selectEnd(block)

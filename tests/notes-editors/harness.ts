@@ -133,6 +133,18 @@ export class Harness {
     }, [offset, end] as const)
   }
 
+  // Selects from a point in one block's own text to a point in another's.
+  async selectAcross(fromId: string, fromOffset: number, toId: string, toOffset: number) {
+    await this.editorRoot().evaluate((root, [from, start, to, end]) => {
+      const textOf = (itemId: string) => {
+        const block = root.querySelector(`[data-item-id="${itemId}"]`)!
+        return document.createTreeWalker(block, NodeFilter.SHOW_TEXT).nextNode()!
+      }
+      root.focus()
+      document.getSelection()?.setBaseAndExtent(textOf(from), start, textOf(to), end)
+    }, [fromId, fromOffset, toId, toOffset] as const)
+  }
+
   async caretItemId(): Promise<string | null> {
     return this.page.evaluate(() => {
       const selection = document.getSelection()

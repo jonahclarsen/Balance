@@ -53,7 +53,9 @@ first body block returns to the title.
 
 Bold, italic, and underline are toggles through shortcuts and the toolbar.
 Typing a quote around selected text preserves its formatting and selection,
-and forms its own undo step. Markdown prefixes and the slash menu change block kinds. Checklist toggles
+and forms its own undo step. Markdown prefixes, the slash menu and the toolbar
+change block kinds; a toolbar kind applies to every block a selection touches
+and keeps the selection. Checklist toggles
 cascade to descendants and reconcile ancestors. Selected checklist blocks can
 be toggled together, by clicking a checkbox in the selection or with Mod+D or
 Mod+Enter, which toggle every checklist block the caret or selection touches

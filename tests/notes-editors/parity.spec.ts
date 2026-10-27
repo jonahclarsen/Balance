@@ -3,7 +3,7 @@
 // Runs identically against desktop Notes.
 
 import { expect, flatten, mod, test, type Harness } from './harness'
-import type { NoteItem } from '../../src/lib/types'
+import type { Note, NoteItem } from '../../src/lib/types'
 
 const isMac = process.platform === 'darwin'
 
@@ -560,6 +560,27 @@ test.describe('P-32 toolbar kind buttons', () => {
     // A kind change is its own undo step.
     await harness.undo()
     await harness.waitForNote(note.id, (stored) => stored.items[0].kind === 'numbered')
+  })
+})
+
+test.describe('P-32 toolbar kind buttons on a multi-row selection', () => {
+  test('a selection across rows changes every row it touches and stays selected', async ({ harness }) => {
+    await harness.boot({ select: 'Nested lists' })
+    const note = harness.noteByTitle('Nested lists')
+    const toolbar = harness.page.getByRole('toolbar', { name: 'Note formatting' })
+    const [stepOne, , stepThree, paragraph] = note.items.slice(2)
+    const touched = [stepOne, ...stepOne.children!, note.items[3], stepThree].map((item) => item.id)
+    const kindsOf = (stored: Note) => flatten(stored.items).filter((item) => touched.includes(item.id)).map((item) => item.kind)
+    await harness.selectAcross(stepOne.id, 2, stepThree.id, 3)
+    await toolbar.getByRole('button', { name: 'Bulleted list' }).click()
+    await harness.waitForNote(note.id, (stored) => kindsOf(stored).every((kind) => kind === 'bullet'))
+    await toolbar.getByRole('button', { name: 'Checklist' }).click()
+    await harness.waitForNote(note.id, (stored) => kindsOf(stored).every((kind) => kind === 'checklist'))
+    const stored = (await harness.storedNote(note.id))!
+    expect(stored.items[0].kind).toBe('bullet')
+    expect(stored.items.find((item) => item.id === paragraph.id)!.kind).toBe('paragraph')
+    await harness.undo()
+    await harness.waitForNote(note.id, (stored) => kindsOf(stored).every((kind) => kind === 'bullet'))
   })
 })
 
