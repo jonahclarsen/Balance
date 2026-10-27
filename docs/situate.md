@@ -14,8 +14,8 @@ not turn it off on another. Planner data is never shared with integrations.
 - **Touch grass:** AI chats and entertainment. Turns on only at evening, with
   heads-ups 15 and 5 minutes before. Turned on by hand during the day, a pass requires planning
   tomorrow and ends at evening; an emergency instead grants 5 minutes. At night, confirm that you just peed and spent
-  a minute in bed with the lights off and Herdr muted. Passes last 60 minutes,
-  shortened to 30 minutes for passes started after the late-night boundary.
+  a minute in bed with the lights off and Herdr muted. Passes last 50 minutes, or
+  25 minutes after the late-night boundary; a pass still running at the boundary drops to 25.
 - **Discord:** mobile only, manually enabled.
 - **Active Projects** (7 a.m.–8 p.m.) and **No Active Project** (9 p.m.–7 a.m.):
   reminder modes. They block nothing, have no quiz and can't be turned off; they

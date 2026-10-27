@@ -46,7 +46,7 @@ export const CATEGORIES: { id: Category; label: string; color: string }[] = [
   { id: 'custom', label: 'Other', color: '#5f7d8c' },
 ]
 const target = (category: Category, kind: Target['kind'], value: string): Target => ({ id: `${kind}:${value}`, category, kind, value })
-const PRESETS = 11
+const PRESETS = 12
 /** Lengths offered for an entertainment pass, chosen after its quiz. */
 export const ACCESS_MINUTES = [5, 15, 60]
 const emergency: Question = { ...q('emergency', 'Is this an emergency?'), when: { id: 'planned', answer: false }, minutes: 5 }
@@ -68,7 +68,7 @@ export function defaults(now = Date.now()): Document {
   const thrust = [q('thrust', 'Did you do one thrust? Get up and thrust your chosen object in and out of your bag.')]
   const doc: Document = {
     version: 1, revision: 0, presets: PRESETS, generatedAt: now, manual: {}, grants: [], epochs: [], windows: [], accessQuiz: entertainment,
-    settings: { wakeMinutes: 420, eveningMinutes: 1290, sunsetOffset: 240, lateOffset: 480, lateMinutes: 150, nightMinutes: 60, lateNightMinutes: 30 },
+    settings: { wakeMinutes: 420, eveningMinutes: 1290, sunsetOffset: 240, lateOffset: 480, lateMinutes: 150, nightMinutes: 50, lateNightMinutes: 25 },
     modes: [
       { id: 'dolo', name: 'Dolo', description: 'Social and messaging apps, plus entertainment.', color: PRESET_COLORS.dolo, platforms: ['mac', 'android'], scheduled: true, dayQuiz: thrust, nightQuiz: thrust, targets: targets.filter(t => t.category !== 'ai') },
       { id: 'touch-grass', name: 'Touch grass', description: 'AI chats and entertainment.', color: PRESET_COLORS['touch-grass'], platforms: ['mac', 'android'], scheduled: true, eveningOnly: true, headsUp: [15, 5], dayQuiz: [q('planned', 'Have you planned tomorrow?'), emergency], nightQuiz: [q('peed', 'Have you just peed?'), q('bed', 'Have you spent one minute in bed with the lights off and Herdr muted?')], targets: targets.filter(t => t.category !== 'social') },
@@ -89,7 +89,8 @@ export function upgradePresets(doc: Document): Document {
   // and v7 the reminder modes. v8 lets an emergency excuse Touch grass's planning question;
   // v9 turns Touch grass on only at evening, with 15- and 5-minute heads-ups; v10 replaces
   // each mode's entertainment quiz with one shared quiz, keeping Dolo's; v11 asks each
-  // entertainment pass for its length instead of a fixed one.
+  // entertainment pass for its length instead of a fixed one; v12 shortens untouched night
+  // passes from 60 and 30 minutes to 50 and 25.
   const preset = defaults(doc.generatedAt).modes
   const legacy = doc.modes as (Mode & Legacy)[]
   const accessQuiz = doc.accessQuiz ?? [legacy.find(m => m.id === 'dolo'), ...legacy].find(m => m?.accessQuiz?.length)?.accessQuiz ?? entertainment
@@ -102,7 +103,8 @@ export function upgradePresets(doc: Document): Document {
     return { ...mode, ...evening, dayQuiz, color: m.color ?? PRESET_COLORS[m.id] ?? MODE_COLORS[i % MODE_COLORS.length], description: m.description ?? fallback?.description ?? '', targets }
   })
   const { enabled: _enabled, ...rest } = doc as Document & Legacy
-  const { latitude: _latitude, longitude: _longitude, accessMinutes: _accessMinutes, ...settings } = doc.settings as Settings & Legacy
+  const { latitude: _latitude, longitude: _longitude, accessMinutes: _accessMinutes, ...kept } = doc.settings as Settings & Legacy
+  const settings = version < 12 && kept.nightMinutes === 60 && kept.lateNightMinutes === 30 ? { ...kept, nightMinutes: 50, lateNightMinutes: 25 } : kept
   const grants = doc.grants.map(g => ({ ...g, target: g.target ?? '' }))
   const reminders = version < 7 ? preset.filter(p => p.reminder && !modes.some(m => m.id === p.id)) : []
   return { ...rest, presets: PRESETS, accessQuiz, settings, modes: [...modes, ...reminders], grants, windows: doc.windows ?? [] }
@@ -250,6 +252,10 @@ export function quizProgress(quiz: Question[], answers: Answers): { next?: Quest
   }
   return { denied: false }
 }
+/** A Touch grass night pass shrinks to the late-night length when the late-night boundary passes. */
+export function nightPassEnd(s: Settings, e: Epoch, now: number): number {
+  return Math.min(now + (now >= e.late ? s.lateNightMinutes : s.nightMinutes) * minute, Math.max(now, e.late) + s.lateNightMinutes * minute)
+}
 /** An entertainment pass (targetId) lasts the chosen ACCESS_MINUTES. */
 export function grant(doc: Document, modeId: string, answers: Answers, startedAt: number, now = Date.now(), targetId = '', chosen?: number): Document {
   const mode = doc.modes.find(m => m.id === modeId)
@@ -259,10 +265,10 @@ export function grant(doc: Document, modeId: string, answers: Answers, startedAt
   const progress = quizProgress(quiz, answers)
   if (progress.denied || progress.next) throw new Error('Complete the quiz before continuing.')
   if (targetId && !ACCESS_MINUTES.includes(chosen!)) throw new Error('Choose how long you need.')
-  const s = doc.settings
   const limit = Math.min(...quiz.filter(q => asked(q, answers)).map(q => q.minutes ?? Infinity))
-  const minutes = Math.min(limit, targetId ? chosen! : mode.id === 'touch-grass' && e.phase === 'night' ? now >= e.late ? s.lateNightMinutes : s.nightMinutes : Infinity)
-  const until = !mode.scheduled && !targetId && minutes === Infinity ? Number.MAX_SAFE_INTEGER : Math.min(e.end, now + minutes * minute)
+  const minutes = Math.min(limit, targetId ? chosen! : Infinity)
+  const night = !targetId && mode.id === 'touch-grass' && e.phase === 'night' ? nightPassEnd(doc.settings, e, now) : Infinity
+  const until = !mode.scheduled && !targetId && minutes === Infinity && night === Infinity ? Number.MAX_SAFE_INTEGER : Math.min(e.end, night, now + minutes * minute)
   // An entertainment pass covers the site in every mode that blocks it.
   const passed = targetId ? doc.modes.filter(m => m.targets.some(t => t.id === targetId && t.category === 'entertainment') && startedAt >= (doc.manual[m.id] ?? 0)).map(m => m.id) : [modeId]
   const entries: Grant[] = passed.map(id => ({ mode: id, target: targetId, epoch: Math.max(e.at, doc.manual[id] ?? 0), until }))
