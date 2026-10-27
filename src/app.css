@@ -5220,14 +5220,14 @@ body.mobile-checkbox-dragging {
     visibility: visible;
   }
 
-  .sidebar > div:first-of-type {
+  .sidebar-brand {
     display: block;
     position: relative;
     height: 0;
     margin-bottom: -8px;
   }
 
-  .sidebar > div:first-of-type p,
+  .sidebar-brand p,
   .sidebar-footer p {
     display: none;
   }
@@ -7202,8 +7202,8 @@ textarea.note-title {
     left: 84px;
   }
 
-  .app-shell.macos-titlebar-overlay .sidebar > div:first-of-type {
-    padding-left: 128px;
+  .app-shell.macos-titlebar-overlay .sidebar-quick-actions {
+    margin-top: 0;
   }
 
   body {
@@ -7367,16 +7367,20 @@ textarea.note-title {
     transition: none;
   }
 
-  .sidebar > div:first-of-type {
+  .sidebar-quick-actions {
+    display: flex;
+    /* Sits just under the close button. */
+    margin-top: 32px;
+  }
+
+  .sidebar-brand {
     display: block;
     position: static;
     height: auto;
-    min-height: 48px;
     margin-bottom: 0;
-    padding-left: 44px;
   }
 
-  .sidebar > div:first-of-type p,
+  .sidebar-brand p,
   .sidebar-footer p {
     display: block;
   }

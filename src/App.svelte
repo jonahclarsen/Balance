@@ -7061,8 +7061,6 @@ return rows`
     </div>
   </header>
 
-  {#if isMobile}<SituatePills />{/if}
-
   {#if isMobile && (historyNotice || $redoAvailable)}
     <div class="history-notice" role="status">
       <span>{historyNotice || 'Change undone'}</span>
@@ -7107,7 +7105,7 @@ return rows`
       </button>
     </div>
 
-    <div>
+    <div class="sidebar-brand">
       <div class="sidebar-brand-heading">
         <h1>Balance</h1>
         {#if isTauri() && !$databaseLoadPending && !$databaseLoadError}
