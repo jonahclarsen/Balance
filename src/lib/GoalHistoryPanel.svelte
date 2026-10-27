@@ -31,7 +31,6 @@
   export let scrollRequest: { goalId: string; nonce: number } | null = null
 
   let search = ''
-  let overdueOnly = false
   let scrollEl: HTMLDivElement | undefined
   let namePaneEl: HTMLDivElement | undefined
   let mounted = false
@@ -67,7 +66,6 @@
       // the same transient state that destroying the component used to clear so
       // toggling IMAX does not change the panel's user-visible behavior.
       search = ''
-      overdueOnly = false
       highlightedGoalId = null
       copiedGoalId = null
       lastCenteredStartDate = null
@@ -90,7 +88,6 @@
 
   async function revealGoal(goalId: string, nonce: number) {
     search = ''
-    overdueOnly = false
     highlightedGoalId = null
     if (highlightResetTimer) clearTimeout(highlightResetTimer)
 
@@ -179,7 +176,7 @@
     else if (daysUntilLapse <= 3) summary.upcoming += 1
     return summary
   }, { overdue: 0, upcoming: 0 })
-  $: matchingGoals = filterGoalsByPhrase(
+  $: nextVisibleGoals = filterGoalsByPhrase(
     sortGoalsForRhythm(
       activeGoals,
       completions,
@@ -188,9 +185,6 @@
     ),
     search,
   )
-  $: nextVisibleGoals = overdueOnly
-    ? matchingGoals.filter((goal) => (goalDaysUntilLapse(goal, completions, viewedDate) ?? 0) < 0)
-    : matchingGoals
   // Re-sorting for a new viewed day usually keeps the same rows. Reassigning an
   // equal array would still re-render every goal row and all of its cells.
   let visibleGoals: Goal[] = []
@@ -307,10 +301,6 @@
       <button class="goal-history-open-goals" type="button" on:click={() => onOpenGoals()}>Goals</button>
     </div>
     <div class="goal-history-filters">
-      <label class="goal-history-overdue-filter">
-        <input type="checkbox" bind:checked={overdueOnly} />
-        <span>Overdue only</span>
-      </label>
       <div class="goal-history-search-field">
         <input
           class="goal-history-search"
@@ -396,11 +386,8 @@
           {:else}
             <div class="goal-history-empty">
               {#if search.trim()}
-                <span>{overdueOnly ? 'No overdue goals' : 'No goals'} match “{search.trim()}”.</span>
+                <span>No goals match “{search.trim()}”.</span>
                 <button type="button" on:click={() => (search = '')}>Clear search</button>
-              {:else if overdueOnly}
-                <span>No overdue goals.</span>
-                <button type="button" on:click={() => (overdueOnly = false)}>Show all goals</button>
               {:else}
                 <span>No goals active in this range.</span>
                 <button type="button" on:click={() => onOpenGoals()}>Add your first goal</button>

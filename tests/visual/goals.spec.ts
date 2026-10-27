@@ -1436,33 +1436,11 @@ test('goal rhythm and the goals page both use urgency order', async ({ page }, t
 
   const goalRhythm = page.getByRole('region', { name: 'Goal history' })
   const goalsButton = goalRhythm.getByRole('button', { name: 'Goals', exact: true })
-  const overdueLabel = page.locator('.goal-history-overdue-filter')
-  const overdueText = overdueLabel.getByText('Overdue only')
-  const overdueOnly = page.getByRole('checkbox', { name: 'Overdue only' })
   const goalSearch = page.getByRole('searchbox', { name: 'Search goals' })
-  const [goalsBounds, filterBounds, searchBounds] = await Promise.all([
-    goalsButton.boundingBox(),
-    overdueLabel.boundingBox(),
-    goalSearch.boundingBox(),
-  ])
+  const [goalsBounds, searchBounds] = await Promise.all([goalsButton.boundingBox(), goalSearch.boundingBox()])
   expect(goalsBounds).not.toBeNull()
-  expect(filterBounds).not.toBeNull()
   expect(searchBounds).not.toBeNull()
-  expect(goalsBounds!.x + goalsBounds!.width).toBeLessThan(filterBounds!.x)
-  expect(filterBounds!.x + filterBounds!.width).toBeLessThan(searchBounds!.x)
-  expect(filterBounds!.height).toBeGreaterThanOrEqual(32)
-
-  const filterCursors = await Promise.all([
-    overdueLabel.evaluate((element) => getComputedStyle(element).cursor),
-    overdueOnly.evaluate((element) => getComputedStyle(element).cursor),
-    overdueText.evaluate((element) => getComputedStyle(element).cursor),
-  ])
-  expect(filterCursors).toEqual(['pointer', 'pointer', 'pointer'])
-
-  await overdueText.click()
-  await expect(overdueOnly).toBeChecked()
-  await overdueLabel.click({ position: { x: filterBounds!.width - 2, y: filterBounds!.height / 2 } })
-  await expect(overdueOnly).not.toBeChecked()
+  expect(goalsBounds!.x + goalsBounds!.width).toBeLessThan(searchBounds!.x)
 
   if (testInfo.project.name === 'desktop') {
     const summaryBounds = await page.locator('.goal-history-summary').boundingBox()
@@ -1470,13 +1448,9 @@ test('goal rhythm and the goals page both use urgency order', async ({ page }, t
     expect(searchBounds!.x + searchBounds!.width).toBeLessThan(summaryBounds!.x)
   }
 
-  await overdueOnly.check()
-  await expect(page.locator('.goal-history-name span:not(.goal-color-dot)').allTextContents()).resolves.toEqual(['Overdue'])
   await goalSearch.fill('Sooner')
-  await expect(page.getByText('No overdue goals match “Sooner”.')).toBeVisible()
-  await page.getByRole('button', { name: 'Clear search' }).click()
-  await expect(page.locator('.goal-history-name span:not(.goal-color-dot)').allTextContents()).resolves.toEqual(['Overdue'])
-  await overdueOnly.uncheck()
+  await expect(page.locator('.goal-history-name span:not(.goal-color-dot)').allTextContents()).resolves.toEqual(['Sooner'])
+  await goalSearch.fill('')
 
   await goalsButton.click()
   await expect(
