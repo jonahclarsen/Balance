@@ -402,8 +402,13 @@ test('reversing a mobile checkbox drag unchecks tasks the finger retraces', asyn
   const rows = [1, 2, 3, 4].map((number) =>
     page.getByRole('listitem', { name: `Plan item: Filler task ${number}`, exact: true }),
   )
+  // Header content such as Situate mode pills can push the fourth task below
+  // the fold, where the finger could not reach it.
+  await rows[3].getByRole('checkbox').scrollIntoViewIfNeeded()
   const boxes = await Promise.all(rows.map((row) => row.getByRole('checkbox').boundingBox()))
   if (boxes.some((box) => !box)) throw new Error('Missing reversible checkbox gesture geometry')
+  const viewport = page.viewportSize()!
+  for (const box of boxes) expect(box!.y + box!.height).toBeLessThanOrEqual(viewport.height)
 
   const cdp = await page.context().newCDPSession(page)
   const touchPoint = (index: number) => ({
