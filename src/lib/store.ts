@@ -128,6 +128,7 @@ import type {
   IdeaGroup,
   IdeaGroupKind,
   IdeaItem,
+  VoiceClip,
   IdeaSnapshot,
   ListInstance,
   ListTemplate,
@@ -159,6 +160,7 @@ import { isNoteTrashExpired } from './noteTrash'
 import { copyNoteItemsWithNewIds, noteVersionGroupId } from './noteVersions'
 import { findIdea, ideaGroupId, ideaReviewGoalHue, ideaReviewGoalNameHtml, IDEA_GROUP_KINDS, IDEA_REVIEW_GOAL_CADENCE_DAYS, IDEA_REVIEW_GOAL_ID, IDEA_REVIEW_GOAL_NAME, isIdeaTrashExpired, needsIdeaReviewGoal } from './ideas'
 import { reconcileTaskNotifications } from './taskNotifications'
+import { reconcileVoiceClips } from './voiceClips'
 
 const STORAGE_KEY = 'balance.appState.v1'
 const ACTIVE_PLAN_DATE_KEY = 'balance:activePlanDate'
@@ -211,6 +213,7 @@ const ENTITY_COLLECTIONS = [
   'projectCheckIns',
   'prioritySessions',
   'ideaBuckets',
+  'voiceClips',
   'uneditedPlanItems',
   'templateQuestions',
   'templateItemConditions',
@@ -971,6 +974,7 @@ function createPlannerStore() {
       if (next === state) return state
       next = reconcileUneditedPlanItems(state, next)
       next = reconcileTaskNotifications(state, next)
+      next = reconcileVoiceClips(state, next)
       // Persist the bytes and their first reference in the same operation. A
       // checkpoint can never observe a half-finished image insertion.
       const nextImageIds = imageReferences(next)
@@ -2388,6 +2392,43 @@ function createPlannerStore() {
       commitEntities('add_idea', { kind, itemId: item.id }, (state) =>
         updateIdeaGroup(state, kind, (group) => ({ ...group, items: [...group.items, item] })))
       return item.id
+    },
+
+    // The idea starts empty; transcription fills it in.
+    addVoiceIdea(recording: Pick<VoiceClip, 'dataURL' | 'durationMs' | 'peaks'>) {
+      const item: IdeaItem = { ...createPlanItem(''), bucketedAt: nowISO() }
+      const clip: VoiceClip = { id: createId('voice'), ideaId: item.id, ...recording, createdAt: nowISO() }
+      commitEntities('add_voice_idea', { itemId: item.id, clipId: clip.id }, (state) => ({
+        ...updateIdeaGroup(state, 'proposition', (group) => ({ ...group, items: [...group.items, item] })),
+        voiceClips: [...state.voiceClips, clip],
+      }))
+      return item.id
+    },
+
+    // Fills an untouched idea with the transcript; typed text is left alone.
+    applyVoiceTranscript(clipId: Id, transcript: NonNullable<VoiceClip['transcript']>) {
+      commitEntities('transcribe_voice_idea', { clipId }, (state) => {
+        const clip = state.voiceClips.find((candidate) => candidate.id === clipId)
+        if (!clip) return state
+        const voiceClips = state.voiceClips.map((candidate) => candidate === clip ? { ...clip, transcript } : candidate)
+        const found = findIdea(state.ideaBuckets, clip.ideaId)
+        if (!found || found.item.text.trim() || !transcript.text.trim()) return { ...state, voiceClips }
+        const text = transcript.text.trim()
+        return {
+          ...updateIdeaGroupById(state, found.group.id, (group) => ({
+            ...group,
+            items: updatePlanItem(group.items, clip.ideaId, (item) => ({ ...item, text, html: escapeHTML(text) })),
+          })),
+          voiceClips,
+        }
+      })
+    },
+
+    deleteVoiceClip(clipId: Id) {
+      commitEntities('delete_voice_clip', { clipId }, (state) => {
+        const voiceClips = state.voiceClips.filter((clip) => clip.id !== clipId)
+        return voiceClips.length === state.voiceClips.length ? state : { ...state, voiceClips }
+      })
     },
 
     importIdeas(items: PlanItem[], kind: IdeaGroupKind = 'proposition') {
@@ -4255,6 +4296,7 @@ export async function inspectDatabase(): Promise<DatabaseInspection | null> {
       projectCheckIns: [],
       prioritySessions: [],
       ideaBuckets: [],
+      voiceClips: [],
       notes: [],
       images: [],
       goals: [],
@@ -4393,6 +4435,7 @@ function* normalizeStateSteps(state: AppState): Generator<void, AppState, void> 
     projectCheckIns: state.projectCheckIns ?? [],
     prioritySessions: state.prioritySessions ?? [],
     ideaBuckets: state.ideaBuckets ?? [],
+    voiceClips: state.voiceClips ?? [],
     preferences: normalizeReplicatedPreferences(state.preferences),
     goals: yield* normalizeRecords(state.goals ?? [], normalize.goals),
     goalCompletions: yield* normalizeRecords(state.goalCompletions ?? [], normalize.goalCompletions),

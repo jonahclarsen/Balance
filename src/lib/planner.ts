@@ -186,6 +186,7 @@ export function createInitialState(): AppState {
     projectCheckIns: [],
     prioritySessions: [],
     ideaBuckets: [],
+    voiceClips: [],
     notes: [],
     images: [],
     goals: [createDefaultTemplateReviewGoal(template)],

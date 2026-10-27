@@ -362,6 +362,23 @@ export type IdeaItem = PlanItem & {
   dayAssignmentDate?: string
 }
 
+export type VoiceWord = { text: string; start: number; end: number }
+
+// A recorded idea's audio. It lives only while its idea waits in Proposition
+// Party; any change that moves or deletes the idea deletes the clip with it.
+export type VoiceClip = {
+  id: Id
+  ideaId: Id
+  // data:audio/webm;codecs=opus;base64,… recorded at 128 kbps.
+  dataURL: string
+  durationMs: number
+  // 0–255 loudness for every PEAKS_PER_SECOND slice, drawn without decoding.
+  peaks: number[]
+  createdAt: string
+  // Word times are seconds from the start of the clip.
+  transcript?: { text: string; words: VoiceWord[]; model: string; transcribedAt: string }
+}
+
 // Where an idea sat before a sort decision moved it.
 export type IdeaSnapshot = { kind: IdeaGroupKind; index: number; item: IdeaItem }
 
@@ -404,6 +421,7 @@ export type AppState = {
   prioritySessions: PrioritySession[]
   // Stored as the ideaBuckets collection, with bucket_<kind> record IDs.
   ideaBuckets: IdeaGroup[]
+  voiceClips: VoiceClip[]
   notes: Note[]
   goals: Goal[]
   goalCompletions: GoalCompletion[]

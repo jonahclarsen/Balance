@@ -100,6 +100,7 @@
   export let collapsible = false
   // Idea rows have no schedule: no time pill, add-time button or time menu entries.
   export let hideTime = false
+  export let placeholder = 'Plan item'
 
   $: selected = selectedItemIds.has(item.id)
   let matchedGoals: Goal[] = []
@@ -1049,7 +1050,7 @@
         html={item.html}
         text={item.text}
         done={item.done}
-        placeholder="Plan item"
+        {placeholder}
         ariaLabel="Plan item"
         revision={historyRevision}
         onChange={(html, text, options) => patchItem(planId, item.id, { html, text }, options)}

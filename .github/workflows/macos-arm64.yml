@@ -46,6 +46,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # FluidAudio and its binary artifacts take minutes to fetch and compile.
+      - name: Cache transcriber Swift packages
+        uses: actions/cache@v4
+        with:
+          path: src-tauri/macos/BalanceTranscriber/.build
+          key: transcriber-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src-tauri/macos/BalanceTranscriber/Package.swift', 'src-tauri/macos/BalanceTranscriber/Package.resolved') }}
+
       - name: Verify notification bridge in dev executables
         run: node scripts/test-macos-task-notifications.mjs
 
@@ -120,6 +127,12 @@ jobs:
           file "$WIDGET_EXECUTABLE" | grep -q "arm64"
           nm "$WIDGET_EXECUTABLE" | grep -q "U _NSExtensionMain"
           codesign --verify --strict "$WIDGET_PATH"
+          TRANSCRIBER="$APP_PATH/Contents/MacOS/balance-transcriber"
+          test -x "$TRANSCRIBER"
+          file "$TRANSCRIBER" | grep -q "arm64"
+          codesign --verify --strict "$TRANSCRIBER"
+          codesign -d --entitlements - "$APP_PATH" 2>/dev/null | grep -q "com.apple.security.device.audio-input"
+          /usr/libexec/PlistBuddy -c 'Print :NSMicrophoneUsageDescription' "$PLIST"
           codesign --verify --deep --strict "$APP_PATH"
           file "$APP_EXECUTABLE" | tee executable-architecture.txt
           file "$APP_EXECUTABLE" | grep -q "arm64"

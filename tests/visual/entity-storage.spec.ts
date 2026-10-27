@@ -64,6 +64,12 @@ test('feature actions emit generic patches that replay in the native database', 
     const trashed = store.addIdea('Synthetic trashed idea')
     store.moveIdeaToGroup(trashed, 'trash')
     store.purgeExpiredIdeas(Date.now() + 31 * 24 * 60 * 60 * 1000)
+    const recording = { dataURL: 'data:audio/webm;codecs=opus;base64,GkXfow==', durationMs: 1200, peaks: [0, 128, 255] }
+    const voiceIdea = store.addVoiceIdea(recording)
+    const voiceClip = live.voiceClips.find((clip: any) => clip.ideaId === voiceIdea).id
+    store.applyVoiceTranscript(voiceClip, { text: 'Synthetic spoken idea', words: [{ text: 'Synthetic', start: 0, end: 0.4 }], model: 'synthetic', transcribedAt: '2026-10-27T00:00:00Z' })
+    store.addVoiceIdea(recording)
+    store.moveIdeaToGroup(voiceIdea, 'possible')
     store.moveImage(() => {
       store.renameNote(note, 'Synthetic compound note edit')
       store.renameMetric(metric, 'Synthetic compound metric edit')
@@ -82,7 +88,7 @@ test('feature actions emit generic patches that replay in the native database', 
       expect(operation.payload.action).toEqual(expect.any(String))
     }
   }
-  for (const collection of ['templateListExpansions', 'notes', 'listTemplates', 'lists', 'metrics', 'metricEntries', 'goals', 'projects', 'ideaBuckets']) {
+  for (const collection of ['templateListExpansions', 'notes', 'listTemplates', 'lists', 'metrics', 'metricEntries', 'goals', 'projects', 'ideaBuckets', 'voiceClips']) {
     expect(fixture.operations.some((operation: any) => operation.payload.entityChanges.upserts.some((upsert: any) => upsert.collection === collection))).toBe(true)
   }
   mkdirSync('artifacts/entity-fixtures', { recursive: true })

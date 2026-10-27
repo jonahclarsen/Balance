@@ -29,6 +29,7 @@ mod android_widget;
 mod database_keys;
 #[cfg(test)]
 mod theme_performance;
+mod voice_transcription;
 mod plan_regeneration;
 mod backup_browser;
 mod background_sync_status;
@@ -170,7 +171,7 @@ const SYNC_LOG_DIRTY_SINCE_MS: &str = "sync_log_dirty_since_ms";
 const REPLICATED_PREFERENCES: &str = "replicated_preferences";
 const DEVICE_APPEARANCE: &str = "device_appearance";
 const DAY_THEME_PREFERENCE_PREFIX: &str = "dayTheme/";
-const ENTITY_COLLECTIONS: [&str; 17] = [
+const ENTITY_COLLECTIONS: [&str; 18] = [
     "images",
     "uneditedPlanItems",
     "templateQuestions",
@@ -188,6 +189,7 @@ const ENTITY_COLLECTIONS: [&str; 17] = [
     "projectCheckIns",
     "prioritySessions",
     "ideaBuckets",
+    "voiceClips",
 ];
 const DEFAULT_DAILY_REMINDER: &str = "This shouldn't be aspirational";
 const GITHUB_LATEST_RELEASE_API: &str =
@@ -3237,6 +3239,7 @@ fn read_app_state_from_database_with_progress(
         "projectCheckIns": lists_metrics_data["projectCheckIns"].clone(),
         "prioritySessions": read_entity_collection(connection, "prioritySessions")?,
         "ideaBuckets": read_entity_collection(connection, "ideaBuckets")?,
+        "voiceClips": read_entity_collection(connection, "voiceClips")?,
         "goals": goal_data["goals"].clone(),
         "goalCompletions": goal_data["goalCompletions"].clone(),
         "operations": [],
@@ -11029,6 +11032,7 @@ pub fn run() {
             let _ = (window, event);
         })
         .invoke_handler(tauri::generate_handler![
+            voice_transcription::transcribe_voice_clips,
             situate::situate_load,
             situate::situate_save,
             situate::situate_permissions,
@@ -12427,6 +12431,52 @@ mod tests {
         assert_eq!(undone["ideaBuckets"], json!([]));
         let redone = redo_last_operation_in_database(&mut connection).unwrap().unwrap();
         assert_eq!(redone["ideaBuckets"], json!([group]));
+    }
+
+    #[test]
+    fn voice_clips_persist_and_leave_with_their_idea() {
+        let database = TestDatabase::new("voice-clips");
+        let recovery_key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        replace_app_state(&mut connection, &test_state("Synthetic voice clips")).unwrap();
+        let idea = json!({"id": "idea_voice", "text": "", "html": "", "done": false,
+            "startMinutes": null, "endMinutes": null, "children": [], "bucketedAt": "2026-10-27T08:00:00Z"});
+        let proposition = json!({"id": "bucket_proposition", "kind": "proposition", "items": [idea]});
+        let clip = json!({"id": "voice_test", "ideaId": "idea_voice", "dataURL": "data:audio/webm;codecs=opus;base64,GkXfow==",
+            "durationMs": 1200, "peaks": [0, 128, 255], "createdAt": "2026-10-27T08:00:00Z"});
+        let add = json!({
+            "id": "voice-op-1", "deviceId": "device_test", "sequence": 2,
+            "type": "apply_entity_changes", "timestamp": "2026-10-27T08:00:00Z",
+            "payload": {"action": "add_voice_idea", "entityChanges": {"version": 2, "deletes": [], "upserts": [
+                {"collection": "ideaBuckets", "key": "bucket_proposition", "position": 0, "value": proposition,
+                 "patches": [sync::entities::diff(&Value::Null, &proposition)]},
+                {"collection": "voiceClips", "key": "voice_test", "position": 0, "value": clip,
+                 "patches": [sync::entities::diff(&Value::Null, &clip)]},
+            ]}}
+        });
+        persist_operation_to_database(&mut connection, &add).unwrap();
+        let empty = json!({"id": "bucket_proposition", "kind": "proposition", "items": []});
+        let trash = json!({"id": "bucket_trash", "kind": "trash", "items": [idea]});
+        let sort = json!({
+            "id": "voice-op-2", "deviceId": "device_test", "sequence": 3,
+            "type": "apply_entity_changes", "timestamp": "2026-10-27T08:01:00Z",
+            "payload": {"action": "move_idea", "entityChanges": {"version": 2,
+                "deletes": [{"collection": "voiceClips", "key": "voice_test"}],
+                "upserts": [
+                    {"collection": "ideaBuckets", "key": "bucket_proposition", "position": null, "value": empty,
+                     "patches": [sync::entities::diff(&proposition, &empty)]},
+                    {"collection": "ideaBuckets", "key": "bucket_trash", "position": 1, "value": trash,
+                     "patches": [sync::entities::diff(&Value::Null, &trash)]},
+                ]}}
+        });
+        persist_operation_to_database(&mut connection, &sort).unwrap();
+        drop(connection);
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        assert_eq!(read_app_state_from_database(&connection).unwrap().unwrap()["voiceClips"], json!([]));
+        let undone = undo_last_operation_in_database(&mut connection).unwrap().unwrap();
+        assert_eq!(undone["voiceClips"], json!([clip]));
+        let redone = redo_last_operation_in_database(&mut connection).unwrap().unwrap();
+        assert_eq!(redone["voiceClips"], json!([]));
     }
 
     #[test]

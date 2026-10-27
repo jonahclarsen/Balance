@@ -138,6 +138,8 @@
         { keys: ['M'], label: 'Sorting: append this idea to the previous one' },
         { keys: ['E'], label: 'Sorting: edit the idea' },
         { keys: ['alt', 'F'], label: 'Sorting: open a link in the idea' },
+        { keys: ['mod', 'enter'], label: 'Voice idea: play or pause the selection' },
+        { keys: ['Space'], label: 'Voice idea: play or pause, outside the text' },
         { keys: ['X'], label: 'Sorting: after Yes, cut the idea to the clipboard' },
         { keys: ['D'], label: 'Sorting: after Yes, add the idea to the day being generated' },
       ],

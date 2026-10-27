@@ -163,6 +163,12 @@ runs:
       shell: bash
       run: node .github/scripts/configure-android-selection-formatting.mjs
 
+    - name: Configure voice idea recording
+      shell: bash
+      run: |
+        node --test .github/scripts/configure-android-voice-input.test.mjs
+        node .github/scripts/configure-android-voice-input.mjs
+
     - name: Bundle the offline Android barcode model
       shell: bash
       run: node .github/scripts/configure-android-barcode-scanner.mjs

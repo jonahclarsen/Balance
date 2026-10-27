@@ -52,6 +52,7 @@
   import IdeaSortModal from './lib/IdeaSortModal.svelte'
   import IdeaImportModal from './lib/IdeaImportModal.svelte'
   import { ideaGroupItems, findIdea, IDEA_GROUPS, IDEA_REVIEW_GOAL_NAME } from './lib/ideas'
+  import { awaitingTranscription } from './lib/voiceClips'
   import { IDEA_REVIEW_LABELS, type IdeaReviewKind } from './lib/ideaLinks'
   import { prioritizeReveal } from './lib/prioritize'
   import NotesPanel from './lib/NotesPanel.svelte'
@@ -3341,7 +3342,8 @@ return rows`
   }
 
   function sortPropositions() {
-    const queue = ideaGroupItems($plannerStore.ideaBuckets, 'proposition')
+    const waiting = awaitingTranscription($plannerStore.voiceClips)
+    const queue = ideaGroupItems($plannerStore.ideaBuckets, 'proposition').filter((item) => !waiting.has(item.id))
     if (queue.length > 0) void askIdeaSort(queue, 'Sort Proposition Party')
   }
 
@@ -3715,8 +3717,10 @@ return rows`
     // Every proposition must land in a group or the new day before it begins.
     // Keep day reservations on the ideas until generation succeeds, so closing
     // either the sorter or the quiz preserves choices for this specific date.
+    // Recordings wait in Proposition Party until they are transcribed.
+    const waiting = awaitingTranscription($plannerStore.voiceClips)
     const propositions = ideaGroupItems($plannerStore.ideaBuckets, 'proposition')
-      .filter((item) => item.dayAssignmentDate !== date)
+      .filter((item) => item.dayAssignmentDate !== date && !waiting.has(item.id))
     if (propositions.length > 0 && !(await askIdeaSort(
       propositions, 'Sort new ideas', (itemId) => plannerStore.assignIdeaToDay(itemId, date), startNewIdeaSort(date, propositions),
     ))) return
@@ -8020,6 +8024,7 @@ return rows`
     {#if view === 'ideas'}
       <IdeasPanel
         groups={$plannerStore.ideaBuckets}
+        voiceClips={$plannerStore.voiceClips}
         {listTemplates}
         {metrics}
         {notes}
