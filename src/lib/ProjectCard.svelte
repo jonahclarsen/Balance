@@ -36,6 +36,13 @@
     const href = anchor.getAttribute('href') ?? ''
     if (isURL(href)) void openExternalURL(href)
   }
+  // Holding a card on touch lifts it for reordering instead of opening the link menu.
+  function contextMenu(event: MouseEvent) {
+    const touch = (event as PointerEvent).pointerType === 'touch' || (event as MouseEvent & { sourceCapabilities?: { firesTouchEvents?: boolean } }).sourceCapabilities?.firesTouchEvents
+    if (!touch) return
+    event.preventDefault()
+    event.stopPropagation()
+  }
 </script>
 
 <!-- Reorderable lists capture the pointer, so they open taps through projectReordering instead of this click. -->
@@ -50,6 +57,7 @@
   tabindex="0"
   aria-haspopup="dialog"
   on:click={click}
+  on:contextmenu={contextMenu}
   on:keydown={(event) => {
     if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return
     event.preventDefault()
@@ -65,7 +73,7 @@
 </div>
 
 <style>
-  div.project-card { display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 40px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); user-select: none; -webkit-user-select: none; }
+  div.project-card { display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 40px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
   div.project-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   div.project-card.active { border-color: color-mix(in srgb, var(--project-color) 55%, var(--line)); background: color-mix(in srgb, var(--project-color) 12%, var(--paper)); }
   div.project-card.highlighted { animation: project-highlight 1.6s ease-out; }

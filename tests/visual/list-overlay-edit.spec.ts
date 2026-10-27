@@ -1048,6 +1048,44 @@ test('an open list modal keeps the day behind it from scrolling on mobile', asyn
 })
 
 
+test('List History keeps the selected row clear of the mobile header', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile', 'Only phones scroll the page beneath a sticky header')
+  const dialog = await openLongGroceriesOverlay(page)
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  await openView(page, 'Lists')
+  await page.getByRole('button', { name: 'View List History →' }).click()
+
+  const header = page.locator('.mobile-app-header')
+  for (const text of ['Item 06', 'Item 07', 'Item 08']) {
+    const row = page.getByRole('listitem', { name: `Plan item: ${text}`, exact: true })
+    await row.getByLabel('Toggle item').click()
+    await expect.poll(async () => {
+      const headerBottom = (await header.boundingBox())!.y + (await header.boundingBox())!.height
+      return (await row.boundingBox())!.y - headerBottom
+    }).toBeGreaterThan(8)
+  }
+})
+
+test('Lists opens today’s list in its modal, generating it first', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await openView(page, 'Lists')
+  await page.getByRole('button', { name: '+ New list' }).click()
+  await page.getByLabel('List name').fill('Groceries')
+  await page.locator('[data-list-template-text-input]').first().fill('Milk')
+
+  await page.getByRole('button', { name: "View Today's List" }).click()
+  const dialog = page.getByRole('dialog', { name: 'Groceries' })
+  await expect(dialog.getByRole('listitem', { name: 'Plan item: Milk' })).toBeVisible()
+  await dialog.getByRole('listitem', { name: 'Plan item: Milk' }).getByRole('checkbox').click()
+  await expect(dialog).toHaveCount(0)
+
+  await page.getByRole('button', { name: "View Today's List" }).click()
+  await expect(dialog.getByRole('listitem', { name: 'Plan item: Milk' }).getByRole('checkbox')).toBeChecked()
+})
+
 test('recent pages reuse live editors and release hidden modal controls', async ({ page }) => {
   const pageErrors: string[] = []
   page.on('pageerror', (error) => pageErrors.push(error.message))

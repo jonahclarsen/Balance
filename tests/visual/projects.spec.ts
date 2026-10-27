@@ -318,6 +318,73 @@ test('dragging a project row to the window edge scrolls the page and keeps the r
   await expect(cards.locator('.project-name').first()).not.toHaveText('Project 1')
 })
 
+test.describe('touch', () => {
+  test.use({ hasTouch: true })
+
+  test('project rows scroll under a swipe and move only after a hold, without a link menu', async ({ page }) => {
+    await page.setViewportSize({ width: page.viewportSize()!.width, height: 600 })
+    await page.goto('/')
+    await openView(page, 'Projects')
+    const names = Array.from({ length: 16 }, (_, index) => `Project ${index + 1}`)
+    for (const name of names) await addProject(page, name)
+    const cards = page.locator('.project-list .project-card')
+    await expect(cards.locator('.project-name')).toHaveText(names)
+    const scrollTop = () => page.evaluate(() => {
+      for (let element = document.querySelector('.project-card')?.parentElement; element; element = element.parentElement) {
+        if (element.scrollTop > 0) return element.scrollTop
+      }
+      return document.scrollingElement?.scrollTop ?? 0
+    })
+    const cdp = await page.context().newCDPSession(page)
+    const touch = (type: string, x?: number, y?: number) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: x === undefined ? [] : [{ x, y }] })
+    const center = async (index: number) => {
+      const box = (await cards.nth(index).boundingBox())!
+      return { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+    }
+
+    // Holding lifts the card; then dragging moves it instead of scrolling.
+    await cards.nth(3).evaluate((card) => card.scrollIntoView({ block: 'center' }))
+    // Let the scroll settle; a press that stops a fling never lifts a card.
+    await page.waitForTimeout(300)
+    const from = await center(3)
+    const to = await center(5)
+    await touch('touchStart', from.x, from.y)
+    await expect(page.locator('.project-dragging')).toHaveCount(1)
+    const held = await scrollTop()
+    for (let step = 1; step <= 12; step += 1) await touch('touchMove', from.x, from.y + (to.y + 10 - from.y) * step / 12)
+    await expect(page.locator('.project-drop-indicator')).toBeVisible()
+    expect(await scrollTop()).toBe(held)
+    await touch('touchEnd')
+    await expect(cards.locator('.project-name').nth(5)).toHaveText('Project 4')
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+
+    // A quick tap still opens the project.
+    const tap = await center(3)
+    await touch('touchStart', tap.x, tap.y)
+    await touch('touchEnd')
+    await expect(page.getByRole('dialog', { name: 'Project 5 details', exact: true })).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+
+    // A vertical swipe scrolls straight away and leaves the order alone.
+    const swipe = await center(4)
+    const before = await scrollTop()
+    await touch('touchStart', swipe.x, swipe.y)
+    for (let step = 1; step <= 10; step += 1) await touch('touchMove', swipe.x, swipe.y - step * 15)
+    await touch('touchEnd')
+    await expect.poll(scrollTop).toBeGreaterThan(before + 40)
+    await expect(page.locator('.project-dragging')).toHaveCount(0)
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    await expect(cards.locator('.project-name').nth(5)).toHaveText('Project 4')
+
+    // A touch long press never opens the link menu; a right-click still does.
+    await cards.nth(3).dispatchEvent('contextmenu', { pointerType: 'touch', bubbles: true, cancelable: true })
+    await expect(page.locator('.link-context-menu')).toHaveCount(0)
+    await cards.nth(3).click({ button: 'right' })
+    await expect(page.locator('.link-context-menu')).toBeVisible()
+  })
+})
+
 async function pasteLinkOverText(editor: import('@playwright/test').Locator, link: string, start: number, end: number) {
   await editor.evaluate((element, selection) => {
     const range = document.createRange()

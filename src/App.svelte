@@ -1021,7 +1021,15 @@ return rows`
       if (Math.hypot(event.clientX - press.x, event.clientY - press.y) > 10) reset()
     }
     function end(event: PointerEvent) {
-      if (press?.id === event.pointerId) reset()
+      if (press?.id !== event.pointerId) return
+      if (event.type === 'pointercancel') return reset()
+      // Keep a tap's selection through to its click instead of flipping back
+      // between release and navigation. Clear it if no navigation follows.
+      press = null
+      const revision = mobileNavRevision
+      setTimeout(() => {
+        if (!press && revision === mobileNavRevision) mobileNavPreview = null
+      }, 500)
     }
     node.addEventListener('pointerdown', down)
     window.addEventListener('pointermove', move)
@@ -7053,8 +7061,6 @@ return rows`
     </div>
   </header>
 
-  {#if isMobile}<SituatePills />{/if}
-
   {#if isMobile && (historyNotice || $redoAvailable)}
     <div class="history-notice" role="status">
       <span>{historyNotice || 'Change undone'}</span>
@@ -7099,7 +7105,7 @@ return rows`
       </button>
     </div>
 
-    <div>
+    <div class="sidebar-brand">
       <div class="sidebar-brand-heading">
         <h1>Balance</h1>
         {#if isTauri() && !$databaseLoadPending && !$databaseLoadError}
@@ -7478,6 +7484,16 @@ return rows`
           <h2>Lists</h2>
         </div>
         <div class="template-panel-actions">
+          {#if selectedListTemplate}
+            {@const template = selectedListTemplate}
+            <button
+              class="primary outlined"
+              type="button"
+              on:click={() => openLink({ kind: 'list', listTemplateId: template.id, label: template.name }, null, currentDay)}
+            >
+              View Today's List
+            </button>
+          {/if}
           <button class="primary outlined" type="button" on:click={openListHistory}>View List History →</button>
         </div>
       </header>

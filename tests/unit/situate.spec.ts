@@ -45,7 +45,7 @@ test('touch grass turns on only at evening, with heads-ups, and a daytime turn-o
   expect(backOn(d,tg,date(0,12))).toBe(date(0,21,30))
   expect([date(0,21,14),date(0,21,15),date(0,21,25),date(0,21,30)].map(t=>headsUp(d,tg,'mac',t))).toEqual([null,15,5,null])
   const night=grant(d,'touch-grass',{peed:true,bed:true},date(0,23),date(0,23))
-  expect(headsUp(night,tg,'mac',date(0,23,45))).toBe(15)
+  expect(headsUp(night,tg,'mac',date(0,23,35))).toBe(15)
   const nightDolo=grant(d,'dolo',{thrust:true},date(0,23),date(0,23))
   expect(backOn(nightDolo,d.modes[0],date(0,23))).toBe(date(1,7))
   const manual=enableMode(d,'touch-grass',date(0,12))
@@ -55,14 +55,20 @@ test('touch grass turns on only at evening, with heads-ups, and a daytime turn-o
   expect(legacy.modes[1]).toMatchObject({ eveningOnly:true, headsUp:[15,5] })
   expect(() => validate({ ...d, modes:[{ ...tg, headsUp:[0] }] })).toThrow('Heads-ups')
 })
-test('night passes last 60 minutes, late passes 30, and never cross wake time', () => {
+test('night passes last 50 minutes, drop to 25 at the late boundary, and never cross wake time', () => {
   const d=fixture();const answers={peed:true,bed:true}
-  for(const [now,duration] of [[date(0,23),60],[date(1,2,30),30],[date(1,6,50),10]]) {
+  // Late night starts at 2:30am.
+  for(const [now,duration] of [[date(0,23),50],[date(1,2),50],[date(1,2,10),45],[date(1,2,20),35],[date(1,2,30),25],[date(1,6,50),10]]) {
     const allowed=grant(d,'touch-grass',answers,now,now)
     expect(allowed.grants[0].until-now).toBe(duration*60000)
     // Touch grass turns on only at evening, so a pass that reaches wake time leaves it off.
     expect(isActive(allowed,d.modes[1],'mac',now+duration*60000)).toBe(now+duration*60000<date(1,7))
   }
+})
+test('old default night passes shorten to 50 and 25 minutes, custom ones stay', () => {
+  const d=fixture()
+  expect(upgradePresets({ ...d, presets:11, settings:{ ...d.settings, nightMinutes:60, lateNightMinutes:30 } }).settings).toMatchObject({ nightMinutes:50, lateNightMinutes:25 })
+  expect(upgradePresets({ ...d, presets:11, settings:{ ...d.settings, nightMinutes:65, lateNightMinutes:30 } }).settings).toMatchObject({ nightMinutes:65, lateNightMinutes:30 })
 })
 test('entertainment branches allow work or permitted care only, scoped to one target in every mode', () => {
   const now=date(0,12);const d=enableMode(fixture(),'touch-grass',now);const target='domain:youtube.com'

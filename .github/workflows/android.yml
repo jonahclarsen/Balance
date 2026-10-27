@@ -81,6 +81,11 @@ on:
         required: false
         default: false
         type: boolean
+      run_sidebar_tap_recording:
+        description: Record real taps on drawer navigation and check selection does not flicker
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -667,6 +672,56 @@ jobs:
             android-interaction-window-*.txt
             android-interaction-failure-*.png
             android-interaction-bugreport-*.zip
+          if-no-files-found: ignore
+
+  sidebar-tap-recording:
+    name: Android drawer navigation tap recording
+    if: github.event_name == 'workflow_dispatch' && inputs.run_sidebar_tap_recording
+    needs: build-debug
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Download APK artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: Balance-android-debug
+
+      - name: Tap drawer navigation while recording the screen
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: default
+          force-avd-creation: false
+          emulator-options: -no-window -gpu lavapipe -noaudio -no-boot-anim
+          disable-animations: false
+          script: timeout --foreground --kill-after=30s 12m node .github/scripts/android-sidebar-tap-recording.mjs
+
+      - name: Upload recording
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-sidebar-tap-recording
+          path: |
+            android-sidebar-tap.mp4
+            android-sidebar-tap.json
           if-no-files-found: ignore
 
   publish-nightly-release:

@@ -75,13 +75,13 @@ test('a mode keeps at least one device and leaves devices it no longer covers', 
 test('schedule values step by five minutes and save', async ({page}) => {
   const night=page.getByRole('spinbutton',{name:'Night pass',exact:true})
   await night.focus();await night.press('ArrowUp')
-  await expect(night).toHaveText('65 min')
+  await expect(night).toHaveText('55 min')
   const morning=page.getByRole('spinbutton',{name:'Morning',exact:true})
   await morning.focus();await morning.press('ArrowDown')
   await expect(morning).toHaveText('6:55am')
   await page.reload();await openView(page,'Situate')
   const settings=await page.evaluate(()=>JSON.parse(localStorage.getItem('balance-situate-v1')!).settings)
-  expect(settings).toMatchObject({nightMinutes:65,wakeMinutes:415})
+  expect(settings).toMatchObject({nightMinutes:55,wakeMinutes:415})
 })
 
 test('night passes show a countdown and automatically restore the boundary', async ({page}) => {
@@ -92,9 +92,9 @@ test('night passes show a countdown and automatically restore the boundary', asy
   await quiz.getByRole('button',{name:'Yes',exact:true}).click()
   await expect(quiz.getByRole('heading',{level:2})).toContainText('one minute in bed')
   await quiz.getByRole('button',{name:'Yes',exact:true}).click()
-  await expect(page.getByRole('timer')).toContainText('60 min')
+  await expect(page.getByRole('timer')).toContainText('50 min')
   await expect(page.getByRole('button',{name:'Turn on Touch grass',exact:true})).toBeVisible()
-  await page.clock.fastForward(3600001)
+  await page.clock.fastForward(3000001)
   await expect(page.getByRole('button',{name:'Turn off Touch grass',exact:true})).toBeVisible()
   await expect(page.getByRole('timer')).toHaveCount(0)
 })
@@ -176,11 +176,22 @@ test('mode descriptions grow with their lines and keep them in the preview', asy
   await expect.poll(()=>preview.evaluate(el=>(el as HTMLElement).innerText)).toBe('One\nTwo\nThree')
 })
 
-test('sidebar shows only modes that are on; reminders open their description', async ({page}) => {
+test('sidebar shows only modes that are on; reminders open their description', async ({page}, testInfo) => {
+  // This file uses a desktop user agent, so on the narrow mobile layout the
+  // pills live in the navigation drawer.
+  const drawer=async (open:boolean) => {
+    if (testInfo.project.name!=='mobile') return
+    if (open) await page.getByRole('button',{name:'Open navigation',exact:true}).click()
+    else await page.getByRole('complementary').getByRole('button',{name:'Close navigation',exact:true}).click()
+  }
   const sidebar=page.getByLabel('Situate modes')
+  await drawer(true)
+  await expect(sidebar.getByRole('button',{name:'Active Projects',exact:true})).toBeVisible()
   await expect(sidebar.getByRole('button',{name:'No Active Project',exact:true})).toHaveCount(0)
   await expect(sidebar.getByRole('button',{name:'Touch grass',exact:true})).toHaveCount(0)
+  await drawer(false)
   await page.getByRole('button',{name:'Turn on Touch grass',exact:true}).click()
+  await drawer(true)
   await expect(sidebar.getByRole('button',{name:'Touch grass',exact:true})).toBeVisible()
   await sidebar.getByRole('button',{name:'Active Projects',exact:true}).click()
   const reminder=page.getByRole('dialog',{name:'Active Projects',exact:true})
