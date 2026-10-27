@@ -48,6 +48,9 @@ to start writing.
 Tab/Shift+Tab indent and outdent nested blocks. A top-level list can become a
 paragraph. Alt+Arrow or Cmd+Ctrl+Arrow moves blocks within their level. Arrow and Shift+Arrow navigation use the
 single native selection across paragraphs, including wrapped lines and images.
+While a touch selection is extended, the note scrolls when the dragged end
+nears or passes the visible edge (the keyboard, the docked toolbar or the
+screen), since Android does not scroll for selection handles.
 Title Enter focuses the end of the body, Tab its beginning, and Shift+Tab at the
 first body block returns to the title.
 

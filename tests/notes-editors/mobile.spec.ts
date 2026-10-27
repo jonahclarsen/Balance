@@ -88,3 +88,33 @@ test('checklists toggle by tap and the slash menu fits the small viewport', asyn
   expect(box.x + box.width).toBeLessThanOrEqual(size.width)
   expect(box.y + box.height).toBeLessThanOrEqual(size.height)
 })
+
+test('dragging a touch selection past the docked toolbar scrolls the note', async ({ harness }) => {
+  await harness.boot({ select: 'Long note' })
+  const note = harness.noteByTitle('Long note')
+  const first = note.items[1]
+  await harness.block(first.id).scrollIntoViewIfNeeded()
+  await harness.placeCaret(first.id, 0)
+  await harness.page.evaluate(() => {
+    const viewport = window.visualViewport!
+    Object.defineProperty(viewport, 'height', { configurable: true, get: () => window.innerHeight - 320 })
+    Object.defineProperty(viewport, 'offsetTop', { configurable: true, get: () => 0 })
+    viewport.dispatchEvent(new Event('resize'))
+    window.dispatchEvent(new Event('resize'))
+  })
+  const toolbar = harness.page.getByRole('toolbar', { name: 'Note formatting' })
+  await expect.poll(() => toolbar.evaluate((element) => getComputedStyle(element).position)).toBe('fixed')
+  // A long press starts the selection; the handle drag then extends it to
+  // text hidden behind the keyboard without further page touch events.
+  await harness.editorRoot().dispatchEvent('pointerdown', { pointerType: 'touch' })
+  const hiddenBelow = flatten(note.items).find((item) => item.kind === 'heading' && item.text === 'Section 2')!
+  await harness.selectAcross(first.id, 0, hiddenBelow.id, 3)
+  await expect.poll(() => harness.page.evaluate(() => {
+    const selection = getSelection()!
+    const range = document.createRange()
+    range.setStart(selection.focusNode!, selection.focusOffset)
+    const end = range.getClientRects()[0]
+    const bar = document.querySelector('.note-format-toolbar')!.getBoundingClientRect()
+    return end && end.bottom <= bar.top
+  })).toBe(true)
+})

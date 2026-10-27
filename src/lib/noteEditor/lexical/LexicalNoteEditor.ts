@@ -168,6 +168,7 @@ import {
   type BlockPoint,
 } from './structure'
 import { SLASH_PATTERN, SlashMenu, type SlashCommand } from './slashMenu'
+import { scrollParent, touchSelectionScroll } from './touchSelectionScroll'
 import './lexicalNotes.css'
 
 const SILENT_TAG = 'balance-note-silent'
@@ -325,6 +326,7 @@ class LexicalNoteEditorView implements NoteEditorView {
       editor.getEditorState().read(() => this.$decorate())
     }))
     this.attachDOMListeners(root)
+    this.teardown.push(touchSelectionScroll(root))
     const images = imageEditing(root, () => this.resyncImages(), {
       insertHTML: (html, range) => {
         this.resyncImages()
@@ -975,13 +977,7 @@ class LexicalNoteEditorView implements NoteEditorView {
     // Lexical already reveals the caret at the scroller's edges. Its top edge
     // excludes the sticky toolbar, so finish that scroll using the live bar
     // height and caret rectangle (including the larger heading typography).
-    let scroller = root.parentElement
-    while (scroller && scroller !== document.scrollingElement) {
-      if (['auto', 'scroll'].includes(getComputedStyle(scroller).overflowY)
-        && scroller.scrollHeight > scroller.clientHeight) break
-      scroller = scroller.parentElement
-    }
-    scroller ??= document.scrollingElement as HTMLElement | null
+    const scroller = scrollParent(root)
     if (scroller) scroller.scrollTop -= (visibleTop - caret.top) / (scroller.currentCSSZoom || 1)
   }
 
