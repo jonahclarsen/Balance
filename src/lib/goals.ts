@@ -17,6 +17,7 @@ export const GOAL_DOABILITY_MISSED_DAY_THRESHOLD = 4
 // plan item. It is deliberately not text/plain, so editors never insert the
 // name at the drop point instead of appending it.
 export const GOAL_DRAG_TYPE = 'application/x-balance-goal-name'
+export const GOAL_HTML_DRAG_TYPE = 'application/x-balance-goal-html'
 
 export type GoalDoabilityReview = {
   goal: Goal
@@ -933,7 +934,18 @@ export function hasGoalDrag(event: DragEvent): boolean {
   return Array.from(event.dataTransfer?.types ?? []).includes(GOAL_DRAG_TYPE)
 }
 
-export function appendGoalNameToItemText(html: string, text: string, goalName: string): { html: string; text: string } {
-  const suffix = text.trim() ? ` - ${goalName}` : goalName
-  return { html: `${html || escapeHTML(text)}${escapeHTML(suffix)}`, text: `${text}${suffix}` }
+// Reads a Goal Rhythm drag, keeping links from the goal's title.
+export function goalFromDrag(dataTransfer: DataTransfer): { name: string; html: string } | null {
+  const name = dataTransfer.getData(GOAL_DRAG_TYPE)
+  if (!name) return null
+  const html = dataTransfer.getData(GOAL_HTML_DRAG_TYPE)
+  return { name, html: html ? sanitizeInlineHTML(html) : escapeHTML(name) }
+}
+
+export function appendGoalNameToItemText(html: string, text: string, goal: { name: string; html: string }): { html: string; text: string } {
+  const hasText = Boolean(text.trim())
+  return {
+    html: `${html || escapeHTML(text)}${hasText ? ' - ' : ''}${goal.html}`,
+    text: `${text}${hasText ? ' - ' : ''}${goal.name}`,
+  }
 }

@@ -5459,8 +5459,8 @@ return rows`
     if (items.length > 0) writePlanItemsToSystemClipboard({ items, cut: false, sourceDate: plan.date })
   }
 
-  function insertGoalTask(planId: Id, goalName: string, targetId: Id, placement: 'before' | 'after') {
-    plannerStore.pastePlanItems(planId, [createPlanItem(goalName)], targetId, placement)
+  function insertGoalTask(planId: Id, goal: { name: string; html: string }, targetId: Id, placement: 'before' | 'after') {
+    plannerStore.pastePlanItems(planId, [{ ...createPlanItem(goal.name), html: goal.html }], targetId, placement)
   }
 
   async function pastePlanItemFromMenu(planId: Id, itemId: Id) {

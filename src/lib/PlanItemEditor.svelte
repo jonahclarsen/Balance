@@ -6,7 +6,7 @@
   import OverlayModal from './OverlayModal.svelte'
   import { collapsedPlanItemIds, setPlanItemCollapsed } from './collapsedPlanItems'
   import { openExternalURL } from './externalLinks'
-  import { appendGoalNameToItemText, GOAL_DRAG_TYPE, goalLightnessShift, goalMatchesForItem, goalsMatchingItemText, hasGoalDrag } from './goals'
+  import { appendGoalNameToItemText, goalFromDrag, goalLightnessShift, goalMatchesForItem, goalsMatchingItemText, hasGoalDrag } from './goals'
   import { defaultPlanItemTimeRange, formatMinutes, hasActiveTimeRange, isURL, itemLinkFromAnchor, linkifyItemText, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, type ItemLink, type ItemTextSegment, type ItemTimeWarning } from './planner'
   import { scrollMovedItemsIntoView } from './itemScroll'
   import { focusTaskBelow } from './taskCompletionFocus'
@@ -78,7 +78,7 @@
   export let onGoalBadgeClick: (goalId: Id) => void = () => {}
   // Dropping a goal near a row's top or bottom edge makes it a new task there;
   // without this, the whole row appends the goal name instead.
-  export let insertGoalTask: ((planId: Id, goalName: string, targetId: Id, placement: 'before' | 'after') => void) | null = null
+  export let insertGoalTask: ((planId: Id, goal: { name: string; html: string }, targetId: Id, placement: 'before' | 'after') => void) | null = null
   // Internal links: a plan/list item whose text matches a list template name or
   // contains a metric name becomes a clickable opener.
   export let listTemplates: ListTemplate[] = []
@@ -883,18 +883,18 @@
     goalDragDepth = 0
     event.preventDefault()
     if (locked) return
-    const goalName = event.dataTransfer!.getData(GOAL_DRAG_TYPE)
-    if (!goalName) return
+    const goal = goalFromDrag(event.dataTransfer!)
+    if (!goal) return
     const placement = goalPlacementForEvent(event)
     if (placement !== 'inside' && insertGoalTask) {
-      insertGoalTask(planId, goalName, item.id, placement)
+      insertGoalTask(planId, goal, item.id, placement)
       return
     }
     // A focused editor keeps its live DOM over incoming props, so let it
     // persist and release focus before the appended text arrives.
     const row = event.currentTarget as HTMLElement
     if (document.activeElement instanceof HTMLElement && row.contains(document.activeElement)) document.activeElement.blur()
-    patchItem(planId, item.id, appendGoalNameToItemText(item.html, item.text, goalName))
+    patchItem(planId, item.id, appendGoalNameToItemText(item.html, item.text, goal))
   }
 
   function focusTextInputAtOffset(input: HTMLDivElement, offset: number) {

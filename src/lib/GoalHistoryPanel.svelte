@@ -5,6 +5,7 @@
     buildGoalDayCells,
     filterGoalsByPhrase,
     GOAL_DRAG_TYPE,
+    GOAL_HTML_DRAG_TYPE,
     GOAL_FUTURE_DAYS,
     goalDaysUntilLapse,
     goalLightnessShift,
@@ -248,8 +249,9 @@
 
   function startGoalDrag(event: DragEvent, goal: Goal) {
     if (!event.dataTransfer) return
-    // Carries the same text the copy button writes to the clipboard.
+    // Carries the copy button's text, plus the title's links for task drops.
     event.dataTransfer.setData(GOAL_DRAG_TYPE, goal.name)
+    event.dataTransfer.setData(GOAL_HTML_DRAG_TYPE, goal.nameHtml)
     event.dataTransfer.effectAllowed = 'copy'
   }
 

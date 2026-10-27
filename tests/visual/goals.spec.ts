@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import { todayISO } from '../../src/lib/planner'
 import { createGoal as makeGoal } from '../../src/lib/goals'
 import { generateDay, openView, primaryNavigation } from '../helpers/navigation'
@@ -2341,9 +2341,21 @@ test('goal rhythm copy button copies the goal name without opening the row', asy
   await expect(page.locator('.primary-nav > button.active')).toContainText('Goals')
 })
 
-test('dragging a goal rhythm goal onto a task appends its copy text', async ({ page }) => {
+const linkedExerciseHtml = '<a href="https://example.com/exercise" target="_blank" rel="noreferrer">Exercise</a>'
+
+async function linkGoalName(page: Page, name: string, nameHtml: string) {
+  await page.evaluate(({ name, nameHtml }) => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    state.goals = state.goals.map((goal: { name: string }) => (goal.name === name ? { ...goal, nameHtml } : goal))
+    localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+  }, { name, nameHtml })
+  await page.reload()
+}
+
+test('dragging a goal rhythm goal onto a task appends its linked title', async ({ page }) => {
   await generateDay(page)
   await createGoal(page, 'Exercise', 3, 'lift, swim')
+  await linkGoalName(page, 'Exercise', linkedExerciseHtml)
   await openView(page, 'Today')
 
   const firstItem = await page.evaluate(() => {
@@ -2359,6 +2371,7 @@ test('dragging a goal rhythm goal onto a task appends its copy text', async ({ p
 
   const expected = `${firstItem.text} - Exercise`
   await expect(taskRow.locator('.item-text')).toHaveText(expected)
+  await expect(taskRow.locator('.item-text').getByRole('link', { name: 'Exercise' })).toHaveAttribute('href', 'https://example.com/exercise')
   await expect(taskRow).not.toHaveClass(/goal-drop-target/)
   await expect
     .poll(() => page.evaluate((itemId) => {
@@ -2372,6 +2385,7 @@ test('dragging a goal rhythm goal onto a task appends its copy text', async ({ p
 test('dragging a goal rhythm goal to a task edge inserts it as its own task', async ({ page }) => {
   await generateDay(page)
   await createGoal(page, 'Exercise', 3, 'lift, swim')
+  await linkGoalName(page, 'Exercise', linkedExerciseHtml)
   await openView(page, 'Today')
 
   const readRootItems = () => page.evaluate(() => {
@@ -2397,6 +2411,9 @@ test('dragging a goal rhythm goal to a task edge inserts it as its own task', as
     .toEqual([before[0].text, 'Exercise', ...before.slice(1).map((item: { text: string }) => item.text)])
   await expect(taskRow.locator('.item-text')).toHaveText(before[1].text)
   await expect(taskRow).not.toHaveClass(/drop-before/)
+  const insertedId = (await readRootItems())[1].id
+  await expect(page.locator(`[data-plan-item-id="${insertedId}"] .item-text`).first().getByRole('link', { name: 'Exercise' }))
+    .toHaveAttribute('href', 'https://example.com/exercise')
 })
 
 test('goal rhythm uses dark segment and open-circle colors in dark mode', async ({ page }) => {
