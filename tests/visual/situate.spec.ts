@@ -176,11 +176,20 @@ test('mode descriptions grow with their lines and keep them in the preview', asy
   await expect.poll(()=>preview.evaluate(el=>(el as HTMLElement).innerText)).toBe('One\nTwo\nThree')
 })
 
-test('sidebar shows only modes that are on; reminders open their description', async ({page}) => {
+test('sidebar shows only modes that are on; reminders open their description', async ({page}, testInfo) => {
+  // This file uses a desktop user agent, so on the narrow mobile layout the
+  // pills live in the navigation drawer.
+  const drawer=async (open:boolean) => {
+    if (testInfo.project.name==='mobile') await page.getByRole('button',{name:open?'Open navigation':'Close navigation',exact:true}).click()
+  }
   const sidebar=page.getByLabel('Situate modes')
+  await drawer(true)
+  await expect(sidebar.getByRole('button',{name:'Active Projects',exact:true})).toBeVisible()
   await expect(sidebar.getByRole('button',{name:'No Active Project',exact:true})).toHaveCount(0)
   await expect(sidebar.getByRole('button',{name:'Touch grass',exact:true})).toHaveCount(0)
+  await drawer(false)
   await page.getByRole('button',{name:'Turn on Touch grass',exact:true}).click()
+  await drawer(true)
   await expect(sidebar.getByRole('button',{name:'Touch grass',exact:true})).toBeVisible()
   await sidebar.getByRole('button',{name:'Active Projects',exact:true}).click()
   const reminder=page.getByRole('dialog',{name:'Active Projects',exact:true})
