@@ -1,6 +1,13 @@
 import { tick } from 'svelte'
 import { dragAutoScroll } from './dragAutoScroll'
+import { vibrateSteps } from './haptics'
 import { plannerStore } from './store'
+
+// Touch scrolls the page until a card is held this long without moving.
+const TOUCH_HOLD_MS = 400
+const TOUCH_SLOP = 8
+// A press that stops a fling can't keep the page from scrolling, so it never lifts a card.
+const SCROLL_SETTLE_MS = 120
 
 /** Start a card move from its content, leaving embedded controls interactive. A press without a drag opens the card. */
 export function projectReordering(node: HTMLElement, onOpen: (projectId: string) => void = () => {}) {
@@ -14,6 +21,9 @@ export function projectReordering(node: HTMLElement, onOpen: (projectId: string)
   let startX = 0
   let startY = 0
   let dragging = false
+  let touch = false
+  let holdTimer: ReturnType<typeof setTimeout> | undefined
+  let lastScroll = -Infinity
   let lastX = 0
   let lastY = 0
   // Where the grid sat when the drag began, so scrolling keeps the card under the pointer.
@@ -29,6 +39,7 @@ export function projectReordering(node: HTMLElement, onOpen: (projectId: string)
     source?.style.removeProperty('transform')
     indicator.remove()
     autoScroller.stop()
+    clearTimeout(holdTimer)
     if (pointerId !== null && node.hasPointerCapture(pointerId)) node.releasePointerCapture(pointerId)
     source = target = null
     pointerId = null
@@ -42,25 +53,37 @@ export function projectReordering(node: HTMLElement, onOpen: (projectId: string)
     source = element?.closest<HTMLElement>('.project-card') ?? null
     if (!source) return
     pointerId = event.pointerId
-    startX = event.clientX
-    startY = event.clientY
+    lastX = startX = event.clientX
+    lastY = startY = event.clientY
+    touch = event.pointerType !== 'mouse'
     // Avoid text selection competing with the card gesture.
-    if (event.pointerType === 'mouse') event.preventDefault()
+    if (!touch) event.preventDefault()
+    else if (event.timeStamp - lastScroll > SCROLL_SETTLE_MS) holdTimer = setTimeout(lift, TOUCH_HOLD_MS)
     node.setPointerCapture(pointerId)
+  }
+
+  function lift() {
+    if (!source || dragging) return
+    dragging = true
+    source.classList.add('project-dragging')
+    const bounds = node.getBoundingClientRect()
+    gridStart = { left: bounds.left, top: bounds.top }
+    autoScroller.start(node, lastX, lastY)
+    if (touch) vibrateSteps()
   }
 
   function move(event: PointerEvent) {
     if (!source || event.pointerId !== pointerId) return
-    if (!dragging && Math.hypot(event.clientX - startX, event.clientY - startY) < 6) return
-    if (!dragging) {
-      dragging = true
-      source.classList.add('project-dragging')
-      const bounds = node.getBoundingClientRect()
-      gridStart = { left: bounds.left, top: bounds.top }
-      autoScroller.start(node, event.clientX, event.clientY)
+    const distance = Math.hypot(event.clientX - startX, event.clientY - startY)
+    if (!dragging && touch) {
+      // Moving before the hold completes is a scroll, not a tap or a move.
+      if (distance >= TOUCH_SLOP) reset()
+      return
     }
+    if (!dragging && distance < 6) return
     lastX = event.clientX
     lastY = event.clientY
+    if (!dragging) lift()
     carry()
     autoScroller.move(lastX, lastY)
     updateTarget(lastX, lastY)
@@ -178,11 +201,22 @@ export function projectReordering(node: HTMLElement, onOpen: (projectId: string)
     if (event.pointerId === pointerId) reset()
   }
 
+  function scrolled(event: Event) {
+    if (!dragging) lastScroll = event.timeStamp
+  }
+
+  // Once a held card lifts, the finger carries it instead of scrolling the page.
+  function touchMove(event: TouchEvent) {
+    if (dragging && touch && event.cancelable) event.preventDefault()
+  }
+
   node.addEventListener('pointerdown', down)
   node.addEventListener('pointermove', move)
   node.addEventListener('pointerup', up)
   node.addEventListener('pointercancel', cancel)
   node.addEventListener('lostpointercapture', cancel)
+  node.addEventListener('touchmove', touchMove, { passive: false })
+  document.addEventListener('scroll', scrolled, { capture: true, passive: true })
   return {
     update(next: (projectId: string) => void) {
       onOpen = next
@@ -194,6 +228,8 @@ export function projectReordering(node: HTMLElement, onOpen: (projectId: string)
       node.removeEventListener('pointerup', up)
       node.removeEventListener('pointercancel', cancel)
       node.removeEventListener('lostpointercapture', cancel)
+      node.removeEventListener('touchmove', touchMove)
+      document.removeEventListener('scroll', scrolled, { capture: true })
     },
   }
 }
