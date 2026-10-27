@@ -357,6 +357,9 @@ test.describe('touch', () => {
     await touch('touchEnd')
     await expect(cards.locator('.project-name').nth(5)).toHaveText('Project 4')
     await expect(page.getByRole('dialog')).toHaveCount(0)
+    await expect(page.locator('.link-context-menu')).toHaveCount(0)
+    // Let the displaced cards glide into place before tapping one.
+    await cards.evaluateAll((elements) => Promise.all(elements.flatMap((card) => card.getAnimations().map((animation) => animation.finished))))
 
     // A quick tap still opens the project.
     const tap = await center(3)
@@ -378,7 +381,9 @@ test.describe('touch', () => {
     await expect(cards.locator('.project-name').nth(5)).toHaveText('Project 4')
 
     // A touch long press never opens the link menu; a right-click still does.
-    await cards.nth(3).dispatchEvent('contextmenu', { pointerType: 'touch', bubbles: true, cancelable: true })
+    // Scrolling closes the menu, so wait for the swipe's fling to stop first.
+    await expect.poll(async () => { const top = await scrollTop(); await page.waitForTimeout(150); return top === await scrollTop() }).toBe(true)
+    await cards.nth(3).evaluate((card) => card.dispatchEvent(new PointerEvent('contextmenu', { pointerType: 'touch', bubbles: true, cancelable: true })))
     await expect(page.locator('.link-context-menu')).toHaveCount(0)
     await cards.nth(3).click({ button: 'right' })
     await expect(page.locator('.link-context-menu')).toBeVisible()

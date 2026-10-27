@@ -201,6 +201,13 @@ export function projectReordering(node: HTMLElement, onOpen: (projectId: string)
     if (event.pointerId === pointerId) reset()
   }
 
+  // A lifted card ignores hits, so the platform's long-press menu would land on whatever lies beneath it.
+  function contextMenu(event: MouseEvent) {
+    if (pointerId === null || !touch) return
+    event.preventDefault()
+    event.stopPropagation()
+  }
+
   function scrolled(event: Event) {
     if (!dragging) lastScroll = event.timeStamp
   }
@@ -217,6 +224,7 @@ export function projectReordering(node: HTMLElement, onOpen: (projectId: string)
   node.addEventListener('lostpointercapture', cancel)
   node.addEventListener('touchmove', touchMove, { passive: false })
   document.addEventListener('scroll', scrolled, { capture: true, passive: true })
+  document.addEventListener('contextmenu', contextMenu, { capture: true })
   return {
     update(next: (projectId: string) => void) {
       onOpen = next
@@ -230,6 +238,7 @@ export function projectReordering(node: HTMLElement, onOpen: (projectId: string)
       node.removeEventListener('lostpointercapture', cancel)
       node.removeEventListener('touchmove', touchMove)
       document.removeEventListener('scroll', scrolled, { capture: true })
+      document.removeEventListener('contextmenu', contextMenu, { capture: true })
     },
   }
 }
