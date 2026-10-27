@@ -3676,6 +3676,33 @@ body.mobile-checkbox-dragging {
   border-bottom: 0;
 }
 
+.quick-add-edit-last-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  /* Keeps the header the same height as in Edit idea, where it is hidden. */
+  margin: -6px 0 -6px auto;
+  padding: 6px 8px;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.quick-add-edit-last-button svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.quick-add-edit-last-button:hover .nav-shortcut {
+  opacity: 1;
+}
+
 .database-maintenance-spinner {
   width: 22px;
   height: 22px;

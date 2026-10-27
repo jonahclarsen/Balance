@@ -92,6 +92,36 @@ test('quick-added ideas land in Proposition Party and move with timed unlocks', 
   await expect(rows(page, 'genuine')).toHaveText(['Synthetic idea one edited'])
 })
 
+test('quick add reopens the idea added within the last minute', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
+  await open(page)
+  const editLast = page.getByRole('button', { name: 'Edit last idea' })
+
+  await page.keyboard.press('Alt+A')
+  await expect(page.getByRole('textbox', { name: 'New idea' })).toBeFocused()
+  await expect(editLast).toHaveCount(0)
+  await page.keyboard.type('Synthetic draft')
+  await page.keyboard.press('Enter')
+
+  await page.keyboard.press('Alt+A')
+  await expect(editLast).toBeVisible()
+  await page.keyboard.press('Alt+E')
+  await expect(page.getByRole('dialog', { name: 'Edit idea' })).toBeVisible()
+  await expect(editLast).toHaveCount(0)
+  const input = page.getByRole('textbox', { name: 'Idea', exact: true })
+  await expect(input).toHaveText('Synthetic draft')
+  await expect(input).toBeFocused()
+  await page.keyboard.type(' revised')
+  await page.keyboard.press('Enter')
+  await expect(input).toBeHidden()
+  expect(await groups(page)).toEqual({ proposition: ['Synthetic draft revised'] })
+
+  await page.clock.fastForward(61_000)
+  await page.keyboard.press('Alt+A')
+  await expect(page.getByRole('dialog', { name: 'Add idea' })).toBeVisible()
+  await expect(editLast).toHaveCount(0)
+})
+
 test('a new day sorts every proposition one card at a time', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
   await open(page)

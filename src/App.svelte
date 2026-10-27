@@ -522,6 +522,11 @@ return rows`
   let quickAddOpen = false
   let quickAddSaving = false
   let quickAddPendingId: Id | null = null
+  // Within a minute of adding an idea, the next quick add can reopen it instead.
+  const QUICK_ADD_EDIT_WINDOW_MS = 60 * 1000
+  let lastQuickAddedIdea: { id: Id; at: number } | null = null
+  let quickAddCanEditLast = false
+  let quickAddEditing = false
   let quickAddReturnFocus: FocusReturn | null = null
   let prioritizeSessionOpen = false
   let quickAddText = ''
@@ -3197,15 +3202,48 @@ return rows`
     if (!quickAddOpen) quickAddReturnFocus = rememberFocusReturn()
     quickAddText = ''
     quickAddHTML = ''
+    quickAddPendingId = null
+    quickAddEditing = false
+    quickAddCanEditLast = Boolean(
+      lastQuickAddedIdea &&
+      Date.now() - lastQuickAddedIdea.at < QUICK_ADD_EDIT_WINDOW_MS &&
+      findIdea($plannerStore.ideaBuckets, lastQuickAddedIdea.id),
+    )
     quickAddOpen = true
     await tick()
     document.querySelector<HTMLElement>('.quick-add-dialog [data-rich-text-input]')?.focus()
+  }
+
+  // Loads the idea added last into the dialog; Save then patches it in place.
+  async function editLastQuickAddedIdea() {
+    if (quickAddSaving || !quickAddCanEditLast || !lastQuickAddedIdea) return
+    quickAddCanEditLast = false
+    const found = findIdea($plannerStore.ideaBuckets, lastQuickAddedIdea.id)
+    if (!found) return
+    // The editor only takes outside text while unfocused, and blurring flushes its draft.
+    const input = document.querySelector<HTMLElement>('.quick-add-dialog [data-rich-text-input]')
+    input?.blur()
+    quickAddPendingId = found.item.id
+    quickAddText = found.item.text
+    quickAddHTML = found.item.html ?? ''
+    quickAddEditing = true
+    await tick()
+    if (!input) return
+    input.focus()
+    const range = document.createRange()
+    range.selectNodeContents(input)
+    range.collapse(false)
+    const selection = document.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
   }
 
   // Closing hands focus and the caret back to wherever Option+A was pressed.
   function closeQuickAdd() {
     if (quickAddSaving) return
     quickAddPendingId = null
+    quickAddEditing = false
+    quickAddCanEditLast = false
     quickAddOpen = false
     quickAddText = ''
     quickAddHTML = ''
@@ -3232,6 +3270,7 @@ return rows`
       // Closing the dialog acknowledges Save. Android can reclaim the WebView
       // immediately afterward, before a persistence debounce or lifecycle event.
       await plannerStore.flushPendingOperations()
+      if (!quickAddEditing && quickAddPendingId) lastQuickAddedIdea = { id: quickAddPendingId, at: Date.now() }
       quickAddSaving = false
       closeQuickAdd()
     } catch (error) {
@@ -3966,6 +4005,12 @@ return rows`
     if (event.altKey && !primaryModifier && !event.shiftKey && event.code === 'KeyA') {
       event.preventDefault()
       if (!event.repeat) void openQuickAdd()
+      return
+    }
+
+    if (quickAddOpen && quickAddCanEditLast && event.altKey && !primaryModifier && !event.shiftKey && event.code === 'KeyE') {
+      event.preventDefault()
+      if (!event.repeat) void editLastQuickAddedIdea()
       return
     }
 
@@ -8967,7 +9012,23 @@ return rows`
 {/if}
 
 {#if quickAddOpen}
-  <OverlayModal title="Add idea" cover="viewport" z={100} maxWidth={480} backdropStyle={appShellStyle} onClose={closeQuickAdd} closeDisabled={quickAddSaving}>
+  <OverlayModal title={quickAddEditing ? 'Edit idea' : 'Add idea'} cover="viewport" z={100} maxWidth={480} backdropStyle={appShellStyle} onClose={closeQuickAdd} closeDisabled={quickAddSaving}>
+    <svelte:fragment slot="header-middle">
+      {#if quickAddCanEditLast}
+        <button
+          class="quick-add-edit-last-button"
+          type="button"
+          title="Edit last idea (Alt+E)"
+          aria-label="Edit last idea"
+          aria-keyshortcuts="Alt+E"
+          disabled={quickAddSaving}
+          on:click={() => { void editLastQuickAddedIdea() }}
+        >
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
+          <kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('E')}</kbd>
+        </button>
+      {/if}
+    </svelte:fragment>
     <!-- Shares the Today row markup so task formatting changes carry over. -->
     <form class="quick-add-dialog" on:submit|preventDefault={saveQuickAdd}>
       <div class="item-shell" inert={quickAddSaving}>
@@ -8980,7 +9041,7 @@ return rows`
               html={quickAddHTML}
               text={quickAddText}
               placeholder="New idea"
-              ariaLabel="New idea"
+              ariaLabel={quickAddEditing ? 'Idea' : 'New idea'}
               onChange={(html, text) => {
                 quickAddHTML = html
                 quickAddText = text
