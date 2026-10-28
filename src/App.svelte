@@ -42,6 +42,7 @@
   import {
     exceedsIdealMinutes,
     formatDuration,
+    listPace,
     shouldSuggestTrim,
     summarizeListTiming,
   } from './lib/listTiming'
@@ -7816,7 +7817,7 @@ return rows`
         {@const idealMinutes = listTemplates.find((template) => template.id === instance.listTemplateId)?.idealMinutes}
         {#if idealMinutes}
           <div class="list-view-clock">
-            <ListTimeClock items={instance.items} createdAt={instance.createdAt} {idealMinutes} />
+            <ListTimeClock items={instance.items} createdAt={instance.createdAt} {idealMinutes} pace={listPace(lists, instance.listTemplateId)} />
           </div>
         {/if}
         <ListPanel
@@ -8676,7 +8677,12 @@ return rows`
         <div slot="header-middle" class="list-overlay-status">
           <ProgressBar done={completion.done} total={completion.total} label="List completion" />
           {#if template?.idealMinutes}
-            <ListTimeClock items={instance.items} createdAt={instance.createdAt} idealMinutes={template.idealMinutes} />
+            <ListTimeClock
+              items={instance.items}
+              createdAt={instance.createdAt}
+              idealMinutes={template.idealMinutes}
+              pace={listPace(lists, instance.listTemplateId)}
+            />
           {/if}
         </div>
         <ListPanel

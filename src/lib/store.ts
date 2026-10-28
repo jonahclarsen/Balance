@@ -161,6 +161,7 @@ import { copyNoteItemsWithNewIds, noteVersionGroupId } from './noteVersions'
 import { findIdea, ideaGroupId, ideaReviewGoalHue, ideaReviewGoalNameHtml, IDEA_GROUP_KINDS, IDEA_REVIEW_GOAL_CADENCE_DAYS, IDEA_REVIEW_GOAL_ID, IDEA_REVIEW_GOAL_NAME, isIdeaTrashExpired, needsIdeaReviewGoal } from './ideas'
 import { reconcileTaskNotifications } from './taskNotifications'
 import { reconcileVoiceClips } from './voiceClips'
+import { withListCompletionTime } from './listTiming'
 
 const STORAGE_KEY = 'balance.appState.v1'
 const ACTIVE_PLAN_DATE_KEY = 'balance:activePlanDate'
@@ -3259,7 +3260,7 @@ function createPlannerStore() {
       commitEntities('patch_list_item', { listId, itemId, patch }, (state) =>
         updateList(state, listId, (list) => {
           const items = updatePlanItem(list.items, itemId, (item) =>
-            withListCompletionTime(list.createdAt, item, applyPatch(item, patch)),
+            withListCompletionTime(list.createdAt, item, applyPatch(item, patch), Date.now()),
           )
           return items === list.items ? list : { ...list, items }
         }),
@@ -3684,18 +3685,6 @@ function stateFromNativeHistoryEntry(current: AppState, snapshot: AppState, loca
     operations: [],
     historyRevision: current.historyRevision + 1,
   }
-}
-
-// Stamp list rows as they are checked off so list and task durations can be
-// measured. Reopening a row clears the stamp so a later check-off restarts it.
-// The stamp is an offset from the list's createdAt, which never changes, so
-// every device measures from the same base.
-function withListCompletionTime(listCreatedAt: string, previous: PlanItem, item: PlanItem): PlanItem {
-  if (item.done === previous.done) return item
-  if (item.done) return { ...item, doneAt: Math.round((Date.now() - Date.parse(listCreatedAt)) / 1000) }
-  if (item.doneAt === undefined) return item
-  const { doneAt: _doneAt, ...reopened } = item
-  return reopened
 }
 
 function applyPatch<T extends object>(target: T, patch: Partial<Record<keyof T, unknown>>): T {

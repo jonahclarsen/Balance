@@ -1,5 +1,13 @@
 import { expect, test } from '@playwright/test'
-import { formatDuration, listRunTiming, shouldSuggestTrim, summarizeListTiming } from '../../src/lib/listTiming'
+import {
+  formatDuration,
+  listPace,
+  listRunElapsed,
+  listRunTiming,
+  shouldSuggestTrim,
+  summarizeListTiming,
+  withListCompletionTime,
+} from '../../src/lib/listTiming'
 import type { ListInstance, ListTemplateItem, PlanItem } from '../../src/lib/types'
 
 const minute = 60_000
@@ -122,4 +130,42 @@ test('template edits reuse historical timings and new run data refreshes them', 
   // Restoring an earlier immutable snapshot (undo) restores its timings too.
   expect(summarizeListTiming(lists, 'template', abc).expectedRunMs).toBe(6 * minute)
   expect(summarizeListTiming(lists, 'another-template', abc).runCount).toBe(0)
+})
+
+test('moving back up to reread a row keeps its time, while reopening it right away restamps it', () => {
+  const createdAt = new Date(start - 60 * minute).toISOString()
+  const checked = row('c', 8)
+  const reread = withListCompletionTime(createdAt, checked, { ...checked, done: false }, start + 10 * minute)
+  expect(reread.doneAt).toBe(checked.doneAt)
+  expect(withListCompletionTime(createdAt, reread, { ...reread, done: true }, start + 11 * minute).doneAt).toBe(checked.doneAt)
+
+  const overshot = withListCompletionTime(createdAt, checked, { ...checked, done: false }, start + 8 * minute + 5_000)
+  expect(overshot.doneAt).toBeUndefined()
+  expect(withListCompletionTime(createdAt, overshot, { ...overshot, done: true }, start + 9 * minute).doneAt).toBe(3600 + 9 * 60)
+
+  // While reopened, the run keeps its start and the row keeps its time.
+  const open = { ...row('a', 0), done: false }
+  const timing = listRunTiming(run(1, [open, row('b', 3), { ...row('c', 8), done: false }, row('d', null)]))
+  expect(timing.startedAt).toBe(start)
+  expect(timing.itemDurations.map((entry) => entry.durationMs)).toEqual([3 * minute, 5 * minute])
+  expect(timing.currentSourceItemId).toBe('d')
+})
+
+test('the clock pauses on a task left far past its usual time and counts it as usual', () => {
+  const history = [1, 2, 3].map((day) => run(day, [row('a', 0), row('b', 1), row('c', 3)]))
+  const pace = listPace(history, 'template')
+  expect(pace.pauseAfterItemMs.get('b')).toBe(3 * minute)
+
+  const waiting = listRunTiming(run(4, [row('a', 0), row('b', null), row('c', null)]))
+  expect(listRunElapsed(waiting, pace, start + 2 * minute)).toEqual({ elapsedMs: 2 * minute, paused: false })
+  expect(listRunElapsed(waiting, pace, start + 30 * minute)).toEqual({ elapsedMs: minute, paused: true })
+
+  const resumed = listRunTiming(run(4, [row('a', 0), row('b', 30), row('c', null)]))
+  expect(listRunElapsed(resumed, pace, start + 31 * minute)).toEqual({ elapsedMs: 2 * minute, paused: false })
+  const finished = listRunTiming(run(4, [row('a', 0), row('b', 30), row('c', 32)]))
+  expect(listRunElapsed(finished, pace, start + 60 * minute)).toEqual({ elapsedMs: 3 * minute, paused: false })
+
+  // A task without history stops the clock untimed after an hour away.
+  const unknown = listRunTiming(run(4, [row('a', 0), row('new', null)]))
+  expect(listRunElapsed(unknown, pace, start + 61 * minute)).toEqual({ elapsedMs: 0, paused: true })
 })

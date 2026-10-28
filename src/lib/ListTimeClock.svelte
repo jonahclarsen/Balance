@@ -1,11 +1,12 @@
 <script lang="ts">
   import { onDestroy } from 'svelte'
-  import { formatDuration, listRunTiming } from './listTiming'
+  import { formatDuration, listRunElapsed, listRunTiming, type ListPace } from './listTiming'
   import type { PlanItem } from './types'
 
   export let items: PlanItem[]
   export let createdAt: string
   export let idealMinutes: number
+  export let pace: ListPace
 
   const size = 26
   const center = size / 2
@@ -20,8 +21,8 @@
   $: idealMs = idealMinutes * 60_000
   // Redraw once per displayed percent rather than every second for long ideals.
   $: tickMs = Math.max(1000, Math.floor(idealMs / 100))
-  $: setTicking(running, tickMs)
-  $: elapsedMs = timing.startedAt === null ? 0 : (timing.finishedAt ?? now) - timing.startedAt
+  $: ({ elapsedMs, paused } = listRunElapsed(timing, pace, now))
+  $: setTicking(running && !paused, tickMs)
   $: fraction = idealMs > 0 ? elapsedMs / idealMs : 0
   $: over = fraction > 1
   $: percent = Math.round(fraction * 100)
@@ -30,7 +31,7 @@
   $: label =
     timing.startedAt === null
       ? `Ideal time ${formatDuration(idealMs)} — starts when you check off the first task`
-      : `${formatDuration(elapsedMs)} of ${formatDuration(idealMs)} ideal (${percent}%)`
+      : `${formatDuration(elapsedMs)} of ${formatDuration(idealMs)} ideal (${percent}%)${paused ? ' · paused' : ''}`
 
   let timerMs = 0
 
@@ -69,7 +70,7 @@
 <span
   class="list-time-clock"
   class:over
-  class:idle={timing.startedAt === null}
+  class:idle={timing.startedAt === null || paused}
   role="timer"
   aria-label={label}
   title={label}
