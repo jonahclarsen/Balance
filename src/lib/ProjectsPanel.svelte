@@ -9,13 +9,13 @@
   import { projectReordering } from './projectReordering'
   import { mountInContentShell } from './contentShellOverlay'
   import RichTextEditor from './RichTextEditor.svelte'
-  import { autoGrow } from './autoGrow'
-  import { escapeHTML, sanitizeInlineHTML } from './planner'
+  import { escapeHTML, htmlToPlainTextWithBreaks, sanitizeInlineHTML, type ItemLink } from './planner'
   import { isProjectActive, isProjectOpen, PROJECT_ACTIVE_DAY_COUNTS } from './projects'
   export let projects: Project[] = []
   export let linkedProjectId = ''
   // Refreshed by the app each minute so active projects lapse on time.
   export let now = Date.now()
+  export let onOpenLink: (link: ItemLink) => void = () => {}
   let name = ''
   let nameHtml = ''
   // Bumped after adding so the still-focused name editor clears its DOM.
@@ -33,6 +33,10 @@
   $: detailsActive = details ? active.includes(details) : false
   $: if (detailsId && !details) closeDetails()
 
+  // Descriptions written before descriptionHtml existed are plain text with line breaks.
+  function descriptionHTML(project: Project) {
+    return project.descriptionHtml ?? escapeHTML(project.description).replace(/\n/g, '<br>')
+  }
   function shortDate(iso: string) {
     const date = new Date(iso)
     return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', ...(date.getFullYear() === new Date().getFullYear() ? {} : { year: 'numeric' }) })
@@ -189,7 +193,26 @@
         }}
         onChange={(html, text) => { if (text.trim() && (text.trim() !== project.name || html !== (project.nameHtml ?? escapeHTML(project.name)))) plannerStore.updateProject(project.id, { name: text.trim(), nameHtml: html }) }}
       /></div>
-      <label class="description-field">Description<textarea value={project.description} use:autoGrow={project.description} on:input={(event) => plannerStore.updateProject(project.id, { description: event.currentTarget.value })}></textarea></label>
+      <div class="description-field"><span>Description</span><RichTextEditor
+        className="rich-text-field description-editor"
+        kind="project-description"
+        inputId={`project-description:${project.id}`}
+        html={descriptionHTML(project)}
+        text={project.description}
+        ariaLabel="Description"
+        revision={$plannerStore.historyRevision}
+        onKeyDown={(_editor, event) => {
+          // Enter starts a new line; the description is one block of text.
+          if (event.key !== 'Enter' || event.shiftKey || event.metaKey || event.ctrlKey || event.altKey || event.isComposing) return
+          event.preventDefault()
+          document.execCommand('insertLineBreak')
+        }}
+        onInternalLinkClick={(link) => { closeDetails(); onOpenLink(link) }}
+        onChange={(html) => {
+          const description = htmlToPlainTextWithBreaks(html)
+          if (description !== project.description || html !== descriptionHTML(project)) plannerStore.updateProject(project.id, { description, descriptionHtml: html })
+        }}
+      /></div>
       {#if project.archived}
         <p class="project-status">Archived{project.archivedAt ? ` ${shortDate(project.archivedAt)}` : ''}</p>
         <div class="project-actions">
@@ -243,11 +266,11 @@
   /* The inset keeps focus rings inside the scroll clip. */
   .project-details { display: flex; flex-direction: column; gap: 12px; overflow-y: auto; margin: -4px; padding: 4px; }
   .project-details > * { flex-shrink: 0; }
-  .project-details label, .name-field { display: grid; gap: 6px; font-size: 13px; }
-  .project-details .description-field { display: flex; flex-direction: column; flex-shrink: 1; min-height: 0; }
+  .name-field { display: grid; gap: 6px; font-size: 13px; }
+  .project-details .description-field { display: flex; flex-direction: column; gap: 6px; flex-shrink: 1; min-height: 0; font-size: 13px; }
   .project-status { margin: 0; color: var(--muted); font-size: 13px; }
   .project-actions, .project-days { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
   .project-actions button { font-size: 14px; padding: 8px 10px; }
   .project-days button { min-width: 40px; font-size: 15px; padding: 8px 0; font-variant-numeric: tabular-nums; }
-  textarea { width: 100%; box-sizing: border-box; min-height: 96px; flex-shrink: 1; resize: none; overflow-y: auto; background: var(--paper-strong); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
+  .description-field :global(.description-editor) { min-height: 96px; flex-shrink: 1; overflow-y: auto; }
 </style>

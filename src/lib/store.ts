@@ -2228,7 +2228,7 @@ function createPlannerStore() {
       return project.id
     },
 
-    updateProject(projectId: Id, patch: Partial<Pick<import('./types').Project, 'name' | 'nameHtml' | 'description'>>) {
+    updateProject(projectId: Id, patch: Partial<Pick<import('./types').Project, 'name' | 'nameHtml' | 'description' | 'descriptionHtml'>>) {
       if (patch.name !== undefined && !patch.name.trim()) return
       commitEntities('update_project', { projectId }, (state) => ({
         ...state,

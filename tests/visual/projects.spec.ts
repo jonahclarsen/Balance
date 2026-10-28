@@ -477,20 +477,60 @@ test('long project descriptions truncate within the page and remain editable in 
   expect(cardBounds!.x + cardBounds!.width).toBeLessThanOrEqual(panelBounds!.x + panelBounds!.width + 1)
   await card.click()
   const field = details.getByRole('textbox', { name: 'Description' })
-  await expect(field).toHaveValue(description)
+  await expect(field).toHaveText(description)
   // The description fills the card up to its max height instead of the card scrolling.
   const fit = await details.evaluate(card => {
     const body = card.querySelector<HTMLElement>('.project-details')!
-    const textarea = card.querySelector('textarea')!
+    const editor = card.querySelector<HTMLElement>('.description-editor')!
     return {
       bodyScrolls: body.scrollHeight > body.clientHeight,
-      textareaScrolls: textarea.scrollHeight > textarea.clientHeight,
+      editorScrolls: editor.scrollHeight > editor.clientHeight,
       cardFull: card.getBoundingClientRect().height >= Math.min(innerHeight * 0.82, card.parentElement!.clientHeight - 48) - 2,
     }
   })
-  expect(fit).toEqual({ bodyScrolls: false, textareaScrolls: true, cardFull: true })
+  expect(fit).toEqual({ bodyScrolls: false, editorScrolls: true, cardFull: true })
   await field.fill('Synthetic\nshort\nnotes\nthat\nfit')
-  expect(await field.evaluate(textarea => textarea.scrollHeight <= textarea.clientHeight)).toBe(true)
+  expect(await field.evaluate(editor => editor.scrollHeight <= editor.clientHeight)).toBe(true)
+})
+
+test('project descriptions turn pasted URLs into links like tasks do, and their links open', async ({ page }) => {
+  await page.goto('/')
+  await openView(page, 'Projects')
+  await addProject(page, 'Synthetic source')
+  await addProject(page, 'Synthetic target')
+  const target = (await readState(page)).projects.find((project: any) => project.name === 'Synthetic target')
+  await page.locator('.project-card', { hasText: 'Synthetic source' }).click()
+  const details = page.getByRole('dialog', { name: 'Synthetic source details', exact: true })
+  const description = details.getByRole('textbox', { name: 'Description' })
+  await description.fill('See docs then target')
+  const paste = (text: string, selected: string) => description.evaluate((editor, { text, selected }) => {
+    editor.focus()
+    const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT)
+    let node = walker.nextNode()
+    while (node && !node.textContent!.includes(selected)) node = walker.nextNode()
+    const start = node!.textContent!.indexOf(selected)
+    const range = document.createRange()
+    range.setStart(node!, start)
+    range.setEnd(node!, start + selected.length)
+    document.getSelection()!.removeAllRanges()
+    document.getSelection()!.addRange(range)
+    const clipboardData = new DataTransfer()
+    clipboardData.setData('text/plain', text)
+    editor.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData }))
+  }, { text, selected })
+
+  // Pasting a URL over selected text links that text.
+  await paste('https://example.com/docs', 'docs')
+  await expect(description.locator('a[href="https://example.com/docs"]')).toHaveText('docs')
+  await paste(`balance://projects/${target.id}`, 'target')
+  await expect(description.locator(`a[href="balance://projects/${target.id}"]`)).toHaveText('target')
+  const saved = (await readState(page)).projects.find((project: any) => project.name === 'Synthetic source')
+  expect(saved.description).toBe('See docs then target')
+  expect(saved.descriptionHtml).toContain('href="https://example.com/docs"')
+
+  // Clicking an internal link opens its destination.
+  await description.locator('a', { hasText: 'target' }).click()
+  await expect(page.getByRole('dialog', { name: 'Synthetic target details', exact: true })).toBeVisible()
 })
 
 test('undo in an unsaved project field undoes typing, and undoing an add leaves no unavailable notice', async ({ page }) => {
@@ -521,7 +561,7 @@ test('undo in an unsaved project field undoes typing, and undoing an add leaves 
   await description.click()
   await description.pressSequentially('Notes')
   await description.press('ControlOrMeta+z')
-  await expect(description).not.toHaveValue('Notes')
+  await expect(description).not.toHaveText('Notes')
   await expect(names).toHaveText(['Synthetic kept'])
 
   // Closing with Escape keeps what was typed, line breaks included.
@@ -532,7 +572,8 @@ test('undo in an unsaved project field undoes typing, and undoing an add leaves 
   await description.press('Escape')
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await page.locator('.project-card', { hasText: 'Synthetic kept' }).click()
-  await expect(description).toHaveValue('One\n\nTwo')
+  await expect.poll(() => description.evaluate(editor => editor.innerText.trimEnd())).toBe('One\n\nTwo')
+  expect((await readState(page)).projects.find((project: any) => project.name === 'Synthetic kept').description).toBe('One\n\nTwo')
 })
 
 test('generating a day with no project active by noon settles ended projects and picks new ones', async ({ page }) => {

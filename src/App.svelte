@@ -8005,7 +8005,7 @@ return rows`
     {/if}
 
     {#if view === 'projects'}
-      <ProjectsPanel projects={$plannerStore.projects} {linkedProjectId} now={projectClock} />
+      <ProjectsPanel projects={$plannerStore.projects} {linkedProjectId} now={projectClock} onOpenLink={(link) => openLink(link, null)} />
     {/if}
 
     {#if view === 'prioritize'}

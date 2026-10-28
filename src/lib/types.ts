@@ -323,6 +323,8 @@ export type Project = {
   // Formatted name with inline links; absent on projects created before it existed.
   nameHtml?: string
   description: string
+  // Formatted description with inline links; absent on descriptions written before it existed.
+  descriptionHtml?: string
   color: string
   archived: boolean
   // When it was archived; absent on projects archived before it existed.
