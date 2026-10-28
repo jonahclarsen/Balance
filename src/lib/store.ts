@@ -4116,6 +4116,15 @@ function renderItems(items: PlanItem[]): string {
 
 export const plannerStore = createPlannerStore()
 
+// Balance runs day to day from the dev server. A hot update would start a
+// second store beside this one, and both would allocate operation IDs from
+// their own sequence, colliding in the database. Save what this one still
+// holds, then reload the page instead.
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => flushOperations().catch(() => {}))
+  import.meta.hot.accept(() => window.location.reload())
+}
+
 // Dev-server-only hook for the Notes editor conformance tests: applies an item
 // tree the editors did not produce, standing in for a sync/remote update.
 if (import.meta.env.DEV && typeof window !== 'undefined') {
