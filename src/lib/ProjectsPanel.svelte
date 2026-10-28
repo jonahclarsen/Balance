@@ -9,6 +9,7 @@
   import { projectReordering } from './projectReordering'
   import { mountInContentShell } from './contentShellOverlay'
   import RichTextEditor from './RichTextEditor.svelte'
+  import { autoGrow } from './autoGrow'
   import { escapeHTML, sanitizeInlineHTML } from './planner'
   import { isProjectActive, isProjectOpen, PROJECT_ACTIVE_DAY_COUNTS } from './projects'
   export let projects: Project[] = []
@@ -170,7 +171,7 @@
   {#if details}
     {@const project = details}
     <div class="details-overlay" use:mountInContentShell>
-    <OverlayModal linkURL={`balance://projects/${project.id}`} title={project.name} ariaLabel={`${project.name} details`} z={65} onClose={closeDetails}>
+    <OverlayModal linkURL={`balance://projects/${project.id}`} title={project.name} ariaLabel={`${project.name} details`} z={65} fill onClose={closeDetails}>
     <div class="project-details" id={'project-details-' + project.id} style:--project-color={project.color}>
       <div class="name-field" use:focusNameAtEnd={project.id}><span>Name</span><RichTextEditor
         className="rich-text-field"
@@ -188,7 +189,7 @@
         }}
         onChange={(html, text) => { if (text.trim() && (text.trim() !== project.name || html !== (project.nameHtml ?? escapeHTML(project.name)))) plannerStore.updateProject(project.id, { name: text.trim(), nameHtml: html }) }}
       /></div>
-      <label>Description<textarea value={project.description} on:input={(event) => plannerStore.updateProject(project.id, { description: event.currentTarget.value })}></textarea></label>
+      <label class="description-field">Description<textarea value={project.description} use:autoGrow={project.description} on:input={(event) => plannerStore.updateProject(project.id, { description: event.currentTarget.value })}></textarea></label>
       {#if project.archived}
         <p class="project-status">Archived{project.archivedAt ? ` ${shortDate(project.archivedAt)}` : ''}</p>
         <div class="project-actions">
@@ -238,11 +239,15 @@
   .project-list :global(.project-card.project-dragging) { position: relative; z-index: 2; cursor: grabbing; box-shadow: 0 12px 32px rgba(0, 0, 0, .22); pointer-events: none; }
   .project-list :global(.project-card.project-settling) { position: relative; z-index: 2; }
   .project-list :global(.project-drop-indicator) { position: absolute; background: var(--accent); border-radius: 2px; pointer-events: none; z-index: 1; }
-  .project-details { display: grid; gap: 12px; }
+  /* The description grows with its text and only scrolls once the card hits its max height. */
+  /* The inset keeps focus rings inside the scroll clip. */
+  .project-details { display: flex; flex-direction: column; gap: 12px; overflow-y: auto; margin: -4px; padding: 4px; }
+  .project-details > * { flex-shrink: 0; }
   .project-details label, .name-field { display: grid; gap: 6px; font-size: 13px; }
+  .project-details .description-field { display: flex; flex-direction: column; flex-shrink: 1; min-height: 0; }
   .project-status { margin: 0; color: var(--muted); font-size: 13px; }
   .project-actions, .project-days { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
   .project-actions button { font-size: 14px; padding: 8px 10px; }
   .project-days button { min-width: 40px; font-size: 15px; padding: 8px 0; font-variant-numeric: tabular-nums; }
-  textarea { width: 100%; box-sizing: border-box; min-height: 96px; resize: vertical; background: var(--paper-strong); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
+  textarea { width: 100%; box-sizing: border-box; min-height: 96px; flex-shrink: 1; resize: none; overflow-y: auto; background: var(--paper-strong); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
 </style>

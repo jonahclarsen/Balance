@@ -476,7 +476,21 @@ test('long project descriptions truncate within the page and remain editable in 
   const panelBounds = await page.locator('.projects-panel').boundingBox()
   expect(cardBounds!.x + cardBounds!.width).toBeLessThanOrEqual(panelBounds!.x + panelBounds!.width + 1)
   await card.click()
-  await expect(details.getByRole('textbox', { name: 'Description' })).toHaveValue(description)
+  const field = details.getByRole('textbox', { name: 'Description' })
+  await expect(field).toHaveValue(description)
+  // The description fills the card up to its max height instead of the card scrolling.
+  const fit = await details.evaluate(card => {
+    const body = card.querySelector<HTMLElement>('.project-details')!
+    const textarea = card.querySelector('textarea')!
+    return {
+      bodyScrolls: body.scrollHeight > body.clientHeight,
+      textareaScrolls: textarea.scrollHeight > textarea.clientHeight,
+      cardFull: card.getBoundingClientRect().height >= Math.min(innerHeight * 0.82, card.parentElement!.clientHeight - 48) - 2,
+    }
+  })
+  expect(fit).toEqual({ bodyScrolls: false, textareaScrolls: true, cardFull: true })
+  await field.fill('Synthetic\nshort\nnotes\nthat\nfit')
+  expect(await field.evaluate(textarea => textarea.scrollHeight <= textarea.clientHeight)).toBe(true)
 })
 
 test('undo in an unsaved project field undoes typing, and undoing an add leaves no unavailable notice', async ({ page }) => {
