@@ -86,6 +86,11 @@ jobs:
               "Keystroke to frame, median (ms)": .typing.medianMs,
               "Keystroke to frame, p95 (ms)": .typing.p95Ms,
               "CPU per keystroke (ms)": .typing.taskMsPerKey,
+              "Script per keystroke (ms)": .typing.scriptMsPerKey,
+              "Style per keystroke (ms)": .typing.styleMsPerKey,
+              "Layout per keystroke (ms)": .typing.layoutMsPerKey,
+              "Keystroke to frame, 150-block note, median (ms)": .typingMedium.medianMs,
+              "Keystroke to frame, 150-block note, p95 (ms)": .typingMedium.p95Ms,
               "Enter (split), median (ms)": .enter.medianMs,
               "Backspace (merge), median (ms)": .backspace.medianMs,
               "Paste 100 blocks (ms)": .paste.ms,
@@ -110,6 +115,18 @@ jobs:
             printf '%s\n' "$summary" | jq -r '
               . as $all | keys_unsorted[] as $metric
               | "| \($metric) | \($all[$metric]) |"'
+            echo
+            echo '### Typing CPU hotspots, 1k-block note (last round, self ms)'
+            echo
+            echo '| Function | ms |'
+            echo '|---|---:|'
+            sed -n 's/^NOTES_EDITOR_TYPING_HOTSPOTS //p' "$logs" | tail -1 | jq -r '.[] | "| `\(.name)` | \(.ms) |"'
+            echo
+            echo '### Idle CPU hotspots (last round, self ms)'
+            echo
+            echo '| Function | ms |'
+            echo '|---|---:|'
+            sed -n 's/^NOTES_EDITOR_IDLE_HOTSPOTS //p' "$logs" | tail -1 | jq -r '.[] | "| `\(.name)` | \(.ms) |"'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload profile results

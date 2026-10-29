@@ -11,6 +11,10 @@ const SWITCH_ROUNDS = performanceSize('BALANCE_NOTES_PERF_SWITCHES', 8)
 const TYPED_TEXT = 'The quick brown fox jumps over the lazy dog while notes stay fast. '.repeat(2)
 const SPLIT_COUNT = performanceSize('BALANCE_NOTES_PERF_SPLITS', 15)
 const PASTE_BLOCKS = performanceSize('BALANCE_NOTES_PERF_PASTE_BLOCKS', 100)
+// Other notes in the corpus, so per-keystroke work that scales with every
+// note (sidebar search text, link contexts) shows up as it does in real use.
+const BACKGROUND_NOTES = performanceSize('BALANCE_NOTES_PERF_BACKGROUND_NOTES', 150)
+const BACKGROUND_BLOCKS = performanceSize('BALANCE_NOTES_PERF_BACKGROUND_BLOCKS', 40)
 
 const STATE_KEY = 'balance.appState.v1'
 
@@ -194,10 +198,39 @@ async function heapAndNodes(session: CDPSession) {
 // Runs an action and reports main-thread task time it consumed (CDP
 // TaskDuration is in seconds of throttled renderer time).
 async function taskTime<T>(session: CDPSession, action: () => Promise<T>) {
-  const before = (await metrics(session)).TaskDuration
+  const before = await metrics(session)
   const result = await action()
-  const after = (await metrics(session)).TaskDuration
-  return { result, taskMs: Math.round((after - before) * 1000 * 10) / 10 }
+  const after = await metrics(session)
+  const ms = (name: string) => Math.round((after[name] - before[name]) * 1000 * 10) / 10
+  return {
+    result,
+    taskMs: ms('TaskDuration'),
+    scriptMs: ms('ScriptDuration'),
+    styleMs: ms('RecalcStyleDuration'),
+    layoutMs: ms('LayoutDuration'),
+  }
+}
+
+// Self time per function while `action` runs, heaviest first.
+async function cpuHotspots(session: CDPSession, action: () => Promise<void>, limit = 25) {
+  await session.send('Profiler.enable')
+  await session.send('Profiler.setSamplingInterval', { interval: 200 })
+  await session.send('Profiler.start')
+  await action()
+  const { profile } = await session.send('Profiler.stop')
+  const selfMs = new Map<number, number>()
+  profile.samples?.forEach((id, index) => selfMs.set(id, (selfMs.get(id) ?? 0) + (profile.timeDeltas?.[index] ?? 0) / 1000))
+  const byFunction = new Map<string, number>()
+  for (const node of profile.nodes) {
+    const ms = selfMs.get(node.id) ?? 0
+    if (!ms) continue
+    const frame = node.callFrame
+    const file = frame.url.split('/').pop()?.split('?')[0] ?? ''
+    const name = `${frame.functionName || '(anonymous)'} ${file}:${frame.lineNumber + 1}`
+    byFunction.set(name, (byFunction.get(name) ?? 0) + ms)
+  }
+  return [...byFunction].sort((left, right) => right[1] - left[1]).slice(0, limit)
+    .map(([name, ms]) => ({ name, ms: Math.round(ms * 10) / 10 }))
 }
 
 async function sampleScrollFrames(page: Page, anchorSelector: string, frames: number) {
@@ -231,8 +264,10 @@ test('profile notes editor', async ({ page }) => {
   const large = createNote('large', 'Large note', LARGE_BLOCKS, 20)
   const mediumA = createNote('meda', 'Medium note A', MEDIUM_BLOCKS, 10)
   const mediumB = createNote('medb', 'Medium note B', MEDIUM_BLOCKS, 11)
+  const background = Array.from({ length: BACKGROUND_NOTES }, (_, index) =>
+    createNote(`bg${index}`, `Background note ${index}`, BACKGROUND_BLOCKS, 1).note)
 
-  await boot(page, [tiny.note, large.note, mediumA.note, mediumB.note])
+  await boot(page, [tiny.note, large.note, mediumA.note, mediumB.note, ...background])
   const session = await page.context().newCDPSession(page)
   await session.send('Performance.enable')
   await openNote(page, 'Tiny note', blockSelector(tiny.lastId))
@@ -252,14 +287,50 @@ test('profile notes editor', async ({ page }) => {
   await installKeyLatencyProbe(page)
   await placeCaretAtEnd(page, large.middleLeafId)
   await takeKeySamples(page)
+  let typingHotspots: Awaited<ReturnType<typeof cpuHotspots>> = []
   const typing = await taskTime(session, async () => {
-    await page.keyboard.type(TYPED_TEXT, { delay: 45 })
-    await page.waitForTimeout(400)
+    typingHotspots = await cpuHotspots(session, async () => {
+      await page.keyboard.type(TYPED_TEXT, { delay: 45 })
+      await page.waitForTimeout(400)
+    })
   })
   const typingSamples = (await takeKeySamples(page)).map((sample) => sample.ms)
+  console.log(`NOTES_EDITOR_TYPING_HOTSPOTS ${JSON.stringify(typingHotspots)}`)
 
   // Idle while focused: anything the editor does with nobody typing.
-  const idle = await taskTime(session, () => page.waitForTimeout(2_000))
+  let idleHotspots: Awaited<ReturnType<typeof cpuHotspots>> = []
+  const idle = await taskTime(session, async () => {
+    idleHotspots = await cpuHotspots(session, () => page.waitForTimeout(2_000))
+  })
+  console.log(`NOTES_EDITOR_IDLE_HOTSPOTS ${JSON.stringify(idleHotspots)}`)
+  const idleRendering = await page.evaluate(async () => {
+    const animations = document.getAnimations().map((animation) => {
+      const target = (animation.effect as KeyframeEffect | null)?.target as Element | null
+      const name = (animation as CSSAnimation).animationName ?? (animation as CSSTransition).transitionProperty ?? animation.id
+      return `${name} on ${target ? `${target.tagName.toLowerCase()}.${[...target.classList].join('.')}` : '?'}`
+    })
+    let frames = 0
+    const started = performance.now()
+    await new Promise<void>((resolve) => {
+      const tick = () => {
+        frames += 1
+        if (performance.now() - started < 1_000) requestAnimationFrame(tick)
+        else resolve()
+      }
+      requestAnimationFrame(tick)
+    })
+    return { animations, framesPerSecond: frames }
+  })
+  console.log(`NOTES_EDITOR_IDLE_RENDERING ${JSON.stringify(idleRendering)}`)
+
+  // Typing into a medium note.
+  await openNote(page, 'Medium note A', blockSelector(mediumA.lastId))
+  await placeCaretAtEnd(page, mediumA.middleLeafId)
+  await takeKeySamples(page)
+  await page.keyboard.type(TYPED_TEXT, { delay: 45 })
+  await page.waitForTimeout(400)
+  const mediumTypingSamples = (await takeKeySamples(page)).map((sample) => sample.ms)
+  await openNote(page, 'Large note', blockSelector(large.lastId))
 
   // Splitting blocks with Enter, then merging them back with Backspace.
   await placeCaretAtEnd(page, large.middleLeafId)
@@ -312,7 +383,14 @@ test('profile notes editor', async ({ page }) => {
   const round = (value: number) => Math.round(value * 10) / 10
   const profile = {
     editor: 'lexical',
-    fixture: { cpuRate: CPU_RATE, largeBlocks: LARGE_BLOCKS, mediumBlocks: MEDIUM_BLOCKS, typedChars: TYPED_TEXT.length },
+    fixture: {
+      cpuRate: CPU_RATE,
+      largeBlocks: LARGE_BLOCKS,
+      mediumBlocks: MEDIUM_BLOCKS,
+      backgroundNotes: BACKGROUND_NOTES,
+      backgroundBlocks: BACKGROUND_BLOCKS,
+      typedChars: TYPED_TEXT.length,
+    },
     openLarge: { ms: round(largeOpen.result), taskMs: largeOpen.taskMs, reopenMs: round(largeReopenMs) },
     switchMedium: summarize(switchSamples),
     memory: {
@@ -320,7 +398,14 @@ test('profile notes editor', async ({ page }) => {
       largeDomNodes: largeMemory.domNodes - baselineMemory.domNodes,
     },
     scroll: { ...summarize(scrollIntervals), framesOver32Ms: scrollIntervals.filter((ms) => ms > 32).length },
-    typing: { ...summarize(typingSamples), taskMsPerKey: round(typing.taskMs / Math.max(1, typingSamples.length)) },
+    typing: {
+      ...summarize(typingSamples),
+      taskMsPerKey: round(typing.taskMs / Math.max(1, typingSamples.length)),
+      scriptMsPerKey: round(typing.scriptMs / Math.max(1, typingSamples.length)),
+      styleMsPerKey: round(typing.styleMs / Math.max(1, typingSamples.length)),
+      layoutMsPerKey: round(typing.layoutMs / Math.max(1, typingSamples.length)),
+    },
+    typingMedium: summarize(mediumTypingSamples),
     enter: { ...summarize(enterSamples), taskMsPerKey: round(splitting.taskMs / SPLIT_COUNT) },
     backspace: { ...summarize(backspaceSamples), taskMsPerKey: round(merging.taskMs / SPLIT_COUNT) },
     paste: { ms: paste.result == null ? null : round(paste.result), taskMs: paste.taskMs },
