@@ -62,36 +62,46 @@ export type NoteItemsDiff =
   // Anything else: kind changes, several items, inserts, removals, moves.
   | { kind: 'structure' }
 
-function shapeSignature(items: NoteItem[]): string {
-  return items.map((item) => `${item.id}[${shapeSignature(item.children)}]`).join(',')
-}
-
 // Classifies how `next` differs from `previous` so the adapter can choose the
 // narrowest store operation (typing coalesces in undo; toggles stay toggles).
+// One walk; subtrees that kept their identity are skipped.
 export function classifyNoteItemsDiff(previous: NoteItem[], next: NoteItem[]): NoteItemsDiff {
-  if (noteItemsEqual(previous, next)) return { kind: 'none' }
-  if (shapeSignature(previous) !== shapeSignature(next)) return { kind: 'structure' }
-
-  const before = flattenNoteItems(previous)
-  const after = flattenNoteItems(next)
   const textChanged: Id[] = []
   const doneChanged: Id[] = []
   let doneValue: boolean | null = null
-  for (let index = 0; index < before.length; index += 1) {
-    const left = before[index]
-    const right = after[index]
-    if (left === right) continue
-    if (left.kind !== right.kind) return { kind: 'structure' }
-    if (left.text !== right.text || left.html !== right.html) textChanged.push(right.id)
-    if (left.done !== right.done) {
-      if (doneValue === null) doneValue = right.done
-      else if (doneValue !== right.done) return { kind: 'structure' }
-      doneChanged.push(right.id)
+  // False when the tree shape, a kind, or the direction of `done` differs.
+  const walk = (before: NoteItem[], after: NoteItem[]): boolean => {
+    if (before === after) return true
+    if (before.length !== after.length) return false
+    for (let index = 0; index < before.length; index += 1) {
+      const left = before[index]
+      const right = after[index]
+      if (left === right) continue
+      if (left.id !== right.id || left.kind !== right.kind) return false
+      if (left.text !== right.text || left.html !== right.html) textChanged.push(right.id)
+      if (left.done !== right.done) {
+        if (doneValue === null) doneValue = right.done
+        else if (doneValue !== right.done) return false
+        doneChanged.push(right.id)
+      }
+      if (!walk(left.children, right.children)) return false
     }
+    return true
   }
+  if (!walk(previous, next)) return { kind: 'structure' }
+  if (textChanged.length === 0 && doneChanged.length === 0) return { kind: 'none' }
   if (textChanged.length === 1 && doneChanged.length === 0) return { kind: 'text', itemId: textChanged[0] }
-  if (textChanged.length === 0 && doneChanged.length > 0 && doneValue !== null) return { kind: 'done', itemIds: doneChanged, done: doneValue }
+  if (textChanged.length === 0 && doneValue !== null) return { kind: 'done', itemIds: doneChanged, done: doneValue }
   return { kind: 'structure' }
+}
+
+export function findNoteItem(items: NoteItem[], id: Id): NoteItem | null {
+  for (const item of items) {
+    if (item.id === id) return item
+    const child = findNoteItem(item.children, id)
+    if (child) return child
+  }
+  return null
 }
 
 // The canonical derivation used by the app: textContent of the sanitized

@@ -1,4 +1,4 @@
-import { entityPatch, type EntityPatch } from './entityPatch'
+import { entityPatch, jsonEqual, type EntityPatch } from './entityPatch'
 import { parseBrowserState, serializeBrowserState } from './browserState'
 import { generatedItemMarkers, preservedPlanItems, reconcileUneditedPlanItems } from './planGeneration'
 import { invoke, isTauri } from '@tauri-apps/api/core'
@@ -657,7 +657,7 @@ function entityChangesBetween(before: AppState, after: AppState): EntityChanges 
       if (
         !previous ||
         moved ||
-        (previous.value !== value && JSON.stringify(previous.value) !== JSON.stringify(value))
+        (previous.value !== value && !jsonEqual(previous.value, value))
       ) {
         const storedPosition = collection === 'uneditedPlanItems' ? (previous ? null : 0) : (!previous || moved ? position : null)
         upserts.push({ collection, key, position: storedPosition, value, patches: [entityPatch(previous?.value, value)] })

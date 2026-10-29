@@ -13,6 +13,7 @@
 import type { Id, NoteItem, NoteViewState } from '../types'
 import {
   classifyNoteItemsDiff,
+  findNoteItem,
   materializeNoteBlocks,
   noteBlocksFromItems,
   noteItemById,
@@ -147,7 +148,7 @@ export class NoteEditorAdapter {
     this.items = items
     switch (diff.kind) {
       case 'text': {
-        const item = noteItemById(items).get(diff.itemId)
+        const item = findNoteItem(items, diff.itemId)
         if (item) {
           this.store.patchNoteItem(noteId, diff.itemId, { text: item.text, html: item.html },
             source === 'paste' || source === 'image' || source === 'quote' || source === 'code' ? { mergeHistory: false } : {})

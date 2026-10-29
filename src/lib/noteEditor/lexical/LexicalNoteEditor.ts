@@ -282,6 +282,8 @@ class LexicalNoteEditorView implements NoteEditorView {
   private segmentCache = new Map<NodeKey, { text: string; segments: ItemTextSegment[] }>()
   private internalLinks: Array<{ range: Range; link: ItemLink }> = []
   private hoverFrame = 0
+  // Outline placement each block element was last decorated for.
+  private decorated = new WeakMap<HTMLElement, string>()
   private pointer: { x: number; y: number } | null = null
 
   // -------------------------------------------------------------------------
@@ -600,7 +602,11 @@ class LexicalNoteEditorView implements NoteEditorView {
   }
 
   updateContext(context: NoteEditorContext): void {
-    const changed = context.listTemplates !== this.context.listTemplates || context.metrics !== this.context.metrics || context.notes !== this.context.notes
+    // Typing replaces the open note, and so the notes array, on every key.
+    // Links only read ids and names, so only a change to those relinks.
+    const changed = !sameLinkTargets(context.listTemplates, this.context.listTemplates, (template) => template.name)
+      || !sameLinkTargets(context.metrics, this.context.metrics, (metric) => metric.name)
+      || !sameLinkTargets(context.notes, this.context.notes, (note) => note.title)
     this.context = context
     if (changed) {
       this.segmentCache.clear()
@@ -955,7 +961,7 @@ class LexicalNoteEditorView implements NoteEditorView {
           this.$revealBlock(edges.focus.block)
         }
       }
-      this.$decorate()
+      this.$decorate(changed ? dirtyElements : null)
     })
 
     if (!silent && changed && !this.isComposing()) {
@@ -993,7 +999,10 @@ class LexicalNoteEditorView implements NoteEditorView {
 
   // Derived attributes that depend on neighbours (depth, numbering), text
   // (aria-label, placeholder), and the selection (caret row, row selection).
-  private $decorate() {
+  // With `dirty` (an update's dirty elements), blocks Lexical left untouched
+  // whose place in the outline is unchanged keep their decoration, so typing
+  // costs one block instead of the whole note.
+  private $decorate(dirty: ReadonlyMap<NodeKey, boolean> | null = null) {
     const editor = this.editor
     const root = this.root
     if (!editor || !root) return
@@ -1014,7 +1023,16 @@ class LexicalNoteEditorView implements NoteEditorView {
         const dom = editor.getElementByKey(block.getKey())
         const kind = block.getKind()
         number = kind === 'numbered' ? number + 1 : 0
+        const children = $childBlocks(block)
+        const key = block.getKey()
+        const collapsed = children.length > 0 && this.$isCollapsed(block)
+        const placement = `${depth}|${number}|${collapsed}|${key === caretKey}|${rowKeys.has(key)}`
+        if (dom && dirty && !dirty.has(key) && this.decorated.get(dom) === placement) {
+          visit(children, depth + 1)
+          continue
+        }
         if (dom) {
+          this.decorated.set(dom, placement)
           setData(dom, 'noteItemDepth', String(depth))
           const content = $readContent(block)
           const text = content ? $plainText(content) : ''
@@ -1030,8 +1048,7 @@ class LexicalNoteEditorView implements NoteEditorView {
           }
           const textDom = blockDom?.querySelector<HTMLElement>(':scope > .note-text')
           if (textDom) setData(textDom, 'placeholder', empty ? (kind === 'heading' ? 'Heading' : 'Type / for styles') : null)
-          const hasChildren = $childBlocks(block).length > 0
-          const collapsed = hasChildren && this.$isCollapsed(block)
+          const hasChildren = children.length > 0
           dom.classList.toggle('note-collapsed', collapsed)
           const toggle = blockDom?.querySelector<HTMLButtonElement>(':scope > .note-collapse')
           if (toggle) {
@@ -1042,10 +1059,10 @@ class LexicalNoteEditorView implements NoteEditorView {
           const check = blockDom?.querySelector<HTMLInputElement>(':scope > input.note-check')
           if (check) syncCheckbox(check, block.getDone())
           dom.classList.toggle('note-empty-block', empty)
-          dom.classList.toggle('note-caret-block', block.getKey() === caretKey)
-          dom.classList.toggle('note-multi-selected', rowKeys.has(block.getKey()))
+          dom.classList.toggle('note-caret-block', key === caretKey)
+          dom.classList.toggle('note-multi-selected', rowKeys.has(key))
         }
-        visit($childBlocks(block), depth + 1)
+        visit(children, depth + 1)
       }
     }
     visit(blocks, 0)
@@ -2145,6 +2162,12 @@ function setData(element: HTMLElement, key: string, value: string | null) {
 
 function setAttr(element: HTMLElement, name: string, value: string) {
   if (element.getAttribute(name) !== value) element.setAttribute(name, value)
+}
+
+function sameLinkTargets<T extends { id: string }>(next: T[], previous: T[], name: (target: T) => string) {
+  if (next === previous) return true
+  if (next.length !== previous.length) return false
+  return next.every((target, index) => target === previous[index] || (target.id === previous[index].id && name(target) === name(previous[index])))
 }
 
 export function createLexicalNoteEditor(): NoteEditorView {

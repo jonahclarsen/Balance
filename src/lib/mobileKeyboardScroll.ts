@@ -175,12 +175,16 @@ export function installMobileKeyboardScroll(): () => void {
   }
   // Listen while capturing: Lexical stops input from bubbling, and when it
   // cancels beforeinput to insert text itself no input event follows at all.
+  // Typing with a fine pointer never raises a keyboard; skip measuring layout
+  // on every key unless padding from a touch session is still applied.
+  const typingNeedsReveal = () => mobile.matches || paddedEditor !== null
   function handleInput(event: Event) {
+    if (!typingNeedsReveal()) return
     const editor = activeEditor()
     if (editor && event.target instanceof Node && editor.contains(event.target)) schedule()
   }
   function handleKeydown(event: KeyboardEvent) {
-    if (CARET_KEYS.has(event.key) && activeEditor()) schedule()
+    if (CARET_KEYS.has(event.key) && typingNeedsReveal() && activeEditor()) schedule()
   }
 
   document.addEventListener('focusin', schedule)

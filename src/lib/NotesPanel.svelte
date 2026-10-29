@@ -7,7 +7,7 @@
   import type { ItemLink } from './planner'
   import { NOTE_TRASH_RETENTION_DAYS, noteTrashDaysRemaining } from './noteTrash'
   import { noteVersionGroupId, noteVersionLabel, noteVersionsOf } from './noteVersions'
-  import type { Id, ListTemplate, Metric, Note, NoteItemKind, NoteViewState } from './types'
+  import type { Id, ListTemplate, Metric, Note, NoteItem, NoteItemKind, NoteViewState } from './types'
 
   const NOTE_SCROLL_SPACE_PERCENT_KEY = 'balance:noteScrollSpacePercent'
   const DEFAULT_NOTE_SCROLL_SPACE_PERCENT = 60
@@ -112,9 +112,7 @@
     .sort((a, b) => (b.deletedAt ?? '').localeCompare(a.deletedAt ?? ''))
   $: visibleNotes = trashOpen ? trashedNotes : activeNotes
   $: selectedNote = visibleNotes.find((note) => note.id === selectedNoteId) ?? visibleNotes[0] ?? null
-  $: wordCount = selectedNote
-    ? Array.from(wordSegmenter.segment(flattenText(selectedNote))).filter((segment) => segment.isWordLike).length
-    : 0
+  $: wordCount = selectedNote ? countWords(selectedNote.items) : 0
   $: if (!trashOpen && selectedNote) lastActiveNoteId = selectedNote.id
   $: if (trashOpen && selectedNote) lastTrashNoteId = selectedNote.id
   $: selectedVersions = selectedNote && !trashOpen ? noteVersionsOf(activeNotes, noteVersionGroupId(selectedNote)) : []
@@ -122,8 +120,9 @@
   $: showEditableNote(trashOpen ? null : selectedNote?.id ?? null)
   // The Bin lists each binned version on its own; Notes lists one card per note.
   $: noteCards = trashOpen ? trashedNotes.map((note) => [note]) : groupVersions(activeNotes)
-  $: filteredCards = noteCards
-    .filter((versions) => versions.some((note) => `${note.title} ${flattenText(note)}`.toLocaleLowerCase().includes(filter.trim().toLocaleLowerCase())))
+  $: filterQuery = filter.trim().toLocaleLowerCase()
+  $: filteredCards = (filterQuery ? noteCards.filter((versions) => versions.some((note) => searchText(note).includes(filterQuery))) : noteCards)
+    .slice()
     .sort((a, b) => trashOpen
       ? (b[0].deletedAt ?? '').localeCompare(a[0].deletedAt ?? '')
       : latestUpdate(b).localeCompare(latestUpdate(a)))
@@ -210,13 +209,45 @@
     node.select()
   }
 
-  function flattenText(note: Note): string {
-    const visit = (items: Note['items']): string => items.map((item) => `${item.text} ${visit(item.children)}`).join(' ')
-    return visit(note.items)
+  // Typing replaces only the edited item and its ancestors, so per-object
+  // caches keep each keystroke from rescanning every note.
+  const wordCounts = new WeakMap<NoteItem, number>()
+  function countWords(items: NoteItem[]): number {
+    let total = 0
+    for (const item of items) {
+      let count = wordCounts.get(item)
+      if (count === undefined) {
+        count = 0
+        for (const segment of wordSegmenter.segment(item.text)) if (segment.isWordLike) count += 1
+        count += countWords(item.children)
+        wordCounts.set(item, count)
+      }
+      total += count
+    }
+    return total
+  }
+
+  const searchTexts = new WeakMap<Note, string>()
+  function searchText(note: Note): string {
+    let text = searchTexts.get(note)
+    if (text === undefined) {
+      const visit = (items: NoteItem[]): string => items.map((item) => `${item.text} ${visit(item.children)}`).join(' ')
+      text = `${note.title} ${visit(note.items)}`.toLocaleLowerCase()
+      searchTexts.set(note, text)
+    }
+    return text
   }
 
   // Lines read as two spaces apart; the no-break space keeps HTML from collapsing them.
+  // Every card re-renders on each keystroke, so previews are cached per note.
+  const previewTexts = new WeakMap<Note, string>()
   function previewText(note: Note): string {
+    let preview = previewTexts.get(note)
+    if (preview === undefined) previewTexts.set(note, preview = buildPreviewText(note))
+    return preview
+  }
+
+  function buildPreviewText(note: Note): string {
     const lines: string[] = []
     const visit = (items: Note['items']) => items.forEach((item) => { lines.push(...item.text.split('\n')); visit(item.children) })
     visit(note.items)
@@ -275,10 +306,12 @@
     if (await onEmptyTrash()) onSelect('')
   }
 
+  const shortDate = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' })
+  const shortDateWithYear = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
   function readableDate(value: string) {
     const date = new Date(value)
     if (Number.isNaN(date.getTime())) return ''
-    return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: date.getFullYear() === new Date().getFullYear() ? undefined : 'numeric' }).format(date)
+    return (date.getFullYear() === new Date().getFullYear() ? shortDate : shortDateWithYear).format(date)
   }
 
   function deletionCountdown(note: Note) {

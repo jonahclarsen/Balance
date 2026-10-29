@@ -72,10 +72,12 @@
     if (!host || !openedNoteId) return
     const selection = document.getSelection()
     if (!selection || selection.rangeCount === 0 || !host.contains(selection.anchorNode)) return
-    rememberViewState()
+    scheduleViewStateSave()
   }
 
-  function scheduleScrollSave() {
+  // Reading the scroller forces layout, so caret moves while typing save once
+  // things settle. Blur, note switches and teardown still save immediately.
+  function scheduleViewStateSave() {
     if (scrollSaveTimer) clearTimeout(scrollSaveTimer)
     scrollSaveTimer = setTimeout(() => {
       scrollSaveTimer = null
@@ -101,7 +103,7 @@
         onCompositionEnd: () => adapter?.compositionEnded(),
         onSelectionChanged: (state) => {
           selection = state
-          rememberViewState()
+          scheduleViewStateSave()
         },
         onOpenLink,
         onUndo,
@@ -212,7 +214,7 @@
     document.addEventListener('selectionchange', handleSelectionChange)
     window.addEventListener('pagehide', flush)
     // Scroll may happen on the note document, the workspace, or the page.
-    document.addEventListener('scroll', scheduleScrollSave, { passive: true, capture: true })
+    document.addEventListener('scroll', scheduleViewStateSave, { passive: true, capture: true })
   })
 
   onDestroy(() => {
@@ -220,7 +222,7 @@
     document.removeEventListener('visibilitychange', handleVisibility)
     document.removeEventListener('selectionchange', handleSelectionChange)
     window.removeEventListener('pagehide', flush)
-    document.removeEventListener('scroll', scheduleScrollSave, { capture: true })
+    document.removeEventListener('scroll', scheduleViewStateSave, { capture: true })
     if (scrollSaveTimer) clearTimeout(scrollSaveTimer)
     teardown()
   })
