@@ -167,6 +167,7 @@ import {
   $selectEnd,
   $selectionEdges,
   $selectOffset,
+  $selectPoints,
   type BlockPoint,
 } from './structure'
 import { SLASH_PATTERN, SlashMenu, type SlashCommand } from './slashMenu'
@@ -281,6 +282,7 @@ class LexicalNoteEditorView implements NoteEditorView {
   private segmentCache = new Map<NodeKey, { text: string; segments: ItemTextSegment[] }>()
   private internalLinks: Array<{ range: Range; link: ItemLink }> = []
   private hoverFrame = 0
+  private pointer: { x: number; y: number } | null = null
 
   // -------------------------------------------------------------------------
   // Lifecycle
@@ -867,7 +869,13 @@ class LexicalNoteEditorView implements NoteEditorView {
       if (target.closest('.note-check, .note-collapse')) event.preventDefault()
     }, { capture: true })
     listen('click', (event) => this.handleClick(event), { capture: true })
-    listen('mousemove', (event) => this.trackLinkHover(event))
+    listen('mousemove', (event) => {
+      this.pointer = { x: event.clientX, y: event.clientY }
+      this.trackLinkHover(event)
+    })
+    listen('mouseleave', () => {
+      this.pointer = null
+    })
     listen('focus', () => {
       if (this.slashBlurTimer) clearTimeout(this.slashBlurTimer)
       this.callbacks?.onFocus()
@@ -1374,6 +1382,12 @@ class LexicalNoteEditorView implements NoteEditorView {
       }
     }
 
+    // Alt+F opens the link at the caret, else the one under the pointer.
+    if (event.altKey && !mod && !event.shiftKey && event.code === 'KeyF' && this.openLinkAtCursor()) {
+      event.preventDefault()
+      return true
+    }
+
     if (event.key === 'Tab' && !mod && !event.altKey) {
       event.preventDefault()
       if (event.shiftKey && editor.getEditorState().read(() => this.$isAtTopWithNothingToOutdent())) {
@@ -1453,7 +1467,7 @@ class LexicalNoteEditorView implements NoteEditorView {
   // moves focus up into the title.
   private $isAtTopWithNothingToOutdent(): boolean {
     const selection = $currentRange()
-    if (!selection) return false
+    if (!selection || this.$isMultiBlock(selection)) return false
     const point = $blockPoint(selection.focus)
     if (!point) return false
     const { block } = point
@@ -1462,19 +1476,37 @@ class LexicalNoteEditorView implements NoteEditorView {
     return first != null && first.is(block)
   }
 
+  // Every row the selection touches moves together. Descendants travel with a
+  // selected ancestor, so only the topmost selected rows move; a row whose
+  // previous sibling is a selected row that could not indent stays put, which
+  // keeps the rows' relative depths.
   private $indentOrOutdent(outdent: boolean) {
     const selection = $currentRange()
     if (!selection) return
-    const point = $blockPoint(selection.focus)
-    if (!point) return
-    const { block, offset } = point
+    const edges = $selectionEdges(selection)
+    if (!edges) return
+    const rows = $blocksBetween(edges.start.block, edges.end.block)
+    const selected = new Set(rows.map((row) => row.getKey()))
+    const tops = rows.filter((row) => !selected.has($parentBlock(row)?.getKey() ?? ''))
+    let changed = false
     if (outdent) {
-      if (!$parentBlock(block)) {
-        if (isListKind(block.getKind())) block.setKind('paragraph')
-        else return
-      } else $outdentBlock(block)
-    } else if (!$indentBlock(block)) return
-    $selectOffset(block, offset)
+      const nested = tops.filter((row) => $parentBlock(row))
+      if (nested.length > 0) {
+        for (const row of nested) changed = $outdentBlock(row) || changed
+      } else {
+        for (const row of tops) {
+          if (!isListKind(row.getKind())) continue
+          row.setKind('paragraph')
+          changed = true
+        }
+      }
+    } else {
+      for (const row of tops) {
+        const previous = row.getPreviousSibling()
+        if ($isNoteBlockNode(previous) && !selected.has(previous.getKey())) changed = $indentBlock(row) || changed
+      }
+    }
+    if (changed) $selectPoints(edges.anchor, edges.focus)
   }
 
   private $moveCurrent(direction: 'up' | 'down') {
@@ -1750,10 +1782,7 @@ class LexicalNoteEditorView implements NoteEditorView {
     const anchor = target.closest<HTMLAnchorElement>('a[href]')
     if (anchor && this.root?.contains(anchor)) {
       event.preventDefault()
-      const href = anchor.getAttribute('href') ?? ''
-      const link = this.internalLinkFor(href, anchor.textContent ?? '')
-      if (link) this.callbacks?.onOpenLink(link)
-      else if (isURL(href)) void openExternalURL(href)
+      this.openAnchor(anchor)
       return
     }
     const selection = document.getSelection()
@@ -1763,6 +1792,43 @@ class LexicalNoteEditorView implements NoteEditorView {
       event.preventDefault()
       this.callbacks?.onOpenLink(hit)
     }
+  }
+
+  private openAnchor(anchor: HTMLAnchorElement) {
+    const href = anchor.getAttribute('href') ?? ''
+    const link = this.internalLinkFor(href, anchor.textContent ?? '')
+    if (link) this.callbacks?.onOpenLink(link)
+    else if (isURL(href)) void openExternalURL(href)
+  }
+
+  private openLinkAtCursor(): boolean {
+    const root = this.root
+    if (!root) return false
+    const selection = document.getSelection()
+    const node = selection?.focusNode
+    if (node && root.contains(node)) {
+      const element = node instanceof Element ? node : node.parentElement
+      const anchor = element?.closest<HTMLAnchorElement>('a[href]')
+      if (anchor && root.contains(anchor)) {
+        this.openAnchor(anchor)
+        return true
+      }
+      const hit = this.internalLinks.find(({ range }) => range.isPointInRange(node, selection.focusOffset))
+      if (hit) {
+        this.callbacks?.onOpenLink(hit.link)
+        return true
+      }
+    }
+    if (!this.pointer) return false
+    const { x, y } = this.pointer
+    const anchor = document.elementFromPoint(x, y)?.closest<HTMLAnchorElement>('a[href]')
+    if (anchor && root.contains(anchor)) {
+      this.openAnchor(anchor)
+      return true
+    }
+    const hit = this.internalLinkAt(x, y)
+    if (hit) this.callbacks?.onOpenLink(hit)
+    return hit !== null
   }
 
   private internalLinkFor(href: string, label: string): ItemLink | null {

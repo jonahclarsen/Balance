@@ -45,8 +45,9 @@ line break. Backspace/Delete at block boundaries merge adjacent text; deleting
 across blocks retains the prefix and suffix. An empty note always offers a way
 to start writing.
 
-Tab/Shift+Tab indent and outdent nested blocks. A top-level list can become a
-paragraph. Alt+Arrow or Cmd+Ctrl+Arrow moves blocks within their level. Arrow and Shift+Arrow navigation use the
+Tab/Shift+Tab indent and outdent nested blocks; with several rows selected they
+move together and keep their relative depths. A top-level list can become a
+paragraph. Alt+F opens the link at the caret, or else the one under the pointer. Alt+Arrow or Cmd+Ctrl+Arrow moves blocks within their level. Arrow and Shift+Arrow navigation use the
 single native selection across paragraphs, including wrapped lines and images.
 While a touch selection is extended, the note scrolls when the dragged end
 nears or passes the visible edge (the keyboard, the docked toolbar or the

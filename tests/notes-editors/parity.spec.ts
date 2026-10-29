@@ -311,6 +311,31 @@ test.describe('P-26/27 indent, outdent, move', () => {
     expect(await harness.caretOffset()).toBe(2)
   })
 
+  test('Tab and Shift+Tab move every selected row together, keeping their relative depths', async ({ harness }) => {
+    await harness.boot({ select: 'Nested lists' })
+    const note = harness.noteByTitle('Nested lists')
+    const [groceries, errands, stepOne, stepTwo, stepThree] = note.items
+    const [subA, subB] = stepOne.children
+    await harness.selectAcross(stepTwo.id, 0, stepThree.id, 2)
+    await harness.page.keyboard.press('Tab')
+    await harness.waitForNote(note.id, (stored) => stored.items[2].children.map((child) => child.id).join() === [subA.id, subB.id, stepTwo.id, stepThree.id].join())
+    await harness.page.keyboard.press('Shift+Tab')
+    await harness.waitForNote(note.id, (stored) => stored.items.slice(2, 5).map((item) => item.id).join() === [stepOne.id, stepTwo.id, stepThree.id].join())
+    expect((await harness.storedNote(note.id))!.items[2].children.map((child) => child.id)).toEqual([subA.id, subB.id])
+
+    // Mixed depths: Sub-step b nests under Sub-step a, Step two joins Step one.
+    await harness.selectAcross(subB.id, 0, stepTwo.id, 1)
+    await harness.page.keyboard.press('Tab')
+    await harness.waitForNote(note.id, (stored) => stored.items[2].children.map((child) => child.id).join() === [subA.id, stepTwo.id].join())
+    expect((await harness.storedNote(note.id))!.items[2].children[0].children.map((child) => child.id)).toEqual([subB.id])
+
+    // When the first row cannot indent, the rows after it stay put too.
+    await harness.selectAcross(groceries.id, 0, errands.id, 1)
+    await harness.page.keyboard.press('Tab')
+    await harness.page.waitForTimeout(250)
+    expect((await harness.storedNote(note.id))!.items.slice(0, 2).map((item) => item.id)).toEqual([groceries.id, errands.id])
+  })
+
   test('Tab on the first block does nothing; Shift+Tab on a top-level list converts it to a paragraph, on a top-level paragraph nothing', async ({ harness }) => {
     await harness.boot({ select: 'Nested lists' })
     const note = harness.noteByTitle('Nested lists')
@@ -925,6 +950,26 @@ test.describe('host integration', () => {
     await harness.waitForNote(note.id, (stored) => stored.items[2].html.includes(`href="balance://note/${target.id}"`))
     await harness.block(note.items[2].id).locator(`a[href="balance://note/${target.id}"]`).click()
     await expect(harness.page.locator('#note-title')).toHaveValue('Checklist')
+  })
+
+  test('Alt+F opens the link at the caret, else the link under the pointer', async ({ harness }) => {
+    await harness.boot({ select: 'Links' })
+    const note = harness.noteByTitle('Links')
+    await harness.page.evaluate(() => {
+      const record: string[] = []
+      ;(window as unknown as { __openedURLs: string[] }).__openedURLs = record
+      window.open = ((url: string) => { record.push(String(url)); return null }) as typeof window.open
+    })
+    const opened = () => harness.page.evaluate(() => (window as unknown as { __openedURLs: string[] }).__openedURLs)
+    await harness.placeCaret(note.items[0].id, 13)
+    await harness.page.keyboard.press('Alt+f')
+    await expect.poll(opened).toEqual(['https://example.com/path?q=1&r=2'])
+    expect(textOf((await harness.storedNote(note.id))!.items, note.items[0].id)).toBe(note.items[0].text)
+
+    await harness.placeCaret(note.items[3].id, 2)
+    await harness.block(note.items[3].id).locator('a', { hasText: 'B' }).hover()
+    await harness.page.keyboard.press('Alt+f')
+    await expect.poll(opened).toEqual(['https://example.com/path?q=1&r=2', 'https://b.example'])
   })
 
   test('P-57 search opens a note and highlights the matching block', async ({ harness }) => {

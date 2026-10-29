@@ -140,9 +140,12 @@ export function $createBlock(kind: NoteItemKind, done = false): NoteBlockNode {
 }
 
 export function $selectOffset(block: NoteBlockNode, start: number, end = start): RangeSelection {
-  const content = $contentOf(block)
-  const a = $pointAtOffset(content, start)
-  const b = end === start ? a : $pointAtOffset(content, end)
+  return $selectPoints({ block, offset: start }, { block, offset: end })
+}
+
+export function $selectPoints(anchor: BlockPoint, focus: BlockPoint): RangeSelection {
+  const a = $pointAtOffset($contentOf(anchor.block), anchor.offset)
+  const b = focus.block.is(anchor.block) && focus.offset === anchor.offset ? a : $pointAtOffset($contentOf(focus.block), focus.offset)
   const selection = $createRangeSelection()
   selection.anchor.set(a.key, a.offset, a.type)
   selection.focus.set(b.key, b.offset, b.type)
