@@ -379,6 +379,9 @@
   let goalRhythmVisible = true
   let goalRhythmAutoShowTimer: number | null = null
   let maximizedView: View | null = null
+  // Leaving an IMAX page and coming back soon after keeps it in IMAX.
+  const IMAX_RETURN_MS = 20_000
+  let imaxReturn: { view: View; until: number } | null = null
   let goalRhythmVisibleBeforeMaximize = true
   let maximizeClickHandoff: {
     left: number
@@ -910,8 +913,9 @@ return rows`
   ]
     .filter(Boolean)
     .join('; ')
+  // Before viewMaximized: returning to a recent IMAX page sets maximizedView.
+  $: followViewWithImax(view)
   $: viewMaximized = maximizedView === view
-  $: if (maximizedView && view !== maximizedView) leaveViewMaximized()
   // Derived rather than computed on demand so switching surfaces retriggers the guard below.
   $: activeItemContext =
     view === 'today' && activePlan
@@ -3011,15 +3015,21 @@ return rows`
   }
 
   function switchViewFromShortcut(nextView: View) {
-    if (maximizedView) {
-      if (viewSupportsImax(view) && viewSupportsImax(nextView)) {
-        maximizeClickHandoff = null
-        maximizedView = nextView
-      } else {
-        leaveViewMaximized()
-      }
+    if (maximizedView && viewSupportsImax(view) && viewSupportsImax(nextView)) {
+      maximizeClickHandoff = null
+      maximizedView = nextView
     }
     view = nextView
+  }
+
+  function followViewWithImax(nextView: View) {
+    if (maximizedView && nextView !== maximizedView) {
+      imaxReturn = { view: maximizedView, until: Date.now() + IMAX_RETURN_MS }
+      leaveViewMaximized()
+    } else if (!maximizedView && imaxReturn?.view === nextView) {
+      if (imaxReturn.until > Date.now()) maximizeView(nextView)
+      imaxReturn = null
+    }
   }
 
   function toggleViewMaximized(targetView: View, event?: MouseEvent) {
@@ -3042,6 +3052,10 @@ return rows`
           pointerY: event.clientY,
         }
       : null
+    maximizeView(targetView)
+  }
+
+  function maximizeView(targetView: View) {
     goalRhythmVisibleBeforeMaximize = goalRhythmVisible
     maximizedView = targetView
     goalRhythmVisible = false

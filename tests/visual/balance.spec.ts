@@ -551,6 +551,7 @@ test('IMAX mode maximizes Today and restores its surrounding panels', async ({ p
 
 test('page shortcuts preserve IMAX between Today and Notes', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'IMAX is desktop-only')
+  await page.clock.install()
   await page.addInitScript(() => Object.defineProperty(navigator, 'platform', { get: () => 'MacIntel' }))
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -581,6 +582,16 @@ test('page shortcuts preserve IMAX between Today and Notes', async ({ page }, te
   await expect(appShell).not.toHaveClass(/page-maximized/)
   await expect(exitImaxButton).toHaveCount(0)
   await expect(sidebar).toBeVisible()
+
+  // Coming back soon restores IMAX; after 20 seconds away it stays off.
+  await page.keyboard.press('Alt+T')
+  await expect(appShell).toHaveClass(/page-maximized/)
+  await page.keyboard.press('Alt+D')
+  await expect(appShell).not.toHaveClass(/page-maximized/)
+  await page.clock.fastForward(21_000)
+  await page.keyboard.press('Alt+T')
+  await expect(page.getByRole('region', { name: 'Daily plan' })).toBeVisible()
+  await expect(appShell).not.toHaveClass(/page-maximized/)
 })
 
 test('core planner screens render and screenshot cleanly', async ({ page }, testInfo) => {
