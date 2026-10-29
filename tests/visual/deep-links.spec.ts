@@ -211,3 +211,38 @@ test('each group copies a review link that reviews only its own ideas', async ({
     await page.keyboard.press('Escape')
   }
 })
+
+test('pasting a lone balance link inserts its titled link with a page icon', async ({ page }) => {
+  await seed(page)
+  const paste = (editor: Locator, text: string) => editor.evaluate((element, text) => {
+    const clipboardData = new DataTransfer()
+    clipboardData.setData('text/plain', text)
+    element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData }))
+  }, text)
+
+  await page.locator('[data-plan-item-id="collapsed_parent"] [contenteditable="true"]').click()
+  await page.keyboard.press('End')
+  await page.keyboard.type(' see ')
+  await paste(page.locator('[data-plan-item-id="collapsed_parent"] [contenteditable="true"]'), 'balance://note/destination')
+  await page.keyboard.type(' now')
+  const taskLink = page.locator('[data-plan-item-id="collapsed_parent"] a[href="balance://note/destination"]')
+  await expect(taskLink).toHaveText('Destination')
+  expect(await taskLink.evaluate(element => getComputedStyle(element, '::before').maskImage || getComputedStyle(element, '::before').webkitMaskImage)).toContain('svg')
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('balance.appState.v1')!).plans[0].items[0].html.replace(/\u00a0|&nbsp;/g, ' '))).toBe('Collapsed parent see <a href="balance://note/destination">Destination</a> now')
+  await taskLink.click()
+  await expect(page.getByRole('textbox', { name: 'Note title' })).toHaveValue('Destination')
+
+  const paragraph = page.locator('[data-note-item-id="paragraph"] .note-text')
+  await paragraph.click()
+  await page.keyboard.press('End')
+  await page.keyboard.type(' ')
+  await paste(paragraph, 'balance://task/linked_child')
+  await page.keyboard.type(' after')
+  await expect(page.locator('.note-document a[href="balance://task/linked_child"]')).toHaveText('Linked child')
+  await expect(paragraph).toHaveText('A stable paragraph Linked child after')
+
+  // A link to something that no longer exists stays visible as the raw link.
+  await paste(paragraph, ' balance://task/missing')
+  await expect(page.locator('.note-document a[href="balance://task/missing"]')).toHaveCount(0)
+  await expect(paragraph).toContainText('balance://task/missing')
+})

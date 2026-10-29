@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { ideasLinkFromURL } from './ideaLinks'
   import { isQuoteKey, wrapRangeInQuotes } from './quoteSelection'
   import { insertTextAroundCode, isBacktickKey, toggleSelectionCode } from './inlineCode'
   import { imageEditing } from './imageEditing'
@@ -12,17 +11,17 @@
     internalLinkId,
     isURL,
     itemLinkFromAnchor,
+    itemLinkFromURL,
     linkifyExternalURLs,
-    isGoalStatsURL,
-    templateReviewFromURL,
-    noteIdFromURL,
-    projectIdFromURL,
     renderItemDisplayHTML,
     sanitizeInlineHTML,
     type ItemLink,
     type ItemTextSegment,
   } from './planner'
   import { flattenClipboardHTML } from './taskClipboard'
+  import { pastedBalanceLinkHTML } from './linkTitles'
+  import { plannerStore } from './store'
+  import { get } from 'svelte/store'
   import type { Id, MoveDirection } from './types'
 
   type HorizontalBoundaryDirection = 'left' | 'right'
@@ -622,9 +621,17 @@
 
   function insertClipboardContents(activeEditor: HTMLDivElement, clipboardText: string, clipboardHTML: string) {
 
-    if (clipboardText && (isGoalStatsURL(clipboardText) || templateReviewFromURL(clipboardText) || ideasLinkFromURL(clipboardText) || isURL(clipboardText) || noteIdFromURL(clipboardText) || projectIdFromURL(clipboardText) !== null) && hasNonCollapsedSelectionInside(activeEditor)) {
+    if (clipboardText && (isURL(clipboardText) || itemLinkFromURL(clipboardText)) && hasNonCollapsedSelectionInside(activeEditor)) {
       pendingPasteInput = true
       document.execCommand('createLink', false, clipboardText.trim())
+      persistPasteIfInputDidNotFire(activeEditor)
+      return
+    }
+
+    const linkHTML = hasNonCollapsedSelectionInside(activeEditor) ? null : pastedBalanceLinkHTML(clipboardText, get(plannerStore))
+    if (linkHTML) {
+      pendingPasteInput = true
+      document.execCommand('insertHTML', false, linkHTML)
       persistPasteIfInputDidNotFire(activeEditor)
       return
     }

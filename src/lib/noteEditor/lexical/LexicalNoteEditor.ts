@@ -65,6 +65,8 @@ import { openExternalURL } from '../../externalLinks'
 import { imageEditing } from '../../imageEditing'
 import { imageClipboardHTML } from '../../imageService'
 import { parseTaskClipboardAsNoteBlocks } from '../../taskClipboard'
+import { pastedBalanceLinkHTML } from '../../linkTitles'
+import { plannerStore } from '../../store'
 import {
   escapeHTML,
   isGoalStatsURL,
@@ -1909,6 +1911,12 @@ class LexicalNoteEditorView implements NoteEditorView {
     const selection = this.$ensureRange()
     if (!selection) return true
     this.pendingSource = 'paste'
+
+    const linkHTML = selection.isCollapsed() ? pastedBalanceLinkHTML(plain, get(plannerStore)) : null
+    if (linkHTML) {
+      this.$insertInlineHTML(linkHTML)
+      return true
+    }
 
     let items: PastedBlock[] = parseTaskClipboardAsNoteBlocks(plain) ?? parseChecklistClipboard(plain, html)
     if (items.length === 0 && !html) items = parsePlainTextClipboard(plain)
