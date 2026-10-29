@@ -67,6 +67,13 @@ async function openPrimaryView(page: Page, name: 'Notes' | 'Days') {
   await openView(page, name)
 }
 
+function storedNoteCount(page: Page) {
+  return page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    return state.notes?.length ?? 0
+  })
+}
+
 async function openNotesView(page: Page) {
   await openPrimaryView(page, 'Notes')
 }
@@ -268,10 +275,8 @@ test('the Notes sidebar list scrolls independently and keeps New beside the filt
   await page.reload()
   await openNotesView(page)
   await page.getByRole('button', { name: '+ New note' }).click()
-  await expect.poll(() => page.evaluate(() => {
-    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
-    return state.notes?.length ?? 0
-  })).toBe(1)
+  await page.getByLabel('Note title').fill('Sidebar note')
+  await expect.poll(() => storedNoteCount(page)).toBe(1)
   await page.locator('.workspace').evaluate((element) => { element.scrollTop = 0 })
   await page.screenshot({ path: testInfo.outputPath('notes-sidebar-short.png') })
 
@@ -346,17 +351,40 @@ test('the Notes new-note command creates and selects a note', async ({ page }) =
 
   await page.getByRole('button', { name: '+ New note' }).click()
   await expect(page.getByLabel('Note title')).toBeFocused()
+  await typeNoteText(page.locator('.note-text'), 'Kept')
   await page.keyboard.press('Control+n')
 
   await expect(page.getByLabel('Note title')).toBeFocused()
-  await expect.poll(() => page.evaluate(() => {
-    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
-    return state.notes?.length ?? 0
-  })).toBe(2)
+  await expect.poll(() => storedNoteCount(page)).toBe(2)
 
   await page.keyboard.press('Alt+/')
   const shortcuts = page.getByRole('dialog', { name: 'Keyboard shortcuts' })
   await expect(shortcuts.getByText('Create note (while in Notes)', { exact: true })).toBeVisible()
+})
+
+test('leaving a note with nothing written deletes it', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await openNotesView(page)
+
+  await page.getByRole('button', { name: '+ New note' }).click()
+  await typeNoteText(page.locator('.note-text'), 'Kept')
+  await page.locator('.note-new').click()
+  await expect.poll(() => storedNoteCount(page)).toBe(2)
+
+  // Another new note, a different note, or another page all leave it.
+  await page.locator('.note-new').click()
+  await expect.poll(() => storedNoteCount(page)).toBe(2)
+  await page.locator('.note-card').filter({ hasText: 'Kept' }).click()
+  await expect.poll(() => storedNoteCount(page)).toBe(1)
+
+  await page.locator('.note-new').click()
+  await page.getByLabel('Note title').fill('Titled')
+  await page.locator('.note-new').click()
+  await expect.poll(() => storedNoteCount(page)).toBe(3)
+  await openPrimaryView(page, 'Days')
+  await expect.poll(() => storedNoteCount(page)).toBe(2)
 })
 
 test('note titles wrap fully in the document and stop at two lines in the sidebar', async ({ page }, testInfo) => {
@@ -1890,6 +1918,7 @@ test('an empty note always has a place to start typing', async ({ page }) => {
   await page.reload()
   await openView(page, 'Notes')
   await page.getByRole('button', { name: '+ New note' }).click()
+  await page.getByLabel('Note title').fill('Blank body')
 
   const onlyLine = page.locator('.note-text')
   await onlyLine.fill('Temporary text')

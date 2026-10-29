@@ -120,7 +120,7 @@
   import { keepBelowPinnedParents, revealCaret, scrollMovedItemsIntoView, type ItemRowKind } from './lib/itemScroll'
   import { focusTaskBelow, focusTaskById, TASK_COMPLETION_FOCUS_EVENT, type TaskCaretOffsets, type TaskCompletionFocusDetail } from './lib/taskCompletionFocus'
   import { rememberFocusReturn, type FocusReturn } from './lib/focusReturn'
-  import { buildItemTimeWarnings, createPlanItem, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatMinutes, formatPlanTitle, hasActiveTimeRange, hasIncompletePlanItems, itemLinkFromURL, linkifyItemText, listTemplateQuizSteps, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, sanitizeInlineHTML, templateQuizSteps, todayISO, totalWordCount, type ItemLink, type TemplateQuizStep, type TemplateReviewKind } from './lib/planner'
+  import { buildItemTimeWarnings, createPlanItem, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatMinutes, formatPlanTitle, hasActiveTimeRange, hasIncompletePlanItems, isUnwrittenNote, itemLinkFromURL, linkifyItemText, listTemplateQuizSteps, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, sanitizeInlineHTML, templateQuizSteps, todayISO, totalWordCount, type ItemLink, type TemplateQuizStep, type TemplateReviewKind } from './lib/planner'
   import { hexToPickerColor, pickerColorToHex, type PickerColor } from './lib/colors'
   import { automaticSyncStatus, requestSync, startAutomaticSync } from './lib/syncScheduler'
   import { DEFAULT_DATABASE_LOADING_MESSAGES, replicatedDayTheme } from './lib/preferences'
@@ -1925,6 +1925,15 @@ return rows`
     if (!note || note.deletedAt) return false
     plannerStore.trashNoteVersions(noteId)
     return true
+  }
+
+  // Leaving a note nobody wrote in deletes it instead of keeping a blank note.
+  function discardUnwrittenNote(noteId: Id) {
+    const note = $plannerStore.notes.find((candidate) => candidate.id === noteId)
+    if (!note || note.deletedAt || !isUnwrittenNote(note)) return
+    const groupId = noteVersionGroupId(note)
+    if ($plannerStore.notes.some((other) => other.id !== noteId && noteVersionGroupId(other) === groupId)) return
+    plannerStore.permanentlyDeleteNote(noteId)
   }
 
   async function confirmPermanentlyDeleteNote(noteId: Id): Promise<boolean> {
@@ -7880,6 +7889,7 @@ return rows`
         onTrashVersion={plannerStore.trashNote}
         onRestore={plannerStore.restoreNote}
         onPermanentlyDelete={confirmPermanentlyDeleteNote}
+        onLeave={discardUnwrittenNote}
         onEmptyTrash={confirmEmptyNoteTrash}
         onRename={plannerStore.renameNote}
         onAddItem={plannerStore.addRootNoteItem}

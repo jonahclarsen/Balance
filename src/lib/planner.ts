@@ -225,6 +225,17 @@ export function createNote(title = formatDefaultNoteTitle()): import('./types').
   }
 }
 
+const DEFAULT_NOTE_TITLE = /^\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}[AP]M$/
+
+// Nothing was written: no body text or images, and a blank or default title.
+export function isUnwrittenNote(note: import('./types').Note): boolean {
+  const title = note.title.trim()
+  if (title && !DEFAULT_NOTE_TITLE.test(title)) return false
+  const blank = (items: import('./types').NoteItem[]): boolean =>
+    items.every((item) => !item.text.trim() && !item.html.includes('<img') && blank(item.children))
+  return blank(note.items)
+}
+
 export function createTemplateOption(text = '', probability = 100): TemplateOption {
   return {
     id: createId('option'),

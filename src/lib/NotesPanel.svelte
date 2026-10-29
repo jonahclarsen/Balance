@@ -46,6 +46,8 @@
   export let trashOpen = false
   export let viewStatesByNote: ReadonlyMap<Id, NoteViewState> = new Map()
   export let onViewStateChange: (noteId: Id, state: NoteViewState) => void = () => {}
+  // Called with the note this pane stops showing, also on close and page hide.
+  export let onLeave: (noteId: Id) => void = () => {}
 
   // The right pane reuses the complete note editor without another sidebar.
   export let sidePane = false
@@ -57,6 +59,27 @@
   let documentElement: HTMLElement | null = null
   $: sideNote = activeNotes.find((note) => note.id === sideNoteId) ?? null
   $: if (sideNoteId && (!sideNote || trashOpen)) closeSidePane()
+
+  let editableNoteId: Id | null = null
+  function showEditableNote(noteId: Id | null) {
+    if (noteId === editableNoteId) return
+    const left = editableNoteId
+    editableNoteId = noteId
+    if (left) leaveNote(left)
+  }
+
+  // A note still open in the other pane has not been left.
+  function leaveNote(noteId: Id) {
+    if (noteId !== sideNoteId) onLeave(noteId)
+  }
+
+  function leaveSideNote(noteId: Id) {
+    if (noteId !== editableNoteId) onLeave(noteId)
+  }
+
+  function leaveOnPageHide() {
+    if (editableNoteId) onLeave(editableNoteId)
+  }
 
   function closeSidePane() {
     sideNoteId = null
@@ -96,6 +119,7 @@
   $: if (trashOpen && selectedNote) lastTrashNoteId = selectedNote.id
   $: selectedVersions = selectedNote && !trashOpen ? noteVersionsOf(activeNotes, noteVersionGroupId(selectedNote)) : []
   $: if (selectedNote && !trashOpen) lastVersionByGroup.set(noteVersionGroupId(selectedNote), selectedNote.id)
+  $: showEditableNote(trashOpen ? null : selectedNote?.id ?? null)
   // The Bin lists each binned version on its own; Notes lists one card per note.
   $: noteCards = trashOpen ? trashedNotes.map((note) => [note]) : groupVersions(activeNotes)
   $: filteredCards = noteCards
@@ -567,6 +591,8 @@
   }
 
   onDestroy(() => {
+    if (editableNoteId) onLeave(editableNoteId)
+    editableNoteId = null
     cancelNoteBottomFollow()
     noteScrollSpaceAdjustmentActive = false
   })
@@ -576,6 +602,7 @@
 <svelte:window
   on:pointerup={finishNoteScrollSpaceAdjustment}
   on:pointercancel={finishNoteScrollSpaceAdjustment}
+  on:pagehide={leaveOnPageHide}
 />
 
 <div class="notes-workspace" class:notes-split={Boolean(sideNote)} class:notes-side-pane={sidePane}>
@@ -792,6 +819,7 @@
       {historyRevision}
       {viewStatesByNote}
       {onViewStateChange}
+      onLeave={leaveSideNote}
       onSelect={(noteId) => { sideNoteId = noteId }}
       {onCreate}
       {onTrash}
