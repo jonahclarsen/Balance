@@ -107,7 +107,8 @@ and install that helper normally; attached clients must reattach to load the new
 renderer, preserving their running terminal sessions.
 
 The Cactus adapter shows an active night-pass countdown in its window and menu
-bar. Its own timer continues underneath. Cactus cannot extend a Situate pass.
+bar. Its own timer continues underneath. Touch grass's 5-minute heads-up starts a
+5-minute Cactus timer. Cactus cannot extend a Situate pass.
 The Mac widget opens a compact Situate window, without loading the planner.
 Android's widget can resize vertically and includes active mode controls.
 
