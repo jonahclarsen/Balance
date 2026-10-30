@@ -354,6 +354,9 @@ test.describe('touch', () => {
     for (let step = 1; step <= 12; step += 1) await touch('touchMove', from.x, from.y + (to.y + 10 - from.y) * step / 12)
     await expect(page.locator('.project-drop-indicator')).toBeVisible()
     expect(await scrollTop()).toBe(held)
+    // The held press carries the card rather than selecting the text it passes over.
+    expect(await page.evaluate(() => document.querySelector('.project-section h3')!.dispatchEvent(new Event('selectstart', { bubbles: true, cancelable: true })))).toBe(false)
+    expect(await page.evaluate(() => document.getSelection()?.toString())).toBe('')
     await touch('touchEnd')
     await expect(cards.locator('.project-name').nth(5)).toHaveText('Project 4')
     await expect(page.getByRole('dialog')).toHaveCount(0)

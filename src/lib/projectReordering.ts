@@ -69,7 +69,9 @@ export function projectReordering(node: HTMLElement, onOpen: (projectId: string)
     const bounds = node.getBoundingClientRect()
     gridStart = { left: bounds.left, top: bounds.top }
     autoScroller.start(node, lastX, lastY)
-    if (touch) vibrateSteps()
+    if (!touch) return
+    document.getSelection()?.removeAllRanges()
+    vibrateSteps()
   }
 
   function move(event: PointerEvent) {
@@ -208,6 +210,11 @@ export function projectReordering(node: HTMLElement, onOpen: (projectId: string)
     event.stopPropagation()
   }
 
+  // The same long press would otherwise start selecting the text the carried card passes over.
+  function selectStart(event: Event) {
+    if (pointerId !== null && touch) event.preventDefault()
+  }
+
   function scrolled(event: Event) {
     if (!dragging) lastScroll = event.timeStamp
   }
@@ -225,6 +232,7 @@ export function projectReordering(node: HTMLElement, onOpen: (projectId: string)
   node.addEventListener('touchmove', touchMove, { passive: false })
   document.addEventListener('scroll', scrolled, { capture: true, passive: true })
   document.addEventListener('contextmenu', contextMenu, { capture: true })
+  document.addEventListener('selectstart', selectStart, { capture: true })
   return {
     update(next: (projectId: string) => void) {
       onOpen = next
@@ -239,6 +247,7 @@ export function projectReordering(node: HTMLElement, onOpen: (projectId: string)
       node.removeEventListener('touchmove', touchMove)
       document.removeEventListener('scroll', scrolled, { capture: true })
       document.removeEventListener('contextmenu', contextMenu, { capture: true })
+      document.removeEventListener('selectstart', selectStart, { capture: true })
     },
   }
 }
