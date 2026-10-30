@@ -1,4 +1,4 @@
-import type { DailyTemplate, Id, Project, TemplateItem, TemplateItemCondition } from './types'
+import type { DailyTemplate, Id, Project, ProjectActivePeriod, TemplateItem, TemplateItemCondition } from './types'
 
 export const PROJECT_ACTIVE_DAY_COUNTS = [1, 2, 3, 4, 5] as const
 const ACTIVE_DAY_START_HOUR = 7
@@ -33,6 +33,66 @@ export function nextProjectExpiry(projects: Project[], now = Date.now()): number
     if (next === null || end < next) next = end
   }
   return next
+}
+
+// The stretch that ends at activeUntil while the project is active.
+function currentPeriod(project: Project, now: number): ProjectActivePeriod | undefined {
+  if (!isProjectActive(project, now)) return undefined
+  const last = project.activePeriods?.at(-1)
+  return last?.end === project.activeUntil ? last : undefined
+}
+
+// Sets or clears activeUntil and records the change in activePeriods:
+// extending the current stretch, ending it now, or starting a new one.
+export function withActiveUntil(project: Project, activeUntil: string | null, now = new Date(), createId: () => Id): Project {
+  const { activeUntil: _activeUntil, ...rest } = project
+  const current = currentPeriod(project, now.getTime())
+  const periods = project.activePeriods ?? []
+  let activePeriods = periods
+  if (current) {
+    const end = activeUntil ?? now.toISOString()
+    activePeriods = periods.map((period) => period === current ? { ...period, end } : period)
+  } else if (activeUntil) {
+    activePeriods = [...periods, { id: createId(), start: now.toISOString(), end: activeUntil }]
+  }
+  return {
+    ...rest,
+    ...(activeUntil ? { activeUntil } : {}),
+    ...(activePeriods.length ? { activePeriods } : {}),
+  }
+}
+
+export type ProjectHistoryEntry = { project: Project; period: ProjectActivePeriod }
+
+// Every recorded stretch, most recent first.
+export function projectHistory(projects: Project[]): ProjectHistoryEntry[] {
+  return projects
+    .flatMap((project) => (project.activePeriods ?? []).map((period) => ({ project, period })))
+    .sort((a, b) => b.period.start.localeCompare(a.period.start) || b.period.end.localeCompare(a.period.end))
+}
+
+function localDate(time: number): string {
+  const date = new Date(time)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+// Active days run from 7 a.m., so a stretch's first and last days are the
+// days containing its start and its final moment.
+export function periodDays(period: ProjectActivePeriod): { first: string; last: string } {
+  const offset = ACTIVE_DAY_START_HOUR * 60 * 60 * 1000
+  const start = Date.parse(period.start)
+  const end = Math.max(start, Date.parse(period.end) - 1)
+  return { first: localDate(start - offset), last: localDate(end - offset) }
+}
+
+// The stretch covering whole active days from `first` through `last`.
+export function periodFromDays(first: string, last: string): Pick<ProjectActivePeriod, 'start' | 'end'> {
+  const start = new Date(`${first}T00:00:00`)
+  start.setHours(ACTIVE_DAY_START_HOUR)
+  const end = new Date(`${last}T00:00:00`)
+  end.setDate(end.getDate() + 1)
+  end.setHours(ACTIVE_DAY_START_HOUR)
+  return { start: start.toISOString(), end: end.toISOString() }
 }
 
 function noonOn(date: string): number {

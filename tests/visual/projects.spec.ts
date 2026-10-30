@@ -142,6 +142,66 @@ test('completed and archived projects move to dated sections and support undo, r
   expect((await readState(page)).projects.map((project: any) => project.name)).toEqual(['Synthetic shed'])
 })
 
+test('project history records active stretches and supports adding, editing, deleting and undo', async ({ page }) => {
+  // Noon on Tuesday, Sep 8 in Vancouver.
+  await page.clock.setFixedTime(new Date('2026-09-08T19:00:00Z'))
+  await page.goto('/')
+  await openView(page, 'Projects')
+  await addProject(page, 'Synthetic garden')
+  await addProject(page, 'Synthetic shed')
+  await page.locator('.project-card', { hasText: 'Synthetic garden' }).click()
+  const details = page.getByRole('dialog', { name: 'Synthetic garden details', exact: true })
+  await details.getByRole('button', { name: 'Mark active', exact: true }).click()
+  await details.getByRole('button', { name: '2 days', exact: true }).click()
+
+  await page.getByRole('button', { name: 'History', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'History', exact: true })).toBeVisible()
+  const rows = page.locator('.project-history li')
+  await expect(rows).toHaveText([/Synthetic garden\s*Sep 8 – Sep 9\s*2d/])
+
+  await page.getByRole('button', { name: 'Add', exact: true }).click()
+  const editor = page.getByRole('dialog', { name: 'Add active stretch', exact: true })
+  await editor.getByRole('group', { name: 'Project' }).getByRole('button', { name: 'Synthetic shed' }).click()
+  await editor.getByLabel('From').fill('2026-08-01')
+  await editor.getByLabel('To').fill('2026-08-03')
+  await editor.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(editor).toHaveCount(0)
+  await expect(rows).toHaveText([/Synthetic garden\s*Sep 8 – Sep 9/, /Synthetic shed\s*Aug 1 – Aug 3\s*3d/])
+
+  await rows.filter({ hasText: 'Synthetic shed' }).getByRole('button').click()
+  const edit = page.getByRole('dialog', { name: 'Edit active stretch', exact: true })
+  await edit.getByLabel('To').fill('2026-08-04')
+  await edit.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(rows.nth(1)).toHaveText(/Aug 1 – Aug 4\s*4d/)
+
+  // Extending the current stretch keeps the project active through its new last day.
+  await rows.filter({ hasText: 'Synthetic garden' }).getByRole('button').click()
+  await edit.getByLabel('To').fill('2026-09-10')
+  await edit.getByRole('button', { name: 'Save', exact: true }).click()
+  const garden = (await readState(page)).projects.find((project: any) => project.name === 'Synthetic garden')
+  expect(garden.activeUntil).toBe('2026-09-11T14:00:00.000Z')
+  expect(garden.activePeriods).toHaveLength(1)
+  expect(garden.activePeriods[0].end).toBe(garden.activeUntil)
+
+  await page.reload()
+  await openView(page, 'Projects')
+  await page.getByRole('button', { name: 'History', exact: true }).click()
+  await expect(rows).toHaveText([/Sep 8 – Sep 10\s*3d/, /Aug 1 – Aug 4\s*4d/])
+
+  await rows.filter({ hasText: 'Synthetic shed' }).getByRole('button').click()
+  await edit.getByRole('button', { name: 'Delete', exact: true }).click()
+  await expect(rows).toHaveCount(1)
+  await page.evaluate(async () => {
+    const path = '/src/lib/store.ts'
+    const { plannerStore } = await import(/* @vite-ignore */ path)
+    await plannerStore.undo()
+  })
+  await expect(rows).toHaveCount(2)
+
+  await page.getByRole('button', { name: 'Back', exact: true }).click()
+  await expect(page.locator('.project-card.active')).toHaveText(/Synthetic garden\s*until Fri/)
+})
+
 test('retired check-ins complete projects that reached 100% and are then removed', async ({ page }) => {
   await page.goto('/')
   await openView(page, 'Projects')

@@ -334,8 +334,16 @@ export type Project = {
   completedAt?: string
   // Active until this instant, unless completed or archived first.
   activeUntil?: string
+  // Every active stretch, oldest first; the current one ends at activeUntil.
+  activePeriods?: ProjectActivePeriod[]
   createdAt: string
   updatedAt: string
+}
+
+export type ProjectActivePeriod = {
+  id: Id
+  start: string
+  end: string
 }
 
 // Retired progress tracker; emptied once on load by retireProjectCheckIns.

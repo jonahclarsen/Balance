@@ -5,6 +5,7 @@
   import type { Project } from './types'
   import { plannerStore } from './store'
   import ProjectCard from './ProjectCard.svelte'
+  import ProjectHistory from './ProjectHistory.svelte'
   import OverlayModal from './OverlayModal.svelte'
   import { projectReordering } from './projectReordering'
   import { mountInContentShell } from './contentShellOverlay'
@@ -22,6 +23,7 @@
   let formResets = 0
   let detailsId = ''
   let pickingDays = false
+  let showingHistory = false
   let highlightedId = ''
   let highlightTimer: ReturnType<typeof setTimeout> | undefined
   $: open = projects.filter(isProjectOpen)
@@ -50,6 +52,7 @@
 
   $: if (linkedProjectId) void reveal(linkedProjectId)
   async function reveal(id: string) {
+    showingHistory = false
     await tick()
     document.getElementById(`project-${id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
     await highlight(id)
@@ -120,8 +123,16 @@
 </script>
 
 <section class="projects-panel" aria-label="Projects">
-  <header class="page-header">
+  {#if showingHistory}
+  <header class="page-header projects-header history-header">
+    <button class="ghost projects-back" type="button" on:click={() => showingHistory = false}><span aria-hidden="true">‹</span>Back</button>
+    <h2>History</h2>
+  </header>
+  <ProjectHistory {projects} />
+  {:else}
+  <header class="page-header projects-header">
     <h2>Projects</h2>
+    <button class="ghost" type="button" on:click={() => showingHistory = true}>History</button>
   </header>
   {#if linkedProjectId && !projects.some((project) => project.id === linkedProjectId)}<p class="muted">Project unavailable.</p>{/if}
   <form class="project-add" aria-label="Add a new project" on:submit|preventDefault={add}>
@@ -171,6 +182,7 @@
       <h3 id="archived-projects-title">Archived <span class="count">{archived.length}</span></h3>
       <div class="project-list">{#each archived as project (project.id)}<ProjectCard {project} note={project.archivedAt ? shortDate(project.archivedAt) : ''} highlighted={highlightedId === project.id} onOpen={openProject} />{/each}</div>
     </section>
+  {/if}
   {/if}
   {#if details}
     {@const project = details}
@@ -252,6 +264,14 @@
   .projects-panel { min-width: 0; max-width: 640px; }
   .details-overlay { display: contents; }
   .page-header h2 { margin: 0; }
+  .projects-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .projects-header button { font-size: 14px; padding: 6px 10px; }
+  .history-header { justify-content: flex-start; }
+  .projects-back { padding-left: 8px; }
+  .projects-back span { margin-right: 4px; font-size: 1.3em; line-height: 0.8; }
+  /* IMAX hides page headers; keep this one, minus its title, for History and Back. */
+  :global(.app-shell.page-maximized) .projects-panel .page-header { display: flex; }
+  :global(.app-shell.page-maximized) .projects-panel .page-header h2 { visibility: hidden; }
   .project-add { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; margin-bottom: 20px; }
   .project-add button { font-size: 14px; padding: 8px 12px; }
   .project-section + .project-section { margin-top: 24px; }

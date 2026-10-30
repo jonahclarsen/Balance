@@ -4,7 +4,7 @@ import { generatedItemMarkers, preservedPlanItems, reconcileUneditedPlanItems } 
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import { noteItemsEqual } from './noteEditor/noteItems'
 import { pickerColorToHex } from './colors'
-import { projectActiveUntil, projectActiveUntilOn, templateForGeneration } from './projects'
+import { isProjectActive, projectActiveUntil, projectActiveUntilOn, templateForGeneration, withActiveUntil } from './projects'
 import { spreadPriorityItems } from './prioritize'
 import { get, writable, type Writable } from 'svelte/store'
 import {
@@ -2244,7 +2244,7 @@ function createPlannerStore() {
         ...state,
         projects: state.projects.map((project) => {
           if (project.id !== projectId) return project
-          const { activeUntil: _activeUntil, completedAt: _completedAt, archivedAt: _archivedAt, ...rest } = project
+          const { completedAt: _completedAt, archivedAt: _archivedAt, ...rest } = withActiveUntil(project, null, new Date(timestamp), () => createId('project-period'))
           return {
             ...rest,
             archived: status === 'archived',
@@ -2258,13 +2258,13 @@ function createPlannerStore() {
 
     // Zero days ends the active stretch now.
     setProjectActiveDays(projectId: Id, days: number) {
-      const activeUntil = days > 0 ? projectActiveUntil(days) : null
+      const now = new Date()
+      const activeUntil = days > 0 ? projectActiveUntil(days, now) : null
       commitEntities('set_project_active', { projectId, days }, (state) => ({
         ...state,
         projects: state.projects.map((project) => {
           if (project.id !== projectId || project.archived || project.completedAt) return project
-          const { activeUntil: _activeUntil, ...rest } = project
-          return { ...rest, ...(activeUntil ? { activeUntil } : {}), updatedAt: nowISO() }
+          return { ...withActiveUntil(project, activeUntil, now, () => createId('project-period')), updatedAt: now.toISOString() }
         }),
       }))
     },
@@ -2280,12 +2280,69 @@ function createPlannerStore() {
           const ending = endings[project.id]
           const picked = activeIds.includes(project.id)
           if ((!ending && !picked) || project.archived || project.completedAt) return project
-          const { activeUntil: _activeUntil, ...rest } = project
+          const rest = withActiveUntil(project, picked && (!ending || ending === 'open') ? activeUntil : null, new Date(timestamp), () => createId('project-period'))
           if (ending === 'completed') return { ...rest, completedAt: timestamp, updatedAt: timestamp }
           if (ending === 'archived') return { ...rest, archived: true, archivedAt: timestamp, updatedAt: timestamp }
-          return { ...rest, ...(picked ? { activeUntil } : {}), updatedAt: timestamp }
+          return { ...rest, updatedAt: timestamp }
         }),
       }))
+    },
+
+    // Adds or edits a recorded active stretch, possibly moving it to another
+    // project. Editing the current stretch moves when the project stops.
+    saveProjectActivePeriod(periodId: Id | null, projectId: Id, start: string, end: string) {
+      if (!(Date.parse(end) > Date.parse(start))) return
+      const id = periodId ?? createId('project-period')
+      const now = Date.now()
+      commitEntities('save_project_active_period', { periodId: id, projectId }, (state) => {
+        if (!state.projects.some((project) => project.id === projectId)) return state
+        const timestamp = nowISO()
+        return {
+          ...state,
+          projects: state.projects.map((project) => {
+            const periods = project.activePeriods ?? []
+            const existing = periods.find((period) => period.id === id)
+            if (!existing && project.id !== projectId) return project
+            const wasCurrent = Boolean(existing) && isProjectActive(project, now) && existing!.end === project.activeUntil
+            const kept = periods.filter((period) => period.id !== id)
+            const activePeriods = project.id === projectId
+              ? [...kept, { ...existing, id, start, end }].sort((a, b) => a.start.localeCompare(b.start))
+              : kept
+            const { activeUntil, activePeriods: _activePeriods, ...rest } = project
+            const nextActiveUntil = !wasCurrent ? activeUntil : project.id === projectId && Date.parse(end) > now ? end : undefined
+            return {
+              ...rest,
+              ...(nextActiveUntil ? { activeUntil: nextActiveUntil } : {}),
+              ...(activePeriods.length ? { activePeriods } : {}),
+              updatedAt: timestamp,
+            }
+          }),
+        }
+      })
+    },
+
+    deleteProjectActivePeriod(periodId: Id) {
+      const now = Date.now()
+      commitEntities('delete_project_active_period', { periodId }, (state) => {
+        const owner = state.projects.find((project) => project.activePeriods?.some((period) => period.id === periodId))
+        if (!owner) return state
+        return {
+          ...state,
+          projects: state.projects.map((project) => {
+            if (project !== owner) return project
+            const period = project.activePeriods!.find(({ id }) => id === periodId)!
+            const wasCurrent = isProjectActive(project, now) && period.end === project.activeUntil
+            const { activeUntil, activePeriods, ...rest } = project
+            const kept = activePeriods!.filter(({ id }) => id !== periodId)
+            return {
+              ...rest,
+              ...(activeUntil && !wasCurrent ? { activeUntil } : {}),
+              ...(kept.length ? { activePeriods: kept } : {}),
+              updatedAt: nowISO(),
+            }
+          }),
+        }
+      })
     },
 
     permanentlyDeleteArchivedProject(projectId: Id) {

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { activeProjects, endedProjectsOn, needsProjectPick, nextProjectExpiry, projectActiveUntil, projectActiveUntilOn, templateForGeneration } from '../../src/lib/projects'
+import { activeProjects, endedProjectsOn, needsProjectPick, nextProjectExpiry, periodDays, periodFromDays, projectActiveUntil, projectActiveUntilOn, projectHistory, templateForGeneration, withActiveUntil } from '../../src/lib/projects'
 import type { DailyTemplate, Project, TemplateItem } from '../../src/lib/types'
 
 const project = (patch: Partial<Project> = {}): Project => ({ id: 'project', name: 'Project', description: '', color: '#336699', archived: false, createdAt: '', updatedAt: '', ...patch })
@@ -48,4 +48,39 @@ test('a day with open projects but none active by noon asks for a pick, counted 
   expect(endedProjectsOn(projects, '2026-10-21').map(({ id }) => id)).toEqual(['ending'])
   expect(needsProjectPick([project({ completedAt: '2026-10-20' })], '2026-10-21')).toBe(false)
   expect(new Date(projectActiveUntilOn('2026-10-21', 2)).getTime()).toBe(new Date(2026, 9, 23, 7).getTime())
+})
+
+test('activating, changing, stopping and reactivating a project records its active stretches', () => {
+  let ids = 0
+  const nextId = () => `period-${++ids}`
+  const at = (hour: number, day = 20) => new Date(2026, 9, day, hour)
+  let current = withActiveUntil(project(), projectActiveUntil(2, at(9)), at(9), nextId)
+  expect(current.activePeriods).toEqual([{ id: 'period-1', start: at(9).toISOString(), end: at(7, 22).toISOString() }])
+
+  // Changing the days moves the current stretch's end.
+  current = withActiveUntil(current, projectActiveUntil(3, at(10)), at(10), nextId)
+  expect(current.activePeriods).toEqual([{ id: 'period-1', start: at(9).toISOString(), end: at(7, 23).toISOString() }])
+
+  // Stopping ends it now.
+  current = withActiveUntil(current, null, at(15, 21), nextId)
+  expect(current.activeUntil).toBeUndefined()
+  expect(current.activePeriods![0].end).toBe(at(15, 21).toISOString())
+
+  // A lapsed stretch stays as it was and a new one starts.
+  current = withActiveUntil(current, projectActiveUntil(1, at(8, 25)), at(8, 25), nextId)
+  current = withActiveUntil(current, projectActiveUntil(1, at(8, 28)), at(8, 28), nextId)
+  expect(current.activePeriods!.map(({ id, end }) => [id, end])).toEqual([
+    ['period-1', at(15, 21).toISOString()],
+    ['period-2', at(7, 26).toISOString()],
+    ['period-3', at(7, 29).toISOString()],
+  ])
+  expect(projectHistory([current]).map(({ period }) => period.id)).toEqual(['period-3', 'period-2', 'period-1'])
+})
+
+test('active stretches convert to and from the active days they cover', () => {
+  const span = periodFromDays('2026-10-20', '2026-10-22')
+  expect(span).toEqual({ start: new Date(2026, 9, 20, 7).toISOString(), end: new Date(2026, 9, 23, 7).toISOString() })
+  expect(periodDays({ id: 'p', ...span })).toEqual({ first: '2026-10-20', last: '2026-10-22' })
+  // Picked late in the evening, a stretch starts on that evening's day.
+  expect(periodDays({ id: 'p', start: new Date(2026, 9, 19, 22).toISOString(), end: new Date(2026, 9, 21, 7).toISOString() })).toEqual({ first: '2026-10-19', last: '2026-10-20' })
 })
