@@ -3,6 +3,7 @@
 
 import { expect, test as base, type Locator, type Page } from '@playwright/test'
 import { createNotesCorpus } from '../fixtures/notesCorpus'
+import { closeNoteList, openNoteList } from '../helpers/navigation'
 import type { Note, NoteItem } from '../../src/lib/types'
 
 export const test = base.extend<{ harness: Harness }>({
@@ -71,8 +72,10 @@ export class Harness {
     const card = this.page.locator('.note-card').filter({
       has: this.page.locator('strong', { hasText: new RegExp(`^${title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`) }),
     }).first()
+    await openNoteList(this.page)
     await card.scrollIntoViewIfNeeded()
     await card.click()
+    await closeNoteList(this.page)
     await expect(this.page.locator('#note-title')).toHaveValue(title === 'Untitled note' ? '' : title)
   }
 

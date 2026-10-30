@@ -23,6 +23,23 @@ export async function openView(page: Page, name: string) {
   }
 }
 
+// The Notes list stays hidden until the menu button is hovered.
+export async function openNoteList(page: Page) {
+  await page.locator('.notes-drawer-toggle').hover()
+  const sidebar = page.locator('.notes-sidebar')
+  await expect(sidebar).toBeVisible()
+  // Let it finish sliding in so its bounds are final.
+  await sidebar.evaluate((element) => Promise.all(element.getAnimations().map((animation) => animation.finished)))
+}
+
+// Moving the pointer off the list hides it again.
+export async function closeNoteList(page: Page) {
+  const workspace = await page.locator('.notes-workspace').first().boundingBox()
+  if (!workspace) throw new Error('Notes workspace is not visible')
+  await page.mouse.move(workspace.x + workspace.width - 4, workspace.y + workspace.height / 2)
+  await expect(page.locator('.notes-sidebar')).toBeHidden()
+}
+
 export async function generateDay(page: Page, name = 'Generate day') {
   const drawer = page.getByRole('complementary', { name: 'Primary navigation drawer' })
   const button = drawer.getByRole('button', { name, exact: true })

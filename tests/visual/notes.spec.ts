@@ -1,4 +1,4 @@
-import { openView } from '../helpers/navigation'
+import { openNoteList, openView } from '../helpers/navigation'
 import { settleContextMenuTarget } from '../helpers/contextMenu'
 import { expect, test, type Locator, type Page } from '@playwright/test'
 
@@ -220,6 +220,7 @@ test('IMAX mode maximizes Notes and restores its surrounding panels', async ({ p
   const notesPageActions = page.locator('.notes-page-actions')
   const notesPageHeader = page.locator('.notes-page-header')
   const notesSidebar = page.locator('.notes-sidebar')
+  const noteListToggle = page.getByRole('button', { name: 'Note list', exact: true })
   const binButton = notesPageActions.getByRole('button', { name: 'Bin', exact: true })
   const imaxButton = page.getByRole('button', { name: 'Enter IMAX mode' })
   const goalRhythm = page.getByRole('region', { name: 'Goal history' })
@@ -232,7 +233,10 @@ test('IMAX mode maximizes Notes and restores its surrounding panels', async ({ p
   await expect(goalRhythm).toHaveCount(0)
   await expect(sidebar).toBeVisible()
   await expect(notesPageHeader).toBeVisible()
+  await expect(notesSidebar).toBeHidden()
+  await noteListToggle.hover()
   await expect(notesSidebar).toBeVisible()
+  await expect(noteListToggle).toHaveAttribute('aria-expanded', 'true')
   await expect(notesSidebar.getByRole('heading', { name: 'Notes', exact: true })).toHaveCount(0)
   await imaxButton.click()
 
@@ -241,13 +245,15 @@ test('IMAX mode maximizes Notes and restores its surrounding panels', async ({ p
   await expect(sidebar).toBeHidden()
   await expect(notesPageHeader).toBeHidden()
   await expect(notesSidebar).toBeHidden()
+  await noteListToggle.hover()
+  await expect(notesSidebar).toBeVisible()
 
   await exitImaxButton.click()
   await expect(imaxButton).toHaveAttribute('aria-pressed', 'false')
   await expect(goalRhythm).toHaveCount(0)
   await expect(sidebar).toBeVisible()
   await expect(notesPageHeader).toBeVisible()
-  await expect(notesSidebar).toBeVisible()
+  await expect(notesSidebar).toBeHidden()
 })
 
 test('Notes zoom stays scoped to its editing pane and fits the viewport', async ({ page }, testInfo) => {
@@ -269,7 +275,7 @@ test('Notes zoom stays scoped to its editing pane and fits the viewport', async 
 })
 
 test('the Notes sidebar list scrolls independently and keeps New beside the filter', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name === 'mobile', 'the mobile note picker remains horizontal')
+  test.skip(testInfo.project.name === 'mobile', 'the mobile page scrolls rather than the note')
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -295,6 +301,7 @@ test('the Notes sidebar list scrolls independently and keeps New beside the filt
   })
   await page.reload()
   await openNotesView(page)
+  await openNoteList(page)
 
   const sidebar = page.locator('.notes-sidebar')
   const newButton = sidebar.getByRole('button', { name: 'New', exact: true })
@@ -370,6 +377,7 @@ test('leaving a note with nothing written deletes it', async ({ page }) => {
 
   await page.getByRole('button', { name: '+ New note' }).click()
   await typeNoteText(page.locator('.note-text'), 'Kept')
+  await openNoteList(page)
   await page.locator('.note-new').click()
   await expect.poll(() => storedNoteCount(page)).toBe(2)
 
@@ -394,6 +402,7 @@ test('note titles wrap fully in the document and stop at two lines in the sideba
   await page.evaluate(() => localStorage.clear())
   await page.reload()
   await openNotesView(page)
+  await openNoteList(page)
   await page.locator('.notes-sidebar .note-new').click()
 
   const title = page.getByRole('textbox', { name: 'Note title', exact: true })
@@ -416,6 +425,7 @@ test('note titles wrap fully in the document and stop at two lines in the sideba
   const wrappedHeight = await title.evaluate((element) => element.clientHeight)
   await title.fill('Short title')
   await expect.poll(() => title.evaluate((element) => element.clientHeight)).toBeLessThan(wrappedHeight)
+  await openNoteList(page)
   await page.locator('.notes-sidebar .note-new').click()
   await page.locator('.note-card').filter({ hasText: 'Short title' }).click()
   await expect(title).toHaveValue('Short title')
@@ -2082,10 +2092,12 @@ test('Bin keeps notes read-only, restores them, and supports immediate deletion'
   page.once('dialog', (dialog) => dialog.accept())
   await page.getByRole('button', { name: 'Delete now' }).click()
   await expect(page.getByRole('heading', { name: 'Bin is empty' })).toBeVisible()
+  await openNoteList(page)
   await expect(page.getByRole('button', { name: 'Back to Notes' })).toBeVisible()
 
   await page.keyboard.press('Meta+Z')
   await expect(page.getByRole('heading', { name: 'Recoverable thought' })).toBeVisible()
+  await openNoteList(page)
   page.once('dialog', (dialog) => dialog.accept())
   await page.getByRole('button', { name: 'Empty Bin' }).click()
   await expect(page.getByRole('heading', { name: 'Bin is empty' })).toBeVisible()

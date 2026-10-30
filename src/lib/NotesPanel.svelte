@@ -90,6 +90,43 @@
   }
 
   let filter = ''
+
+  // The notes list hides behind the menu button. Hovering opens it until the
+  // pointer leaves; taps and the keyboard toggle it instead.
+  let drawerElement: HTMLElement | null = null
+  let drawerToggle: HTMLButtonElement | null = null
+  let drawerHovered = false
+  let drawerPinned = false
+  $: drawerOpen = drawerHovered || drawerPinned
+
+  function enterDrawer(event: PointerEvent) {
+    if (event.pointerType !== 'touch') drawerHovered = true
+  }
+
+  function leaveDrawer(event: PointerEvent) {
+    if (event.pointerType === 'touch') return
+    drawerHovered = false
+    drawerPinned = false
+    const focused = document.activeElement
+    if (focused instanceof HTMLElement && drawerElement?.contains(focused)) focused.blur()
+  }
+
+  function closeDrawerOnFocusOut(event: FocusEvent) {
+    if (!(event.relatedTarget instanceof Node && drawerElement?.contains(event.relatedTarget))) drawerPinned = false
+  }
+
+  function closeDrawerOnEscape(event: KeyboardEvent) {
+    if (event.key !== 'Escape' || !drawerPinned) return
+    event.preventDefault()
+    event.stopPropagation()
+    drawerPinned = false
+    drawerToggle?.focus()
+  }
+
+  function selectFromDrawer(noteId: Id) {
+    drawerPinned = false
+    onSelect(noteId)
+  }
   let lastActiveNoteId: Id | null = null
   let lastTrashNoteId: Id | null = null
   let noteEditorHostElement: HTMLDivElement | null = null
@@ -640,54 +677,74 @@
 
 <div class="notes-workspace" class:notes-split={Boolean(sideNote)} class:notes-side-pane={sidePane}>
   {#if !sidePane}
-    <aside class="notes-sidebar" class:notes-trash-open={trashOpen} aria-label="Notes">
-      {#if trashOpen}
-        <div class="notes-sidebar-head">
-          <h3>Bin</h3>
-          {#if trashedNotes.length > 0}<button class="ghost danger note-empty-trash" type="button" aria-label="Empty Bin" on:click={emptyTrash}>Empty</button>{/if}
-        </div>
-      {/if}
-      <div class="notes-filter-row">
-        {#if !trashOpen}
-          <button
-            class="note-new"
-            type="button"
-            title={`New note (${newNoteShortcutLabel})`}
-            aria-keyshortcuts="Control+N Meta+N"
-            on:click={createNote}
-          >
-            <span>New</span><kbd class="note-new-shortcut" aria-hidden="true">{newNoteShortcutLabel}</kbd>
-          </button>
-        {/if}
-        <input class="notes-filter" type="search" bind:value={filter} placeholder={trashOpen ? 'Filter Bin' : 'Filter notes'} aria-label={trashOpen ? 'Filter Bin' : 'Filter notes'} />
-      </div>
-      <div class="notes-list">
-        {#each filteredCards as versions (noteVersionGroupId(versions[0]) + (trashOpen ? `:${versions[0].id}` : ''))}
-          {@const note = trashOpen ? versions[0] : cardNote(versions, selectedNote)}
-          {@const versionLabel = trashOpen ? binnedVersionLabel(note) : ''}
-          {@const updatedAt = trashOpen ? note.deletedAt ?? note.updatedAt : latestUpdate(versions)}
-          <div class="note-card-row" data-balance-link={`balance://note/${note.id}`}>
-            <button type="button" class="note-card" class:active={note.id === selectedNote?.id} on:click={() => onSelect(note.id)}>
-              <strong>{note.title.trim() || 'Untitled note'}{#if versionLabel}<small class="note-card-version"> · {versionLabel}</small>{/if}</strong>
-              <span>{previewText(note) || 'Empty note'}</span>
-              {#if versions.length > 1}<small class="note-card-versions">{versions.length} versions</small>{/if}
-              <time datetime={updatedAt}>{readableDate(updatedAt)}</time>
-            </button>
-            {#if !trashOpen}
-              <button
-                type="button"
-                class="note-open-beside"
-                aria-label={`Open ${note.title.trim() || 'Untitled note'} on the right`}
-                title="Open on the right"
-                on:click={() => openBeside(note.id)}
-              ><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M12 4v16M15 9l3 3-3 3M14 12h4" /></svg></button>
-            {/if}
+    <div
+      class="notes-drawer"
+      class:open={drawerOpen}
+      role="presentation"
+      bind:this={drawerElement}
+      on:pointerenter={enterDrawer}
+      on:pointerleave={leaveDrawer}
+      on:focusout={closeDrawerOnFocusOut}
+      on:keydown={closeDrawerOnEscape}
+    >
+      <button
+        bind:this={drawerToggle}
+        class="notes-drawer-toggle"
+        type="button"
+        aria-label={trashOpen ? 'Binned notes' : 'Note list'}
+        aria-expanded={drawerOpen}
+        aria-controls="notes-sidebar"
+        on:click={() => { drawerPinned = !drawerPinned }}
+      ><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" /></svg></button>
+      <aside id="notes-sidebar" class="notes-sidebar" class:notes-trash-open={trashOpen} aria-label="Notes">
+        {#if trashOpen}
+          <div class="notes-sidebar-head">
+            <h3>Bin</h3>
+            {#if trashedNotes.length > 0}<button class="ghost danger note-empty-trash" type="button" aria-label="Empty Bin" on:click={emptyTrash}>Empty</button>{/if}
           </div>
-        {/each}
-        {#if visibleNotes.length > 0 && filteredCards.length === 0}<p class="notes-no-match">No matching notes.</p>{/if}
-      </div>
-      {#if trashOpen}<button class="notes-back-link" type="button" on:click={showNotes}><span aria-hidden="true">←</span> Back to Notes</button>{/if}
-    </aside>
+        {/if}
+        <div class="notes-filter-row">
+          {#if !trashOpen}
+            <button
+              class="note-new"
+              type="button"
+              title={`New note (${newNoteShortcutLabel})`}
+              aria-keyshortcuts="Control+N Meta+N"
+              on:click={createNote}
+            >
+              <span>New</span><kbd class="note-new-shortcut" aria-hidden="true">{newNoteShortcutLabel}</kbd>
+            </button>
+          {/if}
+          <input class="notes-filter" type="search" bind:value={filter} placeholder={trashOpen ? 'Filter Bin' : 'Filter notes'} aria-label={trashOpen ? 'Filter Bin' : 'Filter notes'} />
+        </div>
+        <div class="notes-list">
+          {#each filteredCards as versions (noteVersionGroupId(versions[0]) + (trashOpen ? `:${versions[0].id}` : ''))}
+            {@const note = trashOpen ? versions[0] : cardNote(versions, selectedNote)}
+            {@const versionLabel = trashOpen ? binnedVersionLabel(note) : ''}
+            {@const updatedAt = trashOpen ? note.deletedAt ?? note.updatedAt : latestUpdate(versions)}
+            <div class="note-card-row" data-balance-link={`balance://note/${note.id}`}>
+              <button type="button" class="note-card" class:active={note.id === selectedNote?.id} on:click={() => selectFromDrawer(note.id)}>
+                <strong>{note.title.trim() || 'Untitled note'}{#if versionLabel}<small class="note-card-version"> · {versionLabel}</small>{/if}</strong>
+                <span>{previewText(note) || 'Empty note'}</span>
+                {#if versions.length > 1}<small class="note-card-versions">{versions.length} versions</small>{/if}
+                <time datetime={updatedAt}>{readableDate(updatedAt)}</time>
+              </button>
+              {#if !trashOpen}
+                <button
+                  type="button"
+                  class="note-open-beside"
+                  aria-label={`Open ${note.title.trim() || 'Untitled note'} on the right`}
+                  title="Open on the right"
+                  on:click={() => { drawerPinned = false; openBeside(note.id) }}
+                ><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M12 4v16M15 9l3 3-3 3M14 12h4" /></svg></button>
+              {/if}
+            </div>
+          {/each}
+          {#if visibleNotes.length > 0 && filteredCards.length === 0}<p class="notes-no-match">No matching notes.</p>{/if}
+        </div>
+        {#if trashOpen}<button class="notes-back-link" type="button" on:click={showNotes}><span aria-hidden="true">←</span> Back to Notes</button>{/if}
+      </aside>
+    </div>
   {/if}
 
   <section data-balance-link={selectedNote ? `balance://note/${selectedNote.id}` : undefined} bind:this={documentElement} class="note-document" aria-label={sidePane ? 'Right note' : 'Main note'} use:externalNotePaste={`${selectedNoteId}:${trashOpen}`}>

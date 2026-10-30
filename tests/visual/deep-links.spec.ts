@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { createInitialState, createNote, createNoteItem, createPlanItem, createListTemplate, createMetric } from '../../src/lib/planner'
-import { openView, primaryNavigation, showPrimaryNavigation } from '../helpers/navigation'
+import { closeNoteList, openNoteList, openView, primaryNavigation, showPrimaryNavigation } from '../helpers/navigation'
 import { settleContextMenuTarget } from '../helpers/contextMenu'
 
 test.setTimeout(90_000)
@@ -60,7 +60,9 @@ async function copyLink(page: Page, target: Locator) {
 
 async function index(page: Page) {
   await openView(page, 'Notes')
+  await openNoteList(page)
   await page.locator('.note-card').filter({ hasText: 'Link index' }).click()
+  await closeNoteList(page)
 }
 
 test('context links choose the nearest object and return to tasks and note paragraphs', async ({ page }) => {
@@ -75,7 +77,9 @@ test('context links choose the nearest object and return to tasks and note parag
   expect(await copyLink(page, page.locator('.day-pane h2'))).toBe(`balance://day/${date}`)
   expect(await copyLink(page, page.locator('[data-plan-item-id="collapsed_parent"] .plan-item-main'))).toBe('balance://task/collapsed_parent')
   await index(page)
+  await openNoteList(page)
   expect(await copyLink(page, page.locator('.note-card').filter({ hasText: 'Destination' }))).toBe('balance://note/destination')
+  await closeNoteList(page)
   await page.locator('.note-document a').filter({ hasText: 'Child' }).click()
   await expect(page.locator('[data-plan-item-id="linked_child"]')).toBeVisible()
   await expect(page.locator('[data-plan-item-id="linked_child"]')).toHaveClass(/search-result-target/)
@@ -118,7 +122,7 @@ test('context links choose the nearest object and return to tasks and note parag
   await index(page)
   await page.locator('.note-document a').filter({ hasText: 'Binned note' }).click()
   await expect(page.getByRole('heading', { name: 'Binned destination', exact: true })).toBeVisible()
-  await expect(page.locator('.notes-trash-open')).toBeVisible()
+  await expect(page.locator('.notes-trash-open')).toHaveCount(1)
 })
 
 test('page menus dismiss with Escape and preserve review links', async ({ page }) => {

@@ -1,8 +1,8 @@
 import type { Locator } from '@playwright/test'
 
 export async function settleContextMenuTarget(target: Locator, position?: { x: number; y: number }) {
-  // Right-click focuses cards, which can reveal them in the horizontal mobile
-  // strip. Focusing now does not select/open the note.
+  // Right-click focuses cards, which can scroll the note list. Focusing now
+  // does not select/open the note.
   if (await target.evaluate(element => element.matches('.note-card'))) await target.focus()
   // Preflight the actual click point. A tall note document may already overlap
   // the viewport while its top-left context-click point is still offscreen.

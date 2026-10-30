@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { openView } from '../helpers/navigation'
+import { openNoteList, openView } from '../helpers/navigation'
 
 test('notes open and edit independently beside each other, including in IMAX', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'Side-by-side notes are desktop-only')
@@ -8,6 +8,7 @@ test('notes open and edit independently beside each other, including in IMAX', a
   await page.evaluate(() => localStorage.clear())
   await page.reload()
   await openView(page, 'Notes')
+  await openNoteList(page)
   await page.locator('.note-new').click()
   await page.getByRole('textbox', { name: 'Note title', exact: true }).fill('Reference')
   await page.locator('.note-new').click()
@@ -52,10 +53,12 @@ test('notes open and edit independently beside each other, including in IMAX', a
   await expect(main.getByRole('textbox', { name: 'Note title', exact: true })).toHaveValue('Draft')
   await page.getByRole('button', { name: 'Exit IMAX mode' }).click()
 
+  await openNoteList(page)
   await page.locator('.note-card').filter({ hasText: 'Reference edited' }).click()
   await expect(main.locator('.note-text')).toContainText('Saved in the right note')
   await page.reload()
   await openView(page, 'Notes')
+  await openNoteList(page)
   await page.locator('.note-card').filter({ hasText: 'Reference edited' }).click()
   await expect(main.locator('.note-text')).toContainText('Saved in the right note')
 
@@ -66,6 +69,7 @@ test('notes open and edit independently beside each other, including in IMAX', a
   await expect(right).toHaveCount(0)
   await expect(main.getByRole('textbox', { name: 'Note title', exact: true })).toHaveValue('Reference edited')
 
+  await openNoteList(page)
   await page.locator('.note-card-row').filter({ hasText: 'Reference edited' }).hover()
   await page.getByRole('button', { name: 'Open Reference edited on the right' }).click()
   await expect(right).toBeVisible()
@@ -81,6 +85,7 @@ test('mobile notes do not offer a side pane', async ({ page }, testInfo) => {
   await page.evaluate(() => localStorage.clear())
   await page.reload()
   await openView(page, 'Notes')
+  await openNoteList(page)
   await page.locator('.note-new').click()
   await expect(page.locator('.note-card')).toBeVisible()
   await expect(page.getByRole('button', { name: /Open .* on the right/ })).toBeHidden()

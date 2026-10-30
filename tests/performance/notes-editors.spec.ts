@@ -110,7 +110,7 @@ async function boot(page: Page, notes: Note[]) {
   }, [STATE_KEY, notes] as const)
   await page.reload()
   await page.getByRole('button', { name: 'Notes', exact: true }).click()
-  await page.locator('.note-card').first().waitFor()
+  await page.locator('.note-card').first().waitFor({ state: 'attached' })
 }
 
 // Clicks a note card and resolves once the target note's last block has been

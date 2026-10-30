@@ -2,7 +2,7 @@
 // workspace in the Iridescent theme, once light and once dark (files ending in
 // -dark). See website/README.md.
 import { expect, test, type Page } from '@playwright/test'
-import { openView } from '../../tests/helpers/navigation'
+import { closeNoteList, openNoteList, openView } from '../../tests/helpers/navigation'
 import { createScreenshotState } from './seed'
 
 // A Wednesday afternoon, after Balance's 5 a.m. day boundary.
@@ -81,8 +81,10 @@ test.describe('desktop', () => {
     ]) {
       await openView(page, view)
       if (view === 'Notes') {
+        await openNoteList(page)
         await page.locator('.note-card-row').filter({ hasText: 'Reading list' }).hover()
         await page.getByRole('button', { name: 'Open Reading list on the right' }).click()
+        await closeNoteList(page)
       }
       await shot(page, scheme, name)
     }

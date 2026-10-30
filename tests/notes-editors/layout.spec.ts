@@ -5,7 +5,7 @@ import { item } from '../fixtures/notesCorpus'
 // pane width, leaving large gaps or overlapping rows after leaving IMAX.
 test('wrapped list rows resize with the pane when IMAX toggles', async ({ harness }) => {
   const note = harness.noteByTitle('Simple paragraphs')
-  const long = 'A wrapped list row that runs long enough to need several lines in the regular Notes pane but fewer lines once IMAX widens it. '.repeat(2)
+  const long = 'A wrapped list row that runs long enough to need several lines in the regular Notes pane but fewer lines once IMAX widens it. '.repeat(4)
   note.items = [
     item({ kind: 'bullet', html: long }),
     item({ kind: 'numbered', html: long }),

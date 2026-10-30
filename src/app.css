@@ -2628,14 +2628,6 @@ body.mobile-checkbox-dragging {
   display: none;
 }
 
-.app-shell.page-maximized .notes-workspace {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.app-shell.page-maximized .notes-sidebar {
-  display: none;
-}
-
 .imax-button.active {
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 14%, transparent);
@@ -6396,7 +6388,7 @@ a[href^="balance://page/settings"] {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   border: 1px solid var(--line);
   border-radius: 12px;
   height: 100%;
@@ -6412,18 +6404,82 @@ a[href^="balance://page/settings"] {
   margin-inline: auto;
 }
 
+/* The notes list floats over the note while the menu button is hovered. */
+.notes-drawer {
+  position: absolute;
+  inset: 0 auto 0 0;
+  z-index: 6;
+  pointer-events: none;
+}
+
+.notes-drawer-toggle {
+  position: absolute;
+  top: 14px;
+  left: 10px;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  pointer-events: auto;
+}
+
+.notes-drawer-toggle:hover,
+.notes-drawer.open .notes-drawer-toggle {
+  color: var(--ink);
+}
+
 .notes-sidebar {
-  position: static;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
+  width: 300px;
   height: 100%;
   min-height: 0;
   gap: 10px;
   min-width: 0;
   padding: 14px;
   border-right: 1px solid var(--line);
-  border-top-left-radius: 11px;
-  background: color-mix(in srgb, var(--sidebar) 62%, var(--paper));
+  border-radius: 11px 0 0 11px;
+  /* Some themes use translucent paper; keep the note from showing through. */
+  background: linear-gradient(color-mix(in srgb, var(--sidebar) 62%, var(--paper))), var(--paper-strong);
+  box-shadow: var(--shadow);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(-8px);
+  transition: opacity 120ms ease, transform 120ms ease, visibility 0s linear 120ms;
+}
+
+.notes-drawer.open .notes-sidebar {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  pointer-events: auto;
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+/* Leave room for the menu button beside the first row. */
+.notes-sidebar > :first-child {
+  margin-left: 34px;
+}
+
+.app-shell .notes-workspace > .notes-drawer ~ .note-document {
+  padding-left: 56px;
+}
+
+.app-shell.page-maximized .notes-workspace > .notes-drawer ~ .note-document {
+  padding-left: clamp(56px, 6vw, 80px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notes-sidebar,
+  .notes-drawer.open .notes-sidebar {
+    transform: none;
+    transition: none;
+  }
 }
 
 .notes-sidebar.notes-trash-open {
@@ -6564,10 +6620,6 @@ a[href^="balance://page/settings"] {
 }
 
 .notes-workspace.notes-split {
-  grid-template-columns: minmax(180px, 240px) repeat(2, minmax(0, 1fr));
-}
-
-.app-shell.page-maximized .notes-workspace.notes-split {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
@@ -7222,20 +7274,24 @@ textarea.note-title {
     overflow: visible;
   }
 
-  .notes-sidebar {
-    position: static;
-    grid-template-rows: auto auto auto auto;
-    height: auto;
-    max-height: none;
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
+  .notes-drawer {
+    bottom: auto;
   }
 
-  .notes-list {
-    grid-auto-flow: column;
-    grid-auto-columns: minmax(180px, 70vw);
-    overflow-x: auto;
-    overflow-y: hidden;
+  .notes-sidebar {
+    width: min(300px, calc(100vw - 32px));
+    height: auto;
+    max-height: min(560px, 70vh);
+    border-bottom: 1px solid var(--line);
+    border-radius: 11px 0 11px 0;
+  }
+
+  .app-shell .notes-workspace > .notes-drawer ~ .note-document {
+    padding-left: 12px;
+  }
+
+  .app-shell .notes-workspace > .notes-drawer ~ .note-document .note-document-head {
+    padding-top: 54px;
   }
 
   .note-document {
