@@ -1204,14 +1204,16 @@ nav button.active {
   margin-top: 6px;
 }
 
-.sidebar-brand-heading h1 {
+.sidebar-brand-heading h1,
+.database-loading-brand {
   font-family: 'Geist', var(--font-interface);
   font-size: 22px;
   font-weight: 650;
+  line-height: 1;
   letter-spacing: -0.035em;
 }
 
-:root[data-theme='iridescent'] :is(.sidebar-brand-heading h1, .mobile-app-title strong) {
+:root[data-theme='iridescent'] :is(.sidebar-brand-heading h1, .database-loading-brand, .mobile-app-title strong) {
   background: var(--iridescent-brand-gradient);
   background-position: 0% 50%;
   background-size: 220% 100%;
@@ -1230,7 +1232,7 @@ nav button.active {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  :root[data-theme='iridescent'] :is(.sidebar-brand-heading h1, .mobile-app-title strong) {
+  :root[data-theme='iridescent'] :is(.sidebar-brand-heading h1, .database-loading-brand, .mobile-app-title strong) {
     background-position: 50% 50%;
     animation: none;
   }

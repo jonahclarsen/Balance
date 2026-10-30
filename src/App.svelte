@@ -6935,7 +6935,7 @@ return rows`
     <div class="database-loading-card">
       <span class="database-maintenance-spinner" aria-hidden="true"></span>
       <div>
-        <p class="eyebrow">Balance</p>
+        <p class="database-loading-brand">Balance</p>
         <h2>Loading…</h2>
         <div
           class="database-loading-progress"

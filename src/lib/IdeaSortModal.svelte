@@ -307,7 +307,7 @@
           <button
             type="button"
             class="idea-group-button"
-            class:primary={kind === 'genuine' || kind === 'afterlife'}
+            class:primary={kind === 'afterlife'}
             class:locked={locked(kind, unlockTick)}
             class:shaking={shaking === kind}
             aria-disabled={locked(kind, unlockTick) ? 'true' : undefined}
