@@ -457,6 +457,8 @@ test('day choices survive closing, navigation and reload without applying to ano
   await page.keyboard.press('Escape')
 
   await storeCall(page, 'return plannerStore.undo()')
+  // Undo never reopens a sorter that was closed.
+  await expect(sorter(page)).toBeHidden()
   await generateDay(page)
   await expect(sorter(page).locator('.idea-sort-card')).toContainText('Synthetic reserved')
   await page.keyboard.press('Escape')

@@ -3823,9 +3823,11 @@ function stateFromNativeHistoryEntry(current: AppState, snapshot: AppState, loca
     images: current.images,
     deviceId: current.deviceId,
     localSequence,
-    // Preferences are intentionally not undoable and may have changed after
-    // this history entry was recorded. Native undo never rewinds them.
+    // Preferences and day generation progress are intentionally not undoable
+    // and may have changed after this history entry was recorded. Native undo
+    // never rewinds them.
     preferences: current.preferences,
+    dayGenerations: current.dayGenerations,
     activePlanDate: current.activePlanDate,
     operations: [],
     historyRevision: current.historyRevision + 1,
@@ -3837,8 +3839,10 @@ function applyPatch<T extends object>(target: T, patch: Partial<Record<keyof T, 
   return changed ? ({ ...target, ...patch } as T) : target
 }
 
-function applyHistorySnapshot(current: AppState, snapshot: AppState, type: string, entry: HistoryEntry): AppState {
+function applyHistorySnapshot(current: AppState, entryState: AppState, type: string, entry: HistoryEntry): AppState {
   const sequence = current.localSequence + 1
+  // Day generation progress is not undoable; a closed sorter stays closed.
+  const snapshot = { ...entryState, dayGenerations: current.dayGenerations }
 
   return {
     ...snapshot,

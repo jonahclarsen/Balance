@@ -6,7 +6,7 @@ test('past days can be generated once but existing past plans are kept', async (
   await page.goto('/')
   await expect(page.getByRole('region', { name: 'Daily plan' })).toBeVisible()
   await page.locator('.date-input').fill('2026-09-16')
-  await expect(page.locator('.empty-state input[type="radio"]').first()).toBeVisible()
+  await expect(page.locator('.empty-state').getByRole('group', { name: 'Day template' }).getByRole('button').first()).toBeVisible()
 
   const generate = async (date: string, replaceExisting = false) => page.evaluate(async ({ date, replaceExisting }) => {
     const path = '/src/lib/store.ts'
