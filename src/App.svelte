@@ -7213,8 +7213,8 @@ return rows`
       bind:this={primaryNavEl}
       use:previewMobileNavigation
     >
-      <button data-nav-view="next" class:active={selectedNavView === 'next'} type="button" title="Next (Alt+X)" aria-keyshortcuts="Alt+X" on:click={() => selectMobileDrawerView('next')}><span class="nav-label"><NavIcon name="next" />Next</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('X')}</kbd></button>
       <button data-nav-view="today" class:active={selectedNavView === 'today'} type="button" title="Today (Alt+T)" aria-keyshortcuts="Alt+T" on:click={() => selectMobileDrawerView('today')}><span class="nav-label"><NavIcon name="today" />Today</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('T')}</kbd></button>
+      <button data-nav-view="next" class:active={selectedNavView === 'next'} type="button" title="Next (Alt+X)" aria-keyshortcuts="Alt+X" on:click={() => selectMobileDrawerView('next')}><span class="nav-label"><NavIcon name="next" />Next</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('X')}</kbd></button>
       <button data-nav-view="templates" class:active={selectedNavView === 'templates'} type="button" title="Days (Alt+D)" aria-keyshortcuts="Alt+D" on:click={() => selectMobileDrawerView('templates')}><span class="nav-label"><NavIcon name="templates" />Days</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('D')}</kbd></button>
       <button data-nav-view="listTemplates" class:active={selectedNavView === 'listTemplates'} type="button" title="Lists (Alt+E)" aria-keyshortcuts="Alt+E" on:click={() => selectMobileDrawerView('listTemplates')}><span class="nav-label"><NavIcon name="listTemplates" />Lists</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('E')}</kbd></button>
       {#if listHistoryNavigationVisible}
