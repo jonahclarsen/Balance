@@ -417,6 +417,18 @@ export type PrioritySession = {
   updatedAt: string
 }
 
+// A day's generation, keyed by its date: the template chosen for it and how
+// far its dialogs got, so another launch or device can carry on.
+export type DayGeneration = {
+  id: string
+  templateId: Id
+  // Its dialogs were open when last seen; opening Balance resumes them.
+  open: boolean
+  // Every idea its "Sort new ideas" passes have shown, so progress keeps
+  // counting sorted ideas when sorting resumes.
+  shownIdeaIds: Id[]
+}
+
 export type AppState = {
   images: ImageAsset[]
   schemaVersion: 1
@@ -441,6 +453,7 @@ export type AppState = {
   projectCheckIns: ProjectCheckIn[]
   projectHistoryNotes: ProjectHistoryNote[]
   prioritySessions: PrioritySession[]
+  dayGenerations: DayGeneration[]
   // Stored as the ideaBuckets collection, with bucket_<kind> record IDs.
   ideaBuckets: IdeaGroup[]
   voiceClips: VoiceClip[]

@@ -187,6 +187,43 @@ test('a new day sorts every proposition one card at a time', async ({ page }, te
   await expect(page.getByRole('region', { name: 'Daily plan' }).locator('[data-plan-text-input]').first()).toBeVisible()
 })
 
+test('sorting new ideas resumes after a reload until it is closed', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
+  await open(page)
+  await storeCall(page, `
+    plannerStore.addIdea('Synthetic first')
+    plannerStore.addIdea('Synthetic second')
+  `)
+  const choice = page.locator('.empty-state').getByRole('button', { name: 'Default day' })
+
+  await page.keyboard.press('Alt+Shift+D')
+  await expectIdea(page, 1, 2)
+  await page.keyboard.press('n')
+  await page.keyboard.press('t')
+  await expectIdea(page, 2, 2)
+
+  await page.reload()
+  await expectIdea(page, 2, 2)
+  await expect(sorter(page).locator('.idea-sort-card')).toContainText('Synthetic second')
+  await expect(choice).toHaveClass(/selected/)
+
+  await page.keyboard.press('Escape')
+  await expect(sorter(page)).toBeHidden()
+  await page.reload()
+  await expect(choice).toHaveClass(/selected/)
+  await expect(sorter(page)).toBeHidden()
+
+  await choice.click()
+  await expectIdea(page, 2, 2)
+  await page.keyboard.press('n')
+  await page.keyboard.press('t')
+  await expect(sorter(page)).toBeHidden()
+  await expect(page.getByRole('region', { name: 'Daily plan' }).locator('[data-plan-text-input]').first()).toBeVisible()
+  await page.reload()
+  await expect(sorter(page)).toBeHidden()
+  await expect(page.getByRole('region', { name: 'Daily plan' }).locator('[data-plan-text-input]').first()).toBeVisible()
+})
+
 test('Back undoes the previous sort decision so an idea never lands in two places', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
   await open(page)

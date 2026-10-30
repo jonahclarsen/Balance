@@ -215,6 +215,7 @@ const ENTITY_COLLECTIONS = [
   'projectCheckIns',
   'projectHistoryNotes',
   'prioritySessions',
+  'dayGenerations',
   'ideaBuckets',
   'voiceClips',
   'uneditedPlanItems',
@@ -2410,6 +2411,51 @@ function createPlannerStore() {
       }, { undoable: false })
     },
 
+    // ---- Day generation ----
+
+    // Remembers the template chosen for a date while its dialogs are open.
+    // Earlier days' unfinished generations are dropped.
+    startDayGeneration(date: string, templateId: Id) {
+      commitEntities('start_day_generation', { date, templateId }, (state) => {
+        const today = todayISO()
+        const existing = state.dayGenerations.find(({ id }) => id === date)
+        const stale = state.dayGenerations.some(({ id }) => id !== date && id < today)
+        if (existing?.templateId === templateId && existing.open && !stale) return state
+        const record = existing ? { ...existing, templateId, open: true } : { id: date, templateId, open: true, shownIdeaIds: [] }
+        const kept = state.dayGenerations.filter(({ id }) => id !== date && id >= today)
+        return { ...state, dayGenerations: [...kept, record] }
+      }, { undoable: false, reconcileGoals: false })
+    },
+
+    // Closing a dialog keeps the chosen template but stops resuming.
+    pauseDayGeneration(date: string) {
+      commitEntities('pause_day_generation', { date }, (state) => {
+        if (!state.dayGenerations.some(({ id, open }) => id === date && open)) return state
+        return { ...state, dayGenerations: state.dayGenerations.map((record) => record.id === date ? { ...record, open: false } : record) }
+      }, { undoable: false, reconcileGoals: false })
+    },
+
+    // Returns how many ideas earlier passes for the date showed that are no
+    // longer waiting.
+    showDayGenerationIdeas(date: string, ideaIds: Id[]): number {
+      const shownBefore = get(store).dayGenerations.find(({ id }) => id === date)?.shownIdeaIds ?? []
+      const shown = new Set([...shownBefore, ...ideaIds])
+      commitEntities('show_day_generation_ideas', { date }, (state) => {
+        const existing = state.dayGenerations.find(({ id }) => id === date)
+        if (!existing || ideaIds.every((id) => existing.shownIdeaIds.includes(id))) return state
+        const shownIdeaIds = [...new Set([...existing.shownIdeaIds, ...ideaIds])]
+        return { ...state, dayGenerations: state.dayGenerations.map((record) => record === existing ? { ...record, shownIdeaIds } : record) }
+      }, { undoable: false, reconcileGoals: false })
+      return shown.size - ideaIds.length
+    },
+
+    finishDayGeneration(date: string) {
+      commitEntities('finish_day_generation', { date }, (state) => {
+        if (!state.dayGenerations.some(({ id }) => id === date)) return state
+        return { ...state, dayGenerations: state.dayGenerations.filter(({ id }) => id !== date) }
+      }, { undoable: false, reconcileGoals: false })
+    },
+
     // ---- Prioritize ----
 
     startPrioritySession(seeds: Omit<import('./types').PriorityItem, 'id'>[]) {
@@ -4408,6 +4454,7 @@ export async function inspectDatabase(): Promise<DatabaseInspection | null> {
       projectCheckIns: [],
       projectHistoryNotes: [],
       prioritySessions: [],
+      dayGenerations: [],
       ideaBuckets: [],
       voiceClips: [],
       notes: [],
@@ -4552,6 +4599,7 @@ function* normalizeStateSteps(state: AppState): Generator<void, AppState, void> 
     projectCheckIns: state.projectCheckIns ?? [],
     projectHistoryNotes: yield* normalizeRecords(state.projectHistoryNotes ?? [], normalize.projectHistoryNotes),
     prioritySessions: state.prioritySessions ?? [],
+    dayGenerations: state.dayGenerations ?? [],
     ideaBuckets: state.ideaBuckets ?? [],
     voiceClips: state.voiceClips ?? [],
     preferences: normalizeReplicatedPreferences(state.preferences),

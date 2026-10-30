@@ -51,6 +51,7 @@
   import PrioritizePanel from './lib/PrioritizePanel.svelte'
   import IdeasPanel from './lib/IdeasPanel.svelte'
   import IdeaSortModal from './lib/IdeaSortModal.svelte'
+  import { dayTemplateShortcutLetters } from './lib/dayTemplateShortcuts'
   import IdeaImportModal from './lib/IdeaImportModal.svelte'
   import { ideaGroupItems, findIdea, IDEA_GROUPS, IDEA_REVIEW_GOAL_NAME } from './lib/ideas'
   import { awaitingTranscription } from './lib/voiceClips'
@@ -335,9 +336,6 @@
   // to it. Keyed by item context like the in-memory caret and selection maps.
   const TODAY_ITEM_POSITIONS_KEY = 'balance:todayItemPositions'
   const MAX_TODAY_ITEM_POSITIONS = 7
-  // Every idea a day's "Sort new ideas" pass has shown, keyed by that day, so
-  // progress keeps counting sorted ideas after the sorter is closed and reopened.
-  const NEW_IDEA_SORTS_KEY = 'balance:newIdeaSorts'
   let mobileDrawerOpen = false
   let mobileDrawerPressing = false
   let mobileDrawerPressPointerId: number | null = null
@@ -448,7 +446,9 @@
   let goalItemDoneById = new Map<Id, boolean>()
   let goalRhythmScrollRequest: { goalId: string; nonce: number } | null = null
   let selectedTemplateId = ''
-  let emptyDayTemplateSelections: Record<string, Id> = {}
+  // The day generation whose dialogs this window is showing.
+  let dayGenerationRunning: { run: number; date: string } | null = null
+  let dayGenerationRuns = 0
   // Lists + Metrics feature state
   let selectedListTemplateId = ''
   let listViewTemplateId = ''
@@ -830,6 +830,8 @@ return rows`
   $: metricOverlayAnswers =
     metricOverlay && metricOverlayMetric ? answersForEntry($plannerStore.metricEntries, metricOverlay.metricId, metricOverlay.date) : {}
   $: canGenerateDisplayedDay = displayedPlanDate >= currentDay || !activePlan
+  $: dayTemplateShortcuts = dayTemplateShortcutLetters(templates.map((template) => template.name || 'Untitled day'))
+  $: dayGenerationTemplateId = $plannerStore.dayGenerations.find(({ id }) => id === displayedPlanDate)?.templateId
   $: generateButtonLabel = 'Generate day'
   $: activeGoalCount = goals.filter((goal) => isGoalActiveOnDate(goal, currentDay)).length
   $: sortedGoals = sortGoalsByUrgency(goals, goalCompletions, currentDay)
@@ -2447,6 +2449,7 @@ return rows`
     trackActiveDayUse()
     const currentDayTimer = window.setInterval(refreshCurrentDay, 60_000)
     window.addEventListener('focus', refreshCurrentDay)
+    window.addEventListener('focus', resumeDayGeneration)
     window.addEventListener('blur', trackActiveDayUse)
     window.addEventListener('pagehide', persistTodayItemPosition)
     document.addEventListener('visibilitychange', refreshCurrentDay)
@@ -2640,6 +2643,7 @@ return rows`
       window.clearInterval(currentDayTimer)
       if (noteTrashCleanupTimer !== null) window.clearInterval(noteTrashCleanupTimer)
       window.removeEventListener('focus', refreshCurrentDay)
+      window.removeEventListener('focus', resumeDayGeneration)
       window.removeEventListener('blur', trackActiveDayUse)
       window.removeEventListener('pagehide', persistTodayItemPosition)
       document.removeEventListener('visibilitychange', refreshCurrentDay)
@@ -3327,27 +3331,6 @@ return rows`
     })
   }
 
-  // Ideas the day's earlier passes showed that are no longer waiting count as
-  // sorted, however they left: a group, Cut, a note or the day itself.
-  function startNewIdeaSort(date: string, queue: import('./lib/types').IdeaItem[]): number {
-    let sorts: Record<string, Id[]> = {}
-    try {
-      const parsed: unknown = JSON.parse(localStorage.getItem(NEW_IDEA_SORTS_KEY) ?? '{}')
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) sorts = parsed as Record<string, Id[]>
-    } catch {
-      // Progress starts over for this pass.
-    }
-    const today = todayISO()
-    const recent = Object.fromEntries(Object.entries(sorts).filter(([day, ids]) => day >= today && Array.isArray(ids)))
-    const shown = new Set([...(recent[date] ?? []), ...queue.map((item) => item.id)])
-    try {
-      localStorage.setItem(NEW_IDEA_SORTS_KEY, JSON.stringify({ ...recent, [date]: [...shown] }))
-    } catch {
-      // Progress is still right for this pass.
-    }
-    return shown.size - queue.length
-  }
-
   function finishIdeaSort(completed: boolean) {
     const sort = ideaSort
     ideaSort = null
@@ -3726,16 +3709,31 @@ return rows`
     return window.confirm(message)
   }
 
-  function selectEmptyDayTemplate(date: string, templateId: Id) {
-    emptyDayTemplateSelections = { ...emptyDayTemplateSelections, [date]: templateId }
+  function generateEmptyDay(templateId: Id) {
     selectDayTemplate(templateId)
+    void generateDayFromTemplate(templateId)
   }
 
-  async function generateDayFromTemplate(templateId: Id) {
+  // Carries on a generation whose dialogs were open when Balance last closed,
+  // here or on another device. Waiting for focus keeps a window left open
+  // elsewhere from starting it while another device is sorting.
+  function resumeDayGeneration() {
+    if ($databaseLoadPending || $databaseLoadError || !dayTemplateSelectionReady || dayGenerationRunning || !document.hasFocus()) return
+    const generation = $plannerStore.dayGenerations.find((record) => record.open &&
+      templates.some(({ id }) => id === record.templateId) &&
+      !$plannerStore.plans.some((plan) => plan.date === record.id))
+    if (!generation) return
+    plannerStore.setActivePlanDate(generation.id)
+    view = 'today'
+    void generateDayFromTemplate(generation.templateId, generation.id)
+  }
+
+  $: if ($plannerStore.dayGenerations.length > 0 && dayTemplateSelectionReady && !$databaseLoadPending) resumeDayGeneration()
+
+  async function generateDayFromTemplate(templateId: Id, date = $plannerStore.activePlanDate || todayISO()) {
     const template = templates.find((candidate) => candidate.id === templateId)
     if (!template) return
 
-    const date = $plannerStore.activePlanDate || todayISO()
     const exists = $plannerStore.plans.some((plan) => plan.date === date)
     if (exists && date < todayISO()) return
     const replaceExisting = exists ? await confirmReplaceExistingPlan() : false
@@ -3746,6 +3744,23 @@ return rows`
       return
     }
 
+    const run = ++dayGenerationRuns
+    dayGenerationRunning = { run, date }
+    plannerStore.startDayGeneration(date, template.id)
+    let generated = false
+    try {
+      generated = await runDayGeneration(template, date, replaceExisting)
+    } finally {
+      if (dayGenerationRunning?.run === run) dayGenerationRunning = null
+      // A newer press for the same date owns its record now.
+      if (dayGenerationRunning?.date !== date) {
+        if (generated) plannerStore.finishDayGeneration(date)
+        else plannerStore.pauseDayGeneration(date)
+      }
+    }
+  }
+
+  async function runDayGeneration(template: DailyTemplate, date: string, replaceExisting: boolean): Promise<boolean> {
     // Every proposition must land in a group or the new day before it begins.
     // Keep day reservations on the ideas until generation succeeds, so closing
     // either the sorter or the quiz preserves choices for this specific date.
@@ -3754,9 +3769,9 @@ return rows`
     const propositions = ideaGroupItems($plannerStore.ideaBuckets, 'proposition')
       .filter((item) => item.dayAssignmentDate !== date && !waiting.has(item.id))
     if (propositions.length > 0 && !(await askIdeaSort(
-      propositions, 'Sort new ideas', (itemId) => plannerStore.assignIdeaToDay(itemId, date), startNewIdeaSort(date, propositions),
-    ))) return
-    if (needsProjectPick($plannerStore.projects, date) && !(await askProjectPick(date))) return
+      propositions, 'Sort new ideas', (itemId) => plannerStore.assignIdeaToDay(itemId, date), plannerStore.showDayGenerationIdeas(date, propositions.map(({ id }) => id)),
+    ))) return false
+    if (needsProjectPick($plannerStore.projects, date) && !(await askProjectPick(date))) return false
 
     const steps = templateQuizSteps(
       templateForGeneration(template, $plannerStore.templateItemConditions, $plannerStore.projects, date),
@@ -3765,9 +3780,15 @@ return rows`
       $plannerStore.templateListExpansions,
     )
     const quizAnswers = steps.length > 0 ? await askDayQuiz(`Plan your day · ${template.name}`, steps) : {}
-    if (!quizAnswers) return
+    if (!quizAnswers) return false
 
-    if (date < todayISO() && $plannerStore.plans.some((plan) => plan.date === date)) return
+    // Another device may have generated the day while these dialogs were open.
+    if (!replaceExisting && $plannerStore.plans.some((plan) => plan.date === date)) {
+      plannerStore.setActivePlanDate(date)
+      view = 'today'
+      return true
+    }
+    if (date < todayISO() && $plannerStore.plans.some((plan) => plan.date === date)) return false
     const doabilityReviews = goalsNeedingDoabilityReview(
       $plannerStore.goals,
       $plannerStore.goalCompletions,
@@ -3778,10 +3799,9 @@ return rows`
     const dayIdeaIds = ideaGroupItems($plannerStore.ideaBuckets, 'proposition')
       .filter((item) => item.dayAssignmentDate === date).map((item) => item.id)
     moveIdeasToDay(dayIdeaIds, date)
-    const { [date]: _generatedDate, ...remainingSelections } = emptyDayTemplateSelections
-    emptyDayTemplateSelections = remainingSelections
     view = 'today'
     if (doabilityReviews.length > 0) goalDoabilityReviews = doabilityReviews
+    return true
   }
 
   function moveIdeasToDay(itemIds: Id[], date: string) {
@@ -4177,6 +4197,16 @@ return rows`
       event.preventDefault()
       if (!event.repeat) void generateSelectedDay()
       return
+    }
+
+    // Option-Shift and a template's letter generate an empty day with it.
+    if (view === 'today' && !activePlan && !dayQuiz && !projectPick && event.altKey && event.shiftKey && !primaryModifier && event.code.startsWith('Key')) {
+      const index = dayTemplateShortcuts.indexOf(event.code.slice(3))
+      if (templates[index]) {
+        event.preventDefault()
+        if (!event.repeat) generateEmptyDay(templates[index].id)
+        return
+      }
     }
 
     if (event.altKey && !primaryModifier && !event.shiftKey) {
@@ -7434,36 +7464,21 @@ return rows`
                 <h3>No plan for this date</h3>
                 <p>Choose a template to generate this day, or pick another date.</p>
                 {#if templates.length > 0}
-                  <fieldset class="day-template-picker">
-                    <legend>Day template</legend>
-                    <div class="day-template-options">
-                      {#each templates as template (template.id)}
-                        <label
-                          class="day-template-option"
-                          class:selected={emptyDayTemplateSelections[displayedPlanDate] === template.id}
-                        >
-                          <input
-                            type="radio"
-                            name={`day-template-${displayedPlanDate}`}
-                            value={template.id}
-                            checked={emptyDayTemplateSelections[displayedPlanDate] === template.id}
-                            on:change={() => selectEmptyDayTemplate(displayedPlanDate, template.id)}
-                          />
-                          <span>{template.name || 'Untitled day'}</span>
-                        </label>
-                      {/each}
-                    </div>
-                  </fieldset>
-                  <button
-                    class="primary generate-day-button"
-                    type="button"
-                    title={`${generateButtonLabel} (${primaryShortcutLabel(shiftShortcutLabel('G'))})`}
-                    aria-keyshortcuts={isMac ? 'Meta+Shift+G' : 'Control+Shift+G'}
-                    disabled={!templates.some((template) => template.id === emptyDayTemplateSelections[displayedPlanDate])}
-                    on:click={() => { void generateDayFromTemplate(emptyDayTemplateSelections[displayedPlanDate]) }}
-                  >
-                    <span>{generateButtonLabel}</span><kbd class="nav-shortcut" aria-hidden="true">{primaryShortcutLabel(shiftShortcutLabel('G'))}</kbd>
-                  </button>
+                  <div class="day-template-options" role="group" aria-label="Day template">
+                    {#each templates as template, index (template.id)}
+                      {@const letter = dayTemplateShortcuts[index]}
+                      <button
+                        class="day-template-option"
+                        class:selected={dayGenerationTemplateId === template.id}
+                        type="button"
+                        aria-keyshortcuts={letter ? `Alt+Shift+${letter}` : undefined}
+                        on:click={() => generateEmptyDay(template.id)}
+                      >
+                        <span>{template.name || 'Untitled day'}</span>
+                        {#if letter}<kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel(shiftShortcutLabel(letter))}</kbd>{/if}
+                      </button>
+                    {/each}
+                  </div>
                 {/if}
               </div>
         {/if}

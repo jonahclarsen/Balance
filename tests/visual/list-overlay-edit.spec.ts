@@ -580,8 +580,7 @@ async function openPrimaryView(page: import('@playwright/test').Page, name: 'Tod
 async function generateToday(page: import('@playwright/test').Page) {
   await openPrimaryView(page, 'Today')
   const emptyState = page.locator('.empty-state')
-  await emptyState.getByRole('radio', { name: 'Default day' }).check()
-  await emptyState.getByRole('button', { name: 'Generate day' }).click()
+  await emptyState.getByRole('button', { name: 'Default day' }).click()
 }
 
 test('list overlay selects its first item when initially opened', async ({ page }) => {

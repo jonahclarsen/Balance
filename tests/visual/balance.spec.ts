@@ -815,7 +815,7 @@ test('recovery-key failure surfaces even if state hydration remains blocked', as
   await expect(page.getByText(/recovery key is unavailable/i)).toBeVisible()
 })
 
-test('empty days show every template and require an explicit selection', async ({ page }) => {
+test('empty days generate from a template button or its Alt+Shift letter', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -852,26 +852,18 @@ test('empty days show every template and require an explicit selection', async (
   }
   await openView(page, 'Today')
   const firstDay = await page.locator('.date-input').inputValue()
-  const emptyState = page.locator('.empty-state')
-  await expect(emptyState.getByRole('group', { name: 'Day template' })).toBeVisible()
-  await expect(emptyState.getByRole('radio')).toHaveCount(2)
-  await expect(emptyState.getByRole('radio', { checked: true })).toHaveCount(0)
-  await expect(emptyState.getByRole('button', { name: 'Generate day' })).toBeDisabled()
-  await emptyState.getByRole('radio', { name: 'Weekend' }).check()
-  await expect(emptyState.getByRole('button', { name: 'Generate day' })).toBeEnabled()
-  await emptyState.getByRole('button', { name: 'Generate day' }).click()
+  const choices = page.locator('.empty-state').getByRole('group', { name: 'Day template' })
+  await expect(choices.getByRole('button')).toHaveCount(2)
+  await expect(choices.getByRole('button', { name: 'Default day' })).toHaveAttribute('aria-keyshortcuts', 'Alt+Shift+D')
+  await expect(choices.getByRole('button', { name: 'Weekend' })).toHaveAttribute('aria-keyshortcuts', 'Alt+Shift+W')
+  await choices.getByRole('button', { name: 'Weekend' }).click()
   await expect(page.locator('[data-plan-text-input]').filter({ hasText: 'Rest' })).toBeVisible()
 
   await page.locator('.date-input').fill(addDays(firstDay, 1))
   await expect(page.locator('.date-input')).toHaveValue(addDays(firstDay, 1))
-  await expect(page.locator('.empty-state').getByRole('radio', { checked: true })).toHaveCount(0)
-  await expect(page.locator('.empty-state').getByRole('button', { name: 'Generate day' })).toBeDisabled()
-
   await page.reload()
-  await expect(page.locator('.empty-state').getByRole('radio')).toHaveCount(2)
-  await expect(page.locator('.empty-state').getByRole('radio', { checked: true })).toHaveCount(0)
-  await page.locator('.empty-state').getByRole('radio', { name: 'Weekend' }).check()
-  await page.locator('.empty-state').getByRole('button', { name: 'Generate day' }).click()
+  await expect(choices.getByRole('button')).toHaveCount(2)
+  await page.keyboard.press('Alt+Shift+W')
   await expect(page.locator('[data-plan-text-input]').filter({ hasText: 'Rest' })).toBeVisible()
 })
 

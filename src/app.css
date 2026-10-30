@@ -1362,32 +1362,17 @@ nav button.active {
   text-transform: none;
 }
 
-.day-template-picker {
-  width: 100%;
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-
-.day-template-picker legend {
-  margin-bottom: 7px;
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
 .day-template-options {
+  width: 100%;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 8px;
 }
 
 .day-template-option {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
   min-width: 0;
   padding: 10px 12px;
@@ -1409,15 +1394,20 @@ nav button.active {
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
-.day-template-option input {
-  flex: 0 0 auto;
-  margin: 0;
-  accent-color: var(--accent);
+.day-template-option span {
+  min-width: 0;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.day-template-option span {
-  overflow: hidden;
-  text-overflow: ellipsis;
+.day-template-option .nav-shortcut {
+  flex: none;
+}
+
+.day-template-option:hover .nav-shortcut {
+  opacity: 1;
 }
 
 .primary {
@@ -1431,8 +1421,7 @@ nav button.active {
   background: var(--accent-strong);
 }
 
-:root[data-theme='iridescent'] .sidebar-footer > .primary,
-:root[data-theme='iridescent'] .day-template-picker + .primary {
+:root[data-theme='iridescent'] .sidebar-footer > .primary {
   border-color: color-mix(in srgb, var(--line) 76%, var(--accent));
   background: linear-gradient(
     115deg,
@@ -1447,8 +1436,7 @@ nav button.active {
   transition: border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
 }
 
-:root[data-theme='iridescent'] .sidebar-footer > .primary:hover,
-:root[data-theme='iridescent'] .day-template-picker + .primary:hover {
+:root[data-theme='iridescent'] .sidebar-footer > .primary:hover {
   border-color: color-mix(in srgb, var(--line-strong) 70%, var(--accent));
   background: linear-gradient(
     115deg,

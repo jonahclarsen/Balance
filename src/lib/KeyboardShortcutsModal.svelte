@@ -50,6 +50,7 @@
         { keys: ['mod', 'shift', 'P'], label: 'Open recovery panel' },
         { keys: ['esc'], label: 'Close backup browser (workspace shortcuts pause while browsing)' },
         { keys: ['mod', 'shift', 'G'], label: 'Generate selected day (while Find is closed)' },
+        { keys: ['alt', 'shift', 'letter'], label: 'Generate an empty day with the template showing that letter' },
         { keys: ['mod', 'N'], label: 'Create note (while in Notes)' },
         { keys: ['alt', 'K'], label: 'Hide goal rhythm for 6 hours, or show it again' },
         { keys: ['alt', 'A'], label: 'Add an idea to Proposition Party' },

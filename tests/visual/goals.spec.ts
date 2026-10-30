@@ -1621,8 +1621,7 @@ test(`day generation opens the goal doability review for legacy overdue and repe
 
   if (testInfo.project.name === 'mobile') {
     const emptyState = page.locator('.empty-state')
-    await emptyState.getByRole('radio', { name: 'Default day' }).check()
-    await emptyState.getByRole('button', { name: 'Generate day' }).click()
+    await emptyState.getByRole('button', { name: 'Default day' }).click()
   } else {
     await page.getByRole('complementary').getByRole('button', { name: 'Generate day' }).click()
   }
