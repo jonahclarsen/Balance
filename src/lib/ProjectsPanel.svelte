@@ -17,13 +17,16 @@
   // Refreshed by the app each minute so active projects lapse on time.
   export let now = Date.now()
   export let onOpenLink: (link: ItemLink) => void = () => {}
+  // History is its own page, so the app remembers it like List History.
+  export let showingHistory = false
+  export let onShowHistory: () => void = () => {}
+  export let onHideHistory: () => void = () => {}
   let name = ''
   let nameHtml = ''
   // Bumped after adding so the still-focused name editor clears its DOM.
   let formResets = 0
   let detailsId = ''
   let pickingDays = false
-  let showingHistory = false
   let highlightedId = ''
   let highlightTimer: ReturnType<typeof setTimeout> | undefined
   $: open = projects.filter(isProjectOpen)
@@ -52,7 +55,6 @@
 
   $: if (linkedProjectId) void reveal(linkedProjectId)
   async function reveal(id: string) {
-    showingHistory = false
     await tick()
     document.getElementById(`project-${id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
     await highlight(id)
@@ -125,14 +127,14 @@
 <section class="projects-panel" aria-label="Projects">
   {#if showingHistory}
   <header class="page-header projects-header history-header">
-    <button class="ghost projects-back" type="button" on:click={() => showingHistory = false}><span aria-hidden="true">‹</span>Back</button>
+    <button class="ghost projects-back" type="button" on:click={onHideHistory}><span aria-hidden="true">‹</span>Back</button>
     <h2>History</h2>
   </header>
   <ProjectHistory {projects} {onOpenLink} />
   {:else}
   <header class="page-header projects-header">
     <h2>Projects</h2>
-    <button class="ghost" type="button" on:click={() => showingHistory = true}>History</button>
+    <button class="ghost" type="button" on:click={onShowHistory}>History</button>
   </header>
   {#if linkedProjectId && !projects.some((project) => project.id === linkedProjectId)}<p class="muted">Project unavailable.</p>{/if}
   <form class="project-add" aria-label="Add a new project" on:submit|preventDefault={add}>

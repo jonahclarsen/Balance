@@ -9,7 +9,7 @@ type Tree = { id: Id; children: Tree[] }
 
 const VIEW_TITLES: Record<LinkableView, string> = {
   situate: 'Situate', next: 'Next', today: 'Today', templates: 'Days', listTemplates: 'Lists', lists: 'List History',
-  notes: 'Notes', projects: 'Projects', prioritize: 'Prioritize', ideas: 'Ideas', metrics: 'Quizzes', goals: 'Goals', settings: 'Settings',
+  notes: 'Notes', projects: 'Projects', projectHistory: 'Project History', prioritize: 'Prioritize', ideas: 'Ideas', metrics: 'Quizzes', goals: 'Goals', settings: 'Settings',
 }
 
 function findItem<T extends Tree>(items: T[], id: Id): T | null {

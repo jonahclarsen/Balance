@@ -182,7 +182,7 @@
     { id: 'dark', name: 'Dark', description: 'Always use dark mode' },
   ]
 
-  type View = 'situate' | 'next' | 'today' | 'templates' | 'listTemplates' | 'lists' | 'notes' | 'projects' | 'prioritize' | 'ideas' | 'metrics' | 'goals' | 'settings'
+  type View = 'situate' | 'next' | 'today' | 'templates' | 'listTemplates' | 'lists' | 'notes' | 'projects' | 'projectHistory' | 'prioritize' | 'ideas' | 'metrics' | 'goals' | 'settings'
   type Opener = { container: 'plan' | 'list'; containerId: Id; itemId: Id }
   type ExportSettings = {
     exportDirectory: string
@@ -356,6 +356,8 @@
   // List History is a contextual child of Lists. Once opened, keep its sidebar
   // entry available while visiting other pages; returning to Lists dismisses it.
   let listHistoryNavigationVisible = false
+  // Project History behaves the same way under Projects.
+  let projectHistoryNavigationVisible = false
   let searchOpen = false
   let retainedSearchQuery = ''
   let searchQueryExpiresAt = 0
@@ -759,6 +761,7 @@ return rows`
 
   // ---- Lists ----
   $: if (view === 'lists') listHistoryNavigationVisible = true
+  $: if (view === 'projectHistory') projectHistoryNavigationVisible = true
   // Archived lists are hidden from Lists but stay visible in List History.
   $: activeListTemplates = listTemplates.filter((template) => !template.archivedAt)
   $: selectedListTemplate = activeListTemplates.find((template) => template.id === selectedListTemplateId) ?? activeListTemplates[0]
@@ -970,6 +973,16 @@ return rows`
     listHistoryNavigationVisible = true
   }
 
+  function openProjects() {
+    view = 'projects'
+    projectHistoryNavigationVisible = false
+  }
+
+  function openProjectHistory() {
+    view = 'projectHistory'
+    projectHistoryNavigationVisible = true
+  }
+
   function mobileDrawerWidth() {
     return Math.min(window.innerWidth * 0.86, 320)
   }
@@ -1140,6 +1153,10 @@ return rows`
       openLists()
     } else if (nextView === 'lists') {
       openListHistory()
+    } else if (nextView === 'projects') {
+      openProjects()
+    } else if (nextView === 'projectHistory') {
+      openProjectHistory()
     } else if (nextView === 'goals') {
       void openGoals()
     } else {
@@ -1262,9 +1279,10 @@ return rows`
     } else if (nextView === 'metrics') selectedMetricId = entityId
     else if (nextView === 'goals') goalSearch = ''
     // Undoing an add removes the project, so there is nothing to reveal.
-    else if (nextView === 'projects') linkedProjectId = destination.removed ? '' : entityId
+    else if (nextView === 'projects') linkedProjectId = destination.removed || view === 'projectHistory' ? '' : entityId
     else if (nextView === 'prioritize') prioritizeReveal.set({ sessionId: entityId, itemId })
-    openMobileDrawerView(nextView)
+    // Project History shows stretches, so undoing one stays there.
+    openMobileDrawerView(nextView === 'projects' && view === 'projectHistory' ? 'projectHistory' : nextView)
     await tick()
     if (nextView === 'metrics' && date && $plannerStore.metrics.some((metric) => metric.id === entityId)) {
       metricOverlay = { metricId: entityId, date, opener: null, questionId: itemId }
@@ -3528,6 +3546,7 @@ return rows`
       value === 'lists' ||
       value === 'notes' ||
       value === 'projects' ||
+      value === 'projectHistory' ||
       value === 'prioritize' ||
       value === 'ideas' ||
       value === 'metrics' ||
@@ -4182,7 +4201,10 @@ return rows`
 
       if (sidebarView) {
         event.preventDefault()
-        if (sidebarView === 'projects') linkedProjectId = ''
+        if (sidebarView === 'projects') {
+          linkedProjectId = ''
+          projectHistoryNavigationVisible = false
+        }
         if (sidebarView === 'settings' && view === 'today') captureRenderedPlanSnapshot()
         switchViewFromShortcut(sidebarView)
         return
@@ -7212,6 +7234,9 @@ return rows`
       <button data-nav-view="metrics" class:active={selectedNavView === 'metrics'} type="button" title="Quizzes (Alt+V)" aria-keyshortcuts="Alt+V" on:click={() => selectMobileDrawerView('metrics')}><span class="nav-label"><NavIcon name="metrics" />Quizzes</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('V')}</kbd></button>
       <button data-nav-view="goals" class:active={selectedNavView === 'goals'} type="button" title="Goals (Alt+G)" aria-keyshortcuts="Alt+G" on:click={() => selectMobileDrawerView('goals')}><span class="nav-label"><NavIcon name="goals" />Goals</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('G')}</kbd></button>
       <button data-nav-view="projects" class:active={selectedNavView === 'projects'} type="button" title="Projects (Alt+P)" aria-keyshortcuts="Alt+P" on:click={() => { linkedProjectId = ''; selectMobileDrawerView('projects') }}><span class="nav-label"><NavIcon name="projects" />Projects</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('P')}</kbd></button>
+      {#if projectHistoryNavigationVisible}
+        <button class="nav-child" data-nav-view="projectHistory" class:active={selectedNavView === 'projectHistory'} type="button" title="Project History" on:click={() => selectMobileDrawerView('projectHistory')}><span class="nav-label"><NavIcon name="lists" />Project History</span></button>
+      {/if}
       <button data-nav-view="prioritize" class:active={selectedNavView === 'prioritize'} type="button" title="Prioritize (Alt+R)" aria-keyshortcuts="Alt+R" on:click={() => selectMobileDrawerView('prioritize')}><span class="nav-label"><NavIcon name="prioritize" />Prioritize</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('R')}</kbd></button>
       <button data-nav-view="ideas" class:active={selectedNavView === 'ideas'} type="button" title="Ideas (Alt+B)" aria-keyshortcuts="Alt+B" on:click={() => selectMobileDrawerView('ideas')}><span class="nav-label"><NavIcon name="ideas" />Ideas</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('B')}</kbd></button>
       <button data-nav-view="situate" class:active={selectedNavView === 'situate'} type="button" title="Situate (Alt+Z)" aria-keyshortcuts="Alt+Z" on:click={() => selectMobileDrawerView('situate')}><span class="nav-label"><NavIcon name="situate" />Situate</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('Z')}</kbd></button>
@@ -8018,8 +8043,16 @@ return rows`
       {/if}
     {/if}
 
-    {#if view === 'projects'}
-      <ProjectsPanel projects={$plannerStore.projects} {linkedProjectId} now={projectClock} onOpenLink={(link) => openLink(link, null)} />
+    {#if view === 'projects' || view === 'projectHistory'}
+      <ProjectsPanel
+        projects={$plannerStore.projects}
+        {linkedProjectId}
+        now={projectClock}
+        showingHistory={view === 'projectHistory'}
+        onShowHistory={openProjectHistory}
+        onHideHistory={openProjects}
+        onOpenLink={(link) => openLink(link, null)}
+      />
     {/if}
 
     {#if view === 'prioritize'}

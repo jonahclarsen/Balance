@@ -205,6 +205,52 @@ test('project history records active stretches and supports adding, editing, del
   await expect(page.locator('.project-card.active')).toHaveText(/Synthetic garden\s*until Fri/)
 })
 
+test('Project History is its own page under Projects, like List History', async ({ page }) => {
+  // Noon on Tuesday, Sep 8 in Vancouver.
+  await page.clock.setFixedTime(new Date('2026-09-08T19:00:00Z'))
+  await page.goto('/')
+  const projectHistory = page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Project History', exact: true })
+  const heading = page.getByRole('heading', { name: 'History', exact: true })
+  await openView(page, 'Projects')
+  await addProject(page, 'Synthetic garden')
+  await expect(projectHistory).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'History', exact: true }).click()
+  await expect(heading).toBeVisible()
+  await showPrimaryNavigation(page)
+  await expect(projectHistory).toHaveClass(/nav-child/)
+  await expect(projectHistory).toHaveClass(/active/)
+  // The app resumes on History after a restart.
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('balance:workspaceViewState')!).view)).toBe('projectHistory')
+
+  // Undoing a stretch edit stays on History.
+  await page.getByRole('button', { name: 'Add', exact: true }).click()
+  const editor = page.getByRole('dialog', { name: 'Add active stretch', exact: true })
+  await editor.getByRole('group', { name: 'Project' }).getByRole('button', { name: 'Synthetic garden' }).click()
+  await editor.getByLabel('From').fill('2026-08-01')
+  await editor.getByLabel('To').fill('2026-08-03')
+  await editor.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(page.locator('.project-history li')).toHaveCount(1)
+  await page.keyboard.press('ControlOrMeta+z')
+  await expect(page.locator('.project-history li')).toHaveCount(0)
+  await expect(heading).toBeVisible()
+
+  await openView(page, 'Notes')
+  await showPrimaryNavigation(page)
+  await expect(projectHistory).not.toHaveClass(/active/)
+  await openView(page, 'Project History')
+  await expect(heading).toBeVisible()
+
+  await page.getByRole('button', { name: 'Back', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Projects', exact: true })).toBeVisible()
+  await expect(projectHistory).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'History', exact: true }).click()
+  await openView(page, 'Projects')
+  await expect(page.getByRole('heading', { name: 'Projects', exact: true })).toBeVisible()
+  await expect(projectHistory).toHaveCount(0)
+})
+
 test('project history keeps writing for each period and a backstory', async ({ page }) => {
   // Noon on Tuesday, Sep 8 in Vancouver.
   await page.clock.setFixedTime(new Date('2026-09-08T19:00:00Z'))
