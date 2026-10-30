@@ -48,5 +48,11 @@
   document.addEventListener('fullscreenchange',() => { if(gate?.isConnected && document.fullscreenElement) void document.exitFullscreen().catch(()=>{}) })
   window.addEventListener('pageshow',check)
   window.addEventListener('popstate',check)
-  document.addEventListener('keydown',event => { if(gate?.isConnected && !event.composedPath().includes(gate)) { event.preventDefault();event.stopImmediatePropagation() } },true)
+  document.addEventListener('keydown',event => {
+    if(gate?.isConnected && !event.composedPath().includes(gate)) {
+      // Keep browser shortcuts (including moving tabs) without sending keys to the blocked page.
+      if(!event.ctrlKey && !event.metaKey && !event.altKey) event.preventDefault()
+      event.stopImmediatePropagation()
+    }
+  },true)
 })()

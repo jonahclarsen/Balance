@@ -13,6 +13,28 @@ test('extension hides blocked content and restores it after a pass without readi
   await expect(page.getByRole('heading',{name:'Synthetic private content'})).toBeHidden()
   await expect(page.locator('body')).toHaveAttribute('inert','')
   await expect(page.locator('body')).toHaveCSS('display','none')
+  const keyboard=await page.evaluate(() => {
+    const received:string[]=[]
+    document.addEventListener('keydown',event => received.push(event.key))
+    const shortcuts:KeyboardEventInit[]=[
+      {key:'PageUp',ctrlKey:true,shiftKey:true},
+      {key:'PageDown',ctrlKey:true,shiftKey:true},
+      {key:'ArrowLeft',metaKey:true,shiftKey:true},
+      {key:'ArrowRight',metaKey:true,shiftKey:true},
+      {key:'ArrowLeft',altKey:true,shiftKey:true},
+      {key:'ArrowRight',altKey:true,shiftKey:true},
+      {key:'k'},
+    ]
+    const allowed=shortcuts.map(shortcut => document.documentElement.dispatchEvent(
+      new KeyboardEvent('keydown',{...shortcut,bubbles:true,cancelable:true,composed:true}),
+    ))
+    // Events from the warning's quiz links must still reach their controls.
+    const gateAllowed=document.querySelector('#balance-situate-gate')!.dispatchEvent(
+      new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true,composed:true}),
+    )
+    return {allowed,received,gateAllowed}
+  })
+  expect(keyboard).toEqual({allowed:[true,true,true,true,true,true,false],received:['Enter'],gateAllowed:true})
   await page.evaluate(() => {
     const body=document.createElement('body')
     body.innerHTML='<h1>Synthetic private content</h1><button>Replacement control</button>'
