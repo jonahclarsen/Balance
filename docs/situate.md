@@ -102,7 +102,8 @@ answers, tasks, notes, recovery keys, or notification text. Readers cannot write
 grants or run shell commands through the feed.
 
 The local `herdr-broken` patch hides Codex/Claude tab content while Touch grass is
-on, mutes sounds, and opens the Balance quiz with Enter. Other tabs work. Rebuild
+on, mutes sounds, and opens the Balance quiz with Enter. Ctrl+C/Cmd+C still
+interrupt the hidden agent and Cmd+W still closes its tab. Other tabs work. Rebuild
 and install that helper normally; attached clients must reattach to load the new
 renderer, preserving their running terminal sessions.
 
