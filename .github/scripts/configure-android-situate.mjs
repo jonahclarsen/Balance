@@ -3,7 +3,7 @@ import { join } from 'node:path'
 const root = process.argv[2] ?? 'src-tauri/gen/android/app/src/main'
 const source = join(root, 'java/app/balance/local')
 await mkdir(source, { recursive: true })
-for (const file of ['BalanceSituate.kt', 'NotificationArchive.kt', 'SituateSelfTest.kt']) await copyFile(`src-tauri/android/situate/${file}`, join(source, file))
+for (const file of ['SituateAccessibility.kt', 'BalanceSituate.kt', 'NotificationArchive.kt', 'SituateSelfTest.kt']) await copyFile(`src-tauri/android/situate/${file}`, join(source, file))
 const activityPath = join(source, 'MainActivity.kt')
 let activity = await readFile(activityPath, 'utf8')
 if (!activity.includes('BalanceSituate.resume(this)')) {
@@ -25,7 +25,6 @@ if (!manifest.includes('.SituateNotifications')) {
       <intent-filter><action android:name="android.accessibilityservice.AccessibilityService" /></intent-filter>
       <meta-data android:name="android.accessibilityservice" android:resource="@xml/situate_accessibility" />
     </service>
-    <activity android:name=".SituateBlockedActivity" android:exported="false" android:excludeFromRecents="true" />
     <activity android:name=".SituateExportActivity" android:exported="false" android:excludeFromRecents="true" />
     <receiver android:name=".SituateReceiver" android:exported="false"><intent-filter>
       <action android:name="android.intent.action.BOOT_COMPLETED" /><action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
@@ -37,13 +36,14 @@ if (!manifest.includes('.SituateNotifications')) {
   await writeFile(manifestPath,manifest)
 }
 // Upgrade previously generated projects as well as fresh CI builds.
+manifest = manifest.replace(/\s*<activity android:name="\.SituateBlockedActivity"[^>]*\/>/g, '')
 manifest = manifest.replace(/android:scheme="balance" android:host="situate"/g, 'android:scheme="balance"')
 await writeFile(manifestPath, manifest)
 await mkdir(join(root,'res/xml'),{recursive:true})
 await writeFile(join(root,'res/xml/situate_accessibility.xml'), `<?xml version="1.0" encoding="utf-8"?>
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
  android:accessibilityEventTypes="typeWindowStateChanged" android:accessibilityFeedbackType="feedbackGeneric"
- android:notificationTimeout="100" android:canRetrieveWindowContent="false" android:canPerformGestures="false"
+ android:notificationTimeout="0" android:canRetrieveWindowContent="false" android:canPerformGestures="false"
  android:description="@string/situate_accessibility_description" />\n`)
 await mkdir(join(root,'res/values'),{recursive:true})
 await writeFile(join(root,'res/values/situate.xml'), '<resources><string name="situate_accessibility_description">Checks app identities to redirect blocked apps to a quiz. Does not read screen text or perform gestures.</string></resources>\n')

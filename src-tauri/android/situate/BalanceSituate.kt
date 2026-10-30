@@ -1,6 +1,5 @@
 package app.balance.local
 
-import android.accessibilityservice.AccessibilityService
 import android.app.*
 import android.content.*
 import android.net.Uri
@@ -8,7 +7,6 @@ import android.os.Build
 import android.provider.Settings
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
-import android.view.accessibility.AccessibilityEvent
 import android.widget.*
 import org.json.JSONArray
 import org.json.JSONObject
@@ -24,6 +22,7 @@ object BalanceSituate {
     private fun rules(context: Context) = File(context.noBackupFilesDir, "situate-rules.json")
     fun initialize(context: Context) { nativeInitialize(context.applicationContext); executor.execute { SituateSelfTest.runIfRequested(context); refresh(context) } }
     fun resume(activity: Activity) {
+        SituateAccessibility.appResumed()
         initialize(activity)
         activity.intent?.data?.toString()?.let { if (it.startsWith("balance://")) { nativeDeepLink(it); activity.intent.data = null } }
     }
@@ -85,7 +84,7 @@ object BalanceSituate {
             "refresh" -> {
                 val document = JSONObject(query).getJSONObject("document")
                 val file = rules(context); val tmp = File(file.parentFile,"situate-rules.tmp")
-                tmp.writeText(document.toString()); check(tmp.renameTo(file)); executor.execute { refresh(context, false) }; return "{}"
+                tmp.writeText(document.toString()); check(tmp.renameTo(file)); SituateAccessibility.enforceCurrent(); executor.execute { refresh(context, false) }; return "{}"
             }
             "permissions" -> {
                 val intent = when(query) {
@@ -123,60 +122,6 @@ class SituateNotifications : NotificationListenerService() {
                 }
             } catch (_: Exception) { /* Never log notification contents or keys. */ }
         }
-    }
-}
-class SituateAccessibility : AccessibilityService() {
-    private var lastPackage=""
-    private var lastAt=0L
-    private var foregroundPackage=""
-    companion object {
-        @Volatile private var current: SituateAccessibility? = null
-        fun enforceCurrent() { android.os.Handler(android.os.Looper.getMainLooper()).post { current?.enforce() } }
-    }
-    override fun onServiceConnected() { super.onServiceConnected(); current=this }
-    override fun onDestroy() { if(current===this) current=null; super.onDestroy() }
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if(event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
-        val pkg=event.packageName?.toString() ?: return
-        if(pkg=="com.android.systemui") return
-        if(pkg!=foregroundPackage) { lastPackage=""; lastAt=0L }
-        foregroundPackage=pkg
-        enforce()
-    }
-    private fun enforce() {
-        val pkg=foregroundPackage
-        if(pkg.isBlank()) return
-        if(pkg==lastPackage && System.currentTimeMillis()-lastAt<1500) return
-        val modes = try { BalanceSituate.blocked(this,pkg) } catch (_: Exception) { return }
-        if(modes.isEmpty()) return
-        lastPackage=pkg; lastAt=System.currentTimeMillis()
-        // Launch the gate directly. A simultaneous asynchronous Home action can
-        // win the activity transition and hide the gate behind the launcher.
-        val mode=modes.first()
-        val targets=mode.getJSONArray("targets")
-        val target=(0 until targets.length()).map { targets.getJSONObject(it) }.first { it.optString("value")==pkg }
-        val uri=Uri.Builder().scheme("balance").authority("situate").appendQueryParameter("mode",mode.getString("id"))
-        if(target.optString("category")=="entertainment") uri.appendQueryParameter("target",target.getString("id"))
-        startActivity(Intent(this,SituateBlockedActivity::class.java).putExtra("url",uri.build().toString()).putExtra("mode",mode.getString("name")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP))
-    }
-    override fun onInterrupt() { }
-}
-class SituateBlockedActivity : Activity() {
-    private fun leave() {
-        startActivity(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        finish()
-    }
-    @Suppress("DEPRECATION")
-    override fun onBackPressed() { leave() }
-    override fun onCreate(savedInstanceState: android.os.Bundle?) {
-        super.onCreate(savedInstanceState)
-        if(Build.VERSION.SDK_INT >= 33) onBackInvokedDispatcher.registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT) { leave() }
-        val layout=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(48,100,48,48) }
-        layout.addView(TextView(this).apply { text=intent.getStringExtra("mode")+" is on"; textSize=28f })
-        layout.addView(TextView(this).apply { text="Take a moment before opening this app."; textSize=18f })
-        layout.addView(Button(this).apply { text="Open quiz"; setOnClickListener { startActivity(Intent(this@SituateBlockedActivity,MainActivity::class.java).setData(Uri.parse(intent.getStringExtra("url"))).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)); finish() } })
-        layout.addView(Button(this).apply { text="Keep the boundary"; setOnClickListener { leave() } })
-        setContentView(layout)
     }
 }
 class SituateExportActivity : Activity() {

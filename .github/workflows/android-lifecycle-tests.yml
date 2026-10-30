@@ -16,7 +16,7 @@ on:
         description: Lifecycle path to verify with synthetic data
         type: choice
         default: activity
-        options: [activity, process, worker-start, offline-ideas, offline-history, offline-notifications, offline-latency, startup-ab]
+        options: [activity, situate, process, worker-start, offline-ideas, offline-history, offline-notifications, offline-latency, startup-ab]
       baseline_apk_run_id:
         description: For startup-ab, the lifecycle run whose APK is the baseline build
         type: string
@@ -38,6 +38,7 @@ permissions:
 
 jobs:
   capture-acknowledgement:
+    if: inputs.scenario != 'situate'
     name: Offline refresh and durable capture
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -108,7 +109,55 @@ jobs:
             balance-debug.apk
             sync-e2e-pairing-code.txt
 
+  situate:
+    name: Situate blocking / Android ${{ matrix.api }}
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [31, 34, 36]
+    steps:
+      - uses: actions/checkout@v6
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: actions/download-artifact@v7
+        with:
+          name: Balance-android-lifecycle-test-apk
+      - name: Verify blocking and unblocking with the optimized APK
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          BALANCE_TEST_PACKAGE: app.balance.local
+          BALANCE_SITUATE_INSTALL: "1"
+        with:
+          api-level: ${{ matrix.api }}
+          arch: x86_64
+          target: google_apis
+          emulator-options: -no-window -gpu lavapipe -noaudio -no-boot-anim -camera-back none
+          disable-animations: false
+          script: timeout --foreground --kill-after=10s 5m bash .github/scripts/android-situate-enforcement.sh
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: situate-api-${{ matrix.api }}
+          path: |
+            logcat-situate-enforcement.txt
+            situate-accessibility.txt
+            situate-windows.txt
+            situate-gate.png
+            situate-gate-window.txt
+          if-no-files-found: ignore
+
   lifecycle:
+    if: inputs.scenario != 'situate'
     name: Android ${{ matrix.api }} / ${{ matrix.scenario }}
     needs: build
     runs-on: ubuntu-latest

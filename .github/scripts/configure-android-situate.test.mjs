@@ -18,6 +18,10 @@ test('Situate generation is idempotent and services expose only OS-bound capabil
   assert.match(first,/BIND_NOTIFICATION_LISTENER_SERVICE/);assert.match(first,/BIND_ACCESSIBILITY_SERVICE/)
   assert.match(first,/SituateExportActivity" android:exported="false"/)
   const xml=await readFile(join(root,'res/xml/situate_accessibility.xml'),'utf8');assert.match(xml,/canRetrieveWindowContent="false"/);assert.match(xml,/canPerformGestures="false"/)
+  assert.doesNotMatch(first,/SituateBlockedActivity/)
+  assert.match(xml,/notificationTimeout="0"/)
+  const blocker=await readFile(join(source,'SituateAccessibility.kt'),'utf8')
+  assert.doesNotMatch(blocker,/getRootInActiveWindow|rootInActiveWindow|event\.text|event\.source|dispatchGesture/)
   const kotlin=await readFile(join(source,'NotificationArchive.kt'),'utf8');assert.match(kotlin,/noBackupFilesDir/);assert.match(kotlin,/AES\/GCM\/NoPadding/);assert.match(kotlin,/HmacSHA256/)
   const activity=await readFile(join(source,'MainActivity.kt'),'utf8');assert.equal(activity.match(/override fun onNewIntent/g).length,1)
  } finally { await rm(root,{recursive:true,force:true}) }

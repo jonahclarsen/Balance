@@ -117,7 +117,12 @@ Android's widget can resize vertically and includes active mode controls.
 
 Grant notification access for logging/silencing and accessibility access for app
 blocking. Enable **Mode notifications** so activation notices can appear. The accessibility service requests window-change identities only; it
-cannot retrieve screen content or perform gestures. Grant exact-alarm permission
+cannot retrieve screen content or perform gestures. A service-owned accessibility
+overlay covers blocked apps without relying on background activity launches. It
+rechecks the current rules while an app is open, dismisses the gate when a pass or
+rule edit allows it, and re-blocks when a pass expires. Home, Back, locking the
+screen, and disabling accessibility release the overlay. Keyboard and system-panel
+events do not replace the foreground app identity. Grant exact-alarm permission
 for schedule changes during idle; without it Android may delay alarms.
 
 History is separate from the planner, in Android's no-backup directory. Payloads
@@ -149,3 +154,20 @@ rules and interfaces. CI runs the full browser suite and native tests. Android's
 emulator smoke test explicitly opts into a separate synthetic archive fixture
 with test-only keys, verifying encrypted persistence, search, filtering, updates,
 reopening, export, and deletion. No installed personal database is a test fixture.
+
+The Android lifecycle workflow also tests Situate with the R8-shrunk APK on API
+31, 34, and 36. Its disposable emulator checks activation over an already-open
+app, pass dismissal and expiry, overlapping modes, scheduled activation, repeated
+launches, Back/Home, lock/unlock, accessibility reconnection, target removal, and
+notification blocking/unblocking. Dispatch `android-lifecycle-tests.yml` on a test
+branch with `scenario=situate` for a focused run; pushing a branch alone does not start the Android build workflow.
+
+The blocking implementation was informed by static inspection of AppBlock 7.22.0
+(version code 583), downloaded from APKPure on 2026-10-30. Its base APK SHA-256 was
+`cd42de9b90e701af6a5448c3f5b87ce37ffe9d71bc3000baf6900aa103ec39a3`.
+`OverlayService` and `OverlayServiceV2` construct full-screen `WindowManager`
+windows (type 2038), and `LockAccessibilityService.onAccessibilityEvent` queues
+work on a separate executor. Balance uses Android's service-bound
+`TYPE_ACCESSIBILITY_OVERLAY` instead, which needs no additional draw-over-apps
+permission, and keeps screen-content retrieval disabled. No APK or third-party
+implementation code is included in this repository.
