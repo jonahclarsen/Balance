@@ -9069,7 +9069,7 @@ return rows`
 {/if}
 
 {#if quickAddOpen}
-  <OverlayModal title={quickAddEditing ? 'Edit idea' : 'Add idea'} cover="viewport" z={100} maxWidth={480} backdropStyle={appShellStyle} onClose={closeQuickAdd} closeDisabled={quickAddSaving}>
+  <OverlayModal title={quickAddEditing ? 'Edit idea' : 'Add idea'} cover="viewport" z={100} maxWidth={480} backdropStyle={appShellStyle} onClose={closeQuickAdd} closeDisabled={quickAddSaving} closeOnBackdrop={false}>
     <svelte:fragment slot="header-middle">
       {#if quickAddCanEditLast}
         <button

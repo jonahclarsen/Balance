@@ -36,6 +36,8 @@
   export let cover: 'content' | 'viewport' = 'content'
   // Turn off when the opener already routes Escape through its own key handling.
   export let closeOnEscape = true
+  // Off for dialogs holding unsaved writing, so a stray press can't discard it.
+  export let closeOnBackdrop = true
   export let closeDisabled = false
   export let closeTitle = 'Close (Esc)'
   export let backdropStyle = ''
@@ -122,7 +124,7 @@
   inert={!active}
   role="presentation"
   style={`z-index: ${z}; --overlay-max-width: ${maxWidth}px; --overlay-height: ${height === null ? 'auto' : `${height}px`}; --overlay-body-overflow: ${bodyOverflow}; ${backdropStyle}`}
-  use:dismissOnBackdropClick={dismiss}
+  use:dismissOnBackdropClick={closeOnBackdrop ? dismiss : () => {}}
   use:ignoreOpeningPress={active}
   use:fitPhoneViewport
   on:keydown={handleEscape}

@@ -122,6 +122,17 @@ test('quick add reopens the idea added within the last 4 minutes', async ({ page
   await expect(editLast).toHaveCount(0)
 })
 
+test('a backdrop press keeps a half-written idea open', async ({ page }) => {
+  await open(page)
+  await page.getByRole('button', { name: 'Add idea', exact: true }).click()
+  const input = page.getByRole('textbox', { name: 'New idea' })
+  await input.fill('Synthetic unsaved')
+  await page.locator('.overlay-backdrop:has([aria-label="New idea"])').click({ position: { x: 4, y: 4 } })
+  await expect(input).toHaveText('Synthetic unsaved')
+  await page.keyboard.press('Escape')
+  await expect(input).toBeHidden()
+})
+
 test('a new day sorts every proposition one card at a time', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
   await open(page)
