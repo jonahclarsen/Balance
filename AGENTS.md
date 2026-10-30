@@ -78,6 +78,12 @@ inside, and add a prop to `OverlayModal` when a dialog needs something new. The
 one exception is the native `<dialog>` in `ImageLayer.svelte`, which reuses the
 `--radius-modal` and `--modal-backdrop` tokens.
 
+`OverlayModal` ignores the click from the press that opened it, since touch
+WebViews deliver that click to whatever appeared under the finger. Open
+surfaces on `click` where possible; any other surface opened from `pointerdown`
+or `pointerup` (drawers, menus) must use `ignoreOpeningPress` from
+`src/lib/openingPressGuard.ts`.
+
 ## Keep the app code clean
 This app currently only has one user, but it might have thousands in the future.
 If there's a part of the code that's no longer used, there's no need to hold

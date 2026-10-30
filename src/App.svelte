@@ -155,6 +155,7 @@
   import { BALANCE_DEEP_LINK_EVENT, parseBalanceDeepLink } from './lib/deepLinks'
   import { captureRenderedPlanSnapshot } from './lib/renderedPlanDiagnostics'
   import { openClickedLink, openRenderedLinkFromShortcut } from './lib/externalLinks'
+  import { ignoreOpeningPress } from './lib/openingPressGuard'
   import {
     DEFAULT_COMPLETION_CELEBRATION_ID,
     getCompletionCelebration,
@@ -340,7 +341,6 @@
   let mobileDrawerOpen = false
   let mobileDrawerPressing = false
   let mobileDrawerPressPointerId: number | null = null
-  let mobileDrawerOpeningClickPending = false
   let mobileDrawerDragging = false
   let mobileDrawerEl: HTMLElement | null = null
   let mobileDrawerBackdropEl: HTMLButtonElement | null = null
@@ -993,17 +993,7 @@ return rows`
     if (event.pointerId !== mobileDrawerPressPointerId) return
     // A touch release need not produce a click. Commit before the preview
     // disappears instead of racing a timer against that optional event.
-    mobileDrawerOpeningClickPending = true
     finishMobileDrawerPress()
-  }
-
-  function consumeMobileDrawerOpeningClick(event: MouseEvent) {
-    if (!mobileDrawerOpeningClickPending || event.detail === 0) return
-    mobileDrawerOpeningClickPending = false
-    // Some WebViews retarget this click to the newly exposed backdrop or
-    // drawer controls. Only a new press may activate them; no timeout is safe.
-    event.preventDefault()
-    event.stopImmediatePropagation()
   }
 
   function cancelMobileDrawerPress(event: PointerEvent) {
@@ -1062,7 +1052,6 @@ return rows`
     mobileDrawerOpen = false
     mobileDrawerPressing = false
     mobileDrawerPressPointerId = null
-    mobileDrawerOpeningClickPending = false
     finishMobileDrawerGesture()
   }
 
@@ -5248,7 +5237,6 @@ return rows`
 
   function handleGlobalPointerDown(event: PointerEvent) {
     stopKeyboardScroll()
-    mobileDrawerOpeningClickPending = false
     const pointerTarget = event.target instanceof Element ? event.target : null
     if (
       completionUndoCaret &&
@@ -6884,7 +6872,6 @@ return rows`
   on:focusin={handleGlobalFocusIn}
   on:scroll={handleWindowScroll}
   on:pointerdown|capture={handleGlobalPointerDown}
-  on:click|capture={consumeMobileDrawerOpeningClick}
   on:pointermove={handleSelectionPointerMove}
   on:pointerup={endItemSelection}
   on:pointercancel={endItemSelection}
@@ -7150,6 +7137,7 @@ return rows`
     aria-label="Primary navigation drawer"
     aria-hidden={mobileDrawerPressing && !mobileDrawerOpen ? 'true' : undefined}
     inert={mobileDrawerPressing}
+    use:ignoreOpeningPress={mobileDrawerOpen}
     bind:this={mobileDrawerEl}
   >
     <div class="sidebar-quick-actions">
@@ -7280,6 +7268,7 @@ return rows`
     aria-label="Close navigation"
     tabindex={mobileDrawerOpen ? 0 : -1}
     on:click={closeMobileDrawer}
+    use:ignoreOpeningPress={mobileDrawerOpen}
     bind:this={mobileDrawerBackdropEl}
   ></button>
 

@@ -2,6 +2,7 @@
 
 <script lang="ts">
   import { onDestroy, tick } from 'svelte'
+  import { ignoreOpeningPress } from './openingPressGuard'
   import AlarmClockIcon from './AlarmClockIcon.svelte'
   import OverlayModal from './OverlayModal.svelte'
   import { collapsedPlanItemIds, setPlanItemCollapsed } from './collapsedPlanItems'
@@ -1123,6 +1124,7 @@
             class="mobile-task-menu"
             class:positioned={mobileTaskMenuPosition !== null}
             use:mountMobileTaskMenu
+            use:ignoreOpeningPress
             style:left={mobileTaskMenuPosition ? `${mobileTaskMenuPosition.left}px` : null}
             style:top={mobileTaskMenuPosition ? `${mobileTaskMenuPosition.top}px` : null}
             style:max-height={mobileTaskMenuPosition ? `${mobileTaskMenuPosition.maxHeight}px` : null}

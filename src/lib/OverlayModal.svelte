@@ -11,6 +11,7 @@
   import { onMount, onDestroy } from 'svelte'
   import { dismissOnBackdropClick } from './backdropDismiss'
   import { fitVisualViewport } from './fitVisualViewport'
+  import { ignoreOpeningPress } from './openingPressGuard'
 
   export let active = true
   // Without onClose the dialog can't be dismissed (no close button, Escape or
@@ -122,6 +123,7 @@
   role="presentation"
   style={`z-index: ${z}; --overlay-max-width: ${maxWidth}px; --overlay-height: ${height === null ? 'auto' : `${height}px`}; --overlay-body-overflow: ${bodyOverflow}; ${backdropStyle}`}
   use:dismissOnBackdropClick={dismiss}
+  use:ignoreOpeningPress={active}
   use:fitPhoneViewport
   on:keydown={handleEscape}
 >

@@ -376,6 +376,23 @@ test('project rows reorder by dragging, open on a tap, and retain order through 
   await expect(page.getByRole('dialog', { name: 'First project details', exact: true })).toBeVisible()
 })
 
+test('the tap that opens a project cannot also press a control in its details', async ({ page }) => {
+  await page.goto('/')
+  await openView(page, 'Projects')
+  await addProject(page, 'Synthetic project')
+  await page.locator('.project-card', { hasText: 'Synthetic project' }).click()
+  const details = page.getByRole('dialog', { name: 'Synthetic project details', exact: true })
+  const markActive = details.getByRole('button', { name: 'Mark active', exact: true })
+  // Touch WebViews hit-test the opening tap's click after the details appear under the finger.
+  await markActive.evaluate((button) => {
+    const { x, y, width, height } = button.getBoundingClientRect()
+    button.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1, clientX: x + width / 2, clientY: y + height / 2 }))
+  })
+  await expect(details.getByRole('group', { name: 'Days active' })).toHaveCount(0)
+  await markActive.click()
+  await expect(details.getByRole('group', { name: 'Days active' })).toBeVisible()
+})
+
 test('dragging a project row to the window edge scrolls the page and keeps the row under the pointer', async ({ page }) => {
   await page.setViewportSize({ width: page.viewportSize()!.width, height: 600 })
   await page.goto('/')
