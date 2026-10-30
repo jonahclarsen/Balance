@@ -157,7 +157,9 @@ test('project history records active stretches and supports adding, editing, del
   await page.getByRole('button', { name: 'History', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'History', exact: true })).toBeVisible()
   const rows = page.locator('.project-history li')
-  await expect(rows).toHaveText([/Synthetic garden\s*Sep 8 – Sep 9\s*2d/])
+  const headings = page.locator('.project-history h3')
+  await expect(rows).toHaveText([/Synthetic garden\s*2d/])
+  await expect(headings).toHaveText(['tues september 8', 'backstory'])
 
   await page.getByRole('button', { name: 'Add', exact: true }).click()
   const editor = page.getByRole('dialog', { name: 'Add active stretch', exact: true })
@@ -166,13 +168,14 @@ test('project history records active stretches and supports adding, editing, del
   await editor.getByLabel('To').fill('2026-08-03')
   await editor.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(editor).toHaveCount(0)
-  await expect(rows).toHaveText([/Synthetic garden\s*Sep 8 – Sep 9/, /Synthetic shed\s*Aug 1 – Aug 3\s*3d/])
+  await expect(rows).toHaveText([/Synthetic garden\s*2d/, /Synthetic shed\s*3d/])
+  await expect(headings).toHaveText(['tues september 8', 'sat august 1', 'backstory'])
 
   await rows.filter({ hasText: 'Synthetic shed' }).getByRole('button').click()
   const edit = page.getByRole('dialog', { name: 'Edit active stretch', exact: true })
   await edit.getByLabel('To').fill('2026-08-04')
   await edit.getByRole('button', { name: 'Save', exact: true }).click()
-  await expect(rows.nth(1)).toHaveText(/Aug 1 – Aug 4\s*4d/)
+  await expect(rows.nth(1)).toHaveText(/Synthetic shed\s*4d/)
 
   // Extending the current stretch keeps the project active through its new last day.
   await rows.filter({ hasText: 'Synthetic garden' }).getByRole('button').click()
@@ -186,7 +189,7 @@ test('project history records active stretches and supports adding, editing, del
   await page.reload()
   await openView(page, 'Projects')
   await page.getByRole('button', { name: 'History', exact: true }).click()
-  await expect(rows).toHaveText([/Sep 8 – Sep 10\s*3d/, /Aug 1 – Aug 4\s*4d/])
+  await expect(rows).toHaveText([/Synthetic garden\s*3d/, /Synthetic shed\s*4d/])
 
   await rows.filter({ hasText: 'Synthetic shed' }).getByRole('button').click()
   await edit.getByRole('button', { name: 'Delete', exact: true }).click()
@@ -200,6 +203,46 @@ test('project history records active stretches and supports adding, editing, del
 
   await page.getByRole('button', { name: 'Back', exact: true }).click()
   await expect(page.locator('.project-card.active')).toHaveText(/Synthetic garden\s*until Fri/)
+})
+
+test('project history keeps writing for each period and a backstory', async ({ page }) => {
+  // Noon on Tuesday, Sep 8 in Vancouver.
+  await page.clock.setFixedTime(new Date('2026-09-08T19:00:00Z'))
+  await page.goto('/')
+  await openView(page, 'Projects')
+  await addProject(page, 'Synthetic garden')
+  await page.locator('.project-card', { hasText: 'Synthetic garden' }).click()
+  const details = page.getByRole('dialog', { name: 'Synthetic garden details', exact: true })
+  await details.getByRole('button', { name: 'Mark active', exact: true }).click()
+  await details.getByRole('button', { name: '2 days', exact: true }).click()
+  await page.getByRole('button', { name: 'History', exact: true }).click()
+
+  const period = page.getByRole('region', { name: 'tues september 8', exact: true })
+  const backstory = page.getByRole('region', { name: 'backstory', exact: true })
+  await expect(period.locator('li')).toHaveText([/Synthetic garden\s*2d/])
+  await period.getByRole('button', { name: 'Start writing…' }).click()
+  await page.keyboard.type('Synthetic period notes')
+  await backstory.getByRole('button', { name: 'Start writing…' }).click()
+  await page.keyboard.type('# Synthetic chapter')
+  await page.keyboard.press('Enter')
+  await page.keyboard.type('Synthetic backstory')
+  await expect(backstory.locator('.note-heading')).toHaveText('Synthetic chapter')
+
+  await page.reload()
+  await openView(page, 'Projects')
+  await page.getByRole('button', { name: 'History', exact: true }).click()
+  await expect(period.locator('.note-editor-host')).toHaveText('Synthetic period notes')
+  await expect(backstory.locator('.note-editor-host')).toContainText(['Synthetic chapter'])
+  await expect(backstory.locator('.note-editor-host')).toContainText(['Synthetic backstory'])
+  // History writing stays out of Notes.
+  const notes = await page.evaluate(() => JSON.parse(localStorage.getItem('balance.appState.v1')!).notes)
+  expect(notes).toHaveLength(0)
+
+  // Writing outlives its stretches.
+  await period.locator('li button').click()
+  await page.getByRole('dialog', { name: 'Edit active stretch', exact: true }).getByRole('button', { name: 'Delete', exact: true }).click()
+  await expect(period.locator('li')).toHaveCount(0)
+  await expect(period.locator('.note-editor-host')).toHaveText('Synthetic period notes')
 })
 
 test('retired check-ins complete projects that reached 100% and are then removed', async ({ page }) => {

@@ -8,7 +8,7 @@
   import { NoteEditorAdapter, type NoteEditorStore } from './NoteEditorAdapter'
   import type { NoteEditorSelectionState, NoteEditorView, NoteInlineMark } from './types'
 
-  export let note: Note
+  export let note: Pick<Note, 'id' | 'items'>
   export let historyRevision = 0
   export let store: NoteEditorStore
   export let listTemplates: ListTemplate[] = []

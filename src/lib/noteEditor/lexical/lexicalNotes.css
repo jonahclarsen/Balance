@@ -89,12 +89,9 @@
   text-decoration-color: color-mix(in srgb, var(--accent-strong) 45%, transparent);
 }
 
-/* Headings: a clear section break, never the first thing's top gap. */
+/* Headings: a clear section break, never the first thing's top gap. Their
+   type is shared with .note-static-heading in app.css. */
 .lexical-note-editor .note-item.note-heading {
-  font-size: clamp(20px, 2.5vw, 25px);
-  line-height: 1.35;
-  font-weight: 720;
-  letter-spacing: -0.02em;
   padding-top: 12px;
 }
 

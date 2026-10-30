@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { activeProjects, endedProjectsOn, needsProjectPick, nextProjectExpiry, periodDays, periodFromDays, projectActiveUntil, projectActiveUntilOn, projectHistory, templateForGeneration, withActiveUntil } from '../../src/lib/projects'
+import { activeProjects, endedProjectsOn, historyDayHeading, needsProjectPick, nextProjectExpiry, periodDays, periodFromDays, projectActiveUntil, projectActiveUntilOn, projectHistory, projectHistoryNoteDay, projectHistoryNoteId, projectHistoryPeriods, templateForGeneration, withActiveUntil } from '../../src/lib/projects'
 import type { DailyTemplate, Project, TemplateItem } from '../../src/lib/types'
 
 const project = (patch: Partial<Project> = {}): Project => ({ id: 'project', name: 'Project', description: '', color: '#336699', archived: false, createdAt: '', updatedAt: '', ...patch })
@@ -83,4 +83,33 @@ test('active stretches convert to and from the active days they cover', () => {
   expect(periodDays({ id: 'p', ...span })).toEqual({ first: '2026-10-20', last: '2026-10-22' })
   // Picked late in the evening, a stretch starts on that evening's day.
   expect(periodDays({ id: 'p', start: new Date(2026, 9, 19, 22).toISOString(), end: new Date(2026, 9, 21, 7).toISOString() })).toEqual({ first: '2026-10-19', last: '2026-10-20' })
+})
+
+test('a stretch ends on its last full day', () => {
+  const start = new Date(2026, 9, 26, 7).toISOString()
+  // Ending at 7 a.m. or partway through Saturday Oct 31 means it ended Friday.
+  expect(periodDays({ id: 'p', start, end: new Date(2026, 9, 31, 7).toISOString() }).last).toBe('2026-10-30')
+  expect(periodDays({ id: 'p', start, end: new Date(2026, 9, 31, 15).toISOString() }).last).toBe('2026-10-30')
+  // Stopped the same day it started, it still covers that day.
+  expect(periodDays({ id: 'p', start, end: new Date(2026, 9, 26, 15).toISOString() })).toEqual({ first: '2026-10-26', last: '2026-10-26' })
+})
+
+test('history groups stretches by start day and keeps written days', () => {
+  const a = project({ id: 'a', activePeriods: [{ id: 'a1', ...periodFromDays('2026-10-20', '2026-10-22') }] })
+  const b = project({ id: 'b', activePeriods: [{ id: 'b1', ...periodFromDays('2026-10-20', '2026-10-21') }, { id: 'b2', ...periodFromDays('2026-10-25', '2026-10-26') }] })
+  const periods = projectHistoryPeriods([a, b], ['2026-10-01'])
+  expect(periods.map(({ day, entries }) => [day, entries.map((entry) => entry.period.id).sort()])).toEqual([
+    ['2026-10-25', ['b2']],
+    ['2026-10-20', ['a1', 'b1']],
+    ['2026-10-01', []],
+  ])
+  expect(projectHistoryNoteDay(projectHistoryNoteId('2026-10-20'))).toBe('2026-10-20')
+  expect(projectHistoryNoteDay('project-history-backstory')).toBeNull()
+})
+
+test('history headings read like "tues october 28"', () => {
+  const now = new Date(2026, 9, 30)
+  expect(historyDayHeading('2026-10-27', now)).toBe('tues october 27')
+  expect(historyDayHeading('2026-10-29', now)).toBe('thurs october 29')
+  expect(historyDayHeading('2025-12-01', now)).toBe('mon december 1 2025')
 })

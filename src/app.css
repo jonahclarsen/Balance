@@ -7076,6 +7076,22 @@ textarea.note-title {
   box-shadow: 0 0 0 3px var(--focus-ring);
 }
 
+/* Note heading type, shared by the Notes editor and Projects > History. */
+.lexical-note-editor .note-item.note-heading,
+.note-static-heading {
+  font-size: clamp(20px, 2.5vw, 25px);
+  line-height: 1.35;
+  font-weight: 720;
+  letter-spacing: -0.02em;
+}
+
+.note-static-heading {
+  margin: 0;
+  padding: 0 4px;
+  color: var(--ink);
+  font-family: var(--font-content);
+}
+
 .note-empty-editor {
   display: flex;
   width: 100%;

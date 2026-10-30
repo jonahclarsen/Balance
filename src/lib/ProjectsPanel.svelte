@@ -128,7 +128,7 @@
     <button class="ghost projects-back" type="button" on:click={() => showingHistory = false}><span aria-hidden="true">‹</span>Back</button>
     <h2>History</h2>
   </header>
-  <ProjectHistory {projects} />
+  <ProjectHistory {projects} {onOpenLink} />
   {:else}
   <header class="page-header projects-header">
     <h2>Projects</h2>

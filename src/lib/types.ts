@@ -346,6 +346,15 @@ export type ProjectActivePeriod = {
   end: string
 }
 
+// Writing on Projects > History: one per stretch start day, plus the backstory.
+// IDs come from projectHistoryNoteId, so devices agree on them.
+export type ProjectHistoryNote = {
+  id: Id
+  items: NoteItem[]
+  createdAt: string
+  updatedAt: string
+}
+
 // Retired progress tracker; emptied once on load by retireProjectCheckIns.
 export type ProjectCheckIn = {
   id: Id
@@ -430,6 +439,7 @@ export type AppState = {
   metricEntries: MetricEntry[]
   projects: Project[]
   projectCheckIns: ProjectCheckIn[]
+  projectHistoryNotes: ProjectHistoryNote[]
   prioritySessions: PrioritySession[]
   // Stored as the ideaBuckets collection, with bucket_<kind> record IDs.
   ideaBuckets: IdeaGroup[]

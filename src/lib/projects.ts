@@ -76,13 +76,53 @@ function localDate(time: number): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
-// Active days run from 7 a.m., so a stretch's first and last days are the
-// days containing its start and its final moment.
+// Active days run from 7 a.m. A stretch starts on the day containing its
+// start and ends on its last full day, so one ending at 7 a.m. Saturday or
+// partway through Saturday ended Friday. A stretch shorter than a day keeps
+// its first day.
 export function periodDays(period: ProjectActivePeriod): { first: string; last: string } {
   const offset = ACTIVE_DAY_START_HOUR * 60 * 60 * 1000
-  const start = Date.parse(period.start)
-  const end = Math.max(start, Date.parse(period.end) - 1)
-  return { first: localDate(start - offset), last: localDate(end - offset) }
+  const first = localDate(Date.parse(period.start) - offset)
+  const endDay = new Date(`${localDate(Date.parse(period.end) - offset)}T12:00:00`)
+  endDay.setDate(endDay.getDate() - 1)
+  const last = localDate(endDay.getTime())
+  return { first, last: last < first ? first : last }
+}
+
+export type ProjectHistoryPeriod = { day: string; entries: ProjectHistoryEntry[] }
+
+// Stretches grouped by the day they started, most recent first. Days with
+// writing but no stretches left keep their place so nothing written is hidden.
+export function projectHistoryPeriods(projects: Project[], notedDays: string[] = []): ProjectHistoryPeriod[] {
+  const byDay = new Map<string, ProjectHistoryEntry[]>()
+  for (const entry of projectHistory(projects)) {
+    const { first } = periodDays(entry.period)
+    byDay.set(first, [...(byDay.get(first) ?? []), entry])
+  }
+  for (const day of notedDays) if (!byDay.has(day)) byDay.set(day, [])
+  return [...byDay].map(([day, entries]) => ({ day, entries })).sort((a, b) => b.day.localeCompare(a.day))
+}
+
+const HISTORY_NOTE_PREFIX = 'project-history-'
+export const PROJECT_BACKSTORY_NOTE_ID = `${HISTORY_NOTE_PREFIX}backstory`
+
+export function projectHistoryNoteId(day: string): Id {
+  return `${HISTORY_NOTE_PREFIX}${day}`
+}
+
+export function projectHistoryNoteDay(id: Id): string | null {
+  const day = id.slice(HISTORY_NOTE_PREFIX.length)
+  return id.startsWith(HISTORY_NOTE_PREFIX) && /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : null
+}
+
+const SHORT_WEEKDAYS = ['sun', 'mon', 'tues', 'wed', 'thurs', 'fri', 'sat']
+
+// "tues october 28", plus the year when it isn't this year.
+export function historyDayHeading(day: string, now = new Date()): string {
+  const date = new Date(`${day}T12:00:00`)
+  const month = date.toLocaleDateString('en-US', { month: 'long' }).toLowerCase()
+  const year = date.getFullYear() === now.getFullYear() ? '' : ` ${date.getFullYear()}`
+  return `${SHORT_WEEKDAYS[date.getDay()]} ${month} ${date.getDate()}${year}`
 }
 
 // The stretch covering whole active days from `first` through `last`.

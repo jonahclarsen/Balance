@@ -171,7 +171,7 @@ const SYNC_LOG_DIRTY_SINCE_MS: &str = "sync_log_dirty_since_ms";
 const REPLICATED_PREFERENCES: &str = "replicated_preferences";
 const DEVICE_APPEARANCE: &str = "device_appearance";
 const DAY_THEME_PREFERENCE_PREFIX: &str = "dayTheme/";
-const ENTITY_COLLECTIONS: [&str; 18] = [
+const ENTITY_COLLECTIONS: [&str; 19] = [
     "images",
     "uneditedPlanItems",
     "templateQuestions",
@@ -187,6 +187,7 @@ const ENTITY_COLLECTIONS: [&str; 18] = [
     "notes",
     "projects",
     "projectCheckIns",
+    "projectHistoryNotes",
     "prioritySessions",
     "ideaBuckets",
     "voiceClips",
@@ -3237,6 +3238,7 @@ fn read_app_state_from_database_with_progress(
         "taskNotifications": read_entity_collection(connection, "taskNotifications")?,
         "projects": lists_metrics_data["projects"].clone(),
         "projectCheckIns": lists_metrics_data["projectCheckIns"].clone(),
+        "projectHistoryNotes": read_entity_collection(connection, "projectHistoryNotes")?,
         "prioritySessions": read_entity_collection(connection, "prioritySessions")?,
         "ideaBuckets": read_entity_collection(connection, "ideaBuckets")?,
         "voiceClips": read_entity_collection(connection, "voiceClips")?,

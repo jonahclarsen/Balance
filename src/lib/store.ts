@@ -136,6 +136,7 @@ import type {
   ListTemplateItemAlternative,
   Metric,
   ProjectCheckIn,
+  ProjectHistoryNote,
   MetricEntry,
   MetricQuestion,
   MetricQuestionType,
@@ -212,6 +213,7 @@ const ENTITY_COLLECTIONS = [
   'notes',
   'projects',
   'projectCheckIns',
+  'projectHistoryNotes',
   'prioritySessions',
   'ideaBuckets',
   'voiceClips',
@@ -1166,6 +1168,43 @@ function createPlannerStore() {
       return get(store).plans.some((plan) => Boolean(findPlanItem(plan.items, insertion.item.id)))
     }
     return added
+  }
+
+  // Item edits from the Notes editor, shared by notes and Projects > History.
+  function patchDocumentItem(collection: NoteDocumentCollection, noteId: Id, itemId: Id, patch: Partial<NoteItem>, options: TextChangeOptions) {
+    const prefix = NOTE_DOCUMENT_ACTIONS[collection]
+    const isTextPatch = 'text' in patch || 'html' in patch
+    const mergeOptions =
+      isTextPatch && options.mergeHistory !== false
+        ? { mergeKey: `${prefix}-item-text:${noteId}:${itemId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS }
+        : {}
+    commitEntities(`patch_${prefix}_item`, { noteId, itemId, patch }, (state) =>
+      updateNoteDocument(state, collection, noteId, (note) => {
+        let items = updatePlanItem(note.items, itemId, (item) => applyPatch(item, patch)) as NoteItem[]
+        if ('kind' in patch || 'done' in patch) items = reconcileNoteChecklistItems(items)
+        return items === note.items ? note : { ...note, updatedAt: nowISO(), items }
+      }), mergeOptions)
+  }
+
+  function patchDocumentItemsDone(collection: NoteDocumentCollection, noteId: Id, itemIds: Id[], done: boolean) {
+    if (itemIds.length === 0) return
+    commitEntities(`patch_${NOTE_DOCUMENT_ACTIONS[collection]}_items_done`, { noteId, itemIds, done }, (state) =>
+      updateNoteDocument(state, collection, noteId, (note) => {
+        const items = patchNoteChecklistItemsDone(note.items, itemIds, done)
+        return items === note.items ? note : { ...note, updatedAt: nowISO(), items }
+      }),
+    )
+  }
+
+  function replaceDocumentItems(collection: NoteDocumentCollection, noteId: Id, items: NoteItem[], summary: string, options: TextChangeOptions) {
+    const mergeOptions = options.mergeKey
+      ? { mergeKey: options.mergeKey, mergeWindowMs: options.mergeWindowMs ?? TEXT_MERGE_WINDOW_MS }
+      : {}
+    commitEntities(`replace_${NOTE_DOCUMENT_ACTIONS[collection]}_items`, { noteId, summary }, (state) =>
+      updateNoteDocument(state, collection, noteId, (note) => {
+        const next = reconcileNoteChecklistItems(items)
+        return noteItemsEqual(next, note.items) ? note : { ...note, updatedAt: nowISO(), items: next }
+      }), mergeOptions)
   }
 
   return {
@@ -2827,27 +2866,11 @@ function createPlannerStore() {
     },
 
     patchNoteItem(noteId: Id, itemId: Id, patch: Partial<NoteItem>, options: TextChangeOptions = {}) {
-      const isTextPatch = 'text' in patch || 'html' in patch
-      const mergeOptions =
-        isTextPatch && options.mergeHistory !== false
-          ? { mergeKey: `note-item-text:${noteId}:${itemId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS }
-          : {}
-      commitEntities('patch_note_item', { noteId, itemId, patch }, (state) =>
-        updateNote(state, noteId, (note) => {
-          let items = updatePlanItem(note.items, itemId, (item) => applyPatch(item, patch)) as NoteItem[]
-          if ('kind' in patch || 'done' in patch) items = reconcileNoteChecklistItems(items)
-          return items === note.items ? note : { ...note, updatedAt: nowISO(), items }
-        }), mergeOptions)
+      patchDocumentItem('notes', noteId, itemId, patch, options)
     },
 
     patchNoteItemsDone(noteId: Id, itemIds: Id[], done: boolean) {
-      if (itemIds.length === 0) return
-      commitEntities('patch_note_items_done', { noteId, itemIds, done }, (state) =>
-        updateNote(state, noteId, (note) => {
-          const items = patchNoteChecklistItemsDone(note.items, itemIds, done)
-          return items === note.items ? note : { ...note, updatedAt: nowISO(), items }
-        }),
-      )
+      patchDocumentItemsDone('notes', noteId, itemIds, done)
     },
 
     // Structural edits from the Notes editor (Lexical) arrive as a
@@ -2856,14 +2879,33 @@ function createPlannerStore() {
     // per touched item (see entityPatch.ts), never a whole-array replacement.
     // `summary` is history/diagnostic metadata only.
     replaceNoteItems(noteId: Id, items: NoteItem[], summary = 'edit', options: TextChangeOptions = {}) {
-      const mergeOptions = options.mergeKey
-        ? { mergeKey: options.mergeKey, mergeWindowMs: options.mergeWindowMs ?? TEXT_MERGE_WINDOW_MS }
-        : {}
-      commitEntities('replace_note_items', { noteId, summary }, (state) =>
-        updateNote(state, noteId, (note) => {
-          const next = reconcileNoteChecklistItems(items)
-          return noteItemsEqual(next, note.items) ? note : { ...note, updatedAt: nowISO(), items: next }
-        }), mergeOptions)
+      replaceDocumentItems('notes', noteId, items, summary, options)
+    },
+
+    // Projects > History writing; the first item creates its record.
+    addProjectHistoryNoteItem(noteId: Id) {
+      const item = createNoteItem('', 'paragraph')
+      commitEntities('add_project_history_note_item', { noteId, item }, (state) => {
+        const timestamp = nowISO()
+        const existing = state.projectHistoryNotes.find((note) => note.id === noteId)
+        const projectHistoryNotes = existing
+          ? state.projectHistoryNotes.map((note) => note === existing ? { ...note, updatedAt: timestamp, items: [...note.items, item] } : note)
+          : [...state.projectHistoryNotes, { id: noteId, items: [item], createdAt: timestamp, updatedAt: timestamp }]
+        return { ...state, projectHistoryNotes }
+      })
+      return item.id
+    },
+
+    patchProjectHistoryNoteItem(noteId: Id, itemId: Id, patch: Partial<NoteItem>, options: TextChangeOptions = {}) {
+      patchDocumentItem('projectHistoryNotes', noteId, itemId, patch, options)
+    },
+
+    patchProjectHistoryNoteItemsDone(noteId: Id, itemIds: Id[], done: boolean) {
+      patchDocumentItemsDone('projectHistoryNotes', noteId, itemIds, done)
+    },
+
+    replaceProjectHistoryNoteItems(noteId: Id, items: NoteItem[], summary = 'edit', options: TextChangeOptions = {}) {
+      replaceDocumentItems('projectHistoryNotes', noteId, items, summary, options)
     },
 
     renameListTemplate(templateId: Id, name: string) {
@@ -4013,6 +4055,21 @@ function insertListTemplateItemAtExistingParent(
   return items
 }
 
+type NoteDocumentCollection = 'notes' | 'projectHistoryNotes'
+type NoteDocument = { id: Id; items: NoteItem[]; updatedAt: string }
+const NOTE_DOCUMENT_ACTIONS: Record<NoteDocumentCollection, string> = { notes: 'note', projectHistoryNotes: 'project_history_note' }
+
+function updateNoteDocument(state: AppState, collection: NoteDocumentCollection, noteId: Id, updater: <T extends NoteDocument>(note: T) => T): AppState {
+  let changed = false
+  const documents = (state[collection] as NoteDocument[]).map((note) => {
+    if (note.id !== noteId) return note
+    const next = updater(note)
+    if (next !== note) changed = true
+    return next
+  })
+  return changed ? { ...state, [collection]: documents } : state
+}
+
 function updateNote(state: AppState, noteId: Id, updater: (note: Note) => Note): AppState {
   let changed = false
   const notes = state.notes.map((note) => {
@@ -4349,6 +4406,7 @@ export async function inspectDatabase(): Promise<DatabaseInspection | null> {
       metricEntries: [],
       projects: [],
       projectCheckIns: [],
+      projectHistoryNotes: [],
       prioritySessions: [],
       ideaBuckets: [],
       voiceClips: [],
@@ -4460,6 +4518,10 @@ function recordNormalizers(normalizeHTML: (value: string) => string) {
       deletedAt: typeof note.deletedAt === 'string' && Number.isFinite(Date.parse(note.deletedAt)) ? note.deletedAt : null,
       items: normalizeNoteItems(note.items ?? [], normalizeHTML),
     }),
+    projectHistoryNotes: (note: ProjectHistoryNote): ProjectHistoryNote => ({
+      ...note,
+      items: normalizeNoteItems(note.items ?? [], normalizeHTML),
+    }),
   }
 }
 
@@ -4488,6 +4550,7 @@ function* normalizeStateSteps(state: AppState): Generator<void, AppState, void> 
     taskNotifications: state.taskNotifications ?? [],
     projects: state.projects ?? [],
     projectCheckIns: state.projectCheckIns ?? [],
+    projectHistoryNotes: yield* normalizeRecords(state.projectHistoryNotes ?? [], normalize.projectHistoryNotes),
     prioritySessions: state.prioritySessions ?? [],
     ideaBuckets: state.ideaBuckets ?? [],
     voiceClips: state.voiceClips ?? [],

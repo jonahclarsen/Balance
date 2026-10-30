@@ -1,23 +1,56 @@
 <script lang="ts">
-  import type { Id, Project } from './types'
+  import type { Id, Note, NoteItem, Project, ProjectHistoryNote } from './types'
+  import type { ItemLink } from './planner'
   import { plannerStore } from './store'
   import OverlayModal from './OverlayModal.svelte'
+  import NoteEditorHost from './noteEditor/NoteEditorHost.svelte'
   import { mountInContentShell } from './contentShellOverlay'
-  import { isProjectOpen, periodDays, periodFromDays, projectHistory, type ProjectHistoryEntry } from './projects'
+  import { isNoteTrashed } from './noteTrash'
+  import {
+    historyDayHeading, isProjectOpen, periodDays, periodFromDays, PROJECT_BACKSTORY_NOTE_ID, projectHistoryNoteDay,
+    projectHistoryNoteId, projectHistoryPeriods, type ProjectHistoryEntry,
+  } from './projects'
   export let projects: Project[] = []
+  export let onOpenLink: (link: ItemLink) => void = () => {}
 
   type Draft = { periodId: Id | null; projectId: Id; first: string; last: string; original?: { first: string; last: string; start: string; end: string } }
   let draft: Draft | null = null
 
-  $: entries = projectHistory(projects)
+  // Keep references stable so unrelated edits don't refresh every editor.
+  let historyNotes = $plannerStore.projectHistoryNotes
+  let allNotes = $plannerStore.notes
+  let linkNotes = allNotes.filter((note) => !isNoteTrashed(note))
+  $: if (historyNotes !== $plannerStore.projectHistoryNotes) historyNotes = $plannerStore.projectHistoryNotes
+  $: if (allNotes !== $plannerStore.notes) {
+    allNotes = $plannerStore.notes
+    linkNotes = allNotes.filter((note) => !isNoteTrashed(note))
+  }
+  $: notesById = new Map(historyNotes.map((note) => [note.id, note]))
+  $: notedDays = historyNotes.flatMap((note) => {
+    const day = projectHistoryNoteDay(note.id)
+    return day && hasContent(note.items) ? [day] : []
+  })
+  $: periods = projectHistoryPeriods(projects, notedDays)
+  const noteStore = {
+    patchNoteItem: plannerStore.patchProjectHistoryNoteItem,
+    patchNoteItemsDone: plannerStore.patchProjectHistoryNoteItemsDone,
+    replaceNoteItems: plannerStore.replaceProjectHistoryNoteItems,
+  }
+  // Writing that doesn't exist yet opens as an empty note.
+  const blankNotes = new Map<Id, Pick<Note, 'id' | 'items'>>()
+  function noteFor(byId: Map<Id, ProjectHistoryNote>, id: Id): Pick<Note, 'id' | 'items'> {
+    const note = byId.get(id)
+    if (note) return note
+    if (!blankNotes.has(id)) blankNotes.set(id, { id, items: [] })
+    return blankNotes.get(id)!
+  }
+  function hasContent(items: NoteItem[]): boolean {
+    return items.some((item) => item.text.trim() || item.kind !== 'paragraph' || item.children.length)
+  }
   // Open projects lead the picker, in their own order.
   $: pickable = [...projects.filter(isProjectOpen), ...projects.filter((project) => !isProjectOpen(project))]
   $: draftValid = Boolean(draft?.projectId && draft.first && draft.last && draft.first <= draft.last)
 
-  function dayLabel(date: string) {
-    const day = new Date(`${date}T12:00:00`)
-    return day.toLocaleDateString(undefined, { month: 'short', day: 'numeric', ...(day.getFullYear() === new Date().getFullYear() ? {} : { year: 'numeric' }) })
-  }
   function dayCount(first: string, last: string) {
     return Math.round((Date.parse(`${last}T12:00:00Z`) - Date.parse(`${first}T12:00:00Z`)) / 86_400_000) + 1
   }
@@ -50,23 +83,34 @@
 
 <div class="project-history">
   <button class="primary history-add" type="button" disabled={!projects.length} on:click={addEntry}>Add</button>
-  {#if entries.length}
-    <ul>
-      {#each entries as entry (entry.period.id)}
-        {@const days = periodDays(entry.period)}
-        <li>
-          <button type="button" style:--project-color={entry.project.color} on:click={() => editEntry(entry)}>
-            <span class="project-dot" aria-hidden="true"></span>
-            <span class="history-name">{entry.project.name}</span>
-            <span class="history-dates">{dayLabel(days.first)}{days.last !== days.first ? ` – ${dayLabel(days.last)}` : ''}</span>
-            <span class="history-days">{dayCount(days.first, days.last)}d</span>
-          </button>
-        </li>
-      {/each}
-    </ul>
-  {:else}
-    <p class="muted">None yet.</p>
-  {/if}
+  {#each periods as period (period.day)}
+    <section class="history-period" aria-label={historyDayHeading(period.day)}>
+      <h3 class="note-static-heading">{historyDayHeading(period.day)}</h3>
+      {#if period.entries.length}
+        <ul>
+          {#each period.entries as entry (entry.period.id)}
+            {@const days = periodDays(entry.period)}
+            <li>
+              <button type="button" style:--project-color={entry.project.color} on:click={() => editEntry(entry)}>
+                <span class="project-dot" aria-hidden="true"></span>
+                <span class="history-name">{entry.project.name}</span>
+                <span class="history-days">{dayCount(days.first, days.last)}d</span>
+              </button>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+      <div class="history-note">
+        <NoteEditorHost note={noteFor(notesById, projectHistoryNoteId(period.day))} historyRevision={$plannerStore.historyRevision} store={noteStore} listTemplates={$plannerStore.listTemplates} metrics={$plannerStore.metrics} notes={linkNotes} {onOpenLink} onAddItem={(noteId) => plannerStore.addProjectHistoryNoteItem(noteId)} />
+      </div>
+    </section>
+  {/each}
+  <section class="history-period" aria-label="backstory">
+    <h3 class="note-static-heading">backstory</h3>
+    <div class="history-note">
+      <NoteEditorHost note={noteFor(notesById, PROJECT_BACKSTORY_NOTE_ID)} historyRevision={$plannerStore.historyRevision} store={noteStore} listTemplates={$plannerStore.listTemplates} metrics={$plannerStore.metrics} notes={linkNotes} {onOpenLink} onAddItem={(noteId) => plannerStore.addProjectHistoryNoteItem(noteId)} />
+    </div>
+  </section>
 </div>
 
 {#if draft}
@@ -94,13 +138,18 @@
 {/if}
 
 <style>
-  .project-history { display: grid; gap: 12px; }
+  .project-history { display: grid; gap: 28px; }
   .history-overlay { display: contents; }
   .history-add { justify-self: start; font-size: 14px; padding: 8px 12px; }
+  .history-period { display: grid; gap: 10px; min-width: 0; }
   ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
-  li button { display: grid; grid-template-columns: auto minmax(0, 1fr) auto 3ch; align-items: center; gap: 10px; width: 100%; text-align: left; font-size: 14px; padding: 9px 12px; }
+  li button { display: grid; grid-template-columns: auto minmax(0, 1fr) 3ch; align-items: center; gap: 10px; width: 100%; text-align: left; font-size: 14px; padding: 9px 12px; }
   .history-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .history-dates, .history-days { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .history-days { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+  /* Formatting comes from shortcuts and the slash menu; on phones the toolbar
+     still docks above the keyboard, which moves it out of this wrapper. */
+  .history-note :global(.note-format-toolbar) { display: none; }
+  .history-note :global(.lexical-note-editor), .history-note :global(.note-empty-editor) { min-height: 0; }
   .history-days { text-align: right; }
   .project-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--project-color); }
   .history-editor { display: grid; gap: 14px; }
