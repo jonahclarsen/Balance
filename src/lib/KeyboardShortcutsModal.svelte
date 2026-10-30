@@ -53,7 +53,7 @@
         { keys: ['mod', 'N'], label: 'Create note (while in Notes)' },
         { keys: ['alt', 'K'], label: 'Hide goal rhythm for 6 hours, or show it again' },
         { keys: ['alt', 'A'], label: 'Add an idea to Proposition Party' },
-        { keys: ['alt', 'E'], label: 'Edit the idea added in the last minute (in Add idea)' },
+        { keys: ['alt', 'E'], label: 'Edit the idea added in the last 4 minutes (in Add idea)' },
         { keys: ['alt', 'I'], label: 'Toggle IMAX mode' },
         { keys: ['?'], label: 'Show this shortcuts reference' },
         { keys: ['esc'], label: 'Close overlay / clear selection' },

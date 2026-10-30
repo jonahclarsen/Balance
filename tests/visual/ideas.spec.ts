@@ -92,7 +92,7 @@ test('quick-added ideas land in Proposition Party and move with timed unlocks', 
   await expect(rows(page, 'genuine')).toHaveText(['Synthetic idea one edited'])
 })
 
-test('quick add reopens the idea added within the last minute', async ({ page }, testInfo) => {
+test('quick add reopens the idea added within the last 4 minutes', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
   await open(page)
   const editLast = page.getByRole('button', { name: 'Edit last idea' })
@@ -116,7 +116,7 @@ test('quick add reopens the idea added within the last minute', async ({ page },
   await expect(input).toBeHidden()
   expect(await groups(page)).toEqual({ proposition: ['Synthetic draft revised'] })
 
-  await page.clock.fastForward(61_000)
+  await page.clock.fastForward(241_000)
   await page.keyboard.press('Alt+A')
   await expect(page.getByRole('dialog', { name: 'Add idea' })).toBeVisible()
   await expect(editLast).toHaveCount(0)
