@@ -2533,7 +2533,7 @@ function createPlannerStore() {
       if (!trimmed) return null
       const item: IdeaItem = { ...createPlanItem(trimmed), ...(html ? { html } : {}), bucketedAt: nowISO() }
       commitEntities('add_idea', { kind, itemId: item.id }, (state) =>
-        updateIdeaGroup(state, kind, (group) => ({ ...group, items: [...group.items, item] })))
+        updateIdeaGroup(state, kind, (group) => ({ ...group, items: withNewIdea(kind, group.items, item) })))
       return item.id
     },
 
@@ -2542,7 +2542,7 @@ function createPlannerStore() {
       const item: IdeaItem = { ...createPlanItem(''), bucketedAt: nowISO() }
       const clip: VoiceClip = { id: createId('voice'), ideaId: item.id, ...recording, createdAt: nowISO() }
       commitEntities('add_voice_idea', { itemId: item.id, clipId: clip.id }, (state) => ({
-        ...updateIdeaGroup(state, 'proposition', (group) => ({ ...group, items: [...group.items, item] })),
+        ...updateIdeaGroup(state, 'proposition', (group) => ({ ...group, items: withNewIdea('proposition', group.items, item) })),
         voiceClips: [...state.voiceClips, clip],
       }))
       return item.id
@@ -2672,8 +2672,19 @@ function createPlannerStore() {
     addRootIdeaItem(groupId: Id) {
       const item: IdeaItem = { ...createPlanItem(), bucketedAt: nowISO() }
       commitEntities('add_idea_item', { groupId, parentId: null, item }, (state) =>
-        updateIdeaGroupById(state, groupId, (group) => ({ ...group, items: addPlanItem(group.items, null, item) })))
+        updateIdeaGroupById(state, groupId, (group) => ({ ...group, items: withNewIdea(group.kind, group.items, item) })))
       return item.id
+    },
+
+    pasteIdeaItems(groupId: Id, itemsToPaste: PlanItem[], targetId: Id, placement: 'before' | 'after') {
+      if (itemsToPaste.length === 0) return []
+      const pasted: IdeaItem[] = clonePlanItemsForPaste(itemsToPaste).map((item) => ({ ...item, bucketedAt: nowISO() }))
+      commitEntities('paste_idea_items', { groupId, targetId, placement, itemIds: pasted.map((item) => item.id) }, (state) =>
+        updateIdeaGroupById(state, groupId, (group) => {
+          const items = pastePlanItemsIntoTree(group.items, pasted, targetId, placement)
+          return items === group.items ? group : { ...group, items }
+        }))
+      return pasted.map((item) => item.id)
     },
 
     patchIdeaItem(groupId: Id, itemId: Id, patch: Partial<Omit<PlanItem, 'id' | 'children'>>, options: TextChangeOptions = {}) {
@@ -4145,6 +4156,11 @@ function deleteOrTrashIdea(state: AppState, groupId: Id, itemId: Id, preserveChi
   const { dayAssignmentDate: _dayAssignmentDate, ...unassigned } = item as IdeaItem
   const trashed: IdeaItem = { ...unassigned, children, bucketedAt: nowISO() }
   return updateIdeaGroup(removed, 'trash', (trash) => ({ ...trash, items: [...trash.items, trashed] }))
+}
+
+// Proposition Party is an inbox: new ideas land on top, where they are seen.
+function withNewIdea(kind: IdeaGroupKind, items: IdeaItem[], item: IdeaItem): IdeaItem[] {
+  return kind === 'proposition' ? [item, ...items] : [...items, item]
 }
 
 // Idea groups are fixed records created on first write, so missing ones are

@@ -21,6 +21,9 @@
   export let onImport: () => void
   export let onReview: () => void
   export let onSortPropositions: () => void
+  export let onCopyItem: (groupId: Id, itemId: Id) => void = () => {}
+  export let onCutItem: (groupId: Id, itemId: Id) => void = () => {}
+  export let onPasteItem: (groupId: Id, itemId: Id) => void | Promise<void> = () => {}
 
   const noTimeWarnings: ReadonlyMap<Id, ItemTimeWarning> = new Map()
 
@@ -202,12 +205,11 @@
   }
 
   async function addItem(groupId: Id) {
-    plannerStore.addRootIdeaItem(groupId)
+    const itemId = plannerStore.addRootIdeaItem(groupId)
     await tick()
-    const input = Array.from(document.querySelectorAll<HTMLDivElement>(
-      `[data-plan-item-scope="${CSS.escape(groupId)}"] [data-plan-text-focus-target]`,
-    )).at(-1)
-    input?.focus()
+    document.querySelector<HTMLDivElement>(
+      `[data-plan-item-scope="${CSS.escape(groupId)}"] [data-plan-item-id="${CSS.escape(itemId)}"] [data-plan-text-focus-target]`,
+    )?.focus()
   }
 
   onDestroy(() => {
@@ -298,6 +300,9 @@
               {metrics}
               {notes}
               {onOpenLink}
+              {onCopyItem}
+              {onCutItem}
+              {onPasteItem}
               hideTime
               collapsible
               placeholder={clip ? 'Voice idea' : undefined}

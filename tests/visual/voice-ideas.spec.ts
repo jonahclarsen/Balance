@@ -71,7 +71,7 @@ test('a recorded idea persists, waits for transcription and leaves with its idea
     { text: 'Synthetic', start: 0, end: 0.4 }, { text: 'spoken', start: 0.4, end: 0.8 }, { text: 'idea.', start: 0.8, end: 1.2 },
   ], model: 'test', transcribedAt: '2026-10-27T00:00:00Z' })`, clip.id)
   current = await state(page)
-  expect(current.ideaBuckets[0].items[0].text).toBe('Synthetic spoken idea.')
+  expect(current.ideaBuckets[0].items.find((item: any) => item.id === clip.ideaId).text).toBe('Synthetic spoken idea.')
 
   // Sorting the idea out of Proposition Party deletes its audio; undo brings it back.
   await storeCall(page, "plannerStore.moveIdeaToGroup(arg, 'possible')", clip.ideaId)

@@ -2527,6 +2527,12 @@ return rows`
       // the WebView is starting. Register optional listeners only after the
       // encrypted database has either opened or failed visibly.
       if (isTauri()) {
+        // Settings' About section must not wait on the launch sync, which can
+        // stall for a long time on a phone with a poor or missing connection.
+        void invoke<{ version: string; commit: string }>('build_info')
+          .then((info) => { buildInfo = info })
+          .catch((error) => console.error('Failed to load build info', error))
+
         void listen(PASTE_MATCH_STYLE_EVENT, () => {
           void pasteSystemClipboardAsPlainText()
         }).then((stopListening) => {
@@ -2607,12 +2613,6 @@ return rows`
       plannerStore.purgeExpiredIdeas()
       plannerStore.retireProjectCheckIns()
       seedDefaultGoals()
-
-      try {
-        buildInfo = await invoke<{ version: string; commit: string }>('build_info')
-      } catch (error) {
-        console.error('Failed to load build info', error)
-      }
 
       if (!recoveryKeyStatus?.recoveryKey) {
         await runLaunchDatabaseMaintenance()
@@ -3343,6 +3343,22 @@ return rows`
     const { bucketedAt: _bucketedAt, dayAssignmentDate: _dayAssignmentDate, ...item } = found.item
     writePlanItemsToSystemClipboard({ items: [item], cut: true, sourceDate: todayISO() })
     plannerStore.moveIdeaToGroup(itemId, 'trash')
+  }
+
+  function copyIdeaFromMenu(groupId: Id, itemId: Id, cut = false) {
+    const group = $plannerStore.ideaBuckets.find((candidate) => candidate.id === groupId)
+    const found = group ? findPlanItem(group.items, itemId) : null
+    if (!found) return
+    const { bucketedAt: _bucketedAt, dayAssignmentDate: _dayAssignmentDate, ...item } = found as import('./lib/types').IdeaItem
+    writePlanItemsToSystemClipboard({ items: [item], cut, sourceDate: todayISO() })
+    // Like the sorter's cut, the idea waits in Trash until it is pasted.
+    if (cut) plannerStore.deleteIdeaItem(groupId, itemId)
+  }
+
+  async function pasteIdeaFromMenu(groupId: Id, itemId: Id) {
+    const clipboard = await readSystemClipboard()
+    const structured = parsePlanItemClipboard(clipboard.structuredPayload) ?? plainPlanItemClipboard(clipboard.plainText)
+    if (structured) plannerStore.pasteIdeaItems(groupId, structured.items, itemId, 'after')
   }
 
   // Only Genuinely Worth Doing counts toward the seeded weekly review goal.
@@ -8095,6 +8111,9 @@ return rows`
         onImport={() => (ideaImportOpen = true)}
         onReview={() => { void startIdeaReview() }}
         onSortPropositions={sortPropositions}
+        onCopyItem={(groupId, itemId) => copyIdeaFromMenu(groupId, itemId)}
+        onCutItem={(groupId, itemId) => copyIdeaFromMenu(groupId, itemId, true)}
+        onPasteItem={pasteIdeaFromMenu}
       />
     {/if}
 

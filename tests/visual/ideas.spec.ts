@@ -50,12 +50,13 @@ test('quick-added ideas land in Proposition Party and move with timed unlocks', 
   await page.keyboard.press('Alt+A')
   const input = page.getByRole('textbox', { name: 'New idea' })
   await expect(input).toBeFocused()
-  await input.fill('Synthetic idea one')
+  await input.fill('Synthetic idea two')
   await input.press('Enter')
   await expect(input).toBeHidden()
   await page.getByRole('button', { name: 'Add idea', exact: true }).click()
-  await input.fill('Synthetic idea two')
+  await input.fill('Synthetic idea one')
   await page.getByRole('button', { name: 'Save', exact: true }).click()
+  // Newer ideas land on top.
   expect(await groups(page)).toEqual({ proposition: ['Synthetic idea one', 'Synthetic idea two'] })
 
   await openView(page, 'Ideas')
@@ -137,10 +138,10 @@ test('a new day sorts every proposition one card at a time', async ({ page }, te
   test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
   await open(page)
   await storeCall(page, `
-    plannerStore.addIdea('Synthetic keep')
-    plannerStore.addIdea('Synthetic drop')
-    plannerStore.addIdea('Synthetic frag')
     plannerStore.addIdea('ment')
+    plannerStore.addIdea('Synthetic frag')
+    plannerStore.addIdea('Synthetic drop')
+    plannerStore.addIdea('Synthetic keep')
   `)
 
   const dialog = sorter(page)
@@ -191,8 +192,8 @@ test('sorting new ideas resumes after a reload until it is closed', async ({ pag
   test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
   await open(page)
   await storeCall(page, `
-    plannerStore.addIdea('Synthetic first')
     plannerStore.addIdea('Synthetic second')
+    plannerStore.addIdea('Synthetic first')
   `)
   const choice = page.locator('.empty-state').getByRole('button', { name: 'Default day' })
 
@@ -228,8 +229,8 @@ test('Back undoes the previous sort decision so an idea never lands in two place
   test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
   await open(page)
   await storeCall(page, `
-    plannerStore.addIdea('Synthetic first')
     plannerStore.addIdea('Synthetic second')
+    plannerStore.addIdea('Synthetic first')
   `)
   const state = () => page.evaluate(async () => {
     const path = '/src/lib/store.ts'
@@ -266,9 +267,9 @@ test('Back after a note or a group returns the idea to Proposition Party', async
   await open(page)
   await openView(page, 'Ideas')
   await storeCall(page, `
-    plannerStore.addIdea('Synthetic first')
-    plannerStore.addIdea('Synthetic second')
     plannerStore.addIdea('Synthetic third')
+    plannerStore.addIdea('Synthetic second')
+    plannerStore.addIdea('Synthetic first')
   `)
   const notes = () => page.evaluate(async () => {
     const path = '/src/lib/store.ts'
@@ -308,8 +309,8 @@ test('the Proposition Party Sort button opens the sorter on demand', async ({ pa
   await expect(sort).toBeDisabled()
 
   await storeCall(page, `
-    plannerStore.addIdea('Synthetic sort one')
     plannerStore.addIdea('Synthetic sort two')
+    plannerStore.addIdea('Synthetic sort one')
   `)
   await sort.click()
   await expectIdea(page, 1, 2)
@@ -328,10 +329,10 @@ test('the sorter stays with its page and cuts ideas to Trash and the clipboard',
   await open(page)
   await openView(page, 'Ideas')
   await storeCall(page, `
+    plannerStore.addIdea('Synthetic stay')
     const id = plannerStore.addIdea('Synthetic cut me', 'proposition', '<strong>Synthetic cut me</strong>')
     const child = plannerStore.addIdea('Synthetic cut child')
     plannerStore.moveIdeaItem('bucket_proposition', child, id, 'inside')
-    plannerStore.addIdea('Synthetic stay')
   `)
   await card(page, 'proposition').getByRole('button', { name: 'Sort', exact: true }).click()
   await expectIdea(page, 1, 2)
@@ -368,12 +369,12 @@ test('the sorter stays with its page and cuts ideas to Trash and the clipboard',
 test('sorting moves ideas into new notes with their formatting and children, and supports undo', async ({ page }) => {
   await open(page)
   await storeCall(page, `
+    plannerStore.addIdea('Synthetic second note')
     const id = plannerStore.addIdea('Synthetic note', 'proposition', '<strong>Synthetic note</strong>')
     plannerStore.patchIdeaItem('bucket_proposition', id, { done: true })
     const child = plannerStore.addRootIdeaItem('bucket_proposition')
     plannerStore.patchIdeaItem('bucket_proposition', child, { text: 'Synthetic child', html: '<em>Synthetic child</em>' })
     plannerStore.moveIdeaItem('bucket_proposition', child, id, 'inside')
-    plannerStore.addIdea('Synthetic second note')
   `)
   await openView(page, 'Ideas')
   await card(page, 'proposition').getByRole('button', { name: 'Sort', exact: true }).click()
@@ -417,8 +418,8 @@ test('a day generation sort can add ideas to the new day', async ({ page }, test
   test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
   await open(page)
   await storeCall(page, `
-    plannerStore.addIdea('Synthetic for today')
     plannerStore.addIdea('Synthetic later')
+    plannerStore.addIdea('Synthetic for today')
   `)
 
   // Sorts outside generation have no day to add to.
@@ -447,8 +448,8 @@ test('a day generation sort can add ideas to the new day', async ({ page }, test
 test('day choices survive closing, navigation and reload without applying to another date', async ({ page }) => {
   await open(page)
   await storeCall(page, `
-    plannerStore.addIdea('Synthetic reserved')
     plannerStore.addIdea('Synthetic remaining')
+    plannerStore.addIdea('Synthetic reserved')
   `)
   await generateDay(page)
   await page.keyboard.press('y')
@@ -487,9 +488,9 @@ test('a day keeps its sort progress across trash, cut and reopening', async ({ p
   test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
   await open(page)
   await storeCall(page, `
-    plannerStore.addIdea('Synthetic trash')
-    plannerStore.addIdea('Synthetic cut')
     plannerStore.addIdea('Synthetic later')
+    plannerStore.addIdea('Synthetic cut')
+    plannerStore.addIdea('Synthetic trash')
   `)
   const hint = sorter(page).locator('.paste-review-hint')
   await generateDay(page)
@@ -755,4 +756,41 @@ test('deleting ideas from the keyboard moves them to Trash; blank rows are disca
   await card(page, 'trash').locator('.select-handle').first().click()
   await page.keyboard.press('Backspace')
   expect(await groups(page)).toMatchObject({ trash: ['Synthetic line end'] })
+})
+
+test('Add item starts a new proposition on top and focuses it', async ({ page }) => {
+  await open(page)
+  await openView(page, 'Ideas')
+  await storeCall(page, "plannerStore.addIdea('Synthetic older')")
+  await card(page, 'proposition').getByRole('button', { name: '+ Add item' }).click()
+  await expect(rows(page, 'proposition').first()).toBeFocused()
+  await page.keyboard.type('Synthetic newer')
+  await expect(rows(page, 'proposition')).toHaveText(['Synthetic newer', 'Synthetic older'])
+})
+
+test('the idea options menu copies, cuts and pastes ideas', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile', 'The task options menu is phone-only')
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+  await open(page)
+  await openView(page, 'Ideas')
+  await storeCall(page, `
+    plannerStore.addIdea('Synthetic second', 'genuine')
+    plannerStore.addIdea('Synthetic first', 'genuine')
+  `)
+  const menuItem = async (text: string, action: string) => {
+    await card(page, 'genuine').getByRole('button', { name: `Task options for ${text}` }).first().click()
+    await page.getByRole('menu', { name: `Options for ${text}` }).getByRole('menuitem', { name: action, exact: true }).click()
+  }
+
+  await menuItem('Synthetic first', 'Copy')
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain('Synthetic first')
+  await menuItem('Synthetic second', 'Paste')
+  await expect.poll(async () => (await groups(page)).genuine).toEqual(['Synthetic first', 'Synthetic second', 'Synthetic first'])
+
+  // Cut leaves the idea in Trash until it is pasted where it belongs.
+  await menuItem('Synthetic second', 'Cut')
+  await expect.poll(async () => (await groups(page)).trash).toEqual(['Synthetic second'])
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain('Synthetic second')
+  await menuItem('Synthetic first', 'Paste')
+  await expect.poll(async () => (await groups(page)).genuine).toEqual(['Synthetic first', 'Synthetic second', 'Synthetic first'])
 })

@@ -28,7 +28,7 @@ test('mobile header quick add saves ideas with Enter or Save and closes with Can
   await input.fill('Synthetic save idea')
   await page.screenshot({ path: info.outputPath('quick-add.png') })
   await page.getByRole('button', { name: 'Save' }).click()
-  expect(await ideas()).toEqual(['proposition:Synthetic enter idea', 'proposition:Synthetic save idea'])
+  expect(await ideas()).toEqual(['proposition:Synthetic save idea', 'proposition:Synthetic enter idea'])
 
   await addButton.click()
   await input.fill('Synthetic cancelled idea')
@@ -42,5 +42,5 @@ test('mobile header quick add saves ideas with Enter or Save and closes with Can
   expect(await ideas()).toHaveLength(2)
 
   await openView(page, 'Ideas')
-  await expect(page.locator('.idea-group-card[data-idea-group="proposition"] [data-plan-text-input]')).toHaveText(['Synthetic enter idea', 'Synthetic save idea'])
+  await expect(page.locator('.idea-group-card[data-idea-group="proposition"] [data-plan-text-input]')).toHaveText(['Synthetic save idea', 'Synthetic enter idea'])
 })
