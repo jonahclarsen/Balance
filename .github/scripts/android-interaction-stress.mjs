@@ -479,9 +479,12 @@ async function verifyFreezeDiagnostics() {
   if (!report.records.some(record => record.details.event === 'android_device' && record.details.sdk > 0)) throw new Error('Android/WebView version metadata missing')
   await openPage('Settings')
   await client.evaluate(`document.querySelector('[data-freeze-report-export]').click()`)
-  await waitFor(() => /ChooserActivity|ResolverActivity|android.intent.action.CHOOSER/.test(adb(['shell', 'dumpsys', 'activity', 'activities'])), 'the report file share sheet')
+  await waitFor(() => /balance-freeze-report-[0-9-]+\.json/.test(adb(['shell', 'ls', '/sdcard/Download'])), 'the report saved in Downloads')
+  const saved = adb(['shell', 'ls', '/sdcard/Download']).match(/balance-freeze-report-[0-9-]+\.json/)[0]
+  const savedText = adb(['shell', 'cat', `/sdcard/Download/${saved}`])
+  if (!savedText.includes('balance-freeze-report-v1') || savedText.includes(secret) || savedText.includes('Synthetic Today task')) throw new Error('Saved freeze report is missing or leaks synthetic private content')
   await writeFile('android-freeze-diagnostics-test.json', JSON.stringify({passed: true, report}, null, 2))
-  console.log('[freeze-diagnostics] synthetic stall retained after force quit; private content excluded; file share sheet opened')
+  console.log('[freeze-diagnostics] synthetic stall retained after force quit; private content excluded; report saved in Downloads')
 }
 
 async function prepareNetworkEditor(mode) {

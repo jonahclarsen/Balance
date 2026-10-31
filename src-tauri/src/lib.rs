@@ -10299,12 +10299,13 @@ mod android_keystore {
         Ok(rest.split_at(iv_len as usize))
     }
 
-    pub(super) fn share_freeze_report(report: &str) -> Result<(), String> {
+    pub(super) fn save_freeze_report(report: &str) -> Result<&'static str, String> {
         with_env(|env| {
-            let result = super::freeze_diagnostics::share_android(env, report);
+            let result = super::freeze_diagnostics::save_android(env, report);
             match result {
-                Ok(true) => Ok(()),
-                _ => { let _ = env.exception_clear(); Err("Could not open the freeze report share sheet.".to_string()) }
+                Ok(1) => Ok("Saved the freeze report in Downloads."),
+                Ok(2) => Ok("Report prepared. Choose where to save or share it."),
+                _ => { let _ = env.exception_clear(); Err("Could not save the freeze report.".to_string()) }
             }
         })
     }
@@ -10885,14 +10886,13 @@ async fn export_freeze_diagnostics() -> Result<String, String> {
 }
 
 #[tauri::command]
-async fn share_freeze_diagnostics(app: tauri::AppHandle) -> Result<String, String> {
+async fn save_freeze_diagnostics(app: tauri::AppHandle) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let report = freeze_diagnostics::export()?;
         #[cfg(target_os = "android")]
         {
             let _ = app;
-            android_keystore::share_freeze_report(&report)?;
-            Ok("Report prepared. Choose an app to share it.".to_string())
+            android_keystore::save_freeze_report(&report).map(str::to_string)
         }
         #[cfg(not(target_os = "android"))]
         {
@@ -11103,7 +11103,7 @@ pub fn run() {
             sync_anonymous_diagnostics,
             record_freeze_diagnostic,
             export_freeze_diagnostics,
-            share_freeze_diagnostics,
+            save_freeze_diagnostics,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

@@ -3926,7 +3926,7 @@ return rows`
     freezeReportBusy = true
     freezeReportStatus = ''
     try {
-      freezeReportStatus = await invoke<string>('share_freeze_diagnostics')
+      freezeReportStatus = await invoke<string>('save_freeze_diagnostics')
     } catch {
       freezeReportStatus = 'Could not export the freeze report. Try again after reopening Balance.'
     } finally {

@@ -92,6 +92,19 @@ object BalanceWidgets {
         }
     }
 
+    fun updateAsync(context: Context, manager: AppWidgetManager, ids: IntArray, finished: () -> Unit) {
+        val appContext = context.applicationContext
+        executor.execute {
+            try {
+                update(appContext, manager, ids)
+            } catch (error: Throwable) {
+                Log.e("BalanceWidgets", "Could not update widgets", error)
+            } finally {
+                finished()
+            }
+        }
+    }
+
     fun update(
         context: Context,
         manager: AppWidgetManager,
@@ -476,8 +489,11 @@ object BalanceWidgets {
 }
 
 class BalanceHomeWidgetProvider : AppWidgetProvider() {
+    // The snapshot opens the encrypted database and can wait on its lock
+    // behind a sync. On the main thread that froze the whole app.
     override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
-        BalanceWidgets.update(context, manager, ids)
+        val pending = goAsync()
+        BalanceWidgets.updateAsync(context, manager, ids) { pending.finish() }
     }
 
     override fun onReceive(context: Context, intent: Intent) {

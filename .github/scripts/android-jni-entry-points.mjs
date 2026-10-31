@@ -8,7 +8,7 @@ export const ENTRY_POINTS = {
   'app.balance.local.BalanceSituate': ['call'],
   'app.balance.local.BalanceTaskNotifications': ['replace'],
   'app.balance.local.BalanceUpdater': ['install'],
-  'app.balance.local.BalanceFreezeDiagnostics': ['share'],
+  'app.balance.local.BalanceFreezeDiagnostics': ['save'],
 }
 
 /** Method names per class descriptor (`Lapp/balance/local/X;`) in one dex file. */
