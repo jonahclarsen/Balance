@@ -364,8 +364,13 @@ async function openPage(page) {
     await waitForSelector('.sidebar.mobile-drawer-open', 'the mobile drawer')
   }
   await tap(pageSelectors[page], `navigate to ${page}`)
-  const expectedHeading = page === 'Today' ? '.day-pane h2' : '.workspace .recent-page:not([hidden]) > .page-header h2'
-  await waitForSelector(expectedHeading, `${page} heading`)
+  // The page is shown once its navigation item is active and a heading is laid out.
+  const expectedHeading = page === 'Today' ? '.day-pane h2' : '.workspace .page-header h2'
+  await waitFor(() => client.evaluate(`(() => {
+    const active = document.querySelector(${JSON.stringify(pageSelectors[page])})?.classList.contains('active')
+    return Boolean(active) && [...document.querySelectorAll(${JSON.stringify(expectedHeading)})]
+      .some((heading) => heading.getClientRects().length > 0)
+  })()`), `${page} heading`)
 }
 
 async function checkTodayCaret(syncFailure = false) {
