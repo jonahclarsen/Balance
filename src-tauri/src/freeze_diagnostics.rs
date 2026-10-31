@@ -567,14 +567,15 @@ static ANDROID_CLASS: OnceLock<jni::objects::GlobalRef> = OnceLock::new();
 static ANDROID_ACTIVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 #[cfg(target_os = "android")]
-pub fn share_android(env: &mut jni::JNIEnv, report: &str) -> Result<bool, jni::errors::Error> {
+/// 1: saved to Downloads, 2: share sheet opened (Android 9 and older), 0: failed.
+pub fn save_android(env: &mut jni::JNIEnv, report: &str) -> Result<i32, jni::errors::Error> {
     let cached = ANDROID_CLASS
         .get()
         .ok_or(jni::errors::Error::NullPtr("freeze diagnostics class"))?;
     let class = jni::objects::JClass::from(env.new_local_ref(cached.as_obj())?);
     let text = env.new_string(report)?;
-    env.call_static_method(class, "share", "(Ljava/lang/String;)Z", &[(&text).into()])?
-        .z()
+    env.call_static_method(class, "save", "(Ljava/lang/String;)I", &[(&text).into()])?
+        .i()
 }
 
 #[cfg(target_os = "android")]

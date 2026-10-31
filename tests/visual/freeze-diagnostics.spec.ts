@@ -22,7 +22,7 @@ test('freeze report export bypasses database diagnostics and event recording nev
           case 'get_export_settings': return {exportDirectory:'/tmp',defaultExportDirectory:'/tmp',usesDefaultExportDirectory:true}
           case 'get_database_maintenance_status': return {due:false}
           case 'build_info': return {version:'test',commit:'test'}
-          case 'share_freeze_diagnostics': return 'Report prepared. Choose an app to share it.'
+          case 'save_freeze_diagnostics': return 'Saved the freeze report in Downloads.'
           default: return null
         }
       },
@@ -51,11 +51,11 @@ test('freeze report export bypasses database diagnostics and event recording nev
   await page.clock.runFor(3000)
   const prior = await page.evaluate(() => (window as any).__databaseCalls.length)
   await page.getByRole('button', {name:'Export freeze report',exact:true}).click()
-  await expect(page.getByText('Report prepared. Choose an app to share it.', {exact:true})).toBeVisible()
+  await expect(page.getByText('Saved the freeze report in Downloads.', {exact:true})).toBeVisible()
   await page.clock.runFor(1000)
   const data = await page.evaluate(() => ({calls:(window as any).__freezeCalls, databaseCalls:(window as any).__databaseCalls, after:(window as any).__databaseCalls.length}))
   expect(JSON.stringify(data.calls)).not.toContain('synthetic private')
   expect(data.calls.some((c:any) => c.args?.event?.event==='javascript_error')).toBe(true)
-  expect(data.calls.some((c:any) => c.command==='share_freeze_diagnostics')).toBe(true)
+  expect(data.calls.some((c:any) => c.command==='save_freeze_diagnostics')).toBe(true)
   expect(data.after, JSON.stringify(data.databaseCalls.slice(prior))).toBe(prior)
 })
