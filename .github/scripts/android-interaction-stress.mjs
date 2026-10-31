@@ -376,8 +376,14 @@ async function checkTodayCaret(syncFailure = false) {
     const hasTemplate = await client.evaluate(`Boolean(document.querySelector('.template-panel-actions .add-row'))`)
     if (!hasTemplate) await tap('.empty-state button.primary', 'create synthetic day template')
     await openPage('Today')
-    await tap('.day-pane .day-template-option input', 'select synthetic day template')
-    await tap('.day-pane .empty-state button', 'create synthetic day')
+    await tap('.day-pane .day-template-option', 'generate synthetic day')
+    // Generation can open its idea sort or project check-in; close them so
+    // they cannot take focus from the caret task.
+    await waitFor(() => client.evaluate(`(() => {
+      const dialog = [...document.querySelectorAll('[role="dialog"]')].find((element) => element.getClientRects().length > 0)
+      if (dialog) (document.activeElement ?? document.body).dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
+      return !dialog && Boolean(document.querySelector('.day-pane .add-row'))
+    })()`), 'the generated synthetic day', 15_000, 300)
   }
   await tap('.day-pane .add-row', 'add synthetic caret task')
   await client.evaluate(`(() => {
