@@ -23,6 +23,9 @@
   export let onImport: () => void
   export let onReview: () => void
   export let onSortPropositions: () => void
+  export let onCopyItem: (groupId: Id, itemId: Id) => void = () => {}
+  export let onCutItem: (groupId: Id, itemId: Id) => void = () => {}
+  export let onPasteItem: (groupId: Id, itemId: Id) => void | Promise<void> = () => {}
 
   const noTimeWarnings: ReadonlyMap<Id, ItemTimeWarning> = new Map()
 
@@ -348,6 +351,9 @@
             {metrics}
             {notes}
             {onOpenLink}
+            {onCopyItem}
+            {onCutItem}
+            {onPasteItem}
             hideTime
             collapsible
             placeholder={clip ? 'Voice idea' : undefined}

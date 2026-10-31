@@ -2691,6 +2691,17 @@ function createPlannerStore() {
       return item.id
     },
 
+    pasteIdeaItems(groupId: Id, itemsToPaste: PlanItem[], targetId: Id, placement: 'before' | 'after') {
+      if (itemsToPaste.length === 0) return []
+      const pasted: IdeaItem[] = clonePlanItemsForPaste(itemsToPaste).map((item) => ({ ...item, bucketedAt: nowISO() }))
+      commitEntities('paste_idea_items', { groupId, targetId, placement, itemIds: pasted.map((item) => item.id) }, (state) =>
+        updateIdeaGroupById(state, groupId, (group) => {
+          const items = pastePlanItemsIntoTree(group.items, pasted, targetId, placement)
+          return items === group.items ? group : { ...group, items }
+        }))
+      return pasted.map((item) => item.id)
+    },
+
     patchIdeaItem(groupId: Id, itemId: Id, patch: Partial<Omit<PlanItem, 'id' | 'children'>>, options: TextChangeOptions = {}) {
       const isTextPatch = 'text' in patch || 'html' in patch
       const mergeOptions =

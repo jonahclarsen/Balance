@@ -909,3 +909,31 @@ test('deleting ideas from the keyboard moves them to Trash; blank rows are disca
   await page.keyboard.press('Backspace')
   expect(await groups(page)).toMatchObject({ trash: ['Synthetic line end'] })
 })
+
+test('the idea options menu copies, cuts and pastes ideas', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile', 'The task options menu is phone-only')
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+  await open(page)
+  await openView(page, 'Ideas')
+  await storeCall(page, `
+    plannerStore.addIdea('Synthetic first', 'genuine')
+    plannerStore.addIdea('Synthetic second', 'genuine')
+  `)
+  await card(page, 'genuine').click()
+  const menuItem = async (text: string, action: string) => {
+    await pane(page, 'genuine').getByRole('button', { name: `Task options for ${text}` }).first().click()
+    await page.getByRole('menu', { name: `Options for ${text}` }).getByRole('menuitem', { name: action, exact: true }).click()
+  }
+
+  await menuItem('Synthetic first', 'Copy')
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain('Synthetic first')
+  await menuItem('Synthetic second', 'Paste')
+  await expect.poll(async () => (await groups(page)).genuine).toEqual(['Synthetic first', 'Synthetic second', 'Synthetic first'])
+
+  // Cut leaves the idea in Trash until it is pasted where it belongs.
+  await menuItem('Synthetic second', 'Cut')
+  await expect.poll(async () => (await groups(page)).trash).toEqual(['Synthetic second'])
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain('Synthetic second')
+  await menuItem('Synthetic first', 'Paste')
+  await expect.poll(async () => (await groups(page)).genuine).toEqual(['Synthetic first', 'Synthetic second', 'Synthetic first'])
+})
