@@ -999,8 +999,9 @@ fn write_balance_clipboard(plain_text: String, structured_payload: String) -> Re
     Ok(())
 }
 
+// Off the main thread: the JNI bridge waits on the activity's thread.
 #[cfg(target_os = "android")]
-#[tauri::command]
+#[tauri::command(async)]
 fn write_balance_clipboard(
     app: tauri::AppHandle,
     plain_text: String,
@@ -1092,7 +1093,7 @@ fn read_balance_clipboard() -> ClipboardContents {
 }
 
 #[cfg(target_os = "android")]
-#[tauri::command]
+#[tauri::command(async)]
 fn read_balance_clipboard(app: tauri::AppHandle) -> ClipboardContents {
     android_clipboard::read(&app).unwrap_or_else(|error| {
         log::warn!("Could not read the Android clipboard: {error}");
@@ -1397,9 +1398,11 @@ mod android_clipboard {
             })
             .map_err(|error| format!("Could not access the Android activity: {error}"))?;
 
+        // A suspended or busy activity may never run the closure; never let a
+        // clipboard action hang the app waiting for it.
         receiver
-            .recv()
-            .map_err(|_| "Android clipboard access was interrupted.".to_string())?
+            .recv_timeout(std::time::Duration::from_secs(3))
+            .map_err(|_| "Android clipboard access timed out.".to_string())?
     }
 
     fn jni_error(error: jni::errors::Error) -> String {
