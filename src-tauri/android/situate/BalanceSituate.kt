@@ -75,7 +75,9 @@ object BalanceSituate {
         if (Build.VERSION.SDK_INT < 31 || alarm.canScheduleExactAlarms()) alarm.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,at,pending)
         else alarm.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,at,pending)
         SituateAccessibility.enforceCurrent()
-        BalanceWidgets.refreshAllAsync(context)
+        // The widget shows which modes are on. Redrawing it reads the encrypted
+        // database, so skip that on the periodic ticks that change nothing.
+        if (active != previous || !announce) BalanceWidgets.refreshAllAsync(context)
     }
     // Rust calls this by name through JNI; R8 cannot see that reference.
     @androidx.annotation.Keep

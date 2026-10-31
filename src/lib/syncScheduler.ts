@@ -14,6 +14,9 @@ const ACTIVE_CHANGE_WINDOW_MS = 60_000
 const QUIET_VISIBLE_POLL_MS = 8_000
 const BACKGROUND_POLL_MS = 5 * 60 * 1_000
 const MAX_RETRY_MS = 5 * 60 * 1_000
+// Polls and edits wait for the retry, so an open app must not wait minutes
+// for a relay that has come back.
+const MAX_VISIBLE_RETRY_MS = 60 * 1_000
 // A phone catching up after a quick app switch stays quiet unless the pass
 // drags on. A desktop window regains focus constantly, so only a pass that is
 // genuinely slow earns the cue there.
@@ -92,12 +95,20 @@ function pollDelay(): number {
   return QUIET_VISIBLE_POLL_MS
 }
 
+// A relay that cannot be reached (for example a network with no internet)
+// costs each pass its full request timeout. After a failure, polls and edits
+// leave the next attempt to the retry backoff; edits stay durable locally.
+function backingOff(): boolean {
+  return retryTimer !== null
+}
+
 function schedulePoll(): void {
   if (!automaticSyncStarted) return
   if (pollTimer) clearTimeout(pollTimer)
   pollTimer = setTimeout(() => {
     pollTimer = null
-    void requestSync('poll').finally(schedulePoll)
+    if (backingOff()) schedulePoll()
+    else void requestSync('poll').finally(schedulePoll)
   }, pollDelay())
 }
 
@@ -148,11 +159,12 @@ async function reloadVisibleState(reason: string, stateChanged: boolean): Promis
 
 function scheduleRetry(): void {
   if (offline || retryTimer) return
-  const jitter = Math.floor(Math.random() * Math.max(1_000, retryMs / 4))
+  const delay = document.visibilityState === 'visible' ? Math.min(retryMs, MAX_VISIBLE_RETRY_MS) : retryMs
+  const jitter = Math.floor(Math.random() * Math.max(1_000, delay / 4))
   retryTimer = setTimeout(() => {
     retryTimer = null
     void requestSync('retry')
-  }, retryMs + jitter)
+  }, delay + jitter)
   retryMs = Math.min(MAX_RETRY_MS, retryMs * 2)
 }
 
@@ -351,6 +363,7 @@ export function startAutomaticSync(): () => void {
   const triggerEdit = () => {
     if (editTimer) clearTimeout(editTimer)
     editTimer = null
+    if (backingOff()) return
     if (running && uploadStarted) {
       // The active upload may already have captured its outbox. Queue now:
       // Android can suspend the WebView before a debounce callback runs.
@@ -359,7 +372,7 @@ export function startAutomaticSync(): () => void {
     }
     editTimer = setTimeout(() => {
       editTimer = null
-      void requestSync('edit')
+      if (!backingOff()) void requestSync('edit')
     }, EDIT_DEBOUNCE_MS)
   }
   // Events accelerate discovery; native snapshots remain authoritative. Polls

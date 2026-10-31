@@ -59,6 +59,9 @@ pub enum Event {
         composing: bool,
         database_tasks: u32,
         relay_tasks: u32,
+        // Older reports lack it; during a stall it names who has the lock.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        database_holder: Option<DatabaseUser>,
     },
     MainThreadStall {
         age_ms: u64,
@@ -71,6 +74,15 @@ pub enum Event {
     },
     WebviewRecovered {
         age_ms: u64,
+    },
+    DatabaseLockWait {
+        waited_ms: u64,
+        waiter: DatabaseUser,
+        holder: Option<DatabaseUser>,
+    },
+    DatabaseLockHeld {
+        held_ms: u64,
+        holder: DatabaseUser,
     },
 }
 
@@ -104,6 +116,66 @@ impl From<WebEvent> for Event {
             WebEvent::JavascriptError {} => Event::JavascriptError,
             WebEvent::UnhandledRejection {} => Event::UnhandledRejection,
         }
+    }
+}
+
+/// Who holds or waits for the process database lock.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DatabaseUser {
+    App,
+    Relay,
+    BackgroundRelay,
+    Widget,
+    Notifications,
+    Situate,
+}
+
+const DATABASE_USERS: [DatabaseUser; 6] = [
+    DatabaseUser::App,
+    DatabaseUser::Relay,
+    DatabaseUser::BackgroundRelay,
+    DatabaseUser::Widget,
+    DatabaseUser::Notifications,
+    DatabaseUser::Situate,
+];
+const LOCK_WAIT_MS: u64 = 2_000;
+const LOCK_HOLD_MS: u64 = 5_000;
+// 0 when the lock is free, otherwise 1 + the holder's index in DATABASE_USERS.
+static DATABASE_HOLDER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+pub fn database_holder() -> Option<DatabaseUser> {
+    let holder = DATABASE_HOLDER.load(std::sync::atomic::Ordering::Relaxed);
+    holder
+        .checked_sub(1)
+        .and_then(|index| DATABASE_USERS.get(index).copied())
+}
+
+/// `holder` is who held the lock when this user started waiting.
+pub fn database_acquired(user: DatabaseUser, holder: Option<DatabaseUser>, waited: Duration) {
+    let index = DATABASE_USERS
+        .iter()
+        .position(|candidate| *candidate == user)
+        .unwrap_or(0);
+    DATABASE_HOLDER.store(index + 1, std::sync::atomic::Ordering::Relaxed);
+    let waited_ms = waited.as_millis() as u64;
+    if waited_ms >= LOCK_WAIT_MS {
+        record(Event::DatabaseLockWait {
+            waited_ms,
+            waiter: user,
+            holder,
+        });
+    }
+}
+
+pub fn database_released(user: DatabaseUser, held: Duration) {
+    DATABASE_HOLDER.store(0, std::sync::atomic::Ordering::Relaxed);
+    let held_ms = held.as_millis() as u64;
+    if held_ms >= LOCK_HOLD_MS {
+        record(Event::DatabaseLockHeld {
+            held_ms,
+            holder: user,
+        });
     }
 }
 
@@ -431,6 +503,7 @@ impl Monitor {
                 composing: self.composing,
                 database_tasks: self.database,
                 relay_tasks: self.relay,
+                database_holder: database_holder(),
             });
         }
         records
