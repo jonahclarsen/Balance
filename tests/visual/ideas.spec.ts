@@ -774,8 +774,8 @@ test('the idea options menu copies, cuts and pastes ideas', async ({ page }, tes
   await open(page)
   await openView(page, 'Ideas')
   await storeCall(page, `
-    plannerStore.addIdea('Synthetic second', 'genuine')
     plannerStore.addIdea('Synthetic first', 'genuine')
+    plannerStore.addIdea('Synthetic second', 'genuine')
   `)
   const menuItem = async (text: string, action: string) => {
     await card(page, 'genuine').getByRole('button', { name: `Task options for ${text}` }).first().click()

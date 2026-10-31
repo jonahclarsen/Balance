@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { openView } from '../helpers/navigation'
 
-test('mobile header quick add saves ideas with Enter or Save and closes with Cancel or the backdrop', async ({ page }, info) => {
+test('mobile header quick add saves ideas with Enter or Save and closes with Cancel or Escape', async ({ page }, info) => {
   test.skip(info.project.name !== 'mobile', 'The header quick-add button is mobile-only')
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -35,9 +35,12 @@ test('mobile header quick add saves ideas with Enter or Save and closes with Can
   await page.getByRole('button', { name: 'Cancel' }).click()
   await expect(input).toBeHidden()
 
+  // A stray backdrop press keeps the draft; Escape discards it.
   await addButton.click()
   await input.fill('Synthetic dismissed idea')
   await page.mouse.click(8, 8)
+  await expect(input).toHaveText('Synthetic dismissed idea')
+  await page.keyboard.press('Escape')
   await expect(input).toBeHidden()
   expect(await ideas()).toHaveLength(2)
 
