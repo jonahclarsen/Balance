@@ -1490,3 +1490,27 @@ test('a refresh after only local saves skips rereading the workspace, while a fo
   expect(await reload()).toEqual([null, ownRevision])
   await expect(page.getByText('Changed on another device')).toBeVisible()
 })
+
+test('after a failed pass, edits and polls wait for the retry instead of hammering the relay', async ({ page }) => {
+  // The default fixture relay always fails, like a network with no internet.
+  await page.clock.install()
+  await page.goto('/')
+  const attempts = () => page.evaluate(() => (globalThis as typeof globalThis & { __syncAttemptCount: number }).__syncAttemptCount)
+  await expect.poll(attempts).toBe(1)
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 100))
+
+  await page.evaluate(async () => {
+    const storePath = '/src/lib/store.ts'
+    const { plannerStore } = await import(/* @vite-ignore */ storePath)
+    plannerStore.patchPlanItem('local-plan', 'visible-item', { text: 'Offline edit', html: 'Offline edit' })
+  })
+  // The edit persists locally; its sync waits for the first retry (5 to 6.25 seconds).
+  await page.clock.runFor(3_000)
+  await expect.poll(() => page.evaluate(() => (globalThis as typeof globalThis & { __storedState: string }).__storedState)).toContain('Offline edit')
+  expect(await attempts()).toBe(1)
+  await page.clock.runFor(3_500)
+  await expect.poll(attempts).toBe(2)
+  // The quiet poll comes due before the doubled retry, and is skipped.
+  await page.clock.runFor(4_000)
+  expect(await attempts()).toBe(2)
+})

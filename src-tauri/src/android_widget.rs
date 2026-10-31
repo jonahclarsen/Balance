@@ -16,7 +16,7 @@ fn load_snapshot(app_data_path: &Path, date: &str) -> Result<WidgetSnapshot, Str
         return Ok(WidgetSnapshot::empty(date));
     }
 
-    let _guard = super::database_access_guard()?;
+    let _guard = super::database_access_guard(super::freeze_diagnostics::DatabaseUser::Widget)?;
     // Android widgets do not persist a second plaintext snapshot. The database
     // key is unwrapped by Android Keystore only for this read, and this local
     // copy is wiped as soon as SQLCipher has opened the connection.

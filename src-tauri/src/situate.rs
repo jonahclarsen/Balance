@@ -169,12 +169,14 @@ pub(crate) fn status(doc: &Value, platform: &str, now: i64) -> Value {
     }
     json!({"version":1,"modes":modes,"aiBlocked":ai_blocked,"countdownUntil":countdown,"refreshAt":refresh,"enabled":true,"quizUrl":"balance://situate?mode=touch-grass"})
 }
-#[tauri::command]
+// Async: on Android a synchronous command holds the WebView's JavaScript
+// thread until it returns, and these touch files and the Android bridge.
+#[tauri::command(async)]
 pub(crate) fn situate_load(app: tauri::AppHandle) -> Result<Option<Value>, String> {
     let _guard = LOCK.lock().map_err(|e| e.to_string())?;
     read(&path(&app)?)
 }
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn situate_save(
     app: tauri::AppHandle,
     document: Value,
@@ -203,7 +205,7 @@ pub(crate) fn situate_save(
     let _ = app.emit("situate-rules-changed", document["revision"].clone());
     Ok(())
 }
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn situate_permissions(action: String) -> Result<String, String> {
     #[cfg(target_os = "android")]
     {
@@ -279,7 +281,7 @@ fn extension_loaded(root: &Path) -> bool {
             })
     })
 }
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn situate_extension(app: tauri::AppHandle, action: String) -> Result<Value, String> {
     let home = app.path().home_dir().map_err(|e| e.to_string())?;
     let root = home.join(".local/share/balance-situate");
@@ -421,7 +423,7 @@ pub(crate) fn start(app: tauri::AppHandle) {
                     {
                         publish_mac(&current, !saved);
                         if crate::macos_widget::published_snapshot_is_current() {
-                            if let Ok(_guard) = crate::database_access_guard() {
+                            if let Ok(_guard) = crate::database_access_guard(crate::freeze_diagnostics::DatabaseUser::Situate) {
                                 let _ = crate::with_database(&app, |connection| {
                                     crate::macos_widget::publish_snapshot(connection)
                                 });

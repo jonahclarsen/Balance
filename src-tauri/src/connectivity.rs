@@ -17,32 +17,18 @@ pub fn offline(_app: &tauri::AppHandle) -> Option<bool> {
 
 #[cfg(target_os = "android")]
 pub fn offline(app: &tauri::AppHandle) -> Option<bool> {
+    // Ask from this worker thread when the Context is known. Waiting on a busy
+    // UI thread turned a known offline state into "unknown" and a doomed pass.
+    if let Some(result) = crate::android_context::with(active_network_missing) {
+        return result;
+    }
     use tauri::Manager;
     let webview = app.get_webview_window("main")?;
     let (sender, receiver) = std::sync::mpsc::sync_channel(1);
     webview
         .with_webview(move |webview| {
             webview.jni_handle().exec(move |env, activity, _| {
-                let result = (|| -> jni::errors::Result<Option<bool>> {
-                    let service = env.new_string("connectivity")?;
-                    let manager = env
-                        .call_method(
-                            activity,
-                            "getSystemService",
-                            "(Ljava/lang/String;)Ljava/lang/Object;",
-                            &[(&service).into()],
-                        )?
-                        .l()?;
-                    if manager.is_null() {
-                        return Ok(None);
-                    }
-                    let network = env
-                        .call_method(&manager, "getActiveNetwork", "()Landroid/net/Network;", &[])?
-                        .l()?;
-                    // A default network is sufficient. In particular, do not require
-                    // NET_CAPABILITY_VALIDATED (VPNs/blocked probes can lack it).
-                    Ok(Some(network.is_null()))
-                })();
+                let result = active_network_missing(env, activity);
                 let has_exception = env.exception_check().unwrap_or(true);
                 if has_exception {
                     let _ = env.exception_clear();
@@ -60,6 +46,31 @@ pub fn offline(app: &tauri::AppHandle) -> Option<bool> {
         .recv_timeout(std::time::Duration::from_secs(1))
         .ok()
         .flatten()
+}
+
+#[cfg(target_os = "android")]
+fn active_network_missing(
+    env: &mut jni::JNIEnv,
+    context: &jni::objects::JObject,
+) -> jni::errors::Result<Option<bool>> {
+    let service = env.new_string("connectivity")?;
+    let manager = env
+        .call_method(
+            context,
+            "getSystemService",
+            "(Ljava/lang/String;)Ljava/lang/Object;",
+            &[(&service).into()],
+        )?
+        .l()?;
+    if manager.is_null() {
+        return Ok(None);
+    }
+    let network = env
+        .call_method(&manager, "getActiveNetwork", "()Landroid/net/Network;", &[])?
+        .l()?;
+    // A default network is sufficient. In particular, do not require
+    // NET_CAPABILITY_VALIDATED (VPNs/blocked probes can lack it).
+    Ok(Some(network.is_null()))
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "android")))]

@@ -144,6 +144,7 @@ mod platform {
         class: JClass,
         context: JObject,
     ) {
+        crate::android_context::remember(&env, &context);
         let bridge = (|| -> jni::errors::Result<Bridge> {
             Ok(Bridge {
                 vm: env.get_java_vm()?,
@@ -190,7 +191,7 @@ mod platform {
         let result =
             std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> Result<(), String> {
                 let path: String = env.get_string(&path).map_err(|e| e.to_string())?.into();
-                let _guard = crate::database_access_guard()?;
+                let _guard = crate::database_access_guard(crate::freeze_diagnostics::DatabaseUser::Notifications)?;
                 let database = crate::app_database_path_from_data_dir(std::path::Path::new(&path));
                 if !database.exists() {
                     return Ok(());

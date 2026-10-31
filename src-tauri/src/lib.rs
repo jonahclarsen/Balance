@@ -7,7 +7,7 @@ use std::process::Command;
 #[cfg(any(test, target_os = "android"))]
 use std::sync::TryLockError;
 use std::sync::{Mutex, MutexGuard};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 #[cfg(not(target_os = "android"))]
 use keyring::{Entry, Error as KeyringError};
@@ -20,6 +20,8 @@ use tauri::Emitter;
 use tauri::Manager;
 use tauri_plugin_opener::OpenerExt;
 
+#[cfg(target_os = "android")]
+mod android_context;
 #[cfg(target_os = "android")]
 mod android_lifecycle;
 #[cfg(target_os = "android")]
@@ -2072,7 +2074,7 @@ async fn install_android_update(
 }
 
 /// Android's last background relay pass, or nothing before the first one.
-#[tauri::command]
+#[tauri::command(async)]
 fn background_sync_status(app: tauri::AppHandle) -> Result<Option<background_sync_status::BackgroundSyncStatus>, String> {
     let database_path = app_database_path(&app)?;
     Ok(database_path.parent().and_then(background_sync_status::read))
@@ -2153,7 +2155,9 @@ async fn reveal_path_in_file_manager(path: String) -> Result<(), String> {
     run_database_task(move || reveal_path(PathBuf::from(path))).await
 }
 
-#[tauri::command]
+// Async: on Android a synchronous command holds the WebView's JavaScript
+// thread, and the opener waits on Android's UI thread.
+#[tauri::command(async)]
 fn open_external_url(app: tauri::AppHandle, url: String) -> Result<(), String> {
     let url = validate_external_url(&url)?;
     app.opener()
@@ -2168,7 +2172,7 @@ where
 {
     let _diagnostic = freeze_diagnostics::Span::new(freeze_diagnostics::Operation::Database);
     tauri::async_runtime::spawn_blocking(move || {
-        let _guard = database_access_guard()?;
+        let _guard = database_access_guard(freeze_diagnostics::DatabaseUser::App)?;
         task()
     })
     .await
@@ -2176,13 +2180,15 @@ where
 }
 
 struct RelayDatabaseGate {
-    guard: Option<MutexGuard<'static, ()>>,
+    guard: Option<DatabaseAccess>,
+    user: freeze_diagnostics::DatabaseUser,
 }
 
 impl RelayDatabaseGate {
-    fn acquire() -> Result<Self, String> {
+    fn acquire(user: freeze_diagnostics::DatabaseUser) -> Result<Self, String> {
         Ok(Self {
-            guard: Some(database_access_guard()?),
+            guard: Some(database_access_guard(user)?),
+            user,
         })
     }
 }
@@ -2194,7 +2200,7 @@ impl sync::relay_client::NetworkDatabaseGate for RelayDatabaseGate {
     ) -> sync::Result<T> {
         drop(self.guard.take());
         let result = task();
-        self.guard = Some(database_access_guard().map_err(sync::Error::Codec)?);
+        self.guard = Some(database_access_guard(self.user).map_err(sync::Error::Codec)?);
         result
     }
 }
@@ -2208,7 +2214,7 @@ where
     F: FnOnce(&mut RelayDatabaseGate) -> Result<T, String> + Send + 'static,
 {
     tauri::async_runtime::spawn_blocking(move || {
-        let mut gate = RelayDatabaseGate::acquire()?;
+        let mut gate = RelayDatabaseGate::acquire(freeze_diagnostics::DatabaseUser::Relay)?;
         task(&mut gate)
     })
     .await
@@ -2235,7 +2241,7 @@ where
         #[cfg(target_os = "android")]
         let _guard = optional_database_access_guard(&DATABASE_ACCESS_LOCK)?;
         #[cfg(not(target_os = "android"))]
-        let _guard = Some(database_access_guard()?);
+        let _guard = Some(database_access_guard(freeze_diagnostics::DatabaseUser::App)?);
         task()
     })
     .await
@@ -2251,10 +2257,33 @@ fn optional_database_access_guard(lock: &Mutex<()>) -> Result<Option<MutexGuard<
     }
 }
 
-fn database_access_guard() -> Result<MutexGuard<'static, ()>, String> {
-    DATABASE_ACCESS_LOCK
+/// Holds the process database lock. Long waits for it and long holds of it
+/// go to the freeze report, naming who waited and who held it.
+struct DatabaseAccess {
+    _guard: MutexGuard<'static, ()>,
+    user: freeze_diagnostics::DatabaseUser,
+    acquired: Instant,
+}
+
+impl Drop for DatabaseAccess {
+    fn drop(&mut self) {
+        // Runs before the guard field drops, while this user still holds the lock.
+        freeze_diagnostics::database_released(self.user, self.acquired.elapsed());
+    }
+}
+
+fn database_access_guard(user: freeze_diagnostics::DatabaseUser) -> Result<DatabaseAccess, String> {
+    let started = Instant::now();
+    let holder = freeze_diagnostics::database_holder();
+    let guard = DATABASE_ACCESS_LOCK
         .lock()
-        .map_err(|_| "Database access lock is poisoned".to_string())
+        .map_err(|_| "Database access lock is poisoned".to_string())?;
+    freeze_diagnostics::database_acquired(user, holder, started.elapsed());
+    Ok(DatabaseAccess {
+        _guard: guard,
+        user,
+        acquired: Instant::now(),
+    })
 }
 
 fn apply_raw_database_key(connection: &Connection, recovery_key: &str) -> Result<(), String> {
@@ -10545,7 +10574,7 @@ fn run_android_background_sync_at(data_dir: &Path) -> Result<(), String> {
     let _diagnostic = freeze_diagnostics::Span::new(freeze_diagnostics::Operation::BackgroundRelay);
     // WorkManager cancellation cannot interrupt a JNI call already waiting on
     // HTTP. Reuse the foreground gate so resumed local saves stay available.
-    let mut gate = RelayDatabaseGate::acquire()?;
+    let mut gate = RelayDatabaseGate::acquire(freeze_diagnostics::DatabaseUser::BackgroundRelay)?;
     let database_path = app_database_path_from_data_dir(data_dir);
     if !database_path.exists() {
         return Ok(());
@@ -16320,10 +16349,10 @@ mod tests {
 
     #[test]
     fn database_access_lock_serializes_atomic_maintenance_and_sync() {
-        let guard = database_access_guard().unwrap();
+        let guard = database_access_guard(freeze_diagnostics::DatabaseUser::App).unwrap();
         let (sender, receiver) = std::sync::mpsc::channel();
         let waiter = std::thread::spawn(move || {
-            let _guard = database_access_guard().unwrap();
+            let _guard = database_access_guard(freeze_diagnostics::DatabaseUser::App).unwrap();
             sender.send(()).unwrap();
         });
 
@@ -16340,10 +16369,10 @@ mod tests {
 
     #[test]
     fn foreground_relay_network_wait_yields_database_access() {
-        let mut relay_gate = RelayDatabaseGate::acquire().unwrap();
+        let mut relay_gate = RelayDatabaseGate::acquire(freeze_diagnostics::DatabaseUser::Relay).unwrap();
         let (sender, receiver) = std::sync::mpsc::channel();
         let waiter = std::thread::spawn(move || {
-            let _guard = database_access_guard().unwrap();
+            let _guard = database_access_guard(freeze_diagnostics::DatabaseUser::App).unwrap();
             sender.send(()).unwrap();
         });
 
@@ -16363,10 +16392,10 @@ mod tests {
 
     #[test]
     fn failed_relay_network_wait_reacquires_database_access() {
-        let mut relay_gate = RelayDatabaseGate::acquire().unwrap();
+        let mut relay_gate = RelayDatabaseGate::acquire(freeze_diagnostics::DatabaseUser::Relay).unwrap();
         let (sender, receiver) = std::sync::mpsc::channel();
         let waiter = std::thread::spawn(move || {
-            let _guard = database_access_guard().unwrap();
+            let _guard = database_access_guard(freeze_diagnostics::DatabaseUser::App).unwrap();
             sender.send(()).unwrap();
         });
         let result = <RelayDatabaseGate as sync::relay_client::NetworkDatabaseGate>::without_database_lock(

@@ -42,14 +42,22 @@ object BalanceTaskNotifications {
         resetAndRefresh(owner) { runCITest(owner.applicationContext) }
     }
 
+    // Callers waiting on the queued refresh. Resume and window focus arrive
+    // together; one database read serves both instead of taking the database
+    // lock twice while the app is coming back.
+    private val waiting = mutableListOf<() -> Unit>()
+
     fun refresh(context: Context, complete: () -> Unit = {}) {
         val app = context.applicationContext
         initialize(app)
+        val queued = synchronized(waiting) { waiting.add(complete); waiting.size > 1 }
+        if (queued) return
         executor.execute {
+            val callbacks = synchronized(waiting) { waiting.toList().also { waiting.clear() } }
             try {
                 if (!nativeRefresh(app.applicationInfo.dataDir)) Log.w("BalanceNotifications", "Could not refresh task schedules")
             } catch (_: Throwable) { Log.w("BalanceNotifications", "Could not refresh task schedules") }
-            finally { complete() }
+            finally { callbacks.forEach { it() } }
         }
     }
 
