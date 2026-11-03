@@ -1,5 +1,5 @@
 import { parseNoteBlocksFromClipboard, type ParsedNoteClipboardItem } from './noteClipboard'
-import { createPlanItem, escapeHTML, htmlToPlainText, sanitizeInlineHTML } from './planner'
+import { createPlanItem, escapeHTML, htmlToPlainText, linkifyExternalURLs, sanitizeInlineHTML } from './planner'
 import { parseTaskClipboardAsNoteBlocks } from './taskClipboard'
 import type { Goal, Id, IdeaGroup, IdeaGroupKind, IdeaItem, PlanItem } from './types'
 
@@ -129,7 +129,8 @@ export function parseIdeaImportText(text: string): PlanItem[] {
     const content = match[2]!.trim()
     if (!content) continue
     const indent = match[1]!.replace(/\t/g, '  ').length
-    const item = createPlanItem(content)
+    const html = linkifyExternalURLs(escapeHTML(content))
+    const item = { ...createPlanItem(content), ...(html.includes('<a ') ? { html } : {}) }
     while (ancestors.length && ancestors.at(-1)!.indent >= indent) ancestors.pop()
     const parent = ancestors.at(-1)?.item
     ;(parent ? parent.children : roots).push(item)

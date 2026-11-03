@@ -916,7 +916,7 @@ class LexicalNoteEditorView implements NoteEditorView {
       const detail = (event as CustomEvent<{ plainText?: string | null; html?: string | null }>).detail
       if (!detail) return
       const html = detail.html
-        ? sanitizeInlineHTML(detail.html)
+        ? linkifyExternalURLs(detail.html)
         : detail.plainText ? linkifyExternalURLs(escapeHTML(detail.plainText).replace(/\r?\n/g, '<br>')) : ''
       if (!html) return
       this.editor?.update(() => {
@@ -2007,8 +2007,7 @@ class LexicalNoteEditorView implements NoteEditorView {
 
     if (items.length === 0 || (countPasted(items) === 1 && items[0].kind === 'paragraph')) {
       if (this.$collapseMultiBlockRange()) {
-        const inline = html ? sanitizeInlineHTML(html) : escapeHTML(plain).replace(/\r?\n/g, '<br>')
-        this.$insertInlineHTML(inline)
+        this.$insertInlineHTML(linkifyExternalURLs(html || escapeHTML(plain).replace(/\r?\n/g, '<br>')))
         return true
       }
       const trimmed = plain.trim()

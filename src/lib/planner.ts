@@ -1785,8 +1785,12 @@ export function sanitizeInlineHTML(value: string): string {
   return cleanTrailingLineBreaks(sanitized)
 }
 
-// Converts bare web URLs in pasted content to anchors while preserving its
-// allowed inline formatting. Existing anchors are left alone.
+// Any "scheme://" link, plus the two opaque schemes unlikely to be ordinary
+// text. isURL then rejects blocked schemes such as balance:// and javascript://.
+const BARE_URL = /[a-z][a-z0-9+.-]+:\/\/[^\s<>"']+|\b(?:mailto|tel):[^\s<>"']+/gi
+
+// Converts bare URLs in pasted content to anchors while preserving its allowed
+// inline formatting. Existing anchors are left alone.
 export function linkifyExternalURLs(value: string): string {
   const sanitized = sanitizeInlineHTML(value)
   if (!globalThis.document) return sanitized
@@ -1802,7 +1806,7 @@ export function linkifyExternalURLs(value: string): string {
 
   for (const textNode of textNodes) {
     const text = textNode.textContent ?? ''
-    const matches = Array.from(text.matchAll(/https?:\/\/[^\s<>"']+/gi))
+    const matches = Array.from(text.matchAll(BARE_URL))
     if (matches.length === 0) continue
 
     const fragment = document.createDocumentFragment()

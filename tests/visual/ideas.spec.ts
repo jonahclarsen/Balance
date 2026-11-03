@@ -43,6 +43,26 @@ async function expectIdea(page: Page, position: number, total: number) {
   await expect(sorter(page).locator('.idea-sort-card')).toHaveCount(1)
 }
 
+test('links pasted into quick add are clickable, whatever their scheme', async ({ page }) => {
+  await open(page)
+  await page.evaluate(() => {
+    ;(window as any).openedURLs = []
+    window.open = ((url: string) => { (window as any).openedURLs.push(String(url)); return null }) as typeof window.open
+  })
+  await page.getByRole('button', { name: 'Add idea', exact: true }).click()
+  const input = page.getByRole('textbox', { name: 'New idea' })
+  await expect(input).toBeFocused()
+  await input.evaluate((element) => {
+    const clipboardData = new DataTransfer()
+    clipboardData.setData('text/plain', 'See file:///tmp/synthetic.pdf, slack://channel?id=C1 and mailto:someone@example.com but not balance://nowhere.')
+    element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData }))
+  })
+
+  await expect(input.locator('a')).toHaveText(['file:///tmp/synthetic.pdf', 'slack://channel?id=C1', 'mailto:someone@example.com'])
+  await input.locator('a').first().click()
+  await expect.poll(() => page.evaluate(() => (window as any).openedURLs)).toEqual(['file:///tmp/synthetic.pdf'])
+})
+
 test('quick-added ideas land in Proposition Party and move with timed unlocks', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
   await open(page)
