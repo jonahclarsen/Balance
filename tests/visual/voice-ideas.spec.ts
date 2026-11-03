@@ -128,12 +128,8 @@ test('the transcript and waveform follow each other', async ({ page }, testInfo)
     node.dispatchEvent(new Event('select'))
   }, [text.indexOf('word25'), text.indexOf('word25') + 6])
   await expect(waveform).toHaveAttribute('aria-valuenow', '25')
-  // Wait for the smooth scroll to settle.
-  await expect.poll(() => waveform.evaluate(async (node) => {
-    const before = node.scrollLeft
-    await new Promise((resolve) => setTimeout(resolve, 150))
-    return before === node.scrollLeft ? before : -1
-  })).toBeGreaterThan(0)
+  // Wait for the smooth scroll to center the word; a busy machine can stall it midway.
+  await expect.poll(() => waveform.evaluate((node) => Math.abs(node.scrollLeft - (25 * 60 - node.clientWidth / 2)))).toBeLessThan(2)
 
   // Clicking the waveform selects the word spoken there.
   const box = (await waveform.boundingBox())!

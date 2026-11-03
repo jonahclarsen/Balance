@@ -387,6 +387,8 @@ test('leaving a note with nothing written deletes it', async ({ page }) => {
   await page.locator('.note-card').filter({ hasText: 'Kept' }).click()
   await expect.poll(() => storedNoteCount(page)).toBe(1)
 
+  // Choosing a note closes the list on touch screens.
+  await openNoteList(page)
   await page.locator('.note-new').click()
   await page.getByLabel('Note title').fill('Titled')
   await page.locator('.note-new').click()

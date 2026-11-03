@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { generateDay, openView, showPrimaryNavigation } from '../helpers/navigation'
+import { generateDay, hidePrimaryNavigation, openView, showPrimaryNavigation } from '../helpers/navigation'
 
 test.use({ timezoneId: 'America/Vancouver' })
 
@@ -224,6 +224,7 @@ test('Project History is its own page under Projects, like List History', async 
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('balance:workspaceViewState')!).view)).toBe('projectHistory')
 
   // Undoing a stretch edit stays on History.
+  await hidePrimaryNavigation(page)
   await page.getByRole('button', { name: 'Add', exact: true }).click()
   const editor = page.getByRole('dialog', { name: 'Add active stretch', exact: true })
   await editor.getByRole('group', { name: 'Project' }).getByRole('button', { name: 'Synthetic garden' }).click()
@@ -632,7 +633,8 @@ test('long project descriptions truncate within the page and remain editable in 
   await addProject(page, 'Synthetic long description')
   const card = page.locator('.project-card', { hasText: 'Synthetic long description' })
   await card.click()
-  const description = 'A very long first line with words '.repeat(100)
+  // Long enough to overflow in any platform's font.
+  const description = 'A very long first line with words '.repeat(300)
   const details = page.getByRole('dialog')
   await details.getByRole('textbox', { name: 'Description' }).fill(description)
   await details.getByRole('textbox', { name: 'Description' }).press('Escape')

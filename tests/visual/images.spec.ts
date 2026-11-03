@@ -206,7 +206,11 @@ test('new images wrap multiple text lines and Inline is the last layout option',
   expect(besideLines).toBeGreaterThanOrEqual(2)
   await image.click()
   await expect(page.getByRole('toolbar', { name: 'Image layout' }).getByRole('button')).toHaveText(['Wrap left', 'Wrap right', 'Inline'])
-  await page.getByRole('button', { name: 'Inline', exact: true }).click()
+  // Following the caret can still scroll the image, and its toolbar, away on phones.
+  await expect(async () => {
+    await image.scrollIntoViewIfNeeded()
+    await page.getByRole('button', { name: 'Inline', exact: true }).click({ timeout: 1_000 })
+  }).toPass()
   await expect(image).toHaveAttribute('data-image-layout', 'inline')
   await expect(image).toHaveCSS('float', 'none')
 })
