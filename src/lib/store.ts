@@ -2548,13 +2548,13 @@ function createPlannerStore() {
     },
 
     // The idea starts empty; transcription fills it in.
-    addVoiceIdea(recording: Pick<VoiceClip, 'dataURL' | 'durationMs' | 'peaks'>) {
+    addVoiceIdea(recording: Pick<VoiceClip, 'dataURL' | 'durationMs' | 'peaks'> & Partial<Pick<VoiceClip, 'id' | 'createdAt'>>) {
       const item: IdeaItem = { ...createPlanItem(''), bucketedAt: nowISO() }
-      const clip: VoiceClip = { id: createId('voice'), ideaId: item.id, ...recording, createdAt: nowISO() }
-      commitEntities('add_voice_idea', { itemId: item.id, clipId: clip.id }, (state) => ({
+      const clip: VoiceClip = { id: createId('voice'), createdAt: nowISO(), ...recording, ideaId: item.id }
+      commitEntities('add_voice_idea', { itemId: item.id, clipId: clip.id }, (state) => state.voiceClips.some((existing) => existing.id === clip.id) ? state : {
         ...updateIdeaGroup(state, 'proposition', (group) => ({ ...group, items: [...group.items, item] })),
         voiceClips: [...state.voiceClips, clip],
-      }))
+      })
       return item.id
     },
 

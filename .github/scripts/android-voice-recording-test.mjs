@@ -1,6 +1,8 @@
 #!/usr/bin/env node
-// Records a voice idea on a disposable emulator install, leaves the app, and
-// stops from the notification. The emulator's microphone only produces silence.
+// Records voice ideas on a disposable emulator install: stopping from the
+// notification in the background, keeping Android out of call mode with the
+// phone microphone, and recovering after the app is killed. The emulator's
+// microphone only produces silence.
 
 import { spawnSync } from 'node:child_process'
 import { writeFileSync } from 'node:fs'
@@ -10,7 +12,7 @@ const backgroundMs = 12_000
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 function adb(args, { allowFailure = false } = {}) {
-  const result = spawnSync('adb', args, { encoding: 'utf8', timeout: 30_000 })
+  const result = spawnSync('adb', args, { encoding: 'utf8', timeout: 30_000, maxBuffer: 256 * 1024 * 1024 })
   if (result.error) throw result.error
   if (result.status !== 0 && !allowFailure) throw new Error(`adb ${args.join(' ')} failed: ${result.stderr || result.stdout}`)
   return (result.stdout ?? '').replaceAll('\r', '')
@@ -32,6 +34,7 @@ async function waitFor(check, description, timeoutMs = 20_000) {
 async function connect() {
   const pid = await waitFor(() => adb(['shell', 'pidof', packageName], { allowFailure: true }).trim().split(/\s+/)[0], 'the app process', 60_000)
   const socketName = await waitFor(() => adb(['shell', 'cat', '/proc/net/unix']).match(new RegExp(`@(webview_devtools_remote_${pid})\\s*$`, 'm'))?.[1], 'the DevTools socket', 60_000)
+  adb(['forward', '--remove', 'tcp:9222'], { allowFailure: true })
   adb(['forward', 'tcp:9222', `localabstract:${socketName}`])
   const target = await waitFor(async () => {
     const targets = await (await fetch('http://127.0.0.1:9222/json/list')).json()
@@ -60,7 +63,8 @@ async function connect() {
   }
 }
 
-const notification = () => adb(['shell', 'dumpsys', 'notification', '--noredact']).includes('voice-recording')
+// The dump also lists the channel, which outlives the notification.
+const notification = () => adb(['shell', 'dumpsys', 'notification', '--noredact']).includes('Notification(channel=voice-recording')
 const isForeground = () => /isForeground=true/.test(adb(['shell', 'dumpsys', 'activity', 'services', 'BalanceVoiceRecordingService']))
 
 function uiNodes() {
@@ -89,6 +93,11 @@ async function tapNotificationStop() {
   }, 'the notification Stop button', 30_000)
   tapNode(stop)
   adb(['shell', 'cmd', 'statusbar', 'collapse'])
+}
+
+function audioMode() {
+  const dump = adb(['shell', 'dumpsys', 'audio'])
+  return dump.match(/mode \(internal\) = (\w+)/)?.[1] ?? dump.match(/^\s*mMode\s*[:=]\s*(\w+)/m)?.[1] ?? 'unknown'
 }
 
 async function readClips(evaluate) {
@@ -121,6 +130,7 @@ async function run() {
   await click(record)
   await waitFor(() => has(stopInApp), 'recording to start', 30_000)
   await waitFor(notification, 'the recording notification')
+  console.log(`Audio mode with the default microphone: ${audioMode()}`)
   await click('[aria-label="Discard recording"]')
   await waitFor(() => !notification(), 'the discarded recording to clear its notification')
 
@@ -150,6 +160,30 @@ async function run() {
   adb(['shell', 'monkey', '-p', packageName, '-c', 'android.intent.category.LAUNCHER', '1'])
   await waitFor(() => has('.voice-clip-chip'), 'the saved clip on screen')
   console.log(`Saved a ${clips[0].durationMs} ms clip from the notification`)
+
+  // The phone microphone leaves Android out of call mode.
+  await click('[aria-label="Phone microphone"]')
+  await click(record)
+  await waitFor(() => has(stopInApp), 'phone recording to start', 30_000)
+  await sleep(3_000)
+  const devices = await evaluate(`navigator.mediaDevices.enumerateDevices().then((list) => list.filter((d) => d.kind === 'audioinput').map((d) => d.label))`)
+  const mode = audioMode()
+  console.log(`Inputs: ${JSON.stringify(devices)}; audio mode with the phone microphone: ${mode}`)
+  if (/COMMUNICATION|IN_CALL/.test(mode)) throw new Error(`The phone microphone entered call mode: ${mode}`)
+
+  // Killing the app mid-recording keeps the clip for the next launch.
+  await sleep(3_000)
+  adb(['shell', 'am', 'force-stop', packageName])
+  await waitFor(() => !notification(), 'the killed recording to clear its notification')
+  adb(['shell', 'monkey', '-p', packageName, '-c', 'android.intent.category.LAUNCHER', '1'])
+  const reopened = await connect()
+  const recovered = await waitFor(async () => {
+    const saved = await readClips(reopened)
+    return saved.length === 2 ? saved : null
+  }, 'the killed recording to be recovered', 60_000)
+  const clip = recovered.find((candidate) => candidate.id !== clips[0].id)
+  if (clip.durationMs < 3_000) throw new Error(`The recovered clip is too short: ${clip.durationMs} ms`)
+  console.log(`Recovered a ${clip.durationMs} ms clip after the app was killed`)
   process.exit(0)
 }
 

@@ -1,4 +1,7 @@
 import { get, writable } from 'svelte/store'
+import { createId } from './planner'
+import { plannerStore } from './store'
+import { appendVoiceChunk, removeVoiceChunks, unfinishedVoiceRecordings } from './voiceChunkStore'
 import { PEAKS_PER_SECOND } from './voiceClips'
 import type { VoiceClip } from './types'
 
@@ -24,6 +27,27 @@ type AndroidVoiceInput = {
 
 const androidVoiceInput = () => (window as unknown as { BalanceVoiceInput?: AndroidVoiceInput }).BalanceVoiceInput
 
+export type VoiceMic = 'headset' | 'phone'
+
+const MIC_KEY = 'balance-voice-mic'
+const PHONE_DEVICE_KEY = 'balance-voice-phone-device'
+
+function readSetting(key: string): string | null {
+  try { return localStorage.getItem(key) } catch { return null }
+}
+
+function writeSetting(key: string, value: string) {
+  try { localStorage.setItem(key, value) } catch { /* Only a convenience. */ }
+}
+
+// Only Android routes between a headset's microphone and the phone's own.
+export const canChooseVoiceMic = () => Boolean(androidVoiceInput())
+export const voiceMic = writable<VoiceMic>(readSetting(MIC_KEY) === 'phone' ? 'phone' : 'headset')
+export function chooseVoiceMic(mic: VoiceMic) {
+  voiceMic.set(mic)
+  writeSetting(MIC_KEY, mic)
+}
+
 // Android only routes a Bluetooth headset's microphone to the WebView once
 // Balance may connect to Bluetooth devices, and only shows the recording
 // notification with its own permission (both asked at runtime).
@@ -45,8 +69,35 @@ async function headsetInput(): Promise<string | undefined> {
   return devices.find((device) => device.kind === 'audioinput' && /bluetooth/i.test(device.label))?.deviceId
 }
 
+// Chromium only enters Android's call mode when voice processing is on, and a
+// default input selects a connected headset, so music is left alone only by
+// turning processing off and naming the phone's microphone. Android lists it
+// under the matching output device.
+const UNPROCESSED = { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+
+function phoneInput(devices: MediaDeviceInfo[]) {
+  const inputs = devices.filter((device) => device.kind === 'audioinput' && !/bluetooth|headset|wired|usb/i.test(device.label))
+  return inputs.find((device) => /speaker/i.test(device.label)) ?? inputs.find((device) => /earpiece/i.test(device.label))
+}
+
+async function openPhoneMicrophone(): Promise<MediaStream> {
+  // Device names stay hidden until the microphone opens, so the last known
+  // device avoids briefly selecting the headset and interrupting its music.
+  const known = readSetting(PHONE_DEVICE_KEY)
+  let stream = await navigator.mediaDevices.getUserMedia({ audio: { ...UNPROCESSED, ...(known ? { deviceId: { ideal: known } } : {}) } })
+  const phone = phoneInput(await navigator.mediaDevices.enumerateDevices())
+  if (!phone) return stream
+  writeSetting(PHONE_DEVICE_KEY, phone.deviceId)
+  if (stream.getAudioTracks()[0]?.getSettings().deviceId !== phone.deviceId) {
+    stream.getTracks().forEach((track) => track.stop())
+    stream = await navigator.mediaDevices.getUserMedia({ audio: { ...UNPROCESSED, deviceId: { exact: phone.deviceId } } })
+  }
+  return stream
+}
+
 async function openMicrophone(): Promise<MediaStream> {
   await allowNativeRecording()
+  if (canChooseVoiceMic() && get(voiceMic) === 'phone') return openPhoneMicrophone()
   let stream = await navigator.mediaDevices.getUserMedia({ audio: true })
   const headset = await headsetInput()
   if (headset && stream.getAudioTracks()[0]?.getSettings().deviceId !== headset) {
@@ -81,19 +132,21 @@ export function peaksFromSamples(samples: Float32Array, sampleRate: number): num
   return peaks.map((rms) => Math.round(Math.min(1, rms / loudest) * 255))
 }
 
-type RecordedClip = Pick<VoiceClip, 'dataURL' | 'durationMs' | 'peaks'>
-
-let session: {
+type Session = {
+  id: string
   recorder: MediaRecorder
   stream: MediaStream
   context: AudioContext
   chunks: Blob[]
   meter: number
-  save: (clip: RecordedClip) => void | Promise<void>
-} | null = null
+  startedAt: number
+  written: Promise<unknown>
+  discarded: boolean
+}
 
-// `save` runs whoever stops the recording, even after leaving Ideas.
-export async function startVoiceRecording(save: (clip: RecordedClip) => void | Promise<void>) {
+let session: Session | null = null
+
+export async function startVoiceRecording() {
   if (session) return
   voiceRecordingError.set(null)
   voiceRecording.set({ state: 'starting' })
@@ -113,8 +166,17 @@ export async function startVoiceRecording(save: (clip: RecordedClip) => void | P
       voiceRecording.set({ state: 'recording', startedAt, level })
     }, 80)
     const chunks: Blob[] = []
-    recorder.ondataavailable = (event) => { if (event.data.size > 0) chunks.push(event.data) }
-    session = { recorder, stream, context, chunks, meter, save }
+    const id = createId('voice')
+    const current: Session = { id, recorder, stream, context, chunks, meter, startedAt, written: Promise.resolve(), discarded: false }
+    let sequence = 0
+    recorder.ondataavailable = (event) => {
+      if (event.data.size === 0 || current.discarded) return
+      chunks.push(event.data)
+      // A failed write only costs recovery: the chunks in memory still save.
+      current.written = appendVoiceChunk({ recordingId: id, sequence: sequence++, startedAt, mimeType: recorder.mimeType, data: event.data })
+        .catch((error) => console.error('Could not keep a recording chunk', error))
+    }
+    session = current
     recorder.start(1000)
     androidVoiceInput()?.recordingStarted(startedAt)
     voiceRecording.set({ state: 'recording', startedAt, level: 0 })
@@ -125,7 +187,7 @@ export async function startVoiceRecording(save: (clip: RecordedClip) => void | P
   }
 }
 
-function release(current: NonNullable<typeof session>) {
+function release(current: Session) {
   window.clearInterval(current.meter)
   current.stream.getTracks().forEach((track) => track.stop())
   void current.context.close()
@@ -134,23 +196,38 @@ function release(current: NonNullable<typeof session>) {
 
 export function cancelVoiceRecording() {
   if (!session) return
-  session.recorder.stop()
-  release(session)
+  const current = session
+  current.discarded = true
+  current.recorder.stop()
+  release(current)
   voiceRecording.set({ state: 'idle' })
+  void current.written.then(() => removeVoiceChunks(current.id)).catch((error) => console.error('Could not remove a discarded recording', error))
   androidVoiceInput()?.recordingStopped()
 }
 
-async function encodedClip(current: NonNullable<typeof session>): Promise<RecordedClip | null> {
-  const blob = new Blob(current.chunks, { type: current.recorder.mimeType || 'audio/webm' })
+type Recording = { id: string; startedAt: number; mimeType: string; chunks: Blob[] }
+
+// Null when nothing audible was captured.
+async function encodedClip(recording: Recording): Promise<Pick<VoiceClip, 'id' | 'createdAt' | 'dataURL' | 'durationMs' | 'peaks'> | null> {
+  const blob = new Blob(recording.chunks, { type: recording.mimeType || 'audio/webm' })
   if (blob.size === 0) return null
   const decoded = await new OfflineAudioContext(1, 1, 8000).decodeAudioData(await blob.arrayBuffer())
-  // Nothing audible was captured.
   if (decoded.duration < 0.3) return null
   return {
+    // The recording's id makes saving it twice impossible, if the app dies
+    // between saving a clip and removing its chunks.
+    id: recording.id,
+    createdAt: new Date(recording.startedAt).toISOString(),
     dataURL: await blobToDataURL(blob),
     durationMs: Math.round(decoded.duration * 1000),
     peaks: peaksFromSamples(decoded.getChannelData(0), decoded.sampleRate),
   }
+}
+
+async function saveRecording(clip: NonNullable<Awaited<ReturnType<typeof encodedClip>>>) {
+  plannerStore.addVoiceIdea(clip)
+  // The app may be in the background, where it can be frozen at any time.
+  await plannerStore.flushPendingOperations()
 }
 
 export async function finishVoiceRecording() {
@@ -162,14 +239,38 @@ export async function finishVoiceRecording() {
   await stopped
   release(current)
   try {
-    const clip = await encodedClip(current)
-    if (clip) await current.save(clip)
+    const clip = await encodedClip({ id: current.id, startedAt: current.startedAt, mimeType: current.recorder.mimeType, chunks: current.chunks })
+    if (clip) await saveRecording(clip)
+    await current.written
+    await removeVoiceChunks(current.id)
   } catch (error) {
     voiceRecordingError.set('Could not save')
     console.error('Could not save recording', error)
   } finally {
     voiceRecording.set({ state: 'idle' })
     androidVoiceInput()?.recordingStopped()
+  }
+}
+
+// Saves what was on disk when the app last closed mid-recording. Runs once the
+// workspace has loaded; the clips then sync like any other.
+export async function recoverVoiceRecordings() {
+  try {
+    for (const recording of await unfinishedVoiceRecordings()) {
+      if (recording.id === session?.id) continue
+      let clip: Awaited<ReturnType<typeof encodedClip>> = null
+      try {
+        clip = await encodedClip(recording)
+      } catch (error) {
+        // Without its first chunk the audio can never decode; don't keep it.
+        console.error('Could not decode an unfinished recording', error)
+      }
+      if (clip) await saveRecording(clip)
+      await removeVoiceChunks(recording.id)
+    }
+  } catch (error) {
+    // The chunks stay on disk for the next launch.
+    console.error('Could not recover a recording', error)
   }
 }
 

@@ -50,6 +50,7 @@
   import { activeProjects, needsProjectPick, templateForGeneration } from './lib/projects'
   import PrioritizePanel from './lib/PrioritizePanel.svelte'
   import IdeasPanel from './lib/IdeasPanel.svelte'
+  import { recoverVoiceRecordings } from './lib/voiceRecorder'
   import IdeaSortModal from './lib/IdeaSortModal.svelte'
   import { dayTemplateShortcutLetters } from './lib/dayTemplateShortcuts'
   import IdeaImportModal from './lib/IdeaImportModal.svelte'
@@ -3729,6 +3730,11 @@ return rows`
   }
 
   $: if ($plannerStore.dayGenerations.length > 0 && dayTemplateSelectionReady && !$databaseLoadPending) resumeDayGeneration()
+  let voiceRecoveryStarted = false
+  $: if (!voiceRecoveryStarted && !$databaseLoadPending && !$databaseLoadError) {
+    voiceRecoveryStarted = true
+    void recoverVoiceRecordings()
+  }
 
   async function generateDayFromTemplate(templateId: Id, date = $plannerStore.activePlanDate || todayISO()) {
     const template = templates.find((candidate) => candidate.id === templateId)
