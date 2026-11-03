@@ -28,6 +28,40 @@ export function normalizeFindText(value: string) {
   return { text, starts, ends }
 }
 
+// WebKit reports truncated text at its ellipsis, not where it would really sit.
+function untruncatedRect(range: Range, element: HTMLElement) {
+  const previous = element.style.textOverflow
+  element.style.textOverflow = 'clip'
+  const rect = range.getBoundingClientRect()
+  element.style.textOverflow = previous
+  return rect
+}
+
+// Text past an ellipsis or a clipping edge can't be seen and, unlike a scroller's
+// contents, can't be scrolled to, so it isn't on the page as far as find goes.
+function isClippedAway(range: Range, root: HTMLElement) {
+  let checkX = true
+  let checkY = true
+  for (let element = range.startContainer.parentElement; element && element !== root && (checkX || checkY); element = element.parentElement) {
+    const style = getComputedStyle(element)
+    if (checkX && /hidden|clip/.test(style.overflowX)) {
+      const bounds = element.getBoundingClientRect()
+      const truncated = style.textOverflow === 'ellipsis' && element.scrollWidth > element.clientWidth
+      const rect = truncated ? untruncatedRect(range, element) : range.getBoundingClientRect()
+      const ellipsisWidth = truncated ? parseFloat(style.fontSize) * (element.currentCSSZoom || 1) : 0
+      if (rect.left >= bounds.right - ellipsisWidth || rect.right <= bounds.left) return true
+    }
+    if (checkY && /hidden|clip/.test(style.overflowY)) {
+      const rect = range.getBoundingClientRect()
+      const bounds = element.getBoundingClientRect()
+      if (rect.top >= bounds.bottom || rect.bottom <= bounds.top) return true
+    }
+    if (/auto|scroll|overlay/.test(style.overflowX)) checkX = false
+    if (/auto|scroll|overlay/.test(style.overflowY)) checkY = false
+  }
+  return false
+}
+
 export function findTextRanges(root: HTMLElement, query: string): Range[] {
   const needle = normalizeFindText(query).text.trim()
   if (!needle) return []
@@ -57,7 +91,7 @@ export function findTextRanges(root: HTMLElement, query: string): Range[] {
       const range = document.createRange()
       range.setStart(startPiece.node, start - startPiece.start)
       range.setEnd(endPiece.node, end - endPiece.start)
-      if (range.getClientRects().length) ranges.push(range)
+      if (range.getClientRects().length && !isClippedAway(range, root)) ranges.push(range)
       if (ranges.length >= maxFindMatches) break
       previousEnd = end
     }

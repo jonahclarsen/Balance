@@ -104,6 +104,8 @@
     const previous = sameQuery ? matchRanges[activeMatchIndex] : null
     const previousIndex = activeMatchIndex
     matchRanges = root ? findTextRanges(root, query) : []
+    // Measuring truncated text briefly touches inline styles; don't search again for that.
+    observer?.takeRecords()
     const retained = previous ? matchRanges.findIndex((range) =>
       range.startContainer === previous.startContainer && range.startOffset === previous.startOffset
       && range.endContainer === previous.endContainer && range.endOffset === previous.endOffset,
@@ -296,6 +298,14 @@
   :global(::highlight(balance-document-find-match)) {
     background-color: #ff9632;
     color: #1d1d1f;
+  }
+
+  /* WebKit paints a highlight on user-select: none text onto the nearest
+     selectable text instead, so a match on a project card lit its section
+     heading. Keep everything selectable only while find is open. */
+  :global(body:has(.document-find) .workspace *) {
+    -webkit-user-select: text !important;
+    user-select: text !important;
   }
 
   @keyframes find-in {

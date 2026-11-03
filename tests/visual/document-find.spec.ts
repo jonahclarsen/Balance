@@ -179,6 +179,40 @@ test('find excludes navigation and hidden text and refreshes when visibility cha
   await expect(page.locator('.find-status')).toHaveText('1/1')
 })
 
+test('find skips text clipped out of view but keeps scrollable text', async ({ page }) => {
+  await seedTemplates(page)
+  await page.evaluate(() => {
+    const fixture = document.createElement('div')
+    fixture.innerHTML = `
+      <p style="width:200px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">Orchid first, ${'then a long stretch of filler '.repeat(4)}orchid truncated</p>
+      <div style="height:20px;overflow:hidden"><p style="margin:40px 0 0">Orchid below the clip</p></div>
+      <div style="height:20px;overflow:auto"><p style="margin:40px 0 0">Orchid in a scroller</p></div>`
+    document.querySelector('.workspace')!.append(fixture)
+  })
+  await page.getByLabel('Find text', { exact: true }).fill('orchid')
+  await expect(page.locator('.find-status')).toHaveText('1/2')
+})
+
+test('find keeps unselectable text highlightable only while open', async ({ page }) => {
+  await seedTemplates(page)
+  await page.evaluate(() => {
+    const card = document.createElement('p')
+    card.id = 'find-unselectable'
+    card.style.cssText = 'user-select:none;-webkit-user-select:none'
+    card.textContent = 'Orchid card'
+    document.querySelector('.workspace')!.append(card)
+  })
+  const userSelect = () => page.locator('#find-unselectable').evaluate((element) => {
+    const style = getComputedStyle(element)
+    return style.userSelect || style.webkitUserSelect
+  })
+  // WebKit otherwise paints the highlight on the nearest selectable text.
+  await expect.poll(userSelect).toBe('text')
+  await page.keyboard.press('Escape')
+  await expect(page.locator('.document-find')).toHaveCount(0)
+  await expect.poll(userSelect).toBe('none')
+})
+
 test('find restores editor caret, selects the query on reopen and cleans up highlights', async ({ page }) => {
   await seedTemplates(page)
   await page.keyboard.press('Escape')
