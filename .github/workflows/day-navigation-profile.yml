@@ -11,7 +11,7 @@ on:
         options:
           - macos-15
           - macos-14
-          - ubuntu-latest
+          - ubuntu-24.04
       baseline_ref:
         description: Git ref for the baseline run
         required: true

@@ -441,7 +441,7 @@ jobs:
   editing-tests:
     name: Task editing, formatting, and template probabilities
     if: github.ref_type == 'tag' || inputs.publish_tag != '' || inputs.run_stale_task_repro
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
