@@ -1,4 +1,10 @@
+import { writable } from 'svelte/store'
+
 type TextPiece = { node: Text; start: number; end: number }
+
+// The query find is showing. Surfaces that abbreviate text use it to show the
+// whole thing while it matches, so the match is really there to highlight.
+export const activeFindQuery = writable('')
 
 // Every highlighted range slows painting on older WebKit, and nobody steps
 // through more than this many matches.
@@ -26,6 +32,11 @@ export function normalizeFindText(value: string) {
     offset = end
   }
   return { text, starts, ends }
+}
+
+export function findTextIncludes(text: string, query: string) {
+  const needle = normalizeFindText(query).text.trim()
+  return Boolean(needle) && normalizeFindText(text).text.includes(needle)
 }
 
 // WebKit reports truncated text at its ellipsis, not where it would really sit.
