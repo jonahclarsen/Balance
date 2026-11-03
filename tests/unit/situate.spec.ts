@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { defaults, regenerate, reminderWindow, epoch, enableMode, grant, isActive, backOn, headsUp, questions, quizProgress, validate, matches, sunset, upgradePresets, timeZoneLocation } from '../../src/lib/situate/core'
+import { defaults, regenerate, reminderWindow, epoch, enableMode, grant, isActive, backOn, headsUp, questions, quizProgress, validate, matches, sunset, upgradePresets, timeZoneLocation, type Reminder } from '../../src/lib/situate/core'
 const date = (day:number,hour:number,minute=0) => new Date(2026,9,17+day,hour,minute).getTime()
 // Clock times only: sunset would otherwise follow the machine's time zone.
 const fixture = (now=date(0,12)) => regenerate(defaults(now), now, null)
@@ -205,7 +205,7 @@ test('reminder times follow sunset when it is later, across midnight', () => {
   const day=new Date(2026,5,21,12)
   const sun=sunset(day,vancouver.latitude,vancouver.longitude)!
   const hour=3_600_000
-  expect(reminderWindow({ from:420,until:1170,untilSunset:120 },day,vancouver).end).toBe(sun+2*hour)
+  expect(reminderWindow({ from:420,until:1170,untilSunset:120 },day,vancouver).end).toBe(Math.max(new Date(2026,5,21,19,30).getTime(),sun+2*hour))
   const winter=new Date(2026,11,21,12)
   const winterSun=sunset(winter,vancouver.latitude,vancouver.longitude)!
   expect(reminderWindow({ from:420,until:1170,untilSunset:0 },winter,vancouver).end).toBe(Math.max(new Date(2026,11,21,19,30).getTime(),winterSun))
@@ -224,13 +224,10 @@ test('a reminder whose start passes its end has no hours that day', () => {
   const location=timeZoneLocation('America/Vancouver')!
   const now=new Date(2026,5,21,12).getTime()
   const base=defaults(now)
-  const d=regenerate({ ...base, modes:base.modes.map(m=>m.id==='active-projects' ? { ...m, reminder:{ from:1200,until:1260,fromSunset:0 } } : m) },now,location)
-  const windows=d.windows.filter(w=>w.mode==='active-projects')
-  expect(windows.every(w=>w.at<w.end)).toBe(true)
-  // Late-June sunset falls after the 9 p.m. end, so those days have no window.
-  const june=new Date(2026,5,21)
-  expect(windows.some(w=>new Date(w.at).toDateString()===june.toDateString())).toBe(false)
-  expect(windows.length).toBeGreaterThan(0)
+  const windows=(reminder:Reminder)=>regenerate({ ...base, modes:base.modes.map(m=>m.id==='active-projects' ? { ...m, reminder } : m) },now,location).windows.filter(w=>w.mode==='active-projects')
+  expect(windows({ from:1200,until:1260 }).length).toBeGreaterThan(0)
+  // Sunset + 24 hours is past a same-day end in any host time zone.
+  expect(windows({ from:1200,until:1260,fromSunset:1440 })).toEqual([])
 })
 test('untouched reminder hours upgrade; edited ones stay', () => {
   const d=fixture()
