@@ -529,8 +529,8 @@ return rows`
   let quickAddOpen = false
   let quickAddSaving = false
   let quickAddPendingId: Id | null = null
-  // Within four minutes of adding an idea, the next quick add can reopen it instead.
-  const QUICK_ADD_EDIT_WINDOW_MS = 4 * 60 * 1000
+  // Within five minutes of saving an idea, the next quick add can reopen it instead.
+  const QUICK_ADD_EDIT_WINDOW_MS = 5 * 60 * 1000
   let lastQuickAddedIdea: { id: Id; at: number } | null = null
   let quickAddCanEditLast = false
   let quickAddEditing = false
@@ -3306,7 +3306,7 @@ return rows`
       // Closing the dialog acknowledges Save. Android can reclaim the WebView
       // immediately afterward, before a persistence debounce or lifecycle event.
       await plannerStore.flushPendingOperations()
-      if (!quickAddEditing && quickAddPendingId) lastQuickAddedIdea = { id: quickAddPendingId, at: Date.now() }
+      if (quickAddPendingId) lastQuickAddedIdea = { id: quickAddPendingId, at: Date.now() }
       quickAddSaving = false
       closeQuickAdd()
     } catch (error) {
