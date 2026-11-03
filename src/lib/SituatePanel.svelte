@@ -79,7 +79,7 @@
   {#if isTauri() && situatePlatform === 'android'}
     <section class="block">
       <h3>Device access</h3>
-      <div class="actions"><button type="button" on:click={() => permissionsAction('notifications')}>Notification access</button><button type="button" on:click={() => permissionsAction('mode-notifications')}>Mode notifications</button><button type="button" on:click={() => permissionsAction('accessibility')}>App blocking access</button><button type="button" on:click={() => permissionsAction('alarms')}>Schedule permission</button></div>
+      <div class="actions"><button type="button" on:click={() => permissionsAction('notifications')}>Notification access</button><button type="button" on:click={() => permissionsAction('mode-notifications')}>Mode notifications</button><button type="button" on:click={() => permissionsAction('accessibility')}>App blocking access</button><button type="button" on:click={() => permissionsAction('usage')}>App detection access</button><button type="button" on:click={() => permissionsAction('alarms')}>Schedule permission</button></div>
       {#if permissions}<p role="status" class="muted">{permissions}</p>{/if}
     </section>
     <section class="block"><SituateNotifications /></section>

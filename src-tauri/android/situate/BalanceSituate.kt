@@ -22,7 +22,7 @@ object BalanceSituate {
     private fun rules(context: Context) = File(context.noBackupFilesDir, "situate-rules.json")
     fun initialize(context: Context) { nativeInitialize(context.applicationContext); executor.execute { SituateSelfTest.runIfRequested(context); refresh(context) } }
     fun resume(activity: Activity) {
-        SituateAccessibility.appResumed()
+        SituateAccessibility.appResumed(activity)
         initialize(activity)
         activity.intent?.data?.toString()?.let { if (it.startsWith("balance://")) { nativeDeepLink(it); activity.intent.data = null } }
     }
@@ -91,6 +91,7 @@ object BalanceSituate {
                     "notifications" -> Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
                     "mode-notifications" -> Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE,context.packageName)
                     "accessibility" -> Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                    "usage" -> Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
                     "alarms" -> if(Build.VERSION.SDK_INT >=31) Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,Uri.parse("package:"+context.packageName)) else Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:"+context.packageName))
                     else -> throw IllegalArgumentException("Unknown permission")
                 }

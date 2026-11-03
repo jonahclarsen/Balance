@@ -15,6 +15,7 @@ import java.util.concurrent.Executors
 class SituateAccessibility : AccessibilityService() {
     private val main = Handler(Looper.getMainLooper())
     private val worker = Executors.newSingleThreadExecutor()
+    private val appIdentity by lazy { SituateAppIdentity(this) }
     private var foregroundPackage = ""
     private var eventTime = 0L
     private var generation = 0L
@@ -25,6 +26,7 @@ class SituateAccessibility : AccessibilityService() {
     private var gate: LinearLayout? = null
     private var gateTitle: TextView? = null
     private var quizUrl = ""
+    private var quizRequestedAt = 0L
     private var observer: FileObserver? = null
     private val tick = object : Runnable {
         override fun run() {
@@ -33,15 +35,31 @@ class SituateAccessibility : AccessibilityService() {
             main.postDelayed(this, 1000)
         }
     }
+    private val resumed = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            val at = intent.getLongExtra("at", 0)
+            // Lifecycle callbacks can arrive late after the planner is backgrounded.
+            // Only acknowledge the explicit quiz handoff that is still pending.
+            if (quizRequestedAt == 0L || at < quizRequestedAt) return
+            quizRequestedAt = 0
+            foregroundPackage = packageName
+            eventTime = SystemClock.uptimeMillis()
+            invalidate()
+        }
+    }
     private val screen = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) { invalidate() }
     }
     companion object {
         @Volatile private var current: SituateAccessibility? = null
         fun enforceCurrent() { Handler(Looper.getMainLooper()).post { current?.invalidate() } }
-        fun appResumed() { Handler(Looper.getMainLooper()).post {
-            current?.let { it.foregroundPackage = it.packageName; it.eventTime = SystemClock.uptimeMillis(); it.invalidate() }
-        } }
+        fun appResumed(context: Context) {
+            // The planner and blocker have separate processes. Both sender and
+            // receiver require the app's signature permission, including on API 31.
+            context.sendBroadcast(Intent(context.packageName + ".SITUATE_APP_RESUMED").setPackage(context.packageName)
+                .putExtra("at", SystemClock.uptimeMillis()),
+                context.packageName + ".permission.SITUATE_INTERNAL")
+        }
     }
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -51,8 +69,9 @@ class SituateAccessibility : AccessibilityService() {
         tracing = (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0 &&
             java.io.File(filesDir, "situate-ci-trace").exists()
         current = this
-        // Accessibility can restart without the planner activity or notification listener.
-        BalanceSituate.initialize(this)
+        // This process loads only the pure rules evaluator. Never initialize the
+        // planner, widget database, notification archive, or WebView here.
+        BalanceSituate.nativeInitialize(applicationContext)
         @Suppress("DEPRECATION")
         val watcher = object : FileObserver(noBackupFilesDir.absolutePath, CLOSE_WRITE or MOVED_TO or DELETE) {
             override fun onEvent(event: Int, path: String?) {
@@ -66,6 +85,10 @@ class SituateAccessibility : AccessibilityService() {
         }
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(screen, filter, Context.RECEIVER_NOT_EXPORTED)
         else registerReceiver(screen, filter)
+        val resumedFilter = IntentFilter(packageName + ".SITUATE_APP_RESUMED")
+        val permission = packageName + ".permission.SITUATE_INTERNAL"
+        if (Build.VERSION.SDK_INT >= 33) registerReceiver(resumed, resumedFilter, permission, main, Context.RECEIVER_NOT_EXPORTED)
+        else registerReceiver(resumed, resumedFilter, permission, main)
         main.post(tick)
     }
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -77,9 +100,11 @@ class SituateAccessibility : AccessibilityService() {
         if (event.contentChangeTypes != 0) return
         // System panels and our own overlay are not a new foreground app.
         // MainActivity reports its own resume explicitly, including quiz navigation.
-        if (pkg == "com.android.systemui" || (pkg == packageName && gate != null)) return
+        if (pkg == "com.android.systemui") return
+        if (pkg == packageName && gate != null && event.className?.toString() != MainActivity::class.java.name) return
         if (getSystemService(android.view.inputmethod.InputMethodManager::class.java)
                 .enabledInputMethodList.any { it.packageName == pkg }) return
+        if (pkg != packageName && event.eventTime >= quizRequestedAt) quizRequestedAt = 0
         eventTime = event.eventTime
         // Repeated pane events in the same app must not continually discard the
         // in-flight decision. Only an identity/rule/lifecycle change makes it stale.
@@ -94,26 +119,39 @@ class SituateAccessibility : AccessibilityService() {
     }
     private fun reconcile() {
         if (!connected) return
-        if (!interactive() || foregroundPackage.isBlank() || foregroundPackage == packageName) {
+        if (!interactive()) {
             hideGate()
             return
         }
         if (evaluating) return
         val expected = generation
-        val pkg = foregroundPackage
+        val reportedPackage = foregroundPackage
+        val reportedAt = System.currentTimeMillis() - SystemClock.uptimeMillis() + eventTime
         evaluating = true
         // Never queue behind archive encryption/export, and never read rules on the UI thread.
         worker.execute {
-            val mode = try { BalanceSituate.blocked(this, pkg).firstOrNull() }
+            val observed = try { appIdentity.latest() } catch (_: Exception) { null }
+            val recovered = observed?.takeIf { reportedPackage.isBlank() || it.at > reportedAt }
+            val pkg = recovered?.packageName ?: reportedPackage
+            val mode = try { if (pkg.isBlank()) null else BalanceSituate.blocked(this, pkg).firstOrNull() }
             catch (error: Exception) {
                 android.util.Log.w("BalanceSituate", "App rule evaluation failed: " + error.javaClass.simpleName)
                 null
             }
             main.post {
                 evaluating = false
+                trace("identity reported=$reportedPackage at=$reportedAt usage=${observed?.packageName} at=${observed?.at}")
                 if (!connected) return@post
                 // A queued result must not resurrect a gate after a pass, app switch, or Home.
-                if (expected != generation || pkg != foregroundPackage) { reconcile(); return@post }
+                if (expected != generation) { reconcile(); return@post }
+                if (pkg != foregroundPackage) {
+                    val currentAt = System.currentTimeMillis() - SystemClock.uptimeMillis() + eventTime
+                    // A real app-switch event may have arrived while usage access was queried.
+                    if (recovered == null || (foregroundPackage.isNotBlank() && recovered.at <= currentAt)) { reconcile(); return@post }
+                    foregroundPackage = pkg
+                    eventTime = SystemClock.uptimeMillis() - (System.currentTimeMillis() - recovered.at)
+                    generation++
+                }
                 trace("decision package=$pkg blocked=${mode != null} generation=$generation")
                 if (mode == null || !interactive()) hideGate() else showGate(pkg, mode)
             }
@@ -151,6 +189,7 @@ class SituateAccessibility : AccessibilityService() {
         layout.addView(heading)
         layout.addView(TextView(themed).apply { text = "Take a moment before opening this app."; textSize = 18f })
         layout.addView(Button(themed).apply { text = "Open quiz"; setOnClickListener {
+            quizRequestedAt = SystemClock.uptimeMillis()
             startActivity(Intent(this@SituateAccessibility, MainActivity::class.java)
                 .setData(android.net.Uri.parse(quizUrl))
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
@@ -177,6 +216,7 @@ class SituateAccessibility : AccessibilityService() {
         }
     }
     private fun leave() {
+        quizRequestedAt = 0
         trace("leave generation=$generation")
         // Home is asynchronous. Keep the gate until the launcher's window
         // event arrives; removing it here briefly refocuses the blocked app,
@@ -188,6 +228,7 @@ class SituateAccessibility : AccessibilityService() {
         gate = null
         gateTitle = null
         quizUrl = ""
+        quizRequestedAt = 0
         getSystemService(WindowManager::class.java).removeViewImmediate(view)
     }
     override fun onUnbind(intent: Intent?): Boolean { disconnect(); return super.onUnbind(intent) }
@@ -200,6 +241,7 @@ class SituateAccessibility : AccessibilityService() {
         observer?.stopWatching()
         observer = null
         unregisterReceiver(screen)
+        unregisterReceiver(resumed)
         main.removeCallbacksAndMessages(null)
         hideGate()
     }
