@@ -77,3 +77,59 @@ test('unshifted Cmd/Ctrl+G does not generate a day and Find keeps its shortcuts'
   await expect(page.getByRole('region', { name: 'Daily plan' })).toBeHidden()
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('balance.appState.v1') || '{}').plans ?? [])).toEqual([])
 })
+
+test('generating a day puts a linked process-events row above everything else', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-09-17T12:00:00'))
+  await page.goto('/')
+  await expect(page.getByRole('region', { name: 'Daily plan' })).toBeVisible()
+  const rows = () => page.evaluate(async () => {
+    const path = '/src/lib/store.ts'
+    const { plannerStore } = await import(/* @vite-ignore */ path)
+    let state: any
+    plannerStore.subscribe((value: any) => { state = value })()
+    return state.plans.find((plan: any) => plan.date === '2026-09-17').items.map((item: any) => item.text)
+  })
+  await page.evaluate(async () => {
+    const path = '/src/lib/store.ts'
+    const { plannerStore } = await import(/* @vite-ignore */ path)
+    await plannerStore.ready
+    let state: any
+    plannerStore.subscribe((value: any) => { state = value })()
+    plannerStore.generatePlan(state.templates[0].id, '2026-09-16', false)
+    plannerStore.generatePlan(state.templates[0].id, '2026-09-17', false)
+    plannerStore.subscribe((value: any) => { state = value })()
+    const today = state.plans.find((plan: any) => plan.date === '2026-09-17')
+    // An edited row survives regeneration, below the fresh process row.
+    plannerStore.patchPlanItem(today.id, today.items[1].id, { text: 'Kept edit', html: 'Kept edit' })
+  })
+  expect((await rows())[0]).toBe('Process events from September 16')
+
+  await page.evaluate(async () => {
+    const path = '/src/lib/store.ts'
+    const { plannerStore } = await import(/* @vite-ignore */ path)
+    let state: any
+    plannerStore.subscribe((value: any) => { state = value })()
+    const today = state.plans.find((plan: any) => plan.date === '2026-09-17')
+    plannerStore.generatePlan(state.templates[0].id, '2026-09-17', true)
+  })
+  const regenerated = await rows()
+  expect(regenerated.slice(0, 2)).toEqual(['Process events from September 16', 'Kept edit'])
+  expect(regenerated.filter((text: string) => text.startsWith('Process events'))).toHaveLength(1)
+
+  // A row the user touched is kept, not duplicated.
+  await page.evaluate(async () => {
+    const path = '/src/lib/store.ts'
+    const { plannerStore } = await import(/* @vite-ignore */ path)
+    let state: any
+    plannerStore.subscribe((value: any) => { state = value })()
+    const today = state.plans.find((plan: any) => plan.date === '2026-09-17')
+    plannerStore.patchPlanItemsDone(today.id, [today.items[0].id], true)
+    plannerStore.patchPlanItemsDone(today.id, [today.items[0].id], false)
+    plannerStore.generatePlan(state.templates[0].id, '2026-09-17', true)
+  })
+  expect((await rows()).filter((text: string) => text.startsWith('Process events'))).toHaveLength(1)
+
+  await page.locator('.date-input').fill('2026-09-17')
+  await page.locator('[data-plan-item-id]').first().getByRole('link', { name: 'September 16' }).click()
+  await expect(page.locator('.date-input')).toHaveValue('2026-09-16')
+})

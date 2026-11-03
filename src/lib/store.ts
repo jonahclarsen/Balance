@@ -46,6 +46,8 @@ import {
   formatPlanTitle,
   formatMinutes,
   generatePlanFromTemplate,
+  processEventsDate,
+  processEventsItems,
   htmlToPlainText,
   movePlanItem,
   movePlanItemWithinLevel,
@@ -1277,7 +1279,6 @@ function createPlannerStore() {
         notifications,
       )
 
-      const freshMarkers = generatedItemMarkers(generated.items)
       const previous = replaceExisting ? current.plans.find((plan) => plan.date === date) : undefined
       const previousIds = new Set(previous ? generatedItemMarkers(previous.items).map(({ id }) => id) : [])
       const preserved = previous ? preservedPlanItems(previous, current.uneditedPlanItems) : []
@@ -1287,10 +1288,19 @@ function createPlannerStore() {
         generated.id = previous.id
         generated.createdAt = previous.createdAt
       }
-      const visiblePlan = { ...generated, items: [...preserved, ...generated.items] }
+      // A kept row already covers its day. Fresh rows go above kept rows too.
+      const keptProcessDates = new Set(preserved.map(processEventsDate))
+      const processRows = processEventsItems(current.plans, date)
+        .filter((item) => !keptProcessDates.has(processEventsDate(item)))
+      const visiblePlan = { ...generated, items: [...processRows, ...preserved, ...generated.items] }
+      generated.items = [...processRows, ...generated.items]
+      const freshMarkers = generatedItemMarkers(generated.items)
+      const insertPositions = processRows.length > 0
+        ? { insertPositions: Object.fromEntries(processRows.map(({ id }, position) => [id, position])) }
+        : {}
 
       // Keep the legacy wire field empty; the selected day belongs to this device.
-      commit('regenerate_plan', { templateId, date, replaceExisting, activePlanDate: '', generatedPlan: generated, replaceItems, requireUntouched: true }, (state) => {
+      commit('regenerate_plan', { templateId, date, replaceExisting, activePlanDate: '', generatedPlan: generated, replaceItems, requireUntouched: true, ...insertPositions }, (state) => {
         const plans = replaceExisting ? state.plans.filter((plan) => plan.date !== date) : state.plans
         const goals = state.goals.some((goal) => !goal.presentationTrackingStartedAt)
           ? state.goals.map((goal) => goal.presentationTrackingStartedAt
