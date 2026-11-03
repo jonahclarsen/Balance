@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { defaults, regenerate, epoch, enableMode, grant, isActive, backOn, headsUp, questions, quizProgress, validate, matches, sunset, upgradePresets, timeZoneLocation } from '../../src/lib/situate/core'
+import { defaults, regenerate, reminderWindow, epoch, enableMode, grant, isActive, backOn, headsUp, questions, quizProgress, validate, matches, sunset, upgradePresets, timeZoneLocation } from '../../src/lib/situate/core'
 const date = (day:number,hour:number,minute=0) => new Date(2026,9,17+day,hour,minute).getTime()
 // Clock times only: sunset would otherwise follow the machine's time zone.
 const fixture = (now=date(0,12)) => regenerate(defaults(now), now, null)
@@ -186,8 +186,10 @@ test('older rules gain messaging apps and colors once, keeping Dolo\'s entertain
 test('reminder modes follow their daily hours, block nothing and cannot be passed or turned on', () => {
   const d=fixture();const active=d.modes.find(m=>m.id==='active-projects')!;const none=d.modes.find(m=>m.id==='no-active-project')!
   expect(isActive(d,active,'mac',date(0,12))).toBe(true)
-  expect(isActive(d,active,'mac',date(0,20,30))).toBe(false)
-  expect(isActive(d,none,'mac',date(0,20,30))).toBe(false)
+  expect(isActive(d,active,'mac',date(0,19,29))).toBe(true)
+  expect(isActive(d,active,'mac',date(0,19,30))).toBe(false)
+  expect(isActive(d,none,'mac',date(0,18,29))).toBe(false)
+  expect(isActive(d,none,'mac',date(0,18,30))).toBe(true)
   expect(isActive(d,none,'mac',date(0,23))).toBe(true)
   expect(isActive(d,none,'mac',date(1,6,59))).toBe(true)
   expect(isActive(d,none,'mac',date(1,7))).toBe(false)
@@ -197,4 +199,48 @@ test('reminder modes follow their daily hours, block nothing and cannot be passe
   const upgraded=upgradePresets(legacy)
   expect(upgraded.modes.filter(m=>m.reminder).map(m=>m.id)).toEqual(['active-projects','no-active-project'])
   expect(upgradePresets({ ...upgraded, presets:6 }).modes.filter(m=>m.reminder)).toHaveLength(2)
+})
+test('reminder times follow sunset when it is later, across midnight', () => {
+  const vancouver=timeZoneLocation('America/Vancouver')!
+  const day=new Date(2026,5,21,12)
+  const sun=sunset(day,vancouver.latitude,vancouver.longitude)!
+  const hour=3_600_000
+  expect(reminderWindow({ from:420,until:1170,untilSunset:120 },day,vancouver).end).toBe(sun+2*hour)
+  const winter=new Date(2026,11,21,12)
+  const winterSun=sunset(winter,vancouver.latitude,vancouver.longitude)!
+  expect(reminderWindow({ from:420,until:1170,untilSunset:0 },winter,vancouver).end).toBe(Math.max(new Date(2026,11,21,19,30).getTime(),winterSun))
+  // A start past midnight stays on the same night and still ends the following morning.
+  const late=reminderWindow({ from:1110,until:420,fromSunset:360 },day,vancouver)
+  expect(late.at).toBe(sun+6*hour)
+  expect(late.end).toBe(new Date(2026,5,22,7).getTime())
+  // A clock time after midnight is measured from the previous evening's sunset.
+  expect(reminderWindow({ from:1200,until:60,untilSunset:360 },day,vancouver).end).toBe(Math.max(new Date(2026,5,22,1).getTime(),sun+6*hour))
+  // A next-morning end measures from the sunset of the day it started, not the next evening.
+  expect(reminderWindow({ from:1110,until:420,untilSunset:120 },day,vancouver).end).toBe(Math.max(new Date(2026,5,22,7).getTime(),sun+2*hour))
+  // Without a location the rule falls back to the clock time.
+  expect(reminderWindow({ from:1110,until:420,fromSunset:180 },day,null).at).toBe(new Date(2026,5,21,18,30).getTime())
+})
+test('a reminder whose start passes its end has no hours that day', () => {
+  const location=timeZoneLocation('America/Vancouver')!
+  const now=new Date(2026,5,21,12).getTime()
+  const base=defaults(now)
+  const d=regenerate({ ...base, modes:base.modes.map(m=>m.id==='active-projects' ? { ...m, reminder:{ from:1200,until:1260,fromSunset:0 } } : m) },now,location)
+  const windows=d.windows.filter(w=>w.mode==='active-projects')
+  expect(windows.every(w=>w.at<w.end)).toBe(true)
+  // Late-June sunset falls after the 9 p.m. end, so those days have no window.
+  const june=new Date(2026,5,21)
+  expect(windows.some(w=>new Date(w.at).toDateString()===june.toDateString())).toBe(false)
+  expect(windows.length).toBeGreaterThan(0)
+})
+test('untouched reminder hours upgrade; edited ones stay', () => {
+  const d=fixture()
+  const old=(active:object,none:object)=>({ ...d, presets:12, modes:d.modes.map(m=>m.id==='active-projects' ? { ...m, reminder:active as never } : m.id==='no-active-project' ? { ...m, reminder:none as never } : m) })
+  const upgraded=upgradePresets(old({ from:420,until:1200 },{ from:1260,until:420 })).modes
+  expect(upgraded.find(m=>m.id==='active-projects')!.reminder).toEqual({ from:420,until:1170,untilSunset:120 })
+  expect(upgraded.find(m=>m.id==='no-active-project')!.reminder).toEqual({ from:1110,until:420,fromSunset:180 })
+  const edited=upgradePresets(old({ from:480,until:1080 },{ from:1320,until:360 })).modes
+  expect(edited.find(m=>m.id==='active-projects')!.reminder).toEqual({ from:480,until:1080 })
+  expect(edited.find(m=>m.id==='no-active-project')!.reminder).toEqual({ from:1320,until:360 })
+  validate(upgradePresets(old({ from:420,until:1200 },{ from:1260,until:420 })))
+  expect(() => validate({ ...d, modes:d.modes.map(m=>m.reminder ? { ...m, reminder:{ ...m.reminder, fromSunset:-5 } } : m) })).toThrow('Sunset offsets')
 })

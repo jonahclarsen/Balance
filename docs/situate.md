@@ -17,9 +17,12 @@ not turn it off on another. Planner data is never shared with integrations.
   a minute in bed with the lights off and Herdr muted. Passes last 50 minutes, or
   25 minutes after the late-night boundary; a pass still running at the boundary drops to 25.
 - **Discord:** mobile only, manually enabled.
-- **Active Projects** (7 a.m.–8 p.m.) and **No Active Project** (9 p.m.–7 a.m.):
+- **Active Projects** (7 a.m. until the later of 7:30 p.m. and sunset + 2 hours) and
+  **No Active Project** (the later of 6:30 p.m. and sunset + 3 hours until 7 a.m.):
   reminder modes. They block nothing, have no quiz and can't be turned off; they
   appear in the sidebar only while on, and clicking one shows its description.
+  A reminder's start or end can be a clock time alone or the later of that and sunset
+  plus an offset.
 
 Each mode has a description, shown on its card and in the notification when it
 turns on, a color used across Balance while it is on, and a device list (desktop, mobile, or

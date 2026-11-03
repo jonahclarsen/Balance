@@ -4,6 +4,8 @@ export type Category = 'social' | 'entertainment' | 'ai' | 'custom'
 /** minutes caps the pass when this question is asked. */
 export type Question = { id: string; text: string; required: boolean | null; when?: { id: string; answer: boolean }; minutes?: number }
 export type Target = { id: string; category: Category; kind: 'domain' | 'app' | 'discord'; value: string }
+/** Clock minutes, or sunset + that day's offset if later. */
+export type Reminder = { from: number; until: number; fromSunset?: number; untilSunset?: number }
 export type Mode = {
   id: string; name: string; description: string; color: string; platforms: Platform[]; scheduled: boolean
   dayQuiz: Question[]; nightQuiz: Question[]; targets: Target[]
@@ -11,8 +13,8 @@ export type Mode = {
   eveningOnly?: boolean
   /** Notify this many minutes before the mode turns back on. */
   headsUp?: number[]
-  /** A reminder mode blocks nothing and has no quiz: it is on daily between these clock minutes. */
-  reminder?: { from: number; until: number }
+  /** A reminder mode blocks nothing and has no quiz: it is on daily between these times. */
+  reminder?: Reminder
 }
 export type Settings = {
   wakeMinutes: number; eveningMinutes: number; sunsetOffset: number; lateOffset: number
@@ -46,15 +48,15 @@ export const CATEGORIES: { id: Category; label: string; color: string }[] = [
   { id: 'custom', label: 'Other', color: '#5f7d8c' },
 ]
 const target = (category: Category, kind: Target['kind'], value: string): Target => ({ id: `${kind}:${value}`, category, kind, value })
-const PRESETS = 12
+const PRESETS = 13
 /** Lengths offered for an entertainment pass, chosen after its quiz. */
 export const ACCESS_MINUTES = [5, 15, 60]
 const emergency: Question = { ...q('emergency', 'Is this an emergency?'), when: { id: 'planned', answer: false }, minutes: 5 }
 // Google Messages, WhatsApp, Messenger, Instagram, the Feurstagram clone and Signal on Android and Mac.
 const messagingApps = ['com.google.android.apps.messaging', 'com.whatsapp', 'net.whatsapp.WhatsApp', 'com.facebook.orca', 'com.facebook.archon', 'com.facebook.archon.developerID', 'com.burbn.instagram', 'com.instagram.android.feurstagram', 'org.thoughtcrime.securesms', 'org.whispersystems.signal-desktop']
   .map(v => target('social', 'app', v))
-const reminder = (id: string, name: string, description: string, color: string, from: number, until: number): Mode =>
-  ({ id, name, description, color, platforms: ['mac', 'android'], scheduled: false, dayQuiz: [], nightQuiz: [], targets: [], reminder: { from, until } })
+const reminder = (id: string, name: string, description: string, color: string, hours: Reminder): Mode =>
+  ({ id, name, description, color, platforms: ['mac', 'android'], scheduled: false, dayQuiz: [], nightQuiz: [], targets: [], reminder: hours })
 export function defaults(now = Date.now()): Document {
   const targets: Target[] = [
     ...['instagram.com', 'facebook.com', 'tiktok.com', 'reddit.com', 'x.com', 'twitter.com', 'threads.net', 'bsky.app', 'snapchat.com'].map(v => target('social', 'domain', v)),
@@ -72,8 +74,8 @@ export function defaults(now = Date.now()): Document {
     modes: [
       { id: 'dolo', name: 'Dolo', description: 'Social and messaging apps, plus entertainment.', color: PRESET_COLORS.dolo, platforms: ['mac', 'android'], scheduled: true, dayQuiz: thrust, nightQuiz: thrust, targets: targets.filter(t => t.category !== 'ai') },
       { id: 'touch-grass', name: 'Touch grass', description: 'AI chats and entertainment.', color: PRESET_COLORS['touch-grass'], platforms: ['mac', 'android'], scheduled: true, eveningOnly: true, headsUp: [15, 5], dayQuiz: [q('planned', 'Have you planned tomorrow?'), emergency], nightQuiz: [q('peed', 'Have you just peed?'), q('bed', 'Have you spent one minute in bed with the lights off and Herdr muted?')], targets: targets.filter(t => t.category !== 'social') },
-      reminder('active-projects', 'Active Projects', 'Time for your active projects.', MODE_COLORS[5], 420, 1200),
-      reminder('no-active-project', 'No Active Project', 'Leave projects for tomorrow.', MODE_COLORS[6], 1260, 420),
+      reminder('active-projects', 'Active Projects', 'Time for your active projects.', MODE_COLORS[5], { from: 420, until: 1170, untilSunset: 120 }),
+      reminder('no-active-project', 'No Active Project', 'Leave projects for tomorrow.', MODE_COLORS[6], { from: 1110, until: 420, fromSunset: 180 }),
       { id: 'discord', name: 'Discord', description: 'Discord on your phone.', color: PRESET_COLORS.discord, platforms: ['android'], scheduled: false, dayQuiz: [q('intentional', 'Do you have a specific reason to open Discord now?')], nightQuiz: [q('intentional', 'Do you have a specific reason to open Discord now?')], targets: [target('custom', 'app', 'com.discord'), target('custom', 'domain', 'discord.com')] },
     ],
   }
@@ -90,7 +92,8 @@ export function upgradePresets(doc: Document): Document {
   // v9 turns Touch grass on only at evening, with 15- and 5-minute heads-ups; v10 replaces
   // each mode's entertainment quiz with one shared quiz, keeping Dolo's; v11 asks each
   // entertainment pass for its length instead of a fixed one; v12 shortens untouched night
-  // passes from 60 and 30 minutes to 50 and 25.
+  // passes from 60 and 30 minutes to 50 and 25; v13 moves untouched reminder times to
+  // Active Projects ending and No Active Project starting at a clock time or after sunset.
   const preset = defaults(doc.generatedAt).modes
   const legacy = doc.modes as (Mode & Legacy)[]
   const accessQuiz = doc.accessQuiz ?? [legacy.find(m => m.id === 'dolo'), ...legacy].find(m => m?.accessQuiz?.length)?.accessQuiz ?? entertainment
@@ -100,7 +103,11 @@ export function upgradePresets(doc: Document): Document {
     const fallback = preset.find(p => p.id === m.id)
     const dayQuiz = version < 8 && m.id === 'touch-grass' && m.dayQuiz.some(q => q.id === 'planned') && !m.dayQuiz.some(q => q.id === emergency.id) ? [...m.dayQuiz, emergency] : m.dayQuiz
     const evening = version < 9 && m.id === 'touch-grass' && m.scheduled ? { eveningOnly: true, headsUp: m.headsUp ?? [15, 5] } : {}
-    return { ...mode, ...evening, dayQuiz, color: m.color ?? PRESET_COLORS[m.id] ?? MODE_COLORS[i % MODE_COLORS.length], description: m.description ?? fallback?.description ?? '', targets }
+    const hours = version >= 13 ? {}
+      : m.id === 'active-projects' && m.reminder?.until === 1200 ? { reminder: { ...m.reminder, until: 1170, untilSunset: 120 } }
+      : m.id === 'no-active-project' && m.reminder?.from === 1260 ? { reminder: { ...m.reminder, from: 1110, fromSunset: 180 } }
+      : {}
+    return { ...mode, ...evening, ...hours, dayQuiz, color: m.color ?? PRESET_COLORS[m.id] ?? MODE_COLORS[i % MODE_COLORS.length], description: m.description ?? fallback?.description ?? '', targets }
   })
   const { enabled: _enabled, ...rest } = doc as Document & Legacy
   const { latitude: _latitude, longitude: _longitude, accessMinutes: _accessMinutes, ...kept } = doc.settings as Settings & Legacy
@@ -157,6 +164,21 @@ export function timeZoneLocation(zone = Intl.DateTimeFormat().resolvedOptions().
   const matches = CITIES.filter(c => offsets(c.zone)[0] === winter)
   return matches.find(c => offsets(c.zone)[1] === summer) ?? matches[0] ?? null
 }
+function reminderTime(day: Date, minutes: number, offset: number | undefined, sunDay: Date, location: Location | null): number {
+  const at = clock(day, minutes)
+  if (offset === undefined || !location) return at
+  const sun = sunset(sunDay, location.latitude, location.longitude)
+  return sun === null ? at : Math.max(at, sun + offset * minute)
+}
+/** The reminder's hours starting on this day. It has none when its start passes its end. */
+export function reminderWindow(reminder: Reminder, day: Date, location = timeZoneLocation()): { at: number; end: number } {
+  const { from, until, fromSunset, untilSunset } = reminder
+  const endDay = new Date(day); if (until <= from) endDay.setDate(endDay.getDate() + 1)
+  // A time after midnight belongs to the night following the previous day's sunset.
+  const night = (minutes: number) => { const d = new Date(day); if (minutes < 300) d.setDate(d.getDate() - 1); return d }
+  // An end on the next day measures from the sunset of the day it started.
+  return { at: reminderTime(day, from, fromSunset, night(from), location), end: reminderTime(endDay, until, untilSunset, until <= from ? day : night(until), location) }
+}
 export function regenerate(doc: Document, now = Date.now(), location = timeZoneLocation()): Document {
   const { settings: s } = doc
   const epochs: Epoch[] = []
@@ -179,11 +201,10 @@ export function regenerate(doc: Document, now = Date.now(), location = timeZoneL
   const windows: Window[] = []
   for (const mode of doc.modes) {
     if (!mode.reminder) continue
-    const { from, until } = mode.reminder
     for (let i = -2; i < 400; i++) {
       const day = new Date(now); day.setDate(day.getDate() + i)
-      const endDay = new Date(day); if (until <= from) endDay.setDate(endDay.getDate() + 1)
-      windows.push({ mode: mode.id, at: clock(day, from), end: clock(endDay, until) })
+      const { at, end } = reminderWindow(mode.reminder, day, location)
+      if (at < end) windows.push({ mode: mode.id, at, end })
     }
   }
   return { ...doc, generatedAt: now, epochs, windows, grants: doc.grants.filter(g => g.until > now) }
@@ -304,6 +325,7 @@ export function validate(doc: Document): void {
     validateQuiz(m.dayQuiz); validateQuiz(m.nightQuiz)
     if (m.headsUp && (m.headsUp.length > 5 || m.headsUp.some(t => !Number.isInteger(t) || t < 1 || t > 240))) throw new Error('Heads-ups must be between 1 and 240 minutes')
     if (m.reminder && (![m.reminder.from, m.reminder.until].every(t => Number.isInteger(t) && t >= 0 && t < 1440) || m.reminder.from === m.reminder.until || m.targets.length)) throw new Error('Reminder modes need different start and end times')
+    if ([m.reminder?.fromSunset, m.reminder?.untilSunset].some(o => o !== undefined && !(o >= 0 && o <= 1440))) throw new Error('Sunset offsets must be between 0 and 24 hours')
     if (m.targets.length > 300) throw new Error('Use at most 300 targets per mode')
     for (const t of m.targets) {
       if (!t.value || t.value.length > 255 || /[\s/\\]/.test(t.value) || !['domain', 'app', 'discord'].includes(t.kind)) throw new Error('Targets use a domain, bundle/package ID, or Discord channel ID')

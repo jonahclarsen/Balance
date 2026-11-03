@@ -15,7 +15,7 @@
 <div class="schedule">
   <div class="fields">
     <div class="field"><span>Morning</span><div class="inline"><SituateDragValue kind="clock" label="Morning" value={s.wakeMinutes} onChange={v => save({ wakeMinutes: v })} /></div></div>
-    <div class="field"><span>Evening</span><div class="inline"><SituateDragValue kind="clock" label="Evening" value={s.eveningMinutes} onChange={v => save({ eveningMinutes: v })} />{#if location}<span title={`Sunset in ${location.name}`}>or sunset +</span><SituateDragValue kind="duration" min={0} label="Hours after sunset for evening" value={s.sunsetOffset} onChange={v => save({ sunsetOffset: v })} /><span>if later</span>{/if}</div></div>
+    <div class="field"><span>Evening</span><div class="inline"><SituateDragValue kind="clock" label="Evening" value={s.eveningMinutes} onChange={v => save({ eveningMinutes: v })} />{#if location}<span title={`Sunset in ${location.name}`}>or sunset +</span><SituateDragValue kind="duration" min={0} label="Hours after sunset for evening" value={s.sunsetOffset} onChange={v => save({ sunsetOffset: v })} /><span>if later</span>{#if today}<span class="muted">({clockTime(today.evening)} tonight)</span>{/if}{/if}</div></div>
   </div>
   <div class="night">
     <h4>Touch grass at night</h4>

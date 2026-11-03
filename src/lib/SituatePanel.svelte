@@ -1,9 +1,8 @@
 <script lang="ts">
   import { isTauri, invoke } from '@tauri-apps/api/core'
   import { situate, situateNow, situatePlatform, situateError, requestQuiz, activateMode } from './situate/store'
-  import { isActive, epoch, backOn, nextScheduled, scheduleToday, nightPassEnd, type Mode } from './situate/core'
+  import { isActive, epoch, backOn, nextScheduled, reminderWindow, scheduleToday, nightPassEnd, type Mode } from './situate/core'
   import { DEVICES, clockTime } from './situate/ui'
-  import { formatMinutes as minutesTime } from './planner'
   import { browsersMissingExtension, extensionSetupOpen } from './situate/extension'
   import SituateModeEditor from './SituateModeEditor.svelte'
   import SituateSchedule from './SituateSchedule.svelte'
@@ -21,7 +20,10 @@
     return Math.ceil((nightPassEnd($situate.settings, currentEpoch, $situateNow) - $situateNow) / 60000)
   }
   function summary(mode: Mode, active: boolean) {
-    if (mode.reminder) return `${minutesTime(mode.reminder.from)}–${minutesTime(mode.reminder.until)}`
+    if (mode.reminder) {
+      const { at, end } = reminderWindow(mode.reminder, new Date(today?.wake ?? $situateNow))
+      return `${clockTime(at)}–${clockTime(end)}`
+    }
     if (!active) {
       const until = backOn($situate, mode, $situateNow)
       return until ? `Back on at ${clockTime(until)}` : 'Off until you turn it on'
