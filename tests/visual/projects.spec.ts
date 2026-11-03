@@ -856,13 +856,18 @@ test('generating a day with no project active by noon settles ended projects and
   await page.keyboard.type('Synthetic went well')
   await page.keyboard.press('Enter')
   await page.keyboard.type('/')
-  await expect(pick.locator('.lexical-slash-menu')).toBeVisible()
+  await expect(outgoing.locator('.lexical-slash-menu')).toBeVisible()
   await page.keyboard.press('Escape')
-  await expect(pick.locator('.lexical-slash-menu')).toBeHidden()
+  await expect(outgoing.locator('.lexical-slash-menu')).toBeHidden()
   await expect(pick).toBeVisible()
   await page.keyboard.press('Backspace')
-  await expect.poll(async () => (await readState(page)).projectHistoryNotes
-    .find((note: any) => note.id === 'project-history-2026-09-09')?.items[0]?.text).toBe('Synthetic went well')
+  const upcoming = pick.getByRole('region', { name: 'thurs september 10', exact: true })
+  await expect(upcoming.getByRole('heading', { name: 'thurs september 10', exact: true })).toBeVisible()
+  await upcoming.locator('[contenteditable="true"], .note-empty-editor').first().click()
+  await page.keyboard.type('Synthetic approach')
+  const historyNoteText = async (id: string) => (await readState(page)).projectHistoryNotes.find((note: any) => note.id === id)?.items[0]?.text
+  await expect.poll(() => historyNoteText('project-history-2026-09-09')).toBe('Synthetic went well')
+  await expect.poll(() => historyNoteText('project-history-2026-09-10')).toBe('Synthetic approach')
 
   // Closing skips generating the day.
   await pick.getByRole('button', { name: 'Close', exact: true }).click()
@@ -891,6 +896,11 @@ test('generating a day with no project active by noon settles ended projects and
   await openView(page, 'Projects')
   await page.getByRole('button', { name: 'History', exact: true }).click()
   await expect(page.getByRole('region', { name: 'wed september 9', exact: true })).toContainText('Synthetic went well')
+  // The new stretch is filed with the writing about it.
+  const newSession = page.getByRole('region', { name: 'thurs september 10', exact: true })
+  await expect(newSession).toContainText('Synthetic approach')
+  await expect(newSession.locator('li', { hasText: 'Synthetic next' })).toContainText('2d')
+  await expect(newSession.locator('li', { hasText: 'Synthetic new' })).toContainText('2d')
   await openView(page, 'Today')
 
   // With a project active by noon, generating again asks nothing.

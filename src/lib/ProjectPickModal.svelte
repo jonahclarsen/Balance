@@ -20,7 +20,8 @@
 
   // Ended projects lead and keep their place while being settled.
   const endedIds = new Set(endedProjectsOn(projects, date).map(({ id }) => id))
-  const outgoingDay = outgoingHistoryDay(projects, date)
+  // Writing about the outgoing session, then the upcoming one.
+  const noteDays = [...new Set([outgoingHistoryDay(projects, date) ?? date, date])]
   $: open = projects.filter(isProjectOpen)
   $: rows = [...open.filter(({ id }) => endedIds.has(id)), ...open.filter(({ id }) => !endedIds.has(id))]
   $: pickable = rows.filter(({ id }) => !endings[id])
@@ -47,12 +48,12 @@
 
 <OverlayModal title="Pick projects" z={68} maxWidth={480} {onClose}>
   <div class="project-pick">
-    {#if outgoingDay}
-      <section class="outgoing" aria-label={historyDayHeading(outgoingDay)}>
-        <h3 class="note-static-heading">{historyDayHeading(outgoingDay)}</h3>
-        <ProjectHistoryNoteEditor noteId={projectHistoryNoteId(outgoingDay)} {onOpenLink} />
+    {#each noteDays as day (day)}
+      <section class="session" aria-label={historyDayHeading(day)}>
+        <h3 class="note-static-heading">{historyDayHeading(day)}</h3>
+        <ProjectHistoryNoteEditor noteId={projectHistoryNoteId(day)} {onOpenLink} />
       </section>
-    {/if}
+    {/each}
     <ul>
       {#each rows as project (project.id)}
         <li class:settled={endings[project.id]}>
@@ -95,7 +96,7 @@
 
 <style>
   .project-pick { display: grid; gap: 14px; }
-  .outgoing { display: grid; gap: 10px; min-width: 0; }
+  .session { display: grid; gap: 10px; min-width: 0; }
   ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
   li { display: flex; align-items: center; gap: 6px; min-width: 0; }
   li button { font-size: 13px; padding: 7px 10px; }

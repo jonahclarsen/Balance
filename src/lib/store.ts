@@ -4,7 +4,7 @@ import { generatedItemMarkers, preservedPlanItems, reconcileUneditedPlanItems } 
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import { noteItemsEqual } from './noteEditor/noteItems'
 import { pickerColorToHex } from './colors'
-import { isProjectActive, projectActiveUntil, projectActiveUntilOn, templateForGeneration, withActiveUntil } from './projects'
+import { isProjectActive, projectActiveUntil, projectActiveUntilOn, projectStartOn, templateForGeneration, withActiveUntil } from './projects'
 import { spreadPriorityItems } from './prioritize'
 import { get, writable, type Writable } from 'svelte/store'
 import {
@@ -2330,7 +2330,7 @@ function createPlannerStore() {
           const ending = endings[project.id]
           const picked = activeIds.includes(project.id)
           if ((!ending && !picked) || project.archived || project.completedAt) return project
-          const rest = withActiveUntil(project, picked && (!ending || ending === 'open') ? activeUntil : null, new Date(timestamp), () => createId('project-period'))
+          const rest = withActiveUntil(project, picked && (!ending || ending === 'open') ? activeUntil : null, new Date(timestamp), () => createId('project-period'), projectStartOn(date, new Date(timestamp)))
           if (ending === 'completed') return { ...rest, completedAt: timestamp, updatedAt: timestamp }
           if (ending === 'archived') return { ...rest, archived: true, archivedAt: timestamp, updatedAt: timestamp }
           return { ...rest, updatedAt: timestamp }
