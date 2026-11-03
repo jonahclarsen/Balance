@@ -73,7 +73,6 @@
           <SituateDragValue kind="clock" label="Reminder starts" value={draft.reminder.from} onChange={v => { if (draft.reminder) draft.reminder = { ...draft.reminder, from: v } }} /><span>to</span>
           <SituateDragValue kind="clock" label="Reminder ends" value={draft.reminder.until} onChange={v => { if (draft.reminder) draft.reminder = { ...draft.reminder, until: v } }} />
         </div>
-        <p class="muted">Blocks nothing. Clicking it shows the description.</p>
       </section>
     {:else}
     <section>
