@@ -15,7 +15,7 @@ async function readState(page: Page) {
     const { plannerStore } = await import(/* @vite-ignore */ path)
     let state: any
     plannerStore.subscribe((value: any) => { state = value })()
-    return structuredClone({ projects: state.projects, operation: state.operations.at(-1) })
+    return structuredClone({ projects: state.projects, projectHistoryNotes: state.projectHistoryNotes, operation: state.operations.at(-1) })
   })
 }
 
@@ -849,6 +849,21 @@ test('generating a day with no project active by noon settles ended projects and
   const days = pick.getByRole('group', { name: 'Days active' }).getByRole('button')
   await expect(days.first()).toBeDisabled()
 
+  // The outgoing session's History writing is editable here.
+  const outgoing = pick.getByRole('region', { name: 'wed september 9', exact: true })
+  await expect(outgoing.getByRole('heading', { name: 'wed september 9', exact: true })).toBeVisible()
+  await outgoing.locator('[contenteditable="true"], .note-empty-editor').first().click()
+  await page.keyboard.type('Synthetic went well')
+  await page.keyboard.press('Enter')
+  await page.keyboard.type('/')
+  await expect(pick.locator('.lexical-slash-menu')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(pick.locator('.lexical-slash-menu')).toBeHidden()
+  await expect(pick).toBeVisible()
+  await page.keyboard.press('Backspace')
+  await expect.poll(async () => (await readState(page)).projectHistoryNotes
+    .find((note: any) => note.id === 'project-history-2026-09-09')?.items[0]?.text).toBe('Synthetic went well')
+
   // Closing skips generating the day.
   await pick.getByRole('button', { name: 'Close', exact: true }).click()
   await expect(pick).toBeHidden()
@@ -872,6 +887,11 @@ test('generating a day with no project active by noon settles ended projects and
   expect(byName['Synthetic next'].activeUntil).toBe('2026-09-12T14:00:00.000Z')
   expect(byName['Synthetic new'].activeUntil).toBe('2026-09-12T14:00:00.000Z')
   await expect(page.getByRole('region', { name: 'Daily plan' })).toBeVisible()
+
+  await openView(page, 'Projects')
+  await page.getByRole('button', { name: 'History', exact: true }).click()
+  await expect(page.getByRole('region', { name: 'wed september 9', exact: true })).toContainText('Synthetic went well')
+  await openView(page, 'Today')
 
   // With a project active by noon, generating again asks nothing.
   await generateDay(page)

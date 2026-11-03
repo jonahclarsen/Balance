@@ -1394,6 +1394,8 @@ class LexicalNoteEditorView implements NoteEditorView {
       }
       if (event.key === 'Escape') {
         event.preventDefault()
+        // Closes only this menu, not a modal around the editor.
+        event.stopPropagation()
         this.dismissSlash()
         return true
       }

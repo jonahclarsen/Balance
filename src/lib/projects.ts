@@ -103,6 +103,11 @@ export function projectHistoryPeriods(projects: Project[], notedDays: string[] =
   return [...byDay].map(([day, entries]) => ({ day, entries })).sort((a, b) => b.day.localeCompare(a.day))
 }
 
+// The start day of the session that picking projects for `date` follows.
+export function outgoingHistoryDay(projects: Project[], date: string): string | null {
+  return projectHistoryPeriods(projects).find(({ day }) => day <= date)?.day ?? null
+}
+
 const HISTORY_NOTE_PREFIX = 'project-history-'
 export const PROJECT_BACKSTORY_NOTE_ID = `${HISTORY_NOTE_PREFIX}backstory`
 

@@ -1,7 +1,9 @@
 <script lang="ts">
   import type { Id, Project } from './types'
+  import type { ItemLink } from './planner'
   import OverlayModal from './OverlayModal.svelte'
-  import { endedProjectsOn, isProjectOpen, PROJECT_ACTIVE_DAY_COUNTS } from './projects'
+  import ProjectHistoryNoteEditor from './ProjectHistoryNoteEditor.svelte'
+  import { endedProjectsOn, historyDayHeading, isProjectOpen, outgoingHistoryDay, PROJECT_ACTIVE_DAY_COUNTS, projectHistoryNoteId } from './projects'
 
   // Asked while generating a day that would start with no active project:
   // settle the projects whose stretch ended, then pick the next ones.
@@ -10,6 +12,7 @@
   export let onAdd: (name: string) => Id | null
   export let onDone: (endings: Record<Id, 'completed' | 'archived' | 'open'>, activeIds: Id[], days: number) => void
   export let onClose: () => void
+  export let onOpenLink: (link: ItemLink) => void = () => {}
 
   let endings: Record<Id, 'completed' | 'archived'> = {}
   let selected = new Set<Id>()
@@ -17,6 +20,7 @@
 
   // Ended projects lead and keep their place while being settled.
   const endedIds = new Set(endedProjectsOn(projects, date).map(({ id }) => id))
+  const outgoingDay = outgoingHistoryDay(projects, date)
   $: open = projects.filter(isProjectOpen)
   $: rows = [...open.filter(({ id }) => endedIds.has(id)), ...open.filter(({ id }) => !endedIds.has(id))]
   $: pickable = rows.filter(({ id }) => !endings[id])
@@ -43,6 +47,12 @@
 
 <OverlayModal title="Pick projects" z={68} maxWidth={480} {onClose}>
   <div class="project-pick">
+    {#if outgoingDay}
+      <section class="outgoing" aria-label={historyDayHeading(outgoingDay)}>
+        <h3 class="note-static-heading">{historyDayHeading(outgoingDay)}</h3>
+        <ProjectHistoryNoteEditor noteId={projectHistoryNoteId(outgoingDay)} {onOpenLink} />
+      </section>
+    {/if}
     <ul>
       {#each rows as project (project.id)}
         <li class:settled={endings[project.id]}>
@@ -85,6 +95,7 @@
 
 <style>
   .project-pick { display: grid; gap: 14px; }
+  .outgoing { display: grid; gap: 10px; min-width: 0; }
   ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
   li { display: flex; align-items: center; gap: 6px; min-width: 0; }
   li button { font-size: 13px; padding: 7px 10px; }

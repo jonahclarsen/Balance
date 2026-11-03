@@ -8787,6 +8787,7 @@ return rows`
           finishProjectPick(true)
         }}
         onClose={() => finishProjectPick(false)}
+        onOpenLink={(link) => openLink(link, null)}
       />
     {/if}
 

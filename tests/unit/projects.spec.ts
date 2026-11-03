@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { activeProjects, endedProjectsOn, historyDayHeading, needsProjectPick, nextProjectExpiry, periodDays, periodFromDays, projectActiveUntil, projectActiveUntilOn, projectHistory, projectHistoryNoteDay, projectHistoryNoteId, projectHistoryPeriods, templateForGeneration, withActiveUntil } from '../../src/lib/projects'
+import { activeProjects, endedProjectsOn, historyDayHeading, needsProjectPick, nextProjectExpiry, outgoingHistoryDay, periodDays, periodFromDays, projectActiveUntil, projectActiveUntilOn, projectHistory, projectHistoryNoteDay, projectHistoryNoteId, projectHistoryPeriods, templateForGeneration, withActiveUntil } from '../../src/lib/projects'
 import type { DailyTemplate, Project, TemplateItem } from '../../src/lib/types'
 
 const project = (patch: Partial<Project> = {}): Project => ({ id: 'project', name: 'Project', description: '', color: '#336699', archived: false, createdAt: '', updatedAt: '', ...patch })
@@ -105,6 +105,16 @@ test('history groups stretches by start day and keeps written days', () => {
   ])
   expect(projectHistoryNoteDay(projectHistoryNoteId('2026-10-20'))).toBe('2026-10-20')
   expect(projectHistoryNoteDay('project-history-backstory')).toBeNull()
+})
+
+test('the outgoing session is the latest one started by the generated day', () => {
+  const projects = [
+    project({ id: 'a', activePeriods: [{ id: 'a1', ...periodFromDays('2026-10-20', '2026-10-22') }] }),
+    project({ id: 'b', activePeriods: [{ id: 'b1', ...periodFromDays('2026-10-25', '2026-10-26') }, { id: 'b2', ...periodFromDays('2026-11-05', '2026-11-06') }] }),
+  ]
+  expect(outgoingHistoryDay(projects, '2026-10-27')).toBe('2026-10-25')
+  expect(outgoingHistoryDay(projects, '2026-10-19')).toBeNull()
+  expect(outgoingHistoryDay([project()], '2026-10-27')).toBeNull()
 })
 
 test('history headings read like "tues october 28"', () => {
