@@ -46,7 +46,7 @@ function currentPeriod(project: Project, now: number): ProjectActivePeriod | und
 // extending the current stretch, ending it now, or starting a new one. A
 // stretch ended before its start never happened, so it leaves no record.
 export function withActiveUntil(project: Project, activeUntil: string | null, now = new Date(), createId: () => Id, start = now): Project {
-  const { activeUntil: _activeUntil, ...rest } = project
+  const { activeUntil: _activeUntil, activePeriods: _activePeriods, ...rest } = project
   const current = currentPeriod(project, now.getTime())
   const periods = project.activePeriods ?? []
   let activePeriods = periods
