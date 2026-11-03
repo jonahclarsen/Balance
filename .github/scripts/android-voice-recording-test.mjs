@@ -2,7 +2,8 @@
 // Records voice ideas on a disposable emulator install: stopping from the
 // notification in the background, keeping Android out of call mode with the
 // phone microphone, and recovering after the app is killed. The emulator's
-// microphone only produces silence.
+// microphone only produces silence, and it has no echo canceller, so Chromium
+// stays out of call mode with either microphone.
 
 import { spawnSync } from 'node:child_process'
 import { writeFileSync } from 'node:fs'
@@ -67,32 +68,12 @@ async function connect() {
 const notification = () => adb(['shell', 'dumpsys', 'notification', '--noredact']).includes('Notification(channel=voice-recording')
 const isForeground = () => /isForeground=true/.test(adb(['shell', 'dumpsys', 'activity', 'services', 'BalanceVoiceRecordingService']))
 
-function uiNodes() {
-  adb(['shell', 'uiautomator', 'dump', '/sdcard/window.xml'])
-  return adb(['shell', 'cat', '/sdcard/window.xml']).match(/<node [^>]*>/g) ?? []
-}
-
-function tapNode(node) {
-  const [, left, top, right, bottom] = node.match(/bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/).map(Number)
-  adb(['shell', 'input', 'tap', String(Math.round((left + right) / 2)), String(Math.round((top + bottom) / 2))])
-}
-
-async function tapNotificationStop() {
-  adb(['shell', 'cmd', 'statusbar', 'expand-notifications'])
-  await sleep(1500)
-  const isStop = (node) => /\btext="stop"/i.test(node)
-  const stop = await waitFor(async () => {
-    const nodes = uiNodes()
-    const found = nodes.find(isStop)
-    if (found) return found
-    // The notification starts collapsed, with its actions hidden.
-    const row = nodes.findIndex((node) => /text="Recording"/.test(node))
-    const expand = nodes.slice(Math.max(0, row - 8), row + 12).find((node) => /expand_button/.test(node)) ?? nodes[row]
-    if (expand) tapNode(expand)
-    return null
-  }, 'the notification Stop button', 30_000)
-  tapNode(stop)
-  adb(['shell', 'cmd', 'statusbar', 'collapse'])
+// uiautomator needs a second of idle UI, which the notification's ticking timer
+// never allows, so this sends the intent behind the Stop action instead of tapping.
+function sendNotificationStop() {
+  const dump = adb(['shell', 'dumpsys', 'notification', '--noredact'])
+  if (!/"Stop"\s*->\s*PendingIntent/.test(dump)) throw new Error('The recording notification has no Stop action')
+  adb(['shell', 'am', 'startservice', '-n', `${packageName}/app.balance.local.BalanceVoiceRecordingService`, '-a', 'app.balance.local.STOP_VOICE_RECORDING'])
 }
 
 function audioMode() {
@@ -106,6 +87,10 @@ async function readClips(evaluate) {
 }
 
 async function run() {
+  // Root may start the service the way the notification's PendingIntent does.
+  adb(['root'])
+  await sleep(2_000)
+  adb(['wait-for-device'])
   adb(['install', '-r', 'balance-debug.apk'])
   adb(['shell', 'pm', 'clear', packageName])
   // Permissions that don't exist on an older Android fail harmlessly.
@@ -147,7 +132,7 @@ async function run() {
   if (audio.some((line) => /silenced[:=\s]*true/i.test(line))) throw new Error('Android silenced the microphone in the background')
   if (!isForeground()) throw new Error('The recording service left the foreground')
 
-  await tapNotificationStop()
+  sendNotificationStop()
   // The app stays in the background: stopping must save without reopening it.
   const clips = await waitFor(async () => {
     const saved = await readClips(evaluate)
@@ -189,7 +174,6 @@ async function run() {
 
 run().catch((error) => {
   console.error(error)
-  writeFileSync('voice-recording-window.xml', adb(['shell', 'cat', '/sdcard/window.xml'], { allowFailure: true }))
   writeFileSync('voice-recording-notifications.txt', adb(['shell', 'dumpsys', 'notification', '--noredact'], { allowFailure: true }))
   writeFileSync('logcat-voice-recording.txt', adb(['logcat', '-d'], { allowFailure: true }))
   process.exit(1)

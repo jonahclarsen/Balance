@@ -175,7 +175,6 @@ jobs:
           name: voice-recording-api-${{ matrix.api }}
           path: |
             logcat-voice-recording.txt
-            voice-recording-window.xml
             voice-recording-notifications.txt
           if-no-files-found: ignore
 
