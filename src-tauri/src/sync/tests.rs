@@ -3254,6 +3254,27 @@ fn regeneration_operation(legacy: bool) -> Value {
 }
 
 #[test]
+fn regeneration_insert_positions_put_new_rows_above_kept_rows() {
+    let scratch = Scratch::new("regeneration-top");
+    let mut desktop = open_seeded(&scratch.path, "regeneration-test", &regeneration_state("desktop"));
+    enable_primary(&desktop).unwrap();
+    persist_operation_to_database(&mut desktop, &json!({"id":"desktop-regenerate","deviceId":"desktop","sequence":1,
+        "timestamp":"2026-09-09T11:00:00Z","type":"regenerate_plan","payload":{
+            "date":"2026-09-09","replaceExisting":true,"requireUntouched":true,"replaceItems":[],
+            "insertPositions":{"top-task":0},
+            "generatedPlan":{"id":"original-day","date":"2026-09-09","title":"Regenerated day","dailyReminder":"",
+                "createdAt":"2026-09-09T11:00:00Z","items":[regeneration_item("top-task"),regeneration_item("fresh-task")]}}})).unwrap();
+    let order = |conn: &Connection| -> Vec<String> {
+        read_app_state_from_database(conn).unwrap().unwrap()["plans"][0]["items"].as_array().unwrap()
+            .iter().map(|item| item["id"].as_str().unwrap().to_string()).collect()
+    };
+    let expected = ["top-task", "template-task", "fresh-task"];
+    assert_eq!(order(&desktop), expected);
+    rematerialize(&desktop).unwrap();
+    assert_eq!(order(&desktop), expected);
+}
+
+#[test]
 fn regeneration_preserves_offline_creation_and_edits_in_both_orders() {
     for legacy in [false, true] {
         for before in [false, true] {
