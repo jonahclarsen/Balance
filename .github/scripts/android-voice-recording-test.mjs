@@ -1,0 +1,162 @@
+#!/usr/bin/env node
+// Records a voice idea on a disposable emulator install, leaves the app, and
+// stops from the notification. The emulator's microphone only produces silence.
+
+import { spawnSync } from 'node:child_process'
+import { writeFileSync } from 'node:fs'
+
+const packageName = process.env.BALANCE_TEST_PACKAGE ?? 'app.balance.local'
+const backgroundMs = 12_000
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+function adb(args, { allowFailure = false } = {}) {
+  const result = spawnSync('adb', args, { encoding: 'utf8', timeout: 30_000 })
+  if (result.error) throw result.error
+  if (result.status !== 0 && !allowFailure) throw new Error(`adb ${args.join(' ')} failed: ${result.stderr || result.stdout}`)
+  return (result.stdout ?? '').replaceAll('\r', '')
+}
+
+async function waitFor(check, description, timeoutMs = 20_000) {
+  const deadline = Date.now() + timeoutMs
+  let lastError
+  while (Date.now() < deadline) {
+    try {
+      const value = await check()
+      if (value) return value
+    } catch (error) { lastError = error }
+    await sleep(250)
+  }
+  throw new Error(`Timed out waiting for ${description}${lastError ? `: ${lastError}` : ''}`)
+}
+
+async function connect() {
+  const pid = await waitFor(() => adb(['shell', 'pidof', packageName], { allowFailure: true }).trim().split(/\s+/)[0], 'the app process', 60_000)
+  const socketName = await waitFor(() => adb(['shell', 'cat', '/proc/net/unix']).match(new RegExp(`@(webview_devtools_remote_${pid})\\s*$`, 'm'))?.[1], 'the DevTools socket', 60_000)
+  adb(['forward', 'tcp:9222', `localabstract:${socketName}`])
+  const target = await waitFor(async () => {
+    const targets = await (await fetch('http://127.0.0.1:9222/json/list')).json()
+    return targets.find((candidate) => candidate.type === 'page' && candidate.webSocketDebuggerUrl)
+  }, 'the WebView page')
+  const socket = new WebSocket(target.webSocketDebuggerUrl)
+  await new Promise((resolve, reject) => {
+    socket.addEventListener('open', resolve, { once: true })
+    socket.addEventListener('error', reject, { once: true })
+  })
+  let nextId = 1
+  const pending = new Map()
+  socket.addEventListener('message', (event) => {
+    const message = JSON.parse(String(event.data))
+    pending.get(message.id)?.(message)
+    pending.delete(message.id)
+  })
+  return async (expression) => {
+    const id = nextId++
+    const response = await new Promise((resolve) => {
+      pending.set(id, resolve)
+      socket.send(JSON.stringify({ id, method: 'Runtime.evaluate', params: { expression, awaitPromise: true, returnByValue: true } }))
+    })
+    if (response.error || response.result.exceptionDetails) throw new Error(JSON.stringify(response.error ?? response.result.exceptionDetails))
+    return response.result.result.value
+  }
+}
+
+const notification = () => adb(['shell', 'dumpsys', 'notification', '--noredact']).includes('voice-recording')
+const isForeground = () => /isForeground=true/.test(adb(['shell', 'dumpsys', 'activity', 'services', 'BalanceVoiceRecordingService']))
+
+function uiNodes() {
+  adb(['shell', 'uiautomator', 'dump', '/sdcard/window.xml'])
+  return adb(['shell', 'cat', '/sdcard/window.xml']).match(/<node [^>]*>/g) ?? []
+}
+
+function tapNode(node) {
+  const [, left, top, right, bottom] = node.match(/bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/).map(Number)
+  adb(['shell', 'input', 'tap', String(Math.round((left + right) / 2)), String(Math.round((top + bottom) / 2))])
+}
+
+async function tapNotificationStop() {
+  adb(['shell', 'cmd', 'statusbar', 'expand-notifications'])
+  await sleep(1500)
+  const isStop = (node) => /\btext="stop"/i.test(node)
+  const stop = await waitFor(async () => {
+    const nodes = uiNodes()
+    const found = nodes.find(isStop)
+    if (found) return found
+    // The notification starts collapsed, with its actions hidden.
+    const row = nodes.findIndex((node) => /text="Recording"/.test(node))
+    const expand = nodes.slice(Math.max(0, row - 8), row + 12).find((node) => /expand_button/.test(node)) ?? nodes[row]
+    if (expand) tapNode(expand)
+    return null
+  }, 'the notification Stop button', 30_000)
+  tapNode(stop)
+  adb(['shell', 'cmd', 'statusbar', 'collapse'])
+}
+
+async function readClips(evaluate) {
+  const state = await evaluate(`window.__TAURI_INTERNALS__.invoke('read_app_state')`)
+  return (typeof state === 'string' ? JSON.parse(state) : state).voiceClips ?? []
+}
+
+async function run() {
+  adb(['install', '-r', 'balance-debug.apk'])
+  adb(['shell', 'pm', 'clear', packageName])
+  // Permissions that don't exist on an older Android fail harmlessly.
+  for (const permission of ['RECORD_AUDIO', 'BLUETOOTH_CONNECT', 'POST_NOTIFICATIONS']) {
+    adb(['shell', 'pm', 'grant', packageName, `android.permission.${permission}`], { allowFailure: true })
+  }
+  adb(['shell', 'monkey', '-p', packageName, '-c', 'android.intent.category.LAUNCHER', '1'])
+  const evaluate = await connect()
+  const has = (selector) => evaluate(`Boolean(document.querySelector(${JSON.stringify(selector)}))`)
+  const click = async (selector) => {
+    await waitFor(() => has(selector), selector, 60_000)
+    await evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`)
+  }
+  const record = '[aria-label="Record an idea"]'
+  const stopInApp = '[aria-label="Stop recording"]'
+
+  await waitFor(async () => !(await has('.database-loading-backdrop')) && await has('.mobile-menu-button'), 'the app to load', 60_000)
+  await click('.mobile-menu-button')
+  await click('button[data-nav-view="ideas"]')
+
+  // Discarding removes the notification.
+  await click(record)
+  await waitFor(() => has(stopInApp), 'recording to start', 30_000)
+  await waitFor(notification, 'the recording notification')
+  await click('[aria-label="Discard recording"]')
+  await waitFor(() => !notification(), 'the discarded recording to clear its notification')
+
+  // The recording keeps running behind the notification.
+  await click(record)
+  await waitFor(() => has(stopInApp), 'recording to restart', 30_000)
+  await waitFor(notification, 'the recording notification')
+  if (!isForeground()) throw new Error('The recording service is not in the foreground')
+  adb(['shell', 'input', 'keyevent', 'KEYCODE_HOME'])
+  await waitFor(() => evaluate('document.hidden'), 'the app to leave the screen')
+  await sleep(backgroundMs)
+  const audio = adb(['shell', 'dumpsys', 'audio']).split('\n').filter((line) => line.includes(packageName) || /silenced/i.test(line))
+  console.log(`Audio state while hidden:\n${audio.join('\n')}`)
+  if (audio.some((line) => /silenced[:=\s]*true/i.test(line))) throw new Error('Android silenced the microphone in the background')
+  if (!isForeground()) throw new Error('The recording service left the foreground')
+
+  await tapNotificationStop()
+  // The app stays in the background: stopping must save without reopening it.
+  const clips = await waitFor(async () => {
+    const saved = await readClips(evaluate)
+    return saved.length === 1 ? saved : null
+  }, 'the clip to be saved in the background', 60_000)
+  if (!(await evaluate('document.hidden'))) throw new Error('The app came to the screen while saving')
+  if (clips[0].durationMs < backgroundMs) throw new Error(`The clip stopped early: ${clips[0].durationMs} ms`)
+  await waitFor(() => !notification(), 'the saved recording to clear its notification')
+
+  adb(['shell', 'monkey', '-p', packageName, '-c', 'android.intent.category.LAUNCHER', '1'])
+  await waitFor(() => has('.voice-clip-chip'), 'the saved clip on screen')
+  console.log(`Saved a ${clips[0].durationMs} ms clip from the notification`)
+  process.exit(0)
+}
+
+run().catch((error) => {
+  console.error(error)
+  writeFileSync('voice-recording-window.xml', adb(['shell', 'cat', '/sdcard/window.xml'], { allowFailure: true }))
+  writeFileSync('voice-recording-notifications.txt', adb(['shell', 'dumpsys', 'notification', '--noredact'], { allowFailure: true }))
+  writeFileSync('logcat-voice-recording.txt', adb(['logcat', '-d'], { allowFailure: true }))
+  process.exit(1)
+})

@@ -80,6 +80,43 @@ test('a recorded idea persists, waits for transcription and leaves with its idea
   await expect.poll(async () => (await state(page)).voiceClips.length).toBe(1)
 })
 
+test('the Android notification stops and saves a recording after leaving Ideas', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'Fake capture devices are Chromium-only')
+  await page.addInitScript(() => {
+    const calls: string[] = []
+    ;(window as any).__voiceBridgeCalls = calls
+    ;(window as any).BalanceVoiceInput = {
+      permissions: () => 'granted',
+      requestPermissions: () => {},
+      recordingStarted: () => calls.push('started'),
+      recordingStopped: () => calls.push('stopped'),
+    }
+  })
+  await open(page)
+  const calls = () => page.evaluate(() => (window as any).__voiceBridgeCalls.slice())
+  const before = (await calls()).length
+
+  // Discarding also clears the notification.
+  await proposition(page).getByRole('button', { name: 'Record an idea' }).click()
+  await expect(proposition(page).getByRole('button', { name: 'Stop recording' })).toBeVisible()
+  await proposition(page).getByRole('button', { name: 'Discard recording' }).click()
+  await expect.poll(async () => (await calls()).slice(before)).toEqual(['started', 'stopped'])
+
+  await proposition(page).getByRole('button', { name: 'Record an idea' }).click()
+  await expect(proposition(page).getByRole('button', { name: 'Stop recording' })).toBeVisible()
+  await page.waitForTimeout(1200)
+  await openView(page, 'Today')
+  await page.evaluate(() => window.dispatchEvent(new Event('balance-voice-stop')))
+
+  await expect.poll(async () => (await state(page)).voiceClips.length).toBe(1)
+  expect((await state(page)).voiceClips[0].durationMs).toBeGreaterThan(800)
+  await expect.poll(async () => (await calls()).slice(before)).toEqual(['started', 'stopped', 'started', 'stopped'])
+
+  await openView(page, 'Ideas')
+  await expect(proposition(page).locator('.voice-clip-chip')).toBeVisible()
+  await expect(proposition(page).getByRole('button', { name: 'Record an idea' })).toBeEnabled()
+})
+
 test('the transcript and waveform follow each other', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'Pointer selection is covered on desktop')
   await open(page)

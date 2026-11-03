@@ -1,4 +1,4 @@
-import { writable } from 'svelte/store'
+import { get, writable } from 'svelte/store'
 import { PEAKS_PER_SECOND } from './voiceClips'
 import type { VoiceClip } from './types'
 
@@ -16,18 +16,23 @@ export const voiceRecording = writable<VoiceRecordingState>({ state: 'idle' })
 export const voiceRecordingError = writable<string | null>(null)
 
 type AndroidVoiceInput = {
-  bluetoothPermission(): 'granted' | 'missing' | 'pending' | 'unneeded'
-  requestBluetoothPermission(): void
+  permissions(): 'granted' | 'missing' | 'pending'
+  requestPermissions(): void
+  recordingStarted(startedAt: number): void
+  recordingStopped(): void
 }
 
+const androidVoiceInput = () => (window as unknown as { BalanceVoiceInput?: AndroidVoiceInput }).BalanceVoiceInput
+
 // Android only routes a Bluetooth headset's microphone to the WebView once
-// Balance may connect to Bluetooth devices (Android 12+ asks at runtime).
-async function allowBluetoothInput() {
-  const bridge = (window as unknown as { BalanceVoiceInput?: AndroidVoiceInput }).BalanceVoiceInput
-  if (!bridge || bridge.bluetoothPermission() !== 'missing') return
-  bridge.requestBluetoothPermission()
+// Balance may connect to Bluetooth devices, and only shows the recording
+// notification with its own permission (both asked at runtime).
+async function allowNativeRecording() {
+  const bridge = androidVoiceInput()
+  if (!bridge || bridge.permissions() !== 'missing') return
+  bridge.requestPermissions()
   const deadline = Date.now() + 60_000
-  while (bridge.bluetoothPermission() === 'pending' && Date.now() < deadline) {
+  while (bridge.permissions() === 'pending' && Date.now() < deadline) {
     await new Promise((resolve) => window.setTimeout(resolve, 200))
   }
 }
@@ -41,7 +46,7 @@ async function headsetInput(): Promise<string | undefined> {
 }
 
 async function openMicrophone(): Promise<MediaStream> {
-  await allowBluetoothInput()
+  await allowNativeRecording()
   let stream = await navigator.mediaDevices.getUserMedia({ audio: true })
   const headset = await headsetInput()
   if (headset && stream.getAudioTracks()[0]?.getSettings().deviceId !== headset) {
@@ -76,9 +81,19 @@ export function peaksFromSamples(samples: Float32Array, sampleRate: number): num
   return peaks.map((rms) => Math.round(Math.min(1, rms / loudest) * 255))
 }
 
-let session: { recorder: MediaRecorder; stream: MediaStream; context: AudioContext; chunks: Blob[]; meter: number } | null = null
+type RecordedClip = Pick<VoiceClip, 'dataURL' | 'durationMs' | 'peaks'>
 
-export async function startVoiceRecording() {
+let session: {
+  recorder: MediaRecorder
+  stream: MediaStream
+  context: AudioContext
+  chunks: Blob[]
+  meter: number
+  save: (clip: RecordedClip) => void | Promise<void>
+} | null = null
+
+// `save` runs whoever stops the recording, even after leaving Ideas.
+export async function startVoiceRecording(save: (clip: RecordedClip) => void | Promise<void>) {
   if (session) return
   voiceRecordingError.set(null)
   voiceRecording.set({ state: 'starting' })
@@ -99,8 +114,9 @@ export async function startVoiceRecording() {
     }, 80)
     const chunks: Blob[] = []
     recorder.ondataavailable = (event) => { if (event.data.size > 0) chunks.push(event.data) }
-    session = { recorder, stream, context, chunks, meter }
+    session = { recorder, stream, context, chunks, meter, save }
     recorder.start(1000)
+    androidVoiceInput()?.recordingStarted(startedAt)
     voiceRecording.set({ state: 'recording', startedAt, level: 0 })
   } catch (error) {
     voiceRecording.set({ state: 'idle' })
@@ -121,30 +137,50 @@ export function cancelVoiceRecording() {
   session.recorder.stop()
   release(session)
   voiceRecording.set({ state: 'idle' })
+  androidVoiceInput()?.recordingStopped()
 }
 
-// Resolves with the clip fields, or null when nothing audible was captured.
-export async function stopVoiceRecording(): Promise<Pick<VoiceClip, 'dataURL' | 'durationMs' | 'peaks'> | null> {
+async function encodedClip(current: NonNullable<typeof session>): Promise<RecordedClip | null> {
+  const blob = new Blob(current.chunks, { type: current.recorder.mimeType || 'audio/webm' })
+  if (blob.size === 0) return null
+  const decoded = await new OfflineAudioContext(1, 1, 8000).decodeAudioData(await blob.arrayBuffer())
+  // Nothing audible was captured.
+  if (decoded.duration < 0.3) return null
+  return {
+    dataURL: await blobToDataURL(blob),
+    durationMs: Math.round(decoded.duration * 1000),
+    peaks: peaksFromSamples(decoded.getChannelData(0), decoded.sampleRate),
+  }
+}
+
+export async function finishVoiceRecording() {
   const current = session
-  if (!current) return null
+  if (!current) return
   voiceRecording.set({ state: 'saving' })
   const stopped = new Promise((resolve) => { current.recorder.onstop = resolve })
   current.recorder.stop()
   await stopped
   release(current)
   try {
-    const blob = new Blob(current.chunks, { type: current.recorder.mimeType || 'audio/webm' })
-    if (blob.size === 0) return null
-    const decoded = await new OfflineAudioContext(1, 1, 8000).decodeAudioData(await blob.arrayBuffer())
-    if (decoded.duration < 0.3) return null
-    return {
-      dataURL: await blobToDataURL(blob),
-      durationMs: Math.round(decoded.duration * 1000),
-      peaks: peaksFromSamples(decoded.getChannelData(0), decoded.sampleRate),
-    }
+    const clip = await encodedClip(current)
+    if (clip) await current.save(clip)
+  } catch (error) {
+    voiceRecordingError.set('Could not save')
+    console.error('Could not save recording', error)
   } finally {
     voiceRecording.set({ state: 'idle' })
+    androidVoiceInput()?.recordingStopped()
   }
+}
+
+if (typeof window !== 'undefined') {
+  // The Android notification's Stop button.
+  window.addEventListener('balance-voice-stop', () => {
+    if (session) void finishVoiceRecording()
+    else if (get(voiceRecording).state !== 'saving') androidVoiceInput()?.recordingStopped()
+  })
+  // A fresh page has no recording, so a notification left from before is stale.
+  androidVoiceInput()?.recordingStopped()
 }
 
 // Decoding resamples to the context's rate: 16 kHz for Parakeet, 48 kHz to play.

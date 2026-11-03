@@ -7,7 +7,7 @@
   import { ideaUnlockDelay, findIdea, ideaGroupId, ideaGroupKindForKey, IDEA_GROUPS, IDEA_TRASH_RETENTION_DAYS } from './ideas'
   import type { ItemLink, ItemTimeWarning } from './planner'
   import { clipsByIdea, formatClipDuration } from './voiceClips'
-  import { cancelVoiceRecording, startVoiceRecording, stopVoiceRecording, voiceRecording, voiceRecordingError } from './voiceRecorder'
+  import { cancelVoiceRecording, finishVoiceRecording, startVoiceRecording, voiceRecording, voiceRecordingError } from './voiceRecorder'
   import { canTranscribe, transcribeClips, transcriptionError, transcriptionStatus } from './voiceTranscription'
   import type { Id, IdeaGroup, IdeaGroupKind, ListTemplate, Metric, Note, VoiceClip } from './types'
 
@@ -174,9 +174,12 @@
     now = Date.now()
   }
 
-  async function finishRecording() {
-    const recorded = await stopVoiceRecording()
-    if (recorded) plannerStore.addVoiceIdea(recorded)
+  function startRecording() {
+    void startVoiceRecording(async (clip) => {
+      plannerStore.addVoiceIdea(clip)
+      // The app may be in the background, where it can be frozen at any time.
+      await plannerStore.flushPendingOperations()
+    })
   }
 
   function transcribe(clips: VoiceClip[]) {
@@ -243,7 +246,7 @@
               <span class="voice-recording-dot" style:--level={recording.level} aria-hidden="true"></span>
               <span class="voice-recording-time">{formatClipDuration(now - recording.startedAt)}</span>
               <button class="ghost" type="button" aria-label="Discard recording" title="Discard" on:click={cancelVoiceRecording}>✕</button>
-              <button class="voice-record-button recording" type="button" aria-label="Stop recording" title="Stop" on:click={() => { void finishRecording() }}>■</button>
+              <button class="voice-record-button recording" type="button" aria-label="Stop recording" title="Stop" on:click={() => { void finishVoiceRecording() }}>■</button>
             {:else}
               {#if canTranscribe && untranscribed.length > 0}
                 <button class="ghost" type="button" disabled={transcribing.state !== 'idle'} on:click={() => transcribe(untranscribed)}>
@@ -256,7 +259,7 @@
                 aria-label="Record an idea"
                 title="Record"
                 disabled={$voiceRecording.state !== 'idle'}
-                on:click={() => { void startVoiceRecording() }}
+                on:click={startRecording}
               >●</button>
             {/if}
           </div>
