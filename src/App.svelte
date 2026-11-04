@@ -13,6 +13,7 @@
   import SituateExtensionSetup from './lib/SituateExtensionSetup.svelte'
   import { watchExtension } from './lib/situate/extension'
   import { startSituate, situateDeepLink } from './lib/situate/store'
+  import { startSituateSync } from './lib/situate/sync'
   import { Channel, invoke, isTauri } from '@tauri-apps/api/core'
   import { listen } from '@tauri-apps/api/event'
   import { getCurrentWebview } from '@tauri-apps/api/webview'
@@ -2355,7 +2356,11 @@ return rows`
   onMount(() => {
     const stopFreezeDiagnostics = startFreezeDiagnostics()
     let stopSituate: (() => void) | undefined
-    const situateStarted = startSituate().then(stop => { if (mounted) stopSituate = stop; else stop() })
+    const situateStarted = startSituate().then(stop => {
+      const stopSync = startSituateSync()
+      const stopAll = () => { stopSync(); stop() }
+      if (mounted) stopSituate = stopAll; else stopAll()
+    })
     const stopExtensionWatch = watchExtension()
     const stopMobileKeyboardScroll = installMobileKeyboardScroll()
     let mounted = true

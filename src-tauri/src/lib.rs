@@ -173,13 +173,14 @@ const SYNC_LOG_DIRTY_SINCE_MS: &str = "sync_log_dirty_since_ms";
 const REPLICATED_PREFERENCES: &str = "replicated_preferences";
 const DEVICE_APPEARANCE: &str = "device_appearance";
 const DAY_THEME_PREFERENCE_PREFIX: &str = "dayTheme/";
-const ENTITY_COLLECTIONS: [&str; 20] = [
+const ENTITY_COLLECTIONS: [&str; 21] = [
     "images",
     "uneditedPlanItems",
     "templateQuestions",
     "templateItemConditions",
     "templateListExpansions",
     "taskNotifications",
+    "situateRules",
     "goals",
     "goalCompletions",
     "listTemplates",
@@ -3243,6 +3244,7 @@ fn read_app_state_from_database_with_progress(
         "templateItemConditions": read_entity_collection(connection, "templateItemConditions")?,
         "templateListExpansions": read_entity_collection(connection, "templateListExpansions")?,
         "taskNotifications": read_entity_collection(connection, "taskNotifications")?,
+        "situateRules": read_entity_collection(connection, "situateRules")?,
         "projects": lists_metrics_data["projects"].clone(),
         "projectCheckIns": lists_metrics_data["projectCheckIns"].clone(),
         "projectHistoryNotes": read_entity_collection(connection, "projectHistoryNotes")?,
@@ -4202,7 +4204,10 @@ fn persist_operation_once(
         set_metadata(&tx, &format!("siri_request:{request_id}"), "1")?;
     }
     let existing_history = history_entry_for_operation(&tx, operation_id)?;
-    let undo_operation = if is_history_operation(operation_type) || operation_type == "add_image" {
+    let undo_operation = if is_history_operation(operation_type)
+        || operation_type == "add_image"
+        || is_situate_rules_operation(operation)
+    {
         None
     } else if let Some(existing) = existing_history.as_ref() {
         Some(existing.undo_operation.clone())
@@ -5303,6 +5308,17 @@ struct TemplateOptionSnapshot {
 
 fn is_history_operation(operation_type: &str) -> bool {
     operation_type == "history_undo" || operation_type == "history_redo"
+}
+
+// Undo must never take back a Situate rule or hand back a pass.
+fn is_situate_rules_operation(operation: &Value) -> bool {
+    let changes = &operation["payload"]["entityChanges"];
+    let touches = |list: &str| changes[list].as_array().map(|entries| {
+        entries.iter().all(|entry| entry["collection"] == "situateRules")
+    });
+    changes["upserts"].as_array().is_some_and(|upserts| !upserts.is_empty())
+        && touches("upserts") == Some(true)
+        && touches("deletes").unwrap_or(true)
 }
 
 fn current_entity(
@@ -12452,6 +12468,41 @@ mod tests {
         assert_eq!(undone["ideaBuckets"], json!([]));
         let redone = redo_last_operation_in_database(&mut connection).unwrap().unwrap();
         assert_eq!(redone["ideaBuckets"], json!([group]));
+    }
+
+    #[test]
+    fn situate_rules_persist_without_joining_undo() {
+        let database = TestDatabase::new("situate-rules");
+        let recovery_key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        replace_app_state(&mut connection, &test_state("Synthetic Situate")).unwrap();
+        let group = json!({"id": "bucket_proposition", "kind": "proposition", "items": []});
+        let idea = json!({
+            "id": "situate-idea-op", "deviceId": "device_test", "sequence": 2,
+            "type": "apply_entity_changes", "timestamp": "2026-11-04T08:00:00Z",
+            "payload": {"action": "add_idea", "entityChanges": {
+                "version": 2, "deletes": [], "upserts": [{"collection": "ideaBuckets", "key": "bucket_proposition",
+                    "position": 0, "value": group, "patches": [sync::entities::diff(&Value::Null, &group)]}]
+            }}
+        });
+        persist_operation_to_database(&mut connection, &idea).unwrap();
+        let rules = json!({"id": "rules", "modes": [{"id": "dolo", "description": "Synthetic description"}]});
+        let operation = json!({
+            "id": "situate-op", "deviceId": "device_test", "sequence": 3,
+            "type": "apply_entity_changes", "timestamp": "2026-11-04T08:01:00Z",
+            "payload": {"action": "sync_situate_rules", "entityChanges": {
+                "version": 2, "deletes": [], "upserts": [{"collection": "situateRules", "key": "rules",
+                    "position": 0, "value": rules, "patches": [sync::entities::diff(&Value::Null, &rules)]}]
+            }}
+        });
+        persist_operation_to_database(&mut connection, &operation).unwrap();
+        drop(connection);
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        let loaded = read_app_state_from_database(&connection).unwrap().unwrap();
+        assert_eq!(loaded["situateRules"], json!([rules]));
+        let undone = undo_last_operation_in_database(&mut connection).unwrap().unwrap();
+        assert_eq!(undone["ideaBuckets"], json!([]));
+        assert_eq!(undone["situateRules"], json!([rules]));
     }
 
     #[test]

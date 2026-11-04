@@ -178,6 +178,7 @@ export function createInitialState(): AppState {
     templateItemConditions: [],
     templateListExpansions: [],
     taskNotifications: [],
+    situateRules: [],
     listTemplates: [],
     lists: [],
     metrics: [],

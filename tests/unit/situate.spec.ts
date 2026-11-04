@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { defaults, regenerate, reminderWindow, epoch, enableMode, grant, isActive, backOn, headsUp, questions, quizProgress, validate, matches, sunset, upgradePresets, timeZoneLocation, type Reminder } from '../../src/lib/situate/core'
+import { reconcileRules, sharedRules } from '../../src/lib/situate/sharing'
 const date = (day:number,hour:number,minute=0) => new Date(2026,9,17+day,hour,minute).getTime()
 // Clock times only: sunset would otherwise follow the machine's time zone.
 const fixture = (now=date(0,12)) => regenerate(defaults(now), now, null)
@@ -248,4 +249,62 @@ test('untouched reminder hours upgrade; edited ones stay', () => {
   expect(edited.find(m=>m.id==='no-active-project')!.reminder).toEqual({ from:1320,until:360 })
   validate(upgradePresets(old({ from:420,until:1200 },{ from:1260,until:420 })))
   expect(() => validate({ ...d, modes:d.modes.map(m=>m.reminder ? { ...m, reminder:{ ...m.reminder, fromSunset:-5 } } : m) })).toThrow('Sunset offsets')
+})
+const sharedFixture = () => { const d=fixture(); return {...d, syncBase: sharedRules(d)} }
+test('a Mac starts the shared rules from customized rules, but untouched defaults and phones do not', () => {
+  const d=fixture(), edited={...d,modes:d.modes.map(m=>m.id==='dolo'?{...m,description:'Mine'}:m)}
+  expect(reconcileRules(d,null,'mac',date(0,12))).toBeNull()
+  expect(reconcileRules(edited,null,'android',date(0,12))).toBeNull()
+  const seeded=reconcileRules(edited,null,'mac',date(0,12))!
+  expect((seeded.publish!.modes.find(m=>m.id==='dolo'))!.description).toBe('Mine')
+  expect(reconcileRules(seeded.document,seeded.publish,'mac',date(0,12))).toBeNull()
+})
+test('a phone without shared history adopts the Mac rules, on/off state and passes', () => {
+  const mac=fixture(), rules=sharedRules(grant(enableMode({...mac,modes:mac.modes.map(m=>m.id==='dolo'?{...m,description:'Mine'}:m)},'discord',date(0,12)),'dolo',{thrust:true},date(0,12),date(0,12)))
+  const phone={...fixture(),modes:fixture().modes.map(m=>m.id==='dolo'?{...m,description:'Old phone text'}:m)}
+  const result=reconcileRules(phone,rules,'android',date(0,12))!
+  expect(result.publish).toBeNull()
+  expect(result.document.modes.find(m=>m.id==='dolo')!.description).toBe('Mine')
+  expect(result.document.manual.discord).toBe(date(0,12))
+  expect(isActive(result.document,result.document.modes[0],'android',date(0,12))).toBe(false)
+  expect(result.document.grants[0]).not.toHaveProperty('id')
+  expect(result.document.epochs.length).toBeGreaterThan(0)
+  expect(reconcileRules(result.document,rules,'android',date(0,12))).toBeNull()
+})
+test('concurrent device edits merge by field and record', () => {
+  const start=sharedFixture(), remote=structuredClone(start.syncBase)
+  remote.modes.find(m=>m.id==='dolo')!.description='From phone'
+  remote.modes.find(m=>m.id==='discord')!.color='#000000'
+  const local={...start,settings:{...start.settings,nightMinutes:40},modes:start.modes.filter(m=>m.id!=='discord').map(m=>m.id==='dolo'?{...m,name:'From Mac'}:m)}
+  const {document:merged,publish}=reconcileRules(local,remote,'mac',date(0,12))!
+  const dolo=merged.modes.find(m=>m.id==='dolo')!
+  expect([dolo.name,dolo.description]).toEqual(['From Mac','From phone'])
+  expect(merged.settings.nightMinutes).toBe(40)
+  // Both sides changed Discord, so this device's removal wins.
+  expect(merged.modes.some(m=>m.id==='discord')).toBe(false)
+  expect(publish!.settings.nightMinutes).toBe(40)
+  expect(reconcileRules(merged,publish,'mac',date(0,12))).toBeNull()
+})
+test('two devices passes merge, and a pass that expires is removed for everyone', () => {
+  const start=sharedFixture(), now=date(0,12)
+  const local=grant(start,'dolo',{thrust:true},now,now)
+  const remote=sharedRules(enableMode(start,'discord',now))
+  remote.grants=[{mode:'touch-grass',target:'',epoch:now,until:now+60_000,id:'touch-grass|'}]
+  const {document:merged,publish}=reconcileRules(local,remote,'mac',now)!
+  expect(merged.grants.map(g=>g.mode).sort()).toEqual(['dolo','touch-grass'])
+  expect(merged.manual.discord).toBe(now)
+  const later=now+120_000
+  const expired=regenerate(merged,later,null)
+  expect(expired.grants.map(g=>g.mode)).toEqual(['dolo'])
+  const pruned=reconcileRules(expired,publish,'mac',later)!
+  expect(pruned.publish!.grants.map(g=>g.mode)).toEqual(['dolo'])
+})
+test('fields from a newer client survive an older client editing the rules', () => {
+  const start=sharedFixture()
+  const remote={...structuredClone(start.syncBase),future:{kept:true},modes:start.syncBase.modes.map(m=>m.id==='dolo'?{...m,futureField:1}:m)}
+  const adopted=reconcileRules(start,remote,'mac',date(0,12))!.document
+  const edited={...adopted,modes:adopted.modes.map(m=>m.id==='dolo'?{...m,description:'Edit'}:m)}
+  const {publish}=reconcileRules(edited,remote,'mac',date(0,12))!
+  expect(publish!.future).toEqual({kept:true})
+  expect(publish!.modes.find(m=>m.id==='dolo')).toMatchObject({description:'Edit',futureField:1})
 })

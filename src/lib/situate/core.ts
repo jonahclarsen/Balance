@@ -1,4 +1,5 @@
-/** Device-local rules. No planner records, notification contents, or telemetry. */
+/** Rules and passes. No planner records, notification contents, or telemetry. */
+import type { SharedRules } from './sharing'
 export type Platform = 'mac' | 'android' | 'windows'
 export type Category = 'social' | 'entertainment' | 'ai' | 'custom'
 /** minutes caps the pass when this question is asked. */
@@ -32,6 +33,8 @@ export type Document = {
   accessQuiz: Question[]
   /** Preset revision, so new default targets reach existing rules once. */
   presets?: number
+  /** The replicated rules this device last agreed with; see sharing.ts. */
+  syncBase?: SharedRules
 }
 export type Answers = Record<string, boolean>
 const minute = 60_000

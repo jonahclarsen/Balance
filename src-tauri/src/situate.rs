@@ -1,4 +1,5 @@
-//! Situate never opens the planner database. Only rules and temporary grants live here.
+//! Enforcement never opens the planner database. Only rules and temporary grants live
+//! here; the main window carries them across devices (src/lib/situate/sync.ts).
 use serde_json::{json, Value};
 use std::{
     fs,

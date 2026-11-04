@@ -225,6 +225,7 @@ const ENTITY_COLLECTIONS = [
   'templateItemConditions',
   'templateListExpansions',
   'taskNotifications',
+  'situateRules',
 ] as const
 type EntityCollection = (typeof ENTITY_COLLECTIONS)[number]
 type EntityUpsert = { collection: EntityCollection; key: string; position: number | null; value: unknown; patches: EntityPatch[] }
@@ -1235,6 +1236,10 @@ function createPlannerStore() {
           ? state
           : { ...state, preferences }
       }, { undoable: false, reconcileGoals: false })
+    },
+
+    publishSituateRules(rules: { id: string }) {
+      commitEntities('sync_situate_rules', {}, (state) => ({ ...state, situateRules: [rules] }), { undoable: false, reconcileGoals: false })
     },
 
     recordDayTheme(date: string, themeId: string): boolean {
@@ -3833,11 +3838,12 @@ function stateFromNativeHistoryEntry(current: AppState, snapshot: AppState, loca
     images: current.images,
     deviceId: current.deviceId,
     localSequence,
-    // Preferences and day generation progress are intentionally not undoable
-    // and may have changed after this history entry was recorded. Native undo
-    // never rewinds them.
+    // Preferences, day generation progress and Situate are intentionally not
+    // undoable and may have changed after this history entry was recorded.
+    // Native undo never rewinds them.
     preferences: current.preferences,
     dayGenerations: current.dayGenerations,
+    situateRules: current.situateRules,
     activePlanDate: current.activePlanDate,
     operations: [],
     historyRevision: current.historyRevision + 1,
@@ -3852,7 +3858,8 @@ function applyPatch<T extends object>(target: T, patch: Partial<Record<keyof T, 
 function applyHistorySnapshot(current: AppState, entryState: AppState, type: string, entry: HistoryEntry): AppState {
   const sequence = current.localSequence + 1
   // Day generation progress is not undoable; a closed sorter stays closed.
-  const snapshot = { ...entryState, dayGenerations: current.dayGenerations }
+  // Undo must not hand back a Situate pass or a rule.
+  const snapshot = { ...entryState, dayGenerations: current.dayGenerations, situateRules: current.situateRules }
 
   return {
     ...snapshot,
@@ -4465,6 +4472,7 @@ export async function inspectDatabase(): Promise<DatabaseInspection | null> {
       templateItemConditions: [],
       templateListExpansions: [],
       taskNotifications: [],
+      situateRules: [],
       listTemplates: [],
       lists: [],
       metrics: [],
@@ -4614,6 +4622,7 @@ function* normalizeStateSteps(state: AppState): Generator<void, AppState, void> 
     templateItemConditions: state.templateItemConditions ?? [],
     templateListExpansions: state.templateListExpansions ?? [],
     taskNotifications: state.taskNotifications ?? [],
+    situateRules: state.situateRules ?? [],
     projects: state.projects ?? [],
     projectCheckIns: state.projectCheckIns ?? [],
     projectHistoryNotes: yield* normalizeRecords(state.projectHistoryNotes ?? [], normalize.projectHistoryNotes),

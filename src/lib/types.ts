@@ -443,6 +443,8 @@ export type AppState = {
   templateItemConditions: TemplateItemCondition[]
   templateListExpansions: TemplateListExpansion[]
   taskNotifications: TaskNotification[]
+  /** Situate's one replicated record; see situate/sharing.ts. */
+  situateRules: { id: string }[]
   plans: DailyPlan[]
   uneditedPlanItems: UneditedPlanItem[]
   listTemplates: ListTemplate[]
