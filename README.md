@@ -25,7 +25,7 @@ Settings → Color theme includes **Mac System 1**, **Windows XP**, and **Window
 
 Mac System 1 bundles Giles Booth's Chicago 12 and Geneva 9 bitmap recreations, with Jamie Place's Monaco for numeric fields. XP uses the original Tahoma UI face and Trebuchet MS captions where installed. Vista uses Segoe UI where installed, with Microsoft's open-source Selawik as its distributable fallback. The optional `public/fonts/local/` folder is ignored by Git and can hold already-licensed local Segoe UI WOFF files (`segoeui-regular.woff` and `segoeui-semibold.woff`); never commit those files. Exact font rendering can still vary with the OS and window zoom.
 
-References and typography provenance are in [docs/retro-themes.md](docs/retro-themes.md). The fonts' attribution and licenses are under `public/fonts/`. Run the focused desktop `tests/visual/retro-themes.spec.ts` to check the actual rendered Mac font, selection contrast, theme persistence, and synthetic page screenshots.
+XP and Vista include their original Bliss/Aurora wallpapers and native Windows icons, with rebuilt Luna/Aero modal chrome. Artwork provenance and typography references are in [docs/retro-themes.md](docs/retro-themes.md). The fonts' attribution and licenses are under `public/fonts/`. Run the focused desktop `tests/visual/retro-themes.spec.ts` to check the actual rendered Mac font, selection contrast, theme persistence, and synthetic page screenshots.
 
 ## Times and sunset in templates
 

@@ -141,7 +141,7 @@
     {#if headerless}
       {#if onClose}
         <button
-          class="icon-button quiet overlay-floating-close"
+          class="icon-button quiet overlay-caption-close overlay-floating-close"
           class:left={floatingCloseSide === 'left'}
           type="button"
           title={closeTitle}
@@ -163,7 +163,7 @@
         {/if}
         {#if onClose}
           <button
-            class="icon-button quiet"
+            class="icon-button quiet overlay-caption-close"
             type="button"
             title={closeTitle}
             aria-label="Close"

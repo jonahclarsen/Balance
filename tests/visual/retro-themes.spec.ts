@@ -47,6 +47,49 @@ for (const [id, name] of [['system1', 'Mac System 1'], ['windowsxp', 'Windows XP
       await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`${id}-${scheme}-settings.png`) })
       await openView(page, 'Today')
     }
+    if (id !== 'system1') {
+      for (const scheme of ['light', 'dark'] as const) {
+        await page.emulateMedia({ colorScheme: scheme })
+        for (const view of ['Lists', 'Notes']) {
+          await openView(page, view)
+          await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`${id}-${scheme}-${view.toLowerCase()}.png`) })
+        }
+        await openView(page, 'Today')
+        await page.keyboard.press('Alt+/')
+        const shortcuts = page.getByRole('dialog', { name: 'Keyboard shortcuts' })
+        await expect(shortcuts).toBeVisible()
+        const caption = await shortcuts.locator('.overlay-header').boundingBox()
+        const client = await shortcuts.locator('.overlay-body').boundingBox()
+        expect(caption).not.toBeNull()
+        expect(client).not.toBeNull()
+        // Regression: headerless-frame spacing used to add an empty strip to normal dialogs.
+        expect(Math.abs(client!.y - (caption!.y + caption!.height))).toBeLessThanOrEqual(2)
+        const close = shortcuts.getByRole('button', { name: 'Close', exact: true })
+        await page.mouse.move(0, 0)
+        await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`${id}-${scheme}-dialog.png`) })
+        await close.hover()
+        await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`${id}-${scheme}-close-hover.png`) })
+        await page.mouse.down()
+        await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`${id}-${scheme}-close-pressed.png`) })
+        await page.mouse.up()
+        await expect(shortcuts).not.toBeVisible()
+        await page.keyboard.press('Alt+c')
+        const search = page.getByRole('dialog', { name: 'Search Balance' })
+        await expect(search).toBeVisible()
+        await search.getByRole('searchbox', { name: 'Search everything' }).fill('garden')
+        await expect(search.locator('.search-result').first()).toBeVisible()
+        await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`${id}-${scheme}-search.png`) })
+        await search.getByRole('button', { name: 'Close', exact: true }).click()
+        // Every rendered sidebar icon must resolve to a real, decodable asset.
+        const iconURLs = await page.locator(`.sidebar .${id === 'windowsxp' ? 'xp' : 'vista'}-icon`).evaluateAll(nodes => nodes.map(n => n.getAttribute('href')!))
+        for (const url of new Set(iconURLs)) {
+          expect(await page.evaluate(async src => {
+            const image = new Image(); image.src = src
+            await image.decode(); return image.naturalWidth > 0
+          }, url)).toBe(true)
+        }
+      }
+    }
     const checkbox = page.locator('.plan-row .check:not(:checked)').first()
     const itemId = await checkbox.evaluate(el => el.closest('[data-plan-item-id]')?.getAttribute('data-plan-item-id'))
     expect(itemId).toBeTruthy()

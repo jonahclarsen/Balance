@@ -1,0 +1,191 @@
+{
+  "notice": "Microsoft artwork remains the property of Microsoft and its respective rights holders. Archive sources describe archival, educational and personal use. These files are not relicensed under the application code license.",
+  "assets": [
+    {
+      "path": "public/themes/windowsxp/bliss.png",
+      "source": "https://raw.githubusercontent.com/bartekl1/windows-ui-assets/main/Wallpapers/Windows%20XP/Desktop/Bliss.bmp",
+      "method": "Original Windows XP Bliss.bmp, lossless PNG conversion with sips; no redrawing or upscaling",
+      "sha256": "515f17aeefdc99489a167845fed0bf6f720fded082485b498ff4ff5570e31cc6"
+    },
+    {
+      "path": "public/themes/windowsvista/aurora.jpg",
+      "source": "https://raw.githubusercontent.com/bartekl1/windows-ui-assets/main/Wallpapers/Windows%20Vista/Desktop/img36.jpg",
+      "method": "Unmodified original Vista widescreen wallpaper (1920 x 1200)",
+      "sha256": "77fd927332fcec551233871031755589aa1796c9ca424cf3f31b1d155cd61285"
+    },
+    {
+      "path": "public/themes/windowsxp/icons/next.png",
+      "source": "https://raw.githubusercontent.com/ShizukuIchi/winXP/master/src/assets/windowsIcons/forward.png",
+      "method": "Unmodified original Windows icon image; selected by visual inspection",
+      "sha256": "becf03ee6422cb3ed713df8e6b71f042aa462ed34c1743e548ace9619c3ed24e"
+    },
+    {
+      "path": "public/themes/windowsxp/icons/today.png",
+      "source": "https://raw.githubusercontent.com/ShizukuIchi/winXP/master/src/assets/windowsIcons/23%2816x16%29.png",
+      "method": "Unmodified original Windows icon image; selected by visual inspection",
+      "sha256": "4448957607a25b41585543e7da6dbf1d8721919ab0bb7bd25e65f64b5130aba2"
+    },
+    {
+      "path": "public/themes/windowsxp/icons/templates.png",
+      "source": "https://raw.githubusercontent.com/ShizukuIchi/winXP/master/src/assets/windowsIcons/58%2816x16%29.png",
+      "method": "Unmodified original Windows icon image; selected by visual inspection",
+      "sha256": "c01829eca6568bfc220eecc12982c549065eaa9d8d9ea1ab76cb837915e1d1ad"
+    },
+    {
+      "path": "public/themes/windowsxp/icons/listTemplates.png",
+      "source": "https://raw.githubusercontent.com/ShizukuIchi/winXP/master/src/assets/windowsIcons/153%2816x16%29.png",
+      "method": "Unmodified original Windows icon image; selected by visual inspection",
+      "sha256": "6bc54f389c34b0ba65c0fbdb09339e840a583fea2681731320b63b68210e96af"
+    },
+    {
+      "path": "public/themes/windowsxp/icons/lists.png",
+      "source": "https://raw.githubusercontent.com/ShizukuIchi/winXP/master/src/assets/windowsIcons/history.png",
+      "method": "Unmodified original Windows icon image; selected by visual inspection",
+      "sha256": "9d2584473f6daa443f5d3cf354d1cba86d6f9cc5440b029a4a60c5898dbd5503"
+    },
+    {
+      "path": "public/themes/windowsxp/icons/notes.png",
+      "source": "https://raw.githubusercontent.com/ShizukuIchi/winXP/master/src/assets/windowsIcons/153%2816x16%29.png",
+      "method": "Unmodified original Windows icon image; selected by visual inspection",
+      "sha256": "6bc54f389c34b0ba65c0fbdb09339e840a583fea2681731320b63b68210e96af"
+    },
+    {
+      "path": "public/themes/windowsxp/icons/metrics.png",
+      "source": "https://raw.githubusercontent.com/ShizukuIchi/winXP/master/src/assets/windowsIcons/747%2816x16%29.png",
+      "method": "Unmodified original Windows icon image; selected by visual inspection",
+      "sha256": "081236f36d21a6576a357b8e28675d2c795704359053f1b05e20ca80cd42b423"
+    },
+    {
+      "path": "public/themes/windowsxp/icons/goals.png",
+      "source": "https://raw.githubusercontent.com/ShizukuIchi/winXP/master/src/assets/windowsIcons/887%2816x16%29.png",
+      "method": "Unmodified original Windows icon image; selected by visual inspection",
+      "sha256": "9793670a90c1d7d220df0e1f92caa0c4e14a656a429d3672deee37e9e9f4c3a8"
+    },
+    {
+      "path": "public/themes/windowsxp/icons/projects.png",
+      "source": "https://raw.githubusercontent.com/ShizukuIchi/winXP/master/src/assets/windowsIcons/folder.png",
+      "method": "Unmodified original Windows icon image; selected by visual inspection",
+      "sha256": "1b0c7fc94f47f38302c4e1378631b51e35e1d7bd22d03ee4f8239e78dc046c08"
+    },
+    {
+      "path": "public/themes/windowsxp/icons/prioritize.png",
+      "source": "https://raw.githubusercontent.com/ShizukuIchi/winXP/master/src/assets/windowsIcons/227%2816x16%29.png",
+      "method": "Unmodified original Windows icon image; selected by visual inspection",
+      "sha256": "60d86a40896cde0b231d0b3ffb4cf2e27c344ac568bd701766b826bbbd16f643"
+    },
+    {
+      "path": "public/themes/windowsxp/icons/ideas.png",
+      "source": "https://raw.githubusercontent.com/ShizukuIchi/winXP/master/src/assets/windowsIcons/119%2816x16%29.png",
+      "method": "Unmodified original Windows icon image; selected by visual inspection",
+      "sha256": "5cbda0014c55bf39f4b7e8705caf1cc651e2267dcc84a1deddcf7c26a50de0f7"
+    },
+    {
+      "path": "public/themes/windowsxp/icons/situate.png",
+      "source": "https://raw.githubusercontent.com/ShizukuIchi/winXP/master/src/assets/windowsIcons/214%2816x16%29.png",
+      "method": "Unmodified original Windows icon image; selected by visual inspection",
+      "sha256": "8a7e148134b3502b07e37e2cc17fe2d8df4f7683dc2cf699a864d7398a14ccd6"
+    },
+    {
+      "path": "public/themes/windowsxp/icons/settings.png",
+      "source": "https://raw.githubusercontent.com/ShizukuIchi/winXP/master/src/assets/windowsIcons/300%2816x16%29.png",
+      "method": "Unmodified original Windows icon image; selected by visual inspection",
+      "sha256": "471dee8e4715d677eff71db6c197df4f6c6687c1043d888536ee98be996152f7"
+    },
+    {
+      "path": "public/themes/windowsvista/icons/notepad.png",
+      "source": "https://raw.githubusercontent.com/gsnoopy/react-old-icons/main/PNG/WindowsVistaNotepad.png",
+      "method": "Native 16px ICO frame, exported without scaling by WinVista; SHA256 matches upstream manifest",
+      "sha256": "46b6348b0c130b397284604bd2a24c0a3f3aab1f51a08c42b6c135ad2047c12d"
+    },
+    {
+      "path": "public/themes/windowsvista/icons/desktop.png",
+      "source": "https://raw.githubusercontent.com/bartekl1/windows-ui-assets/main/Icons/Windows%20Vista/ico/imageres.dll/ICON110_1.ico",
+      "method": "Native 16px ICO frame, exported without scaling by WinVista; SHA256 matches upstream manifest",
+      "sha256": "d00a1a12fee6f1b77cf00715061cc228846d2a53d37b75c30479dcb5fe84a75d"
+    },
+    {
+      "path": "public/themes/windowsvista/icons/control.png",
+      "source": "https://raw.githubusercontent.com/bartekl1/windows-ui-assets/main/Icons/Windows%20Vista/ico/imageres.dll/ICON27_1.ico",
+      "method": "Native 16px ICO frame, exported without scaling by WinVista; SHA256 matches upstream manifest",
+      "sha256": "d6cf3570103685a8d513221b084846acaf7b8df91192a8d7f580bb3a3d373fc2"
+    },
+    {
+      "path": "public/themes/windowsvista/icons/search.png",
+      "source": "https://raw.githubusercontent.com/bartekl1/windows-ui-assets/main/Icons/Windows%20Vista/ico/imageres.dll/ICON18_1.ico",
+      "method": "Native 16px ICO frame, exported without scaling by WinVista; SHA256 matches upstream manifest",
+      "sha256": "ac6fc0742d733f87f91ddffcd633a31ed0a70875876431a033fe0b8260a22e62"
+    },
+    {
+      "path": "public/themes/windowsvista/icons/run.png",
+      "source": "https://raw.githubusercontent.com/bartekl1/windows-ui-assets/main/Icons/Windows%20Vista/ico/imageres.dll/ICON100_1.ico",
+      "method": "Native 16px ICO frame, exported without scaling by WinVista; SHA256 matches upstream manifest",
+      "sha256": "ceba1534cee5ce2e00b32c2b50feca9801e7bacfd7aeb18332fd35fbe507ecbb"
+    },
+    {
+      "path": "public/themes/windowsvista/icons/documents.png",
+      "source": "https://raw.githubusercontent.com/bartekl1/windows-ui-assets/main/Icons/Windows%20Vista/ico/imageres.dll/ICON112_1.ico",
+      "method": "Native 16px ICO frame, exported without scaling by WinVista; SHA256 matches upstream manifest",
+      "sha256": "686308b156791188f1cdc934a6982331e42dcb0b00e767dae2080265b4b050bd"
+    },
+    {
+      "path": "public/themes/windowsvista/icons/folder.png",
+      "source": "https://raw.githubusercontent.com/bartekl1/windows-ui-assets/main/Icons/Windows%20Vista/ico/imageres.dll/ICON3_1.ico",
+      "method": "Native 16px ICO frame, exported without scaling by WinVista; SHA256 matches upstream manifest",
+      "sha256": "2b6021f8a0c17f6e1976264e53576dbfc81cc84c3ee5c9bfa578efcd8206aacf"
+    },
+    {
+      "path": "public/themes/windowsvista/icons/help.png",
+      "source": "https://raw.githubusercontent.com/bartekl1/windows-ui-assets/main/Icons/Windows%20Vista/ico/imageres.dll/ICON99_1.ico",
+      "method": "Native 16px ICO frame, exported without scaling by WinVista; SHA256 matches upstream manifest",
+      "sha256": "bf146ae050eba73d7e3a46a89651d170990062902ef06adcaacf7ba622cb0371"
+    },
+    {
+      "path": "public/themes/windowsvista/icons/calendar.png",
+      "source": "https://raw.githubusercontent.com/gsnoopy/react-old-icons/main/PNG/WindowsVistaCalendar.png",
+      "method": "Native 16px ICO frame, exported without scaling by WinVista; SHA256 matches upstream manifest",
+      "sha256": "cbb9619df2a7540ec0db348939e93cf9fabcd39c6063e52b7c9c56d5bb94f0d3"
+    },
+    {
+      "path": "public/themes/windowsvista/icons/contacts.png",
+      "source": "https://raw.githubusercontent.com/gsnoopy/react-old-icons/main/PNG/WindowsVistaContacts.png",
+      "method": "Native 16px ICO frame, exported without scaling by WinVista; SHA256 matches upstream manifest",
+      "sha256": "2df45cbac6df83d15bc19bcd07fdf790b83c75315ad712ecf91effaa7493ba5e"
+    },
+    {
+      "path": "public/themes/windowsvista/icons/security.png",
+      "source": "https://raw.githubusercontent.com/bartekl1/windows-ui-assets/main/Icons/Windows%20Vista/ico/imageres.dll/ICON78_1.ico",
+      "method": "Native 16px ICO frame, exported without scaling by WinVista; SHA256 matches upstream manifest",
+      "sha256": "18f451d7ad32c81c11845c984960ccc33142bfdce91830e7c002af021288a97b"
+    },
+    {
+      "path": "public/themes/windowsvista/icons/favorites.png",
+      "source": "https://raw.githubusercontent.com/bartekl1/windows-ui-assets/main/Icons/Windows%20Vista/ico/imageres.dll/ICON115_1.ico",
+      "method": "Native 16px ICO frame, exported without scaling by WinVista; SHA256 matches upstream manifest",
+      "sha256": "8895bed8644f76471a94d0ae76594494d0963874029418990077ae2dd0f17ccc"
+    },
+    {
+      "path": "public/themes/windowsxp/close.svg",
+      "source": "https://raw.githubusercontent.com/botoxparty/XP.css/main/themes/XP/icon/close.svg",
+      "method": "XP.css pixel-path Luna caption button artwork; MIT license in public/theme-licenses/XP.css.txt",
+      "sha256": "0f696642f98342f851ebf6f55cb98da1758bc3593ae10e0cdd8491b35085913b"
+    },
+    {
+      "path": "public/themes/windowsxp/close-hover.svg",
+      "source": "https://raw.githubusercontent.com/botoxparty/XP.css/main/themes/XP/icon/close-hover.svg",
+      "method": "XP.css pixel-path Luna caption button artwork; MIT license in public/theme-licenses/XP.css.txt",
+      "sha256": "5a04d01978ac24588db251b1c8175c64e5ff27e53716ce15c205b7c33a0e5706"
+    },
+    {
+      "path": "public/themes/windowsxp/close-active.svg",
+      "source": "https://raw.githubusercontent.com/botoxparty/XP.css/main/themes/XP/icon/close-active.svg",
+      "method": "XP.css pixel-path Luna caption button artwork; MIT license in public/theme-licenses/XP.css.txt",
+      "sha256": "0848d2b7dee3a08fd0079a909e42f0204935908d4acd120e8c6f2dcf16498b58"
+    },
+    {
+      "path": "public/themes/windowsvista/close.png",
+      "source": "https://raw.githubusercontent.com/khang-nd/7.css/main/gui/icon/close.png",
+      "method": "Aero caption glyph reference; MIT license in public/theme-licenses/7.css.txt; frame and glass recreated in CSS",
+      "sha256": "8af2703d43d218ff1d238799223be1ff7cffd17960c450e59a3d7e54021448a4"
+    }
+  ]
+}

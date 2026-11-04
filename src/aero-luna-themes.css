@@ -20,7 +20,7 @@
   --font-interface: Tahoma, Verdana, sans-serif;
   --font-content: Tahoma, Verdana, sans-serif;
   --font-mono: 'Courier New', monospace;
-  --app-background: url('/themes/luna-hills.svg') center / cover;
+  --app-background: url('/themes/windowsxp/bliss.png') center / cover;
   --paper: #ffffff;
   --paper-strong: #ffffff;
   --ink: #000000;
@@ -52,7 +52,7 @@
 }
 
 :root[data-color-scheme='dark'][data-theme='windowsxp'] {
-  --app-background: linear-gradient(#03102099, #03102099), url('/themes/luna-hills.svg') center / cover;
+  --app-background: linear-gradient(#03102099, #03102099), url('/themes/windowsxp/bliss.png') center / cover;
   --paper: #202631;
   --paper-strong: #303846;
   --ink: #f4f4ef;
@@ -83,7 +83,7 @@
   --font-interface: 'Vista UI', sans-serif;
   --font-content: 'Vista UI', sans-serif;
   --font-mono: Consolas, 'Courier New', monospace;
-  --app-background: url('/themes/aero-aurora.svg') center / cover;
+  --app-background: url('/themes/windowsvista/aurora.jpg') center / cover;
   --paper: #ffffff;
   --paper-strong: #eff7fb;
   --ink: #14232d;
@@ -115,7 +115,7 @@
 }
 
 :root[data-color-scheme='dark'][data-theme='windowsvista'] {
-  --app-background: linear-gradient(#07141b66, #07141b66), url('/themes/aero-aurora.svg') center / cover;
+  --app-background: linear-gradient(#07141b66, #07141b66), url('/themes/windowsvista/aurora.jpg') center / cover;
   --paper: #17242c;
   --paper-strong: #20343e;
   --ink: #f1f7fa;
@@ -167,7 +167,7 @@
 :root[data-color-scheme='dark'][data-theme='windowsxp'] .sidebar {
   background: linear-gradient(#243b62, var(--sidebar) 180px);
 }
-:root[data-theme='windowsxp'] :is(.page-header, .overlay-header) {
+:root[data-theme='windowsxp'] :is(.page-header) {
   border: 1px solid #0831d9;
   border-bottom: 2px solid #003dd7;
   border-radius: 7px 7px 0 0;
@@ -177,35 +177,36 @@
   color: #ffffff;
   text-shadow: 1px 1px #0f1089;
 }
-:root[data-theme='windowsxp'] :is(.page-header h2, .page-header .day-pane-heading > h2, .overlay-header h3, .page-header .daily-reminder-button) {
+:root[data-theme='windowsxp'] :is(.page-header h2, .page-header .day-pane-heading > h2, .page-header .daily-reminder-button) {
   font-family: 'Trebuchet MS', Tahoma, sans-serif;
   color: #ffffff;
   font-size: 18px;
   font-weight: 700;
 }
-:root[data-theme='windowsxp'] :is(.list-panel, .template-panel, .settings-panel, .notes-workspace, .overlay-card) {
+:root[data-theme='windowsxp'] :is(.list-panel, .template-panel, .settings-panel, .notes-workspace) {
   border: 3px solid var(--xp-frame);
   border-radius: 3px;
   box-shadow: inset 1px 1px #c5ddff, var(--shadow);
 }
-:root[data-theme='windowsxp'] button:where(:not(.ghost):not(.check):not(.time-part):not(.daily-reminder-button):not(.quiet):not(.plan-goal-badge):not(.select-handle)) {
+:root[data-theme='windowsxp'] button:where(:not(.ghost):not(.check):not(.time-part):not(.daily-reminder-button):not(.quiet):not(.plan-goal-badge):not(.select-handle):not(.drag-handle):not(.nav-child):not(.search-result):not(.search-section-header)) {
   border-radius: 3px;
   border: 1px solid #003c74;
   background: linear-gradient(var(--xp-button-top), var(--xp-face) 86%, var(--xp-button-bottom));
   box-shadow: inset 1px 1px #ffffff66;
 }
-:root[data-theme='windowsxp'] button:where(:not(.ghost):not(.check):not(.time-part):not(.daily-reminder-button):not(.quiet):not(.plan-goal-badge):not(.select-handle)):hover {
+:root[data-theme='windowsxp'] button:where(:not(.ghost):not(.check):not(.time-part):not(.daily-reminder-button):not(.quiet):not(.plan-goal-badge):not(.select-handle):not(.drag-handle):not(.nav-child):not(.search-result):not(.search-section-header)):hover {
   box-shadow: inset 0 0 0 2px #e9ad47;
 }
-:root[data-theme='windowsxp'] button:where(:not(.ghost):not(.check):not(.time-part):not(.daily-reminder-button):not(.quiet):not(.plan-goal-badge):not(.select-handle)):active {
+:root[data-theme='windowsxp'] button:where(:not(.ghost):not(.check):not(.time-part):not(.daily-reminder-button):not(.quiet):not(.plan-goal-badge):not(.select-handle):not(.drag-handle):not(.nav-child):not(.search-result):not(.search-section-header)):active {
   background: linear-gradient(var(--xp-button-bottom), var(--xp-face));
   box-shadow: inset 1px 1px #6e6b6266;
 }
 :root[data-theme='windowsxp'] :is(button.primary, .generate-day-button) {
-  border-color: #245c16;
-  color: #ffffff;
-  background: linear-gradient(#73bb59, #3d9532 20%, #32822a 80%, #1f601a);
-  text-shadow: 1px 1px #205213;
+  border-color: #003c74;
+  color: var(--ink);
+  background: linear-gradient(var(--xp-button-top), var(--xp-face) 86%, var(--xp-button-bottom));
+  box-shadow: inset 0 0 0 1px #fff, inset 0 0 0 2px #a5c4ed;
+  text-shadow: none;
 }
 :root[data-theme='windowsxp'] .sidebar nav button.active {
   background: var(--xp-caption);
@@ -218,13 +219,6 @@
   border-radius: 0;
 }
 :root[data-theme='windowsxp'] .check { border-radius: 0; border-color: #1c5180; }
-:root[data-theme='windowsxp'] .overlay-header button[aria-label='Close'] {
-  background: linear-gradient(135deg, #f3aa8d, #ce4a26 52%, #a32306);
-  border: 1px solid #ffffff;
-  border-radius: 3px;
-  color: #ffffff;
-  box-shadow: inset 1px 1px #ffd6bd;
-}
 
 :root[data-theme='windowsvista'] .sidebar {
   background: var(--aero-glass);
@@ -232,7 +226,7 @@
   border-right: 1px solid #ffffff88;
   box-shadow: inset -1px 0 #173e5277;
 }
-:root[data-theme='windowsvista'] :is(.page-header, .overlay-header) {
+:root[data-theme='windowsvista'] :is(.page-header) {
   background: var(--aero-glass);
   backdrop-filter: blur(12px);
   border: 1px solid #ffffffaa;
@@ -241,30 +235,30 @@
   color: var(--aero-caption-ink);
   padding: 10px 14px;
 }
-:root[data-theme='windowsvista'] :is(.page-header h2, .page-header .day-pane-heading > h2, .overlay-header h3, .page-header .daily-reminder-button) {
+:root[data-theme='windowsvista'] :is(.page-header h2, .page-header .day-pane-heading > h2, .page-header .daily-reminder-button) {
   font-family: var(--font-interface);
   font-size: 19px;
   font-weight: 400;
   color: var(--aero-caption-ink);
   text-shadow: 0 0 4px var(--aero-caption-glow), 0 0 9px var(--aero-caption-glow), 0 0 14px var(--aero-caption-glow);
 }
-:root[data-theme='windowsvista'] :is(.list-panel, .template-panel, .settings-panel, .notes-workspace, .overlay-card) {
+:root[data-theme='windowsvista'] :is(.list-panel, .template-panel, .settings-panel, .notes-workspace) {
   border: 5px solid color-mix(in srgb, var(--line) 64%, transparent);
   border-radius: 6px;
   box-shadow: 0 0 0 1px #0c2d4388, inset 0 0 0 1px #ffffffaa, var(--shadow);
 }
-:root[data-theme='windowsvista'] button:where(:not(.ghost):not(.check):not(.time-part):not(.daily-reminder-button):not(.quiet):not(.plan-goal-badge):not(.select-handle)) {
+:root[data-theme='windowsvista'] button:where(:not(.ghost):not(.check):not(.time-part):not(.daily-reminder-button):not(.quiet):not(.plan-goal-badge):not(.select-handle):not(.drag-handle):not(.nav-child):not(.search-result):not(.search-section-header)) {
   border: 1px solid var(--line-strong);
   border-radius: 3px;
   background: var(--aero-button);
   box-shadow: inset 0 0 0 1px #ffffff88;
 }
-:root[data-theme='windowsvista'] button:where(:not(.ghost):not(.check):not(.time-part):not(.daily-reminder-button):not(.quiet):not(.plan-goal-badge):not(.select-handle)):hover {
+:root[data-theme='windowsvista'] button:where(:not(.ghost):not(.check):not(.time-part):not(.daily-reminder-button):not(.quiet):not(.plan-goal-badge):not(.select-handle):not(.drag-handle):not(.nav-child):not(.search-result):not(.search-section-header)):hover {
   background: var(--aero-button-hover);
   border-color: var(--accent);
   box-shadow: inset 0 0 0 1px #ffffffaa, 0 0 4px #58c8f366;
 }
-:root[data-theme='windowsvista'] button:where(:not(.ghost):not(.check):not(.time-part):not(.daily-reminder-button):not(.quiet):not(.plan-goal-badge):not(.select-handle)):active {
+:root[data-theme='windowsvista'] button:where(:not(.ghost):not(.check):not(.time-part):not(.daily-reminder-button):not(.quiet):not(.plan-goal-badge):not(.select-handle):not(.drag-handle):not(.nav-child):not(.search-result):not(.search-section-header)):active {
   box-shadow: inset 0 1px 3px #163e5877;
 }
 :root[data-theme='windowsvista'] button.primary {
@@ -282,31 +276,8 @@
   box-shadow: inset 0 1px 2px #143b531f;
 }
 :root[data-theme='windowsvista'] .check { border-radius: 2px; }
-:root[data-theme='windowsvista'] .overlay-header button[aria-label='Close'] {
-  background: linear-gradient(#e5a298, #b74430 48%, #8d1d0d 49%, #d8674f);
-  color: #ffffff;
-  border: 1px solid #763b2e;
-  border-radius: 0 0 4px 4px;
-  box-shadow: inset 0 0 0 1px #ffffff99;
-}
 :root[data-color-scheme='dark']:is([data-theme='windowsxp'], [data-theme='windowsvista']) .check:checked {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 12'%3E%3Cpath d='m2 6 3 3 7-7' fill='none' stroke='black' stroke-linecap='round' stroke-linejoin='round' stroke-width='2.4'/%3E%3C/svg%3E");
-}
-
-:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .nav-icon {
-  fill: var(--era-icon-fill);
-  stroke: #1b5078;
-  stroke-width: 1.25;
-  opacity: 1;
-  filter: drop-shadow(0 1px 0 #ffffffb3);
-}
-:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .nav-icon:is([data-icon='projects'], [data-icon='today'], [data-icon='ideas']) {
-  --era-icon-color: #efb52f;
-  stroke: #865911;
-}
-:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .nav-icon:is([data-icon='goals'], [data-icon='prioritize'], [data-icon='next']) {
-  --era-icon-color: #75b95b;
-  stroke: #326332;
 }
 
 /* The original caption/UI faces and point-size hierarchy, independently of
@@ -315,11 +286,11 @@
 :root[data-theme='windowsvista'] { font-size: 12px; --font-mono: var(--font-interface); }
 :root[data-theme='windowsxp'] .sidebar { font-size: 11px; }
 :root[data-theme='windowsvista'] .sidebar { font-size: 12px; }
-:root[data-theme='windowsxp'] :is(.page-header h2, .page-header .day-pane-heading > h2, .overlay-header h3, .page-header .daily-reminder-button, .sidebar-brand-heading h1) {
+:root[data-theme='windowsxp'] :is(.page-header h2, .page-header .day-pane-heading > h2, .page-header .daily-reminder-button, .sidebar-brand-heading h1) {
   font-family: 'Trebuchet MS', Tahoma, sans-serif;
   font-size: 13px;
 }
-:root[data-theme='windowsvista'] :is(.page-header h2, .page-header .day-pane-heading > h2, .overlay-header h3, .page-header .daily-reminder-button) { font-size: 12px; }
+:root[data-theme='windowsvista'] :is(.page-header h2, .page-header .day-pane-heading > h2, .page-header .daily-reminder-button) { font-size: 12px; }
 :root[data-theme='windowsvista'] .sidebar-brand-heading h1 { font-size: 14px; }
 :root[data-theme='windowsxp'] :is(.item-text, .item-text-display, .template-text, .note-text) { font-size: 13px; }
 :root[data-theme='windowsvista'] :is(.item-text, .item-text-display, .template-text, .note-text) { font-size: 14px; }
@@ -332,3 +303,235 @@
 :root[data-theme='windowsvista'] .sidebar {
   background: var(--aero-glass), var(--sidebar);
 }
+
+/* Native 16px icon frames, rather than recolored modern line drawings. */
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .nav-icon {
+  width: 16px;
+  height: 16px;
+  opacity: 1;
+  overflow: visible;
+  filter: none;
+  image-rendering: pixelated;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .nav-icon > :not(defs):not(image) { display: none; }
+:root[data-theme='windowsxp'] .nav-icon .xp-icon,
+:root[data-theme='windowsvista'] .nav-icon .vista-icon { display: block; }
+
+/* A desktop remains visible around the opaque document window. */
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .workspace {
+  margin: 12px;
+  background: var(--paper);
+  border: 1px solid var(--line-strong);
+  box-shadow: 0 2px 8px #0005;
+  padding: 16px;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .overlay-backdrop {
+  background: #00000018;
+  backdrop-filter: none;
+}
+
+/* Luna's frame is three differently colored pixel edges, not a flat blue border.
+   The caption is part of that frame; the dialog face begins below it. */
+:root[data-theme='windowsxp'] .overlay-card {
+  padding: 0 3px 3px;
+  border: 0;
+  border-radius: 8px 8px 0 0;
+  background: #0855dd;
+  box-shadow: inset -1px -1px #00138c, inset 1px 1px #0831d9,
+    inset -2px -2px #001ea0, inset 2px 2px #166aee,
+    inset -3px -3px #003bda, inset 3px 3px #0855dd, 3px 4px 7px #0006;
+}
+:root[data-theme='windowsxp'] .overlay-header {
+  position: relative;
+  flex: none;
+  min-height: 30px;
+  margin: 0 -3px;
+  padding: 3px 5px 3px 8px;
+  gap: 8px;
+  background: var(--xp-caption);
+  border: 1px solid #0831d9;
+  border-right-color: #001ea0;
+  border-bottom: 0;
+  border-radius: 8px 8px 0 0;
+  box-shadow: inset 0 1px #6bb4ff;
+  color: white;
+}
+:root[data-theme='windowsxp'] .overlay-header h3 {
+  font: bold 13px 'Trebuchet MS', Tahoma, sans-serif;
+  line-height: 18px;
+  color: white;
+  text-shadow: 1px 1px #0f1089;
+}
+:root[data-theme='windowsxp'] .overlay-eyebrow { color: #fff; font: 11px Tahoma, sans-serif; }
+:root[data-theme='windowsxp'] .overlay-body {
+  background: var(--xp-face);
+  color: var(--ink);
+  border: 0;
+  box-shadow: none;
+}
+:root[data-theme='windowsxp'] .overlay-card:not(:has(> .overlay-header)) > .overlay-body { margin-top: 30px; }
+:root[data-theme='windowsxp'] .overlay-caption-close {
+  flex: 0 0 21px;
+  width: 21px;
+  height: 21px;
+  min-width: 21px;
+  min-height: 21px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  box-shadow: none;
+  opacity: 1;
+  background: url('/themes/windowsxp/close.svg') center / 21px 21px no-repeat;
+  image-rendering: pixelated;
+}
+:root[data-theme='windowsxp'] .overlay-caption-close:hover {
+  background-image: url('/themes/windowsxp/close-hover.svg');
+  box-shadow: none;
+}
+:root[data-theme='windowsxp'] .overlay-caption-close:active {
+  background-image: url('/themes/windowsxp/close-active.svg');
+  box-shadow: none;
+}
+:root[data-theme='windowsxp'] .overlay-caption-close > svg { opacity: 0; }
+:root[data-theme='windowsxp'] .overlay-floating-close { top: 5px; right: 5px; }
+:root[data-theme='windowsxp'] .overlay-floating-close.left { left: 5px; right: auto; }
+
+/* Aero glass surrounds the content on every side. Reflection belongs to the
+   frame, while the inset client area stays opaque and readable. */
+:root[data-theme='windowsvista'] .overlay-card {
+  padding: 0 6px 6px;
+  border: 1px solid #263c4dcc;
+  border-radius: 7px;
+  background:
+    linear-gradient(115deg, #ffffff88 0%, #ffffff11 20%, #ffffff55 26%, transparent 27% 52%, #ffffff33 53% 61%, transparent 62%),
+    linear-gradient(90deg, #a8c7db99, #6d93ac99 45%, #b8d6e399);
+  backdrop-filter: blur(8px) saturate(1.25);
+  box-shadow: inset 0 0 0 1px #ffffffb3, 0 7px 24px #0008, 0 1px 4px #0006;
+}
+:root[data-theme='windowsvista'] .overlay-header {
+  position: relative;
+  flex: none;
+  min-height: 30px;
+  margin: 0;
+  padding: 5px 54px 5px 2px;
+  gap: 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  color: #000;
+}
+:root[data-theme='windowsvista'] .overlay-header h3 {
+  color: #000;
+  font: 400 12px 'Vista UI', sans-serif;
+  line-height: 20px;
+  text-shadow: 0 0 3px white, 0 0 6px white, 0 0 9px white, 0 0 12px white;
+}
+:root[data-theme='windowsvista'] .overlay-eyebrow { color: #18232c; text-shadow: 0 0 5px white; }
+:root[data-theme='windowsvista'] .overlay-body {
+  background: var(--paper);
+  border: 1px solid #526575;
+  box-shadow: 0 0 0 1px #ffffffa6;
+}
+:root[data-theme='windowsvista'] .overlay-card:not(:has(> .overlay-header)) > .overlay-body { margin-top: 30px; }
+:root[data-theme='windowsvista'] .overlay-caption-close {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 47px;
+  min-width: 47px;
+  height: 19px;
+  min-height: 19px;
+  padding: 0;
+  border: 1px solid #5f2924;
+  border-top: 0;
+  border-radius: 0 0 4px 4px;
+  color: #fff;
+  opacity: 1;
+  background: linear-gradient(#f1c5bf, #d8897b 45%, #b33822 50%, #c4492e 85%, #d77960);
+  box-shadow: inset 0 0 0 1px #ffffff88, 0 1px 0 #ffffff88;
+}
+:root[data-theme='windowsvista'] .overlay-caption-close:hover {
+  background: radial-gradient(ellipse at bottom, #ffbc5d, transparent 70%), linear-gradient(#ffd0bf, #ed7658 45%, #ce2606 50%, #d84913);
+  box-shadow: inset 0 0 0 1px #ffffff99, 0 0 7px 3px #f55b3299;
+}
+:root[data-theme='windowsvista'] .overlay-caption-close:active {
+  background: linear-gradient(#b46659, #933421 45%, #6f1609 50%, #ae3519);
+  box-shadow: inset 0 0 0 1px #ffffff55;
+}
+:root[data-theme='windowsvista'] .overlay-caption-close > svg {
+  width: 12px;
+  height: 12px;
+  stroke-width: 2.5;
+  filter: drop-shadow(0 1px 1px #581800);
+}
+:root[data-theme='windowsvista'] .overlay-floating-close { right: 6px; top: 1px; }
+:root[data-theme='windowsvista'] .overlay-floating-close.left { left: 6px; right: auto; }
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .overlay-caption-close:disabled { opacity: .5; pointer-events: none; }
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .overlay-caption-close:focus-visible { outline: 1px dotted white; outline-offset: -4px; }
+@media (max-width: 760px) {
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .workspace { margin: 4px; padding: 8px; }
+}
+
+:root[data-theme='windowsvista'] .overlay-caption-close {
+  background-image: url('/themes/windowsvista/close.png'), linear-gradient(#f1c5bf, #d8897b 45%, #b33822 50%, #c4492e 85%, #d77960);
+  background-position: center;
+  background-repeat: no-repeat;
+}
+:root[data-theme='windowsvista'] .overlay-caption-close:hover {
+  background-image: url('/themes/windowsvista/close.png'), radial-gradient(ellipse at bottom, #ffbc5d, transparent 70%), linear-gradient(#ffd0bf, #ed7658 45%, #ce2606 50%, #d84913);
+}
+:root[data-theme='windowsvista'] .overlay-caption-close:active {
+  background-image: url('/themes/windowsvista/close.png'), linear-gradient(#b46659, #933421 45%, #6f1609 50%, #ae3519);
+}
+:root[data-theme='windowsvista'] .overlay-caption-close > svg { opacity: 0; }
+/* Explorer navigation is a list, not a stack of push buttons. */
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .sidebar nav button {
+  border: 1px solid transparent;
+  border-radius: 2px;
+  box-shadow: none;
+  background: transparent;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+:root[data-theme='windowsxp'] .sidebar nav button:hover {
+  background: #e8effa;
+  color: #000;
+  border-color: #b6c8e5;
+  box-shadow: none;
+}
+:root[data-theme='windowsxp'] .sidebar nav button.active {
+  background: #316ac5;
+  color: #fff;
+  border-color: #316ac5;
+}
+:root[data-theme='windowsvista'] .sidebar nav button:hover {
+  background: linear-gradient(#f5fbffb3, #c3e4f399);
+  border-color: #ffffff99;
+  box-shadow: inset 0 0 0 1px #ffffff66;
+}
+:root[data-theme='windowsvista'] .sidebar nav button.active {
+  background: linear-gradient(#eef9ff, #c6e8fa);
+  color: #14232d;
+  border-color: #6ca7ca;
+  box-shadow: inset 0 0 0 1px #fff;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .drag-handle {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+:root[data-theme='windowsxp'] .check {
+  width: 13px;
+  height: 13px;
+  border: 1px solid #1c5180;
+  background: linear-gradient(135deg, #dcdcd7, #fff 75%);
+  box-shadow: inset 1px 1px 1px #c5c5bc;
+}
+:root[data-theme='windowsxp'] .check:checked {
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 13 13' shape-rendering='crispEdges'%3E%3Cpath d='M2 5v3l3 3 6-7V1L5 8Z' fill='%2321a121'/%3E%3C/svg%3E") center / 11px 11px no-repeat, linear-gradient(135deg, #dcdcd7, #fff 75%);
+}
+:root[data-theme='windowsxp'] .check:hover { box-shadow: inset 0 0 0 2px #f8b330; }
+:root[data-color-scheme='dark'][data-theme='windowsxp'] .sidebar nav button:hover { background: #29476e; color: #fff; }
+:root[data-color-scheme='dark'][data-theme='windowsvista'] .sidebar nav button:hover { color: #14232d; }

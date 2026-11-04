@@ -2,9 +2,11 @@
   export let name:
     | 'next' | 'today' | 'templates' | 'listTemplates' | 'lists' | 'notes' | 'metrics'
     | 'goals' | 'projects' | 'prioritize' | 'ideas' | 'situate' | 'settings'
+  const vistaIcons = { next: 'run', today: 'calendar', templates: 'calendar', listTemplates: 'documents', lists: 'documents', notes: 'notepad', metrics: 'help', goals: 'favorites', projects: 'folder', prioritize: 'search', ideas: 'favorites', situate: 'security', settings: 'control' }
 </script>
-<svg class="nav-icon" data-icon={name} style={`--era-icon-fill: url(#nav-fill-${name})`} viewBox="0 0 24 24" aria-hidden="true">
-  <defs><linearGradient id={`nav-fill-${name}`} x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="var(--era-icon-color, #6ba9db)"/></linearGradient></defs>
+<svg class="nav-icon" data-icon={name} viewBox="0 0 24 24" aria-hidden="true">
+  <image class="era-icon xp-icon" href={`/themes/windowsxp/icons/${name}.png`} x="0" y="0" width="24" height="24" />
+  <image class="era-icon vista-icon" href={`/themes/windowsvista/icons/${vistaIcons[name]}.png`} x="0" y="0" width="24" height="24" />
   {#if name === 'next'}<path d="M4 12h12M11 6l6 6-6 6M20 5v14" />
   {:else if name === 'today'}<circle cx="12" cy="12" r="4" /><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4" />
   {:else if name === 'templates'}<rect x="4" y="5" width="16" height="15" rx="2.5" /><path d="M4 10h16M8.5 3v4M15.5 3v4" />
@@ -19,4 +21,4 @@
   {:else if name === 'situate'}<circle cx="12" cy="12" r="9" /><path d="m15.5 8.5-2 5-5 2 2-5z" />
   {:else if name === 'settings'}<path d="M4 7h9M17 7h3M4 17h3M11 17h9" /><circle cx="15" cy="7" r="2" /><circle cx="9" cy="17" r="2" />{/if}
 </svg>
-<style>.nav-icon { flex: none; width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; opacity: 0.8; }</style>
+<style>.era-icon { display: none; } .nav-icon { flex: none; width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; opacity: 0.8; }</style>
