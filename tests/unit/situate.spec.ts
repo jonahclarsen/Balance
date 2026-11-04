@@ -70,6 +70,14 @@ test('old default night passes shorten to 50 and 25 minutes, custom ones stay', 
   expect(upgradePresets({ ...d, presets:11, settings:{ ...d.settings, nightMinutes:60, lateNightMinutes:30 } }).settings).toMatchObject({ nightMinutes:50, lateNightMinutes:25 })
   expect(upgradePresets({ ...d, presets:11, settings:{ ...d.settings, nightMinutes:65, lateNightMinutes:30 } }).settings).toMatchObject({ nightMinutes:65, lateNightMinutes:30 })
 })
+test('VLC V2.0 is blocked with entertainment, by default and after upgrading', () => {
+  const d=fixture();const id='app:org.jonah.vlc-race'
+  const blocking=(doc:typeof d)=>doc.modes.filter(m=>m.targets.some(t=>t.id===id)).map(m=>m.id)
+  expect(blocking(d)).toEqual(['dolo','touch-grass'])
+  expect(blocking(upgradePresets({ ...d, presets:13, modes:d.modes.map(m=>({ ...m, targets:m.targets.filter(t=>t.id!==id) })) }))).toEqual(['dolo','touch-grass'])
+  const removed=upgradePresets({ ...d, modes:d.modes.map(m=>({ ...m, targets:m.targets.filter(t=>t.id!==id) })) })
+  expect(blocking(removed)).toEqual([])
+})
 test('entertainment branches allow work or permitted care only, scoped to one target in every mode', () => {
   const now=date(0,12);const d=enableMode(fixture(),'touch-grass',now);const target='domain:youtube.com'
   expect(quizProgress(questions(d,d.modes[0],now,target),{visual:true}).next?.id).toBe('care')

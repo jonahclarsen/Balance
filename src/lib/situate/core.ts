@@ -48,13 +48,15 @@ export const CATEGORIES: { id: Category; label: string; color: string }[] = [
   { id: 'custom', label: 'Other', color: '#5f7d8c' },
 ]
 const target = (category: Category, kind: Target['kind'], value: string): Target => ({ id: `${kind}:${value}`, category, kind, value })
-const PRESETS = 13
+const PRESETS = 14
 /** Lengths offered for an entertainment pass, chosen after its quiz. */
 export const ACCESS_MINUTES = [5, 15, 60]
 const emergency: Question = { ...q('emergency', 'Is this an emergency?'), when: { id: 'planned', answer: false }, minutes: 5 }
 // Google Messages, WhatsApp, Messenger, Instagram, the Feurstagram clone and Signal on Android and Mac.
 const messagingApps = ['com.google.android.apps.messaging', 'com.whatsapp', 'net.whatsapp.WhatsApp', 'com.facebook.orca', 'com.facebook.archon', 'com.facebook.archon.developerID', 'com.burbn.instagram', 'com.instagram.android.feurstagram', 'org.thoughtcrime.securesms', 'org.whispersystems.signal-desktop']
   .map(v => target('social', 'app', v))
+// VLC V2.0, a custom Mac build with its own bundle ID.
+const vlcV2 = target('entertainment', 'app', 'org.jonah.vlc-race')
 const reminder = (id: string, name: string, description: string, color: string, hours: Reminder): Mode =>
   ({ id, name, description, color, platforms: ['mac', 'android'], scheduled: false, dayQuiz: [], nightQuiz: [], targets: [], reminder: hours })
 export function defaults(now = Date.now()): Document {
@@ -64,6 +66,7 @@ export function defaults(now = Date.now()): Document {
     ...messagingApps,
     ...['youtube.com', 'youtu.be', 'netflix.com', 'twitch.tv', 'disneyplus.com'].map(v => target('entertainment', 'domain', v)),
     ...['org.videolan.vlc', 'com.google.android.youtube', 'com.netflix.mediaclient'].map(v => target('entertainment', 'app', v)),
+    vlcV2,
     ...['chatgpt.com', 'chat.openai.com', 'claude.ai', 'gemini.google.com', 'perplexity.ai', 'copilot.microsoft.com', 'grok.com'].map(v => target('ai', 'domain', v)),
     ...['com.openai.codex', 'com.openai.chat', 'com.openai.chatgpt', 'com.anthropic.claudefordesktop', 'com.anthropic.claude', 'com.google.android.apps.bard'].map(v => target('ai', 'app', v)),
   ]
@@ -93,13 +96,15 @@ export function upgradePresets(doc: Document): Document {
   // each mode's entertainment quiz with one shared quiz, keeping Dolo's; v11 asks each
   // entertainment pass for its length instead of a fixed one; v12 shortens untouched night
   // passes from 60 and 30 minutes to 50 and 25; v13 moves untouched reminder times to
-  // Active Projects ending and No Active Project starting at a clock time or after sunset.
+  // Active Projects ending and No Active Project starting at a clock time or after sunset;
+  // v14 adds VLC V2.0 to modes that block entertainment.
   const preset = defaults(doc.generatedAt).modes
   const legacy = doc.modes as (Mode & Legacy)[]
   const accessQuiz = doc.accessQuiz ?? [legacy.find(m => m.id === 'dolo'), ...legacy].find(m => m?.accessQuiz?.length)?.accessQuiz ?? entertainment
   const modes = doc.modes.map((m: Partial<Mode> & Mode & Legacy, i) => {
     const { categories: _categories, accessQuiz: _accessQuiz, ...mode } = m
-    const targets = version < 2 && m.id === 'dolo' ? [...m.targets, ...messagingApps.filter(t => !m.targets.some(x => x.id === t.id))] : m.targets
+    const messaging = version < 2 && m.id === 'dolo' ? [...m.targets, ...messagingApps.filter(t => !m.targets.some(x => x.id === t.id))] : m.targets
+    const targets = version < 14 && messaging.some(t => t.category === 'entertainment') && !messaging.some(t => t.id === vlcV2.id) ? [...messaging, vlcV2] : messaging
     const fallback = preset.find(p => p.id === m.id)
     const dayQuiz = version < 8 && m.id === 'touch-grass' && m.dayQuiz.some(q => q.id === 'planned') && !m.dayQuiz.some(q => q.id === emergency.id) ? [...m.dayQuiz, emergency] : m.dayQuiz
     const evening = version < 9 && m.id === 'touch-grass' && m.scheduled ? { eveningOnly: true, headsUp: m.headsUp ?? [15, 5] } : {}
