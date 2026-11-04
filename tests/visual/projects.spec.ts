@@ -640,6 +640,8 @@ test('find shows a project\'s full description only while it matches', async ({ 
   const description = card.locator('.project-description')
   const preview = `${'filler words '.repeat(100)}orchid…`
   await expect(description).toHaveText(preview)
+  const dotOffset = () => card.evaluate((element) => element.querySelector('.project-dot')!.getBoundingClientRect().top - element.getBoundingClientRect().top)
+  const previewDotOffset = await dotOffset()
 
   const highlighted = () => page.evaluate(() => Array.from(CSS.highlights.get('balance-document-find-match') ?? [], (range) => {
     if (!(range instanceof Range)) return null
@@ -655,6 +657,7 @@ test('find shows a project\'s full description only while it matches', async ({ 
     await expect(description).toContainText('Second line tulip')
     await expect.poll(highlighted).toEqual([{ text: word, onScreen: true }])
     expect(await description.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+    expect(Math.abs(await dotOffset() - previewDotOffset)).toBeLessThanOrEqual(1)
   }
 
   // A match elsewhere on the card leaves the description alone.
