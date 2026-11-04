@@ -3,8 +3,9 @@
   import ProgressBar from './ProgressBar.svelte'
   import TaskCheckbox from './TaskCheckbox.svelte'
   import OverlayModal from './OverlayModal.svelte'
+  import RichTextEditor from './RichTextEditor.svelte'
   import { IDEA_UNLOCK_MS, findIdea, ideaGroupMeta, IDEA_SORT_QUESTION } from './ideas'
-  import type { ItemLink } from './planner'
+  import { renderItemDisplayHTML, type ItemLink, type ItemTextSegment } from './planner'
   import { openClickedLink, openRenderedLinkFromShortcut } from './externalLinks'
   import type { Id, IdeaGroup, IdeaGroupKind, IdeaItem, IdeaSnapshot } from './types'
 
@@ -15,13 +16,13 @@
   export let title: string
   // Ideas an earlier pass already sorted, so progress continues across passes.
   export let sortedBefore = 0
-  export let renderIdeaHTML: (item: IdeaItem) => string
+  export let linkSegments: (text: string) => ItemTextSegment[]
   export let onOpenLink: (link: ItemLink) => void
   // Hidden while another page is open; the sort resumes where it left off.
   export let active = true
   export let onDecide: (itemId: Id, kind: IdeaGroupKind) => void
   export let onAppendToPrevious: (itemId: Id, previousId: Id) => boolean
-  export let onEdit: (itemId: Id, text: string) => void
+  export let onEdit: (itemId: Id, html: string, text: string) => void
   export let onToggleDone: (itemId: Id, done: boolean) => void
   // Removes the idea and puts it on the clipboard to paste where it belongs.
   export let onCut: (itemId: Id) => void
@@ -38,8 +39,8 @@
   let index = 0
   let step: Step = 'question'
   let editing = false
-  let editDraft = ''
-  let editInput: HTMLTextAreaElement | null = null
+  let editHTML = ''
+  let editText = ''
   // Every way an idea leaves the queue counts as sorted, so the total stays
   // fixed and progress only moves forward until Back undoes a decision.
   const total = sortedBefore + queue.length
@@ -60,6 +61,10 @@
   $: current = queued ? findIdea(groups, queued.id)?.item ?? queued : undefined
   $: options = step === 'yes' ? (['possible', 'genuine'] as const) : step === 'no' ? (['trash', 'afterlife'] as const) : []
   $: resetCard(index)
+
+  function renderIdeaHTML(item: IdeaItem) {
+    return renderItemDisplayHTML(item.html, item.text, linkSegments(item.text))
+  }
 
   function resetCard(_index: number) {
     step = 'question'
@@ -171,18 +176,40 @@
 
   async function startEdit() {
     if (!current) return
-    editDraft = current.text
+    editHTML = current.html ?? ''
+    editText = current.text
     editing = true
     await tick()
-    editInput?.focus()
-    editInput?.setSelectionRange(editDraft.length, editDraft.length)
+    const input = document.querySelector<HTMLElement>('.idea-sort [data-rich-text-input]')
+    if (!input) return
+    input.focus()
+    const range = document.createRange()
+    range.selectNodeContents(input)
+    range.collapse(false)
+    const selection = document.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
   }
 
   function saveEdit() {
     if (!current) return
-    const text = editDraft.trim()
-    if (text && text !== current.text) onEdit(current.id, text)
+    const text = editText.trim()
+    // Blurring reports the rendered markup, which alone isn't an edit.
+    const changed = text !== current.text || (editHTML !== (current.html ?? '') && editHTML !== renderIdeaHTML(current))
+    if (text && changed) onEdit(current.id, editHTML, text)
     editing = false
+  }
+
+  // The window listener saves; this only stops the editor adding a paragraph.
+  function handleEditKeydown(_editor: HTMLDivElement, event: KeyboardEvent) {
+    if (event.key === 'Enter' && !event.shiftKey) event.preventDefault()
+  }
+
+  // Some soft keyboards report Enter only as a paragraph insertion.
+  function handleEditBeforeInput(_editor: HTMLDivElement, event: InputEvent) {
+    if (event.inputType !== 'insertParagraph') return
+    event.preventDefault()
+    saveEdit()
   }
 
   function handleKeydown(event: KeyboardEvent) {
@@ -196,7 +223,7 @@
       return
     }
     if (editing) {
-      if (event.key === 'Enter' && !event.shiftKey) {
+      if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
         event.preventDefault()
         saveEdit()
       } else if (event.key === 'Escape') {
@@ -257,21 +284,31 @@
             class:done={current.done}
             data-idea-id={current.id}
           >
-            {#if editing}
-              <textarea
-                class="paste-review-edit"
-                rows="1"
-                bind:value={editDraft}
-                bind:this={editInput}
-                placeholder="Idea text"
-                aria-label="Edit idea"
-              ></textarea>
-            {:else}
-              <div class="paste-review-line">
-                <TaskCheckbox
-                  checked={current.done}
-                  onChange={(event) => onToggleDone(current.id, event.currentTarget.checked)}
+            <div class="paste-review-line">
+              <TaskCheckbox
+                checked={current.done}
+                onChange={(event) => onToggleDone(current.id, event.currentTarget.checked)}
+              />
+              {#if editing}
+                <RichTextEditor
+                  className="paste-review-text item-text"
+                  kind="idea"
+                  inputId={current.id}
+                  html={editHTML}
+                  text={editText}
+                  done={current.done}
+                  placeholder="Idea text"
+                  ariaLabel="Edit idea"
+                  internalLinkSegments={linkSegments(editText)}
+                  onChange={(html, text) => {
+                    editHTML = html
+                    editText = text
+                  }}
+                  onKeyDown={handleEditKeydown}
+                  onBeforeInput={handleEditBeforeInput}
+                  onInternalLinkClick={(link) => onOpenLink(link)}
                 />
+              {:else}
                 <!-- Delegates clicks from native, keyboard-accessible anchors in the rendered HTML. -->
                 <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
                 <div
@@ -280,12 +317,12 @@
                   class:done={current.done}
                   class:empty={!current.text?.trim()}
                 >{@html current.text?.trim() ? renderIdeaHTML(current) : '(empty idea)'}</div>
-              </div>
-              {#if current.children.length > 0}
-                <ul class="idea-sort-children">
-                  {#each current.children as child (child.id)}<li>{child.text}</li>{/each}
-                </ul>
               {/if}
+            </div>
+            {#if current.children.length > 0}
+              <ul class="idea-sort-children">
+                {#each current.children as child (child.id)}<li>{child.text}</li>{/each}
+              </ul>
             {/if}
           </div>
         {/key}

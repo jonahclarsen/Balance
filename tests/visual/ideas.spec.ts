@@ -658,8 +658,11 @@ test('the review goal seeds once with a link that runs the Genuinely review', as
   await page.keyboard.press('e')
   const editor = page.getByRole('textbox', { name: 'Edit idea' })
   await expect(editor).toBeFocused()
-  expect(await editor.evaluate((input: HTMLTextAreaElement) => [input.selectionStart, input.selectionEnd])).toEqual([18, 18])
+  await page.keyboard.type('!')
+  await expect(editor).toHaveText('Synthetic reviewed!')
   await page.keyboard.press('Escape')
+  await expect(sorter(page).locator('.idea-sort-card')).toContainText('Synthetic reviewed')
+  await expect(sorter(page).locator('.idea-sort-card')).not.toContainText('!')
   // Reviews keep the unlock delay, counted from the answer rather than the card.
   await page.clock.fastForward(5000)
   await page.keyboard.press('y')
@@ -716,6 +719,47 @@ test('sort new ideas opens web links by click and Option-F without advancing', a
   await page.keyboard.press('Alt+f')
   expect(await page.evaluate(() => (window as any).openedURLs)).toHaveLength(2)
   await expect(sorter(page).getByRole('textbox', { name: 'Edit idea' })).toBeFocused()
+})
+
+test('sort new ideas edits rich text, keeping line breaks and links', async ({ page }) => {
+  await open(page)
+  await storeCall(page, `
+    const id = plannerStore.addIdea('Synthetic linesite tail')
+    let state
+    plannerStore.subscribe(value => { state = value })()
+    const group = state.ideaBuckets.find(group => group.kind === 'proposition')
+    plannerStore.patchIdeaItem(group.id, id, {
+      html: 'Synthetic line<br><a href="https://example.com/site">site</a> tail',
+    })
+  `)
+  await page.evaluate(() => {
+    ;(window as any).openedURLs = []
+    window.open = ((url?: string | URL) => {
+      ;(window as any).openedURLs.push(String(url))
+      return null
+    }) as typeof window.open
+  })
+  await generateDay(page)
+  await expect(sorter(page)).toBeVisible()
+  await page.keyboard.press('e')
+  const editor = sorter(page).getByRole('textbox', { name: 'Edit idea' })
+  await expect(editor).toBeFocused()
+  await expect(editor.locator('br')).toHaveCount(1)
+  await editor.getByRole('link', { name: 'site', exact: true }).click()
+  await expect.poll(() => page.evaluate(() => (window as any).openedURLs)).toEqual(['https://example.com/site'])
+
+  await editor.click()
+  await page.keyboard.press('ControlOrMeta+End')
+  await page.keyboard.press('Shift+Enter')
+  await page.keyboard.type('Synthetic third')
+  await page.keyboard.press('Enter')
+  await expect(editor).toBeHidden()
+
+  const card = sorter(page).locator('.idea-sort-card .paste-review-text')
+  await expect(card.locator('br')).toHaveCount(2)
+  await expect(card.getByRole('link', { name: 'site', exact: true })).toHaveAttribute('href', 'https://example.com/site')
+  await expect(card).toContainText('Synthetic third')
+  await expect(sorter(page)).toBeVisible()
 })
 
 for (const method of ['click', 'shortcut']) {

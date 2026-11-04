@@ -8915,12 +8915,12 @@ return rows`
           groups={$plannerStore.ideaBuckets}
           title={ideaSort.title}
           sortedBefore={ideaSort.sortedBefore}
-          renderIdeaHTML={(item) => renderItemDisplayHTML(item.html, item.text, linkifyItemText(item.text, listTemplates, metrics, notes))}
+          linkSegments={(text) => linkifyItemText(text, listTemplates, metrics, notes)}
           onOpenLink={(link) => openLink(link, null)}
           active={ideaSortVisible}
           onDecide={(itemId, kind) => plannerStore.moveIdeaToGroup(itemId, kind)}
           onAppendToPrevious={(itemId, previousId) => plannerStore.appendIdeaToPrevious(itemId, previousId)}
-          onEdit={(itemId, text) => { const found = findIdea($plannerStore.ideaBuckets, itemId); if (found) plannerStore.patchIdeaItem(found.group.id, itemId, { text, html: escapeHTML(text) }) }}
+          onEdit={(itemId, html, text) => { const found = findIdea($plannerStore.ideaBuckets, itemId); if (found) plannerStore.patchIdeaItem(found.group.id, itemId, { text, html }) }}
           onToggleDone={(itemId, done) => { const found = findIdea($plannerStore.ideaBuckets, itemId); if (found) plannerStore.patchIdeaItem(found.group.id, itemId, { done }) }}
           onCut={cutSortedIdea}
           onAddToNote={plannerStore.moveIdeaToNewNote}
