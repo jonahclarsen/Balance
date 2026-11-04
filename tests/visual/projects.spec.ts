@@ -24,8 +24,8 @@ test('active projects last whole days from 7 a.m., lead the list and sidebar, an
   await page.clock.install({ time: new Date('2026-09-09T13:00:00Z') })
   await page.goto('/')
   await openView(page, 'Projects')
-  await addProject(page, 'Synthetic first')
   await addProject(page, 'Synthetic second')
+  await addProject(page, 'Synthetic first')
   const names = page.locator('.project-card .project-name')
   await expect(names).toHaveText(['Synthetic first', 'Synthetic second'])
 
@@ -110,7 +110,7 @@ test('completed and archived projects move to dated sections and support undo, r
   await archived.locator('.project-card').click()
   await details.getByRole('button', { name: 'Restore', exact: true }).click()
   await expect(details).toHaveCount(0)
-  await expect(open.locator('.project-card')).toHaveText([/^\s*Synthetic garden:\s*Native plants\s*$/, 'Synthetic shed'])
+  await expect(open.locator('.project-card')).toHaveText(['Synthetic shed', /^\s*Synthetic garden:\s*Native plants\s*$/])
   await open.locator('.project-card', { hasText: 'Synthetic garden' }).click()
   await details.getByRole('button', { name: 'Mark active', exact: true }).click()
   await expect(details).toBeVisible()
@@ -295,8 +295,8 @@ test('project history keeps writing for each period and a backstory', async ({ p
 test('retired check-ins complete projects that reached 100% and are then removed', async ({ page }) => {
   await page.goto('/')
   await openView(page, 'Projects')
-  await addProject(page, 'Synthetic finished')
   await addProject(page, 'Synthetic reopened')
+  await addProject(page, 'Synthetic finished')
   // Seed the retired collection, as an older client would have left it.
   await page.evaluate(() => {
     const key = 'balance.appState.v1'
@@ -362,7 +362,7 @@ for (const destination of ['page', 'project'] as const) {
 test('project rows reorder by dragging, open on a tap, and retain order through undo and reload', async ({ page }) => {
   await page.goto('/')
   await openView(page, 'Projects')
-  for (const name of ['First project', 'Second project', 'Third project']) await addProject(page, name)
+  for (const name of ['Third project', 'Second project', 'First project']) await addProject(page, name)
   const cards = page.locator('.project-list .project-card')
   const names = cards.locator('.project-name')
   await expect(names).toHaveText(['First project', 'Second project', 'Third project'])
@@ -423,6 +423,26 @@ test('project rows reorder by dragging, open on a tap, and retain order through 
   await expect(page.getByRole('dialog', { name: 'First project details', exact: true })).toBeVisible()
 })
 
+test('a new project joins the top of Open, stays there through a reload, and undo removes it', async ({ page }) => {
+  await page.goto('/')
+  await openView(page, 'Projects')
+  await addProject(page, 'Synthetic older')
+  await addProject(page, 'Synthetic newer')
+  const names = page.locator('.project-list .project-card .project-name')
+  await expect(names).toHaveText(['Synthetic newer', 'Synthetic older'])
+  await page.reload()
+  await openView(page, 'Projects')
+  await expect(names).toHaveText(['Synthetic newer', 'Synthetic older'])
+  await addProject(page, 'Synthetic newest')
+  await expect(names).toHaveText(['Synthetic newest', 'Synthetic newer', 'Synthetic older'])
+  await page.evaluate(async () => {
+    const path = '/src/lib/store.ts'
+    const { plannerStore } = await import(/* @vite-ignore */ path)
+    await plannerStore.undo()
+  })
+  await expect(names).toHaveText(['Synthetic newer', 'Synthetic older'])
+})
+
 test('the tap that opens a project cannot also press a control in its details', async ({ page }) => {
   await page.goto('/')
   await openView(page, 'Projects')
@@ -445,7 +465,7 @@ test('dragging a project row to the window edge scrolls the page and keeps the r
   await page.goto('/')
   await openView(page, 'Projects')
   const names = Array.from({ length: 24 }, (_, index) => `Project ${index + 1}`)
-  for (const name of names) await addProject(page, name)
+  for (const name of names.toReversed()) await addProject(page, name)
   const cards = page.locator('.project-list .project-card')
   await expect(cards.locator('.project-name')).toHaveText(names)
   const source = cards.first()
@@ -493,7 +513,7 @@ test.describe('touch', () => {
     await page.goto('/')
     await openView(page, 'Projects')
     const names = Array.from({ length: 16 }, (_, index) => `Project ${index + 1}`)
-    for (const name of names) await addProject(page, name)
+    for (const name of names.toReversed()) await addProject(page, name)
     const cards = page.locator('.project-list .project-card')
     await expect(cards.locator('.project-name')).toHaveText(names)
     const scrollTop = () => page.evaluate(() => {
@@ -621,7 +641,7 @@ test('rapid adding keeps the cursor in place, and the name field opens at its en
   await editName.focus()
   await editName.press('Enter')
   await expect(details).toHaveCount(0)
-  await expect(page.locator('.project-card .project-name')).toHaveText(['Synthetic one plan:', 'Synthetic two'])
+  await expect(page.locator('.project-card .project-name')).toHaveText(['Synthetic two', 'Synthetic one plan:'])
   await expect(page.locator('.project-card .project-description')).toHaveText(['Synthetic notes…'])
   const { projects } = await readState(page)
   expect(projects.find((project: any) => project.name.startsWith('Synthetic one')).name).toBe('Synthetic one plan')
@@ -801,7 +821,7 @@ test('undo in an unsaved project field undoes typing, and undoing an add leaves 
 
   // Adding records history, so undo right after Enter removes the project.
   await newName.press('Enter')
-  await expect(names).toHaveText(['Synthetic kept', 'Draft'])
+  await expect(names).toHaveText(['Draft', 'Synthetic kept'])
   await newName.press('ControlOrMeta+z')
   await expect(names).toHaveText(['Synthetic kept'])
   await expect(page.getByText('Project unavailable.')).toHaveCount(0)
@@ -832,7 +852,7 @@ test('generating a day with no project active by noon settles ended projects and
   await page.clock.install({ time: new Date('2026-09-10T04:00:00Z') })
   await page.goto('/')
   await openView(page, 'Projects')
-  for (const name of ['Synthetic ended', 'Synthetic kept', 'Synthetic next']) await addProject(page, name)
+  for (const name of ['Synthetic next', 'Synthetic kept', 'Synthetic ended']) await addProject(page, name)
   await page.evaluate(async () => {
     const path = '/src/lib/store.ts'
     const { plannerStore } = await import(/* @vite-ignore */ path)

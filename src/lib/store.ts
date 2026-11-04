@@ -2275,7 +2275,7 @@ function createPlannerStore() {
       if (!name.trim()) return null
       const timestamp = nowISO()
       const project = { id: createId('project'), name: name.trim(), nameHtml: sanitizeInlineHTML(nameHtml ?? escapeHTML(name.trim())), description: '', color: pickerColorToHex({ hue: Math.floor(Math.random() * 360), lightness: 50 }), archived: false, createdAt: timestamp, updatedAt: timestamp }
-      commitEntities('add_project', { projectId: project.id }, (state) => ({ ...state, projects: [...state.projects, project] }))
+      commitEntities('add_project', { projectId: project.id }, (state) => ({ ...state, projects: [project, ...state.projects] }))
       return project.id
     },
 
