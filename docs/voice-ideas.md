@@ -2,9 +2,21 @@
 
 The record button in Proposition Party captures an idea by voice. Recording uses
 the WebView's microphone (`MediaRecorder`, WebM/Opus at 128 kbps). On Android,
-Balance asks for the Nearby devices (Bluetooth) permission the first time so a
-connected headset's microphone is used; elsewhere the system input is used.
-Recording needs the app in the foreground.
+Balance asks for the Nearby devices (Bluetooth) and notification permissions the
+first time so a connected headset's microphone is used; elsewhere the system
+input is used. A microphone foreground service keeps Android recording while the
+app is in the background and shows a notification with a Stop button, which
+saves the clip.
+
+On Android the mic buttons choose between the headset and the phone. A headset's
+microphone forces Bluetooth's call profile. The phone choice records without
+voice processing from the named built-in input, which keeps Chromium out of
+Android's call mode so music keeps playing normally.
+
+Chunks are written to IndexedDB (`src/lib/voiceChunkStore.ts`) as they are
+captured. If the app closes mid-recording, the next launch saves what was written
+as a normal clip, which then syncs. Until a clip is saved these chunks sit
+outside the encrypted database, in the app's private WebView storage.
 
 ## Storage
 

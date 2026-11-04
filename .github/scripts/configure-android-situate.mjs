@@ -3,7 +3,7 @@ import { join } from 'node:path'
 const root = process.argv[2] ?? 'src-tauri/gen/android/app/src/main'
 const source = join(root, 'java/app/balance/local')
 await mkdir(source, { recursive: true })
-for (const file of ['SituateAccessibility.kt', 'BalanceSituate.kt', 'NotificationArchive.kt', 'SituateSelfTest.kt']) await copyFile(`src-tauri/android/situate/${file}`, join(source, file))
+for (const file of ['SituateAppIdentity.kt', 'SituateAccessibility.kt', 'BalanceSituate.kt', 'NotificationArchive.kt', 'SituateSelfTest.kt']) await copyFile(`src-tauri/android/situate/${file}`, join(source, file))
 const activityPath = join(source, 'MainActivity.kt')
 let activity = await readFile(activityPath, 'utf8')
 if (!activity.includes('BalanceSituate.resume(this)')) {
@@ -35,6 +35,11 @@ if (!manifest.includes('.SituateNotifications')) {
   manifest = manifest.replace(/(<activity\b[^>]*android:name="\.MainActivity"[^>]*>)/, '$1\n<intent-filter><action android:name="android.intent.action.VIEW" /><category android:name="android.intent.category.DEFAULT" /><category android:name="android.intent.category.BROWSABLE" /><data android:scheme="balance" /></intent-filter>')
   await writeFile(manifestPath,manifest)
 }
+// Usage access supplies a second identity signal without screen-content access.
+if (!manifest.includes('android.permission.PACKAGE_USAGE_STATS')) manifest = manifest.replace('<application', '<uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />\n<application')
+// Keep the blocker alive when the planner/WebView process is killed or stalled.
+manifest = manifest.replace(/(<service\b[^>]*android:name="\.SituateAccessibility")([^>]*>)/, (_, start, rest) => start + rest.replace(/ android:process="[^"]*"/, '').replace('>', ' android:process=":situate">'))
+if (!manifest.includes('permission.SITUATE_INTERNAL')) manifest = manifest.replace('<application', '<permission android:name="${applicationId}.permission.SITUATE_INTERNAL" android:protectionLevel="signature" />\n<uses-permission android:name="${applicationId}.permission.SITUATE_INTERNAL" />\n<application')
 // Upgrade previously generated projects as well as fresh CI builds.
 manifest = manifest.replace(/\s*<activity android:name="\.SituateBlockedActivity"[^>]*\/>/g, '')
 manifest = manifest.replace(/android:scheme="balance" android:host="situate"/g, 'android:scheme="balance"')

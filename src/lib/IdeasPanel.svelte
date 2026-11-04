@@ -7,7 +7,7 @@
   import { ideaUnlockDelay, findIdea, ideaGroupId, ideaGroupKindForKey, IDEA_GROUPS, IDEA_TRASH_RETENTION_DAYS } from './ideas'
   import type { ItemLink, ItemTimeWarning } from './planner'
   import { clipsByIdea, formatClipDuration } from './voiceClips'
-  import { cancelVoiceRecording, startVoiceRecording, stopVoiceRecording, voiceRecording, voiceRecordingError } from './voiceRecorder'
+  import { canChooseVoiceMic, cancelVoiceRecording, chooseVoiceMic, finishVoiceRecording, startVoiceRecording, voiceMic, voiceRecording, voiceRecordingError } from './voiceRecorder'
   import { canTranscribe, transcribeClips, transcriptionError, transcriptionStatus } from './voiceTranscription'
   import type { Id, IdeaGroup, IdeaGroupKind, ListTemplate, Metric, Note, VoiceClip } from './types'
 
@@ -174,11 +174,6 @@
     now = Date.now()
   }
 
-  async function finishRecording() {
-    const recorded = await stopVoiceRecording()
-    if (recorded) plannerStore.addVoiceIdea(recorded)
-  }
-
   function transcribe(clips: VoiceClip[]) {
     void transcribeClips(clips, plannerStore.applyVoiceTranscript)
   }
@@ -243,12 +238,22 @@
               <span class="voice-recording-dot" style:--level={recording.level} aria-hidden="true"></span>
               <span class="voice-recording-time">{formatClipDuration(now - recording.startedAt)}</span>
               <button class="ghost" type="button" aria-label="Discard recording" title="Discard" on:click={cancelVoiceRecording}>✕</button>
-              <button class="voice-record-button recording" type="button" aria-label="Stop recording" title="Stop" on:click={() => { void finishRecording() }}>■</button>
+              <button class="voice-record-button recording" type="button" aria-label="Stop recording" title="Stop" on:click={() => { void finishVoiceRecording() }}>■</button>
             {:else}
               {#if canTranscribe && untranscribed.length > 0}
                 <button class="ghost" type="button" disabled={transcribing.state !== 'idle'} on:click={() => transcribe(untranscribed)}>
                   {#if transcribing.state === 'downloading'}Downloading {Math.round(transcribing.fraction * 100)}%{:else if transcribing.state === 'transcribing'}Transcribing {transcribing.done + 1}/{transcribing.total}{:else if transcribing.state === 'preparing'}Transcribing…{:else}Transcribe {untranscribed.length}{/if}
                 </button>
+              {/if}
+              {#if canChooseVoiceMic()}
+                <div class="voice-mic-choice">
+                  <button class="ghost" type="button" aria-label="Headset microphone" title="Headset" aria-pressed={$voiceMic === 'headset'} on:click={() => chooseVoiceMic('headset')}>
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 14v-2a8 8 0 0 1 16 0v2M4 14h3v6H4zM17 14h3v6h-3z" /></svg>
+                  </button>
+                  <button class="ghost" type="button" aria-label="Phone microphone" title="Phone" aria-pressed={$voiceMic === 'phone'} on:click={() => chooseVoiceMic('phone')}>
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3h8a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM11 18h2" /></svg>
+                  </button>
+                </div>
               {/if}
               <button
                 class="voice-record-button"
@@ -391,6 +396,10 @@
     margin-left: auto;
   }
   .voice-idea-controls button { padding: 2px 8px; font-size: 13px; }
+  .voice-mic-choice { display: inline-flex; gap: 2px; }
+  .voice-idea-controls .voice-mic-choice button { display: inline-grid; place-items: center; width: 26px; height: 26px; padding: 0; color: var(--muted); }
+  .voice-idea-controls .voice-mic-choice button[aria-pressed='true'] { color: var(--ink); background: color-mix(in srgb, var(--ink) 12%, transparent); }
+  .voice-mic-choice svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   .voice-record-button.voice-record-button {
     width: 26px;
     height: 26px;

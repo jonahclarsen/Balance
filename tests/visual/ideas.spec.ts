@@ -43,6 +43,26 @@ async function expectIdea(page: Page, position: number, total: number) {
   await expect(sorter(page).locator('.idea-sort-card')).toHaveCount(1)
 }
 
+test('links pasted into quick add are clickable, whatever their scheme', async ({ page }) => {
+  await open(page)
+  await page.evaluate(() => {
+    ;(window as any).openedURLs = []
+    window.open = ((url: string) => { (window as any).openedURLs.push(String(url)); return null }) as typeof window.open
+  })
+  await page.getByRole('button', { name: 'Add idea', exact: true }).click()
+  const input = page.getByRole('textbox', { name: 'New idea' })
+  await expect(input).toBeFocused()
+  await input.evaluate((element) => {
+    const clipboardData = new DataTransfer()
+    clipboardData.setData('text/plain', 'See file:///tmp/synthetic.pdf, slack://channel?id=C1 and mailto:someone@example.com but not balance://nowhere.')
+    element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData }))
+  })
+
+  await expect(input.locator('a')).toHaveText(['file:///tmp/synthetic.pdf', 'slack://channel?id=C1', 'mailto:someone@example.com'])
+  await input.locator('a').first().click()
+  await expect.poll(() => page.evaluate(() => (window as any).openedURLs)).toEqual(['file:///tmp/synthetic.pdf'])
+})
+
 test('quick-added ideas land in Proposition Party and move with timed unlocks', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
   await open(page)
@@ -92,7 +112,7 @@ test('quick-added ideas land in Proposition Party and move with timed unlocks', 
   await expect(rows(page, 'genuine')).toHaveText(['Synthetic idea one edited'])
 })
 
-test('quick add reopens the idea added within the last 4 minutes', async ({ page }, testInfo) => {
+test('quick add reopens the idea saved within the last 5 minutes', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
   await open(page)
   const editLast = page.getByRole('button', { name: 'Edit last idea' })
@@ -103,6 +123,7 @@ test('quick add reopens the idea added within the last 4 minutes', async ({ page
   await page.keyboard.type('Synthetic draft')
   await page.keyboard.press('Enter')
 
+  await page.clock.fastForward(280_000)
   await page.keyboard.press('Alt+A')
   await expect(editLast).toBeVisible()
   await page.keyboard.press('Alt+E')
@@ -116,7 +137,14 @@ test('quick add reopens the idea added within the last 4 minutes', async ({ page
   await expect(input).toBeHidden()
   expect(await groups(page)).toEqual({ proposition: ['Synthetic draft revised'] })
 
-  await page.clock.fastForward(241_000)
+  // Saving the edit restarts the window, so this is past five minutes since the idea was added.
+  await page.clock.fastForward(280_000)
+  await page.keyboard.press('Alt+A')
+  await expect(editLast).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(editLast).toHaveCount(0)
+
+  await page.clock.fastForward(21_000)
   await page.keyboard.press('Alt+A')
   await expect(page.getByRole('dialog', { name: 'Add idea' })).toBeVisible()
   await expect(editLast).toHaveCount(0)

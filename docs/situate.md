@@ -17,9 +17,12 @@ not turn it off on another. Planner data is never shared with integrations.
   a minute in bed with the lights off and Herdr muted. Passes last 50 minutes, or
   25 minutes after the late-night boundary; a pass still running at the boundary drops to 25.
 - **Discord:** mobile only, manually enabled.
-- **Active Projects** (7 a.m.–8 p.m.) and **No Active Project** (9 p.m.–7 a.m.):
+- **Active Projects** (7 a.m. until the later of 7:30 p.m. and sunset + 2 hours) and
+  **No Active Project** (the later of 6:30 p.m. and sunset + 3 hours until 7 a.m.):
   reminder modes. They block nothing, have no quiz and can't be turned off; they
   appear in the sidebar only while on, and clicking one shows its description.
+  A reminder's start or end can be a clock time alone or the later of that and sunset
+  plus an offset.
 
 Each mode has a description, shown on its card and in the notification when it
 turns on, a color used across Balance while it is on, and a device list (desktop, mobile, or
@@ -116,14 +119,29 @@ Android's widget can resize vertically and includes active mode controls.
 ## Android notification history
 
 Grant notification access for logging/silencing and accessibility access for app
-blocking. Enable **Mode notifications** so activation notices can appear. The accessibility service requests window-change identities only; it
-cannot retrieve screen content or perform gestures. A service-owned accessibility
-overlay covers blocked apps without relying on background activity launches. It
+blocking. Also grant **App detection access** (Android Usage access) so Situate
+can recover the current app after a service restart or a missed accessibility
+switch. It checks Android's activity identities once per second while unlocked;
+only the newest app identity and timestamp stay in memory. On a cold start it
+checks at most the previous 24 hours, then small incremental windows. It never
+saves a usage log, reads screen text, or sends usage events to integrations.
+Without this access, accessibility events still work, but missed-event recovery
+is unavailable. Enable **Mode notifications** so activation notices can appear. The accessibility service requests window-change identities only; it
+cannot retrieve screen content or perform gestures. The blocker runs in its own process, separate from the planner and WebView.
+A service-owned accessibility overlay covers blocked apps without relying on background activity launches. It
 rechecks the current rules while an app is open, dismisses the gate when a pass or
 rule edit allows it, and re-blocks when a pass expires. Home, Back, locking the
 screen, and disabling accessibility release the overlay. Keyboard and system-panel
 events do not replace the foreground app identity. Grant exact-alarm permission
 for schedule changes during idle; without it Android may delay alarms.
+
+On Samsung, set Balance's battery use to **Unrestricted** and add it under
+**Settings → Battery → Background usage limits → Never sleeping apps** (called
+**Never auto sleeping apps** on some One UI versions). Samsung's sleeping and deep
+sleeping controls are separate from Android's battery optimization. See
+[Samsung's app-management documentation](https://developer.samsung.com/mobile/app-management.html).
+A force-stopped app or a disabled accessibility service cannot block other apps;
+reopen Balance or re-enable accessibility after deliberately stopping it.
 
 History is separate from the planner, in Android's no-backup directory. Payloads
 use AES-GCM with fresh nonces and a separate Android Keystore key. App identities
@@ -171,3 +189,36 @@ work on a separate executor. Balance uses Android's service-bound
 `TYPE_ACCESSIBILITY_OVERLAY` instead, which needs no additional draw-over-apps
 permission, and keeps screen-content retrieval disabled. No APK or third-party
 implementation code is included in this repository.
+
+For failure testing, dispatch `android-lifecycle-tests.yml` with
+`scenario=situate-stress`. It builds two empty native fixture apps, an empty WebView host in the planner
+process, and an optimized,
+debuggable Balance APK. A hook inserted only into the generated CI APK can discard
+accessibility events; the shipped source contains no event-loss switch. The matrix
+covers API 31/34/36/37 and restart, missed-event, seeded-navigation, and idle scenarios.
+It repeatedly kills the planner while asserting that the blocking process stays
+alive, kills the blocking process separately, reconnects without a fresh
+launch, revokes Usage access, delays callbacks and legitimate resume acknowledgements,
+rejects foreign resume broadcasts, exercises the keyboard and late pane
+events, forces Doze across a pass expiry, and waits ten minutes under restricted
+background execution. Results and synthetic service/window traces are artifacts.
+These AOSP/Google emulator restrictions exercise recovery paths; they do not emulate
+Samsung Device Care or prove behavior on physical One UI devices.
+
+Use `situate_case` or `situate_api` to rerun a single stress axis; `apk_run_id`
+reuses the same optimized fixture APK so harness fixes do not require rebuilding.
+Set `situate_api=37` and `situate_pages=16k` for native 16KB page-size coverage.
+Google publishes the Android 17 platform/image as `android-37.0`; the workflow maps
+API 37 to that package name. Android 17 is included for newer Galaxy software; Samsung publishes regional
+[S25 update notes](https://doc.samsungmobile.com/SM-S931Z/032899250324/eng.html).
+
+The 2026-11-03 reliability audit reproduced missed switches and failed reconnection
+in the [baseline APK](https://github.com/jonahclarsen/Balance/actions/runs/41720676160).
+After the fixes, the [full stress matrix](https://github.com/jonahclarsen/Balance/actions/runs/41731301599)
+passed all 64 cases: 400 seeded transitions, 40 repeated planner-process kills,
+separate blocker-process recovery, missed events, and idle expiry across all four
+APIs. The [isolated missed-event rerun](https://github.com/jonahclarsen/Balance/actions/runs/41732709913),
+[real-app blocking and quiz flows](https://github.com/jonahclarsen/Balance/actions/runs/41732277928),
+and [Android 17 16KB run](https://github.com/jonahclarsen/Balance/actions/runs/41731309360)
+also passed. The [signed arm64 build and Android smoke tests](https://github.com/jonahclarsen/Balance/actions/runs/41731394491)
+passed. This evidence covers disposable emulators, not physical Samsung firmware.

@@ -760,6 +760,16 @@ test.describe('P-40..P-45 clipboard', () => {
     await harness.waitForNote(note.id, (current) => current.items.length === note.items.length && current.items[0].text === target.text)
   })
 
+  test('bare links become anchors in multi-line pastes', async ({ harness }) => {
+    await harness.boot({ select: 'Simple paragraphs' })
+    const note = harness.noteByTitle('Simple paragraphs')
+    await pasteInto(harness, note.items[0].id, 0, { text: 'file:///tmp/synthetic.pdf\nslack://channel?id=C1 ' })
+    await harness.waitForNote(note.id, (stored) => stored.items.length === note.items.length + 1)
+    const [first, second] = (await harness.storedNote(note.id))!.items
+    expect(first.html).toBe('<a href="file:///tmp/synthetic.pdf" target="_blank" rel="noreferrer">file:///tmp/synthetic.pdf</a>')
+    expect(second.html).toContain('<a href="slack://channel?id=C1" target="_blank" rel="noreferrer">slack://channel?id=C1</a> ')
+  })
+
   test('pasting HTML lists, headings and checklists creates the matching blocks', async ({ harness }) => {
     await harness.boot({ select: 'Simple paragraphs' })
     const note = harness.noteByTitle('Simple paragraphs')
@@ -821,6 +831,8 @@ test.describe('P-40..P-45 clipboard', () => {
     await pasteInto(harness, target.id, target.text.length, { text: ' see https://example.com/x. ok' })
     await harness.waitForNote(note.id, (stored) => stored.items[0].html.includes('<a href="https://example.com/x" target="_blank" rel="noreferrer">https://example.com/x</a>. ok'))
     expect((await harness.storedNote(note.id))!.items.length).toBe(note.items.length)
+    await pasteInto(harness, note.items[1].id, 0, { text: 'file:///tmp/synthetic.pdf ' })
+    await harness.waitForNote(note.id, (stored) => stored.items[1].html.startsWith('<a href="file:///tmp/synthetic.pdf" target="_blank" rel="noreferrer">file:///tmp/synthetic.pdf</a> '))
     await pasteInto(harness, target.id, 0, { text: 'https://balance.example/link' }, 5)
     await harness.waitForNote(note.id, (stored) => /^<a href="https:\/\/balance.example\/link"[^>]*>First<\/a>/.test(stored.items[0].html))
     // Foreign bold, italic and underline survive; fonts, colors and other CSS do not.

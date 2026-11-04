@@ -36,7 +36,7 @@ permissions:
 
 concurrency:
   group: frontend-tests-${{ github.ref }}-${{ inputs.runner || 'macos-15-intel' }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   checks:

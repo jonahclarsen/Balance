@@ -80,6 +80,126 @@ test('a recorded idea persists, waits for transcription and leaves with its idea
   await expect.poll(async () => (await state(page)).voiceClips.length).toBe(1)
 })
 
+test('the Android notification stops and saves a recording after leaving Ideas', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'Fake capture devices are Chromium-only')
+  await page.addInitScript(() => {
+    const calls: string[] = []
+    ;(window as any).__voiceBridgeCalls = calls
+    ;(window as any).BalanceVoiceInput = {
+      permissions: () => 'granted',
+      requestPermissions: () => {},
+      recordingStarted: () => calls.push('started'),
+      recordingStopped: () => calls.push('stopped'),
+    }
+  })
+  await open(page)
+  const calls = () => page.evaluate(() => (window as any).__voiceBridgeCalls.slice())
+  const before = (await calls()).length
+
+  // Discarding also clears the notification.
+  await proposition(page).getByRole('button', { name: 'Record an idea' }).click()
+  await expect(proposition(page).getByRole('button', { name: 'Stop recording' })).toBeVisible()
+  await proposition(page).getByRole('button', { name: 'Discard recording' }).click()
+  await expect.poll(async () => (await calls()).slice(before)).toEqual(['started', 'stopped'])
+
+  await proposition(page).getByRole('button', { name: 'Record an idea' }).click()
+  await expect(proposition(page).getByRole('button', { name: 'Stop recording' })).toBeVisible()
+  await page.waitForTimeout(1200)
+  await openView(page, 'Today')
+  await page.evaluate(() => window.dispatchEvent(new Event('balance-voice-stop')))
+
+  await expect.poll(async () => (await state(page)).voiceClips.length).toBe(1)
+  expect((await state(page)).voiceClips[0].durationMs).toBeGreaterThan(800)
+  await expect.poll(async () => (await calls()).slice(before)).toEqual(['started', 'stopped', 'started', 'stopped'])
+
+  await openView(page, 'Ideas')
+  await expect(proposition(page).locator('.voice-clip-chip')).toBeVisible()
+  await expect(proposition(page).getByRole('button', { name: 'Record an idea' })).toBeEnabled()
+})
+
+test('closing the app mid-recording keeps the clip, once', async ({ page, context }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'Fake capture devices are Chromium-only')
+  await open(page)
+
+  // A discarded recording stays gone.
+  await proposition(page).getByRole('button', { name: 'Record an idea' }).click()
+  await expect(proposition(page).getByRole('button', { name: 'Stop recording' })).toBeVisible()
+  await page.waitForTimeout(1300)
+  await proposition(page).getByRole('button', { name: 'Discard recording' }).click()
+
+  await proposition(page).getByRole('button', { name: 'Record an idea' }).click()
+  await expect(proposition(page).getByRole('button', { name: 'Stop recording' })).toBeVisible()
+  const startedAt = Date.now()
+  await page.waitForTimeout(3300)
+  // Closes without stopping the recorder; the Android emulator test kills the process.
+  await page.close()
+
+  const reopened = await context.newPage()
+  await reopened.goto('/')
+  await expect.poll(async () => (await state(reopened)).voiceClips.length).toBe(1)
+  const [clip] = (await state(reopened)).voiceClips
+  expect(clip.durationMs).toBeGreaterThan(1500)
+  expect(clip.peaks.length).toBeGreaterThan(30)
+  expect(Math.abs(new Date(clip.createdAt).getTime() - startedAt)).toBeLessThan(3000)
+  await openView(reopened, 'Ideas')
+  await expect(proposition(reopened).locator('.voice-clip-chip')).toHaveCount(1)
+
+  await reopened.reload()
+  await openView(reopened, 'Ideas')
+  await expect(proposition(reopened).locator('.voice-clip-chip')).toHaveCount(1)
+  expect((await state(reopened)).voiceClips).toHaveLength(1)
+})
+
+test('the phone microphone records unprocessed, away from a connected headset', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'Fake capture devices are Chromium-only')
+  await page.addInitScript(() => {
+    const requests: unknown[] = []
+    ;(window as any).__micRequests = requests
+    ;(window as any).BalanceVoiceInput = {
+      permissions: () => 'granted',
+      requestPermissions: () => {},
+      recordingStarted: () => {},
+      recordingStopped: () => {},
+    }
+    const media = navigator.mediaDevices
+    const getUserMedia = media.getUserMedia.bind(media)
+    media.getUserMedia = (constraints) => {
+      requests.push(constraints)
+      return getUserMedia({ audio: true })
+    }
+    media.enumerateDevices = async () => [
+      { kind: 'audioinput', deviceId: 'default', label: 'Default' },
+      { kind: 'audioinput', deviceId: 'headset', label: 'Bluetooth headset' },
+      { kind: 'audioinput', deviceId: 'phone', label: 'Speakerphone' },
+    ] as MediaDeviceInfo[]
+  })
+  await open(page)
+  const headset = proposition(page).getByRole('button', { name: 'Headset microphone' })
+  const phone = proposition(page).getByRole('button', { name: 'Phone microphone' })
+  const lastRequest = () => page.evaluate(() => (window as any).__micRequests.at(-1))
+  const record = async () => {
+    await proposition(page).getByRole('button', { name: 'Record an idea' }).click()
+    await proposition(page).getByRole('button', { name: 'Discard recording' }).click()
+  }
+  await expect(headset).toHaveAttribute('aria-pressed', 'true')
+  await record()
+  // The headset choice keeps the system's processed input; only Android names the headset.
+  expect(await lastRequest()).toEqual({ audio: true })
+
+  await phone.click()
+  await record()
+  expect(await lastRequest()).toEqual({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, deviceId: { exact: 'phone' } } })
+
+  // The choice lasts, and later recordings ask for the phone from the start.
+  await page.reload()
+  await openView(page, 'Ideas')
+  await expect(phone).toHaveAttribute('aria-pressed', 'true')
+  await proposition(page).getByRole('button', { name: 'Record an idea' }).click()
+  await proposition(page).getByRole('button', { name: 'Discard recording' }).click()
+  const first = await page.evaluate(() => (window as any).__micRequests[0])
+  expect(first.audio.deviceId).toEqual({ ideal: 'phone' })
+})
+
 test('the transcript and waveform follow each other', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'Pointer selection is covered on desktop')
   await open(page)
@@ -128,12 +248,8 @@ test('the transcript and waveform follow each other', async ({ page }, testInfo)
     node.dispatchEvent(new Event('select'))
   }, [text.indexOf('word25'), text.indexOf('word25') + 6])
   await expect(waveform).toHaveAttribute('aria-valuenow', '25')
-  // Wait for the smooth scroll to settle.
-  await expect.poll(() => waveform.evaluate(async (node) => {
-    const before = node.scrollLeft
-    await new Promise((resolve) => setTimeout(resolve, 150))
-    return before === node.scrollLeft ? before : -1
-  })).toBeGreaterThan(0)
+  // Wait for the smooth scroll to center the word; a busy machine can stall it midway.
+  await expect.poll(() => waveform.evaluate((node) => Math.abs(node.scrollLeft - (25 * 60 - node.clientWidth / 2)))).toBeLessThan(2)
 
   // Clicking the waveform selects the word spoken there.
   const box = (await waveform.boundingBox())!

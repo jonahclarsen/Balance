@@ -14,6 +14,15 @@ export async function showPrimaryNavigation(page: Page) {
   }
 }
 
+export async function hidePrimaryNavigation(page: Page) {
+  const drawer = page.getByRole('complementary', { name: 'Primary navigation drawer' })
+  const close = drawer.getByRole('button', { name: 'Close navigation', exact: true })
+  if (await close.isVisible()) {
+    await close.click()
+    await expect(drawer).toBeHidden()
+  }
+}
+
 export async function openView(page: Page, name: string) {
   await showPrimaryNavigation(page)
   const button = primaryNavigation(page).getByRole('button', { name, exact: true })
@@ -52,9 +61,5 @@ export async function generateDay(page: Page, name = 'Generate day') {
     await showPrimaryNavigation(page)
   }
   await button.click()
-  const close = drawer.getByRole('button', { name: 'Close navigation', exact: true })
-  if (openedDrawer && await close.isVisible()) {
-    await close.click()
-    await expect(drawer).toBeHidden()
-  }
+  if (openedDrawer) await hidePrimaryNavigation(page)
 }

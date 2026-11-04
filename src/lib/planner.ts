@@ -1,4 +1,4 @@
-import { balanceURLMatches, parseNavigationURL } from './navigationLinks'
+import { balanceURLMatches, parseNavigationURL, navigationURL } from './navigationLinks'
 import { IDEA_REVIEW_LABELS, ideasLinkFromURL, type IdeaReviewKind } from './ideaLinks'
 import { sanitizeImage } from './imageMarkup'
 import { isUnboldedBold, textStyleTags } from './textStyleTags'
@@ -281,6 +281,39 @@ export type SiriReminderInsertion = {
 
 export function hasIncompletePlanItems(items: PlanItem[]): boolean {
   return items.some((item) => !item.done || hasIncompletePlanItems(item.children))
+}
+
+// Until 7 a.m. the previous calendar day is still being lived, so its open
+// tasks don't need processing yet even though Balance has rolled over.
+const PROCESS_UNCHECKED_TASKS_ROLLOVER_HOUR = 7
+const PROCESS_UNCHECKED_TASKS_HTML = /^Process unchecked tasks from <a href="balance:\/\/day\/(\d{4}-\d{2}-\d{2})">/
+
+function hasOpenPlanTasks(items: PlanItem[]): boolean {
+  return items.some((item) => (!item.done && !isPlanItemTextEmpty(item)) || hasOpenPlanTasks(item.children))
+}
+
+// One linked task per earlier day that still has open tasks, oldest first.
+// Backfilling a past day adds none: follow-up belongs on the day being lived.
+export function processUncheckedTasksItems(plans: DailyPlan[], date: string, now = new Date()): PlanItem[] {
+  const currentDay = new Date(now)
+  if (currentDay.getHours() < PROCESS_UNCHECKED_TASKS_ROLLOVER_HOUR) currentDay.setDate(currentDay.getDate() - 1)
+  const current = calendarDateISO(currentDay)
+  if (date < current) return []
+  return plans
+    .filter((plan) => plan.date < current && hasOpenPlanTasks(plan.items))
+    .map((plan) => plan.date)
+    .sort()
+    .map((planDate) => {
+      const label = new Intl.DateTimeFormat(undefined, { month: 'long', day: 'numeric' }).format(new Date(`${planDate}T12:00:00`))
+      return {
+        ...createPlanItem(`Process unchecked tasks from ${label}`),
+        html: `Process unchecked tasks from <a href="${navigationURL('day', planDate)}">${label}</a>`,
+      }
+    })
+}
+
+export function processUncheckedTasksDate(item: PlanItem): string | null {
+  return PROCESS_UNCHECKED_TASKS_HTML.exec(item.html)?.[1] ?? null
 }
 
 export function insertSiriReminder(items: PlanItem[], text: string): SiriReminderInsertion {
@@ -1785,8 +1818,12 @@ export function sanitizeInlineHTML(value: string): string {
   return cleanTrailingLineBreaks(sanitized)
 }
 
-// Converts bare web URLs in pasted content to anchors while preserving its
-// allowed inline formatting. Existing anchors are left alone.
+// Any "scheme://" link, plus the two opaque schemes unlikely to be ordinary
+// text. isURL then rejects blocked schemes such as balance:// and javascript://.
+const BARE_URL = /[a-z][a-z0-9+.-]+:\/\/[^\s<>"']+|\b(?:mailto|tel):[^\s<>"']+/gi
+
+// Converts bare URLs in pasted content to anchors while preserving its allowed
+// inline formatting. Existing anchors are left alone.
 export function linkifyExternalURLs(value: string): string {
   const sanitized = sanitizeInlineHTML(value)
   if (!globalThis.document) return sanitized
@@ -1802,7 +1839,7 @@ export function linkifyExternalURLs(value: string): string {
 
   for (const textNode of textNodes) {
     const text = textNode.textContent ?? ''
-    const matches = Array.from(text.matchAll(/https?:\/\/[^\s<>"']+/gi))
+    const matches = Array.from(text.matchAll(BARE_URL))
     if (matches.length === 0) continue
 
     const fragment = document.createDocumentFragment()

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { activeProjects, endedProjectsOn, historyDayHeading, needsProjectPick, nextProjectExpiry, periodDays, periodFromDays, projectActiveUntil, projectActiveUntilOn, projectHistory, projectHistoryNoteDay, projectHistoryNoteId, projectHistoryPeriods, templateForGeneration, withActiveUntil } from '../../src/lib/projects'
+import { activeProjects, endedProjectsOn, historyDayHeading, needsProjectPick, nextProjectExpiry, outgoingHistoryDay, periodDays, periodFromDays, projectActiveUntil, projectActiveUntilOn, projectHistory, projectHistoryNoteDay, projectHistoryNoteId, projectHistoryPeriods, projectStartOn, templateForGeneration, withActiveUntil } from '../../src/lib/projects'
 import type { DailyTemplate, Project, TemplateItem } from '../../src/lib/types'
 
 const project = (patch: Partial<Project> = {}): Project => ({ id: 'project', name: 'Project', description: '', color: '#336699', archived: false, createdAt: '', updatedAt: '', ...patch })
@@ -105,6 +105,30 @@ test('history groups stretches by start day and keeps written days', () => {
   ])
   expect(projectHistoryNoteDay(projectHistoryNoteId('2026-10-20'))).toBe('2026-10-20')
   expect(projectHistoryNoteDay('project-history-backstory')).toBeNull()
+})
+
+test('the outgoing session is the latest one started by the generated day', () => {
+  const projects = [
+    project({ id: 'a', activePeriods: [{ id: 'a1', ...periodFromDays('2026-10-20', '2026-10-22') }] }),
+    project({ id: 'b', activePeriods: [{ id: 'b1', ...periodFromDays('2026-10-25', '2026-10-26') }, { id: 'b2', ...periodFromDays('2026-11-05', '2026-11-06') }] }),
+  ]
+  expect(outgoingHistoryDay(projects, '2026-10-27')).toBe('2026-10-25')
+  expect(outgoingHistoryDay(projects, '2026-10-19')).toBeNull()
+  expect(outgoingHistoryDay([project()], '2026-10-27')).toBeNull()
+})
+
+test('a stretch picked for another day is filed under that day', () => {
+  const evening = new Date(2026, 9, 26, 21)
+  expect(projectStartOn('2026-10-27', evening).getTime()).toBe(new Date(2026, 9, 27, 7).getTime())
+  expect(projectStartOn('2026-10-26', evening)).toBe(evening)
+  // Before 7 a.m. still belongs to the previous active day.
+  expect(projectStartOn('2026-10-27', new Date(2026, 9, 27, 5)).getTime()).toBe(new Date(2026, 9, 27, 7).getTime())
+
+  let id = 0
+  const picked = withActiveUntil(project(), projectActiveUntilOn('2026-10-27', 1), evening, () => `p${id++}`, projectStartOn('2026-10-27', evening))
+  expect(periodDays(picked.activePeriods![0])).toEqual({ first: '2026-10-27', last: '2026-10-27' })
+  // Stopping it before it starts leaves no stretch behind.
+  expect(withActiveUntil(picked, null, evening, () => 'unused').activePeriods).toBeUndefined()
 })
 
 test('history headings read like "tues october 28"', () => {

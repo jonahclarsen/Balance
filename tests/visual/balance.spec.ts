@@ -874,8 +874,8 @@ test('every sidebar menu item has a left-hand Alt shortcut', async ({ page }, te
   await page.reload()
 
   const shortcuts = [
-    { key: 'x', label: 'Next' },
     { key: 't', label: 'Today' },
+    { key: 'x', label: 'Next' },
     { key: 'd', label: 'Days' },
     { key: 'e', label: 'Lists' },
     { key: 'n', label: 'Notes' },

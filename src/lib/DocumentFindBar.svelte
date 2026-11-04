@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { onDestroy, onMount, tick } from 'svelte'
-  import { findTextRanges, firstVisibleFindIndex, maxFindMatches, normalizeFindText, scrollFindRangeIntoView } from './documentFind'
+  import { flushSync, onDestroy, onMount, tick } from 'svelte'
+  import { activeFindQuery, findTextRanges, firstVisibleFindIndex, maxFindMatches, normalizeFindText, scrollFindRangeIntoView } from './documentFind'
   import { createFindHighlights } from './findHighlights'
   import { rememberFocusReturn, type FocusReturn } from './focusReturn'
 
@@ -35,10 +35,8 @@
       attributeFilter: ['hidden', 'aria-hidden', 'inert', 'class', 'style', 'open'],
     })
     window.addEventListener('resize', invalidate)
-    if (hasQuery) {
-      refreshMatches()
-      revealActive()
-    }
+    // Later, not here: matching can expand text, and that can't be flushed during mount.
+    if (hasQuery) scheduleFind(0)
     return () => {
       observer?.disconnect()
       window.removeEventListener('resize', invalidate)
@@ -49,6 +47,7 @@
     disposed = true
     window.clearTimeout(searchTimeout)
     highlights.dispose()
+    activeFindQuery.set('')
   })
 
   function rememberReturnFocus() {
@@ -103,7 +102,12 @@
     const sameQuery = searchedQuery === query
     const previous = sameQuery ? matchRanges[activeMatchIndex] : null
     const previousIndex = activeMatchIndex
+    // Text that expands for this query has to be on the page before searching it.
+    activeFindQuery.set(query)
+    flushSync()
     matchRanges = root ? findTextRanges(root, query) : []
+    // Expanding and measuring truncated text touch the DOM; don't search again for that.
+    observer?.takeRecords()
     const retained = previous ? matchRanges.findIndex((range) =>
       range.startContainer === previous.startContainer && range.startOffset === previous.startOffset
       && range.endContainer === previous.endContainer && range.endOffset === previous.endOffset,
@@ -133,6 +137,7 @@
     if (composing) return
     if (!normalizeFindText(query).text.trim()) {
       searchedQuery = query
+      activeFindQuery.set('')
       return
     }
     searchTimeout = window.setTimeout(() => {
@@ -296,6 +301,14 @@
   :global(::highlight(balance-document-find-match)) {
     background-color: #ff9632;
     color: #1d1d1f;
+  }
+
+  /* WebKit paints a highlight on user-select: none text onto the nearest
+     selectable text instead, so a match on a project card lit its section
+     heading. Keep everything selectable only while find is open. */
+  :global(body:has(.document-find) .workspace *) {
+    -webkit-user-select: text !important;
+    user-select: text !important;
   }
 
   @keyframes find-in {

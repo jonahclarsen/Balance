@@ -18,6 +18,10 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 name = "Balance"
 path = "src/main.rs"
 
+[features]
+# CI-only instrumentation for scripts/profile-tauri-typing.mjs. Never ship it.
+typing-profile = []
+
 [build-dependencies]
 tauri-build = { version = "2.6.2", features = [] }
 

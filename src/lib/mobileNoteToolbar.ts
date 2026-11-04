@@ -45,7 +45,9 @@ export function mobileNoteToolbar(node: HTMLDivElement) {
     }
     const zoom = node.currentCSSZoom || 1
     node.style.position = 'fixed'
-    node.style.zIndex = '25'
+    // Stays above a modal the editor sits in.
+    const overlayZ = Number(getComputedStyle(anchor.parentElement?.closest('.overlay-backdrop') ?? document.body).zIndex) || 0
+    node.style.zIndex = String(Math.max(25, overlayZ + 1))
     node.style.margin = '0'
     node.style.left = `${((viewport?.offsetLeft ?? 0) + 8) / zoom}px`
     node.style.width = `${((viewport?.width ?? window.innerWidth) - 16) / zoom}px`

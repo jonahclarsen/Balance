@@ -50,6 +50,7 @@
   import { activeProjects, needsProjectPick, templateForGeneration } from './lib/projects'
   import PrioritizePanel from './lib/PrioritizePanel.svelte'
   import IdeasPanel from './lib/IdeasPanel.svelte'
+  import { recoverVoiceRecordings } from './lib/voiceRecorder'
   import IdeaSortModal from './lib/IdeaSortModal.svelte'
   import { dayTemplateShortcutLetters } from './lib/dayTemplateShortcuts'
   import IdeaImportModal from './lib/IdeaImportModal.svelte'
@@ -121,7 +122,7 @@
   import { keepBelowPinnedParents, revealCaret, scrollMovedItemsIntoView, type ItemRowKind } from './lib/itemScroll'
   import { focusTaskBelow, focusTaskById, TASK_COMPLETION_FOCUS_EVENT, type TaskCaretOffsets, type TaskCompletionFocusDetail } from './lib/taskCompletionFocus'
   import { rememberFocusReturn, type FocusReturn } from './lib/focusReturn'
-  import { buildItemTimeWarnings, createPlanItem, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatMinutes, formatPlanTitle, hasActiveTimeRange, hasIncompletePlanItems, isUnwrittenNote, itemLinkFromURL, linkifyItemText, listTemplateQuizSteps, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, sanitizeInlineHTML, templateQuizSteps, todayISO, totalWordCount, type ItemLink, type TemplateQuizStep, type TemplateReviewKind } from './lib/planner'
+  import { buildItemTimeWarnings, createPlanItem, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatMinutes, formatPlanTitle, hasActiveTimeRange, hasIncompletePlanItems, isUnwrittenNote, itemLinkFromURL, linkifyItemText, listTemplateQuizSteps, MAX_TIMELINE_MINUTES, processUncheckedTasksDate, renderItemDisplayHTML, sanitizeInlineHTML, templateQuizSteps, todayISO, totalWordCount, type ItemLink, type TemplateQuizStep, type TemplateReviewKind } from './lib/planner'
   import { hexToPickerColor, pickerColorToHex, type PickerColor } from './lib/colors'
   import { automaticSyncStatus, requestSync, startAutomaticSync } from './lib/syncScheduler'
   import { DEFAULT_DATABASE_LOADING_MESSAGES, replicatedDayTheme } from './lib/preferences'
@@ -529,8 +530,8 @@ return rows`
   let quickAddOpen = false
   let quickAddSaving = false
   let quickAddPendingId: Id | null = null
-  // Within four minutes of adding an idea, the next quick add can reopen it instead.
-  const QUICK_ADD_EDIT_WINDOW_MS = 4 * 60 * 1000
+  // Within five minutes of saving an idea, the next quick add can reopen it instead.
+  const QUICK_ADD_EDIT_WINDOW_MS = 5 * 60 * 1000
   let lastQuickAddedIdea: { id: Id; at: number } | null = null
   let quickAddCanEditLast = false
   let quickAddEditing = false
@@ -3306,7 +3307,7 @@ return rows`
       // Closing the dialog acknowledges Save. Android can reclaim the WebView
       // immediately afterward, before a persistence debounce or lifecycle event.
       await plannerStore.flushPendingOperations()
-      if (!quickAddEditing && quickAddPendingId) lastQuickAddedIdea = { id: quickAddPendingId, at: Date.now() }
+      if (quickAddPendingId) lastQuickAddedIdea = { id: quickAddPendingId, at: Date.now() }
       quickAddSaving = false
       closeQuickAdd()
     } catch (error) {
@@ -3729,6 +3730,11 @@ return rows`
   }
 
   $: if ($plannerStore.dayGenerations.length > 0 && dayTemplateSelectionReady && !$databaseLoadPending) resumeDayGeneration()
+  let voiceRecoveryStarted = false
+  $: if (!voiceRecoveryStarted && !$databaseLoadPending && !$databaseLoadError) {
+    voiceRecoveryStarted = true
+    void recoverVoiceRecordings()
+  }
 
   async function generateDayFromTemplate(templateId: Id, date = $plannerStore.activePlanDate || todayISO()) {
     const template = templates.find((candidate) => candidate.id === templateId)
@@ -3811,7 +3817,10 @@ return rows`
     const found = itemIds.flatMap((itemId) => findIdea($plannerStore.ideaBuckets, itemId) ?? [])
     if (found.length === 0) return
     const items = found.map(({ item: { bucketedAt: _bucketedAt, dayAssignmentDate: _dayAssignmentDate, ...item } }) => item)
-    plannerStore.pastePlanItems(plan.id, items, plan.items[0]?.id ?? null, 'before')
+    // Process-unchecked-tasks rows stay on top.
+    const next = plan.items.find((item) => !processUncheckedTasksDate(item))
+    const last = plan.items.at(-1)
+    plannerStore.pastePlanItems(plan.id, items, next?.id ?? last?.id ?? null, next ? 'before' : 'after')
     for (const { group, item } of found) plannerStore.removeIdeaAfterTransfer(group.id, item.id)
   }
 
@@ -8784,6 +8793,7 @@ return rows`
           finishProjectPick(true)
         }}
         onClose={() => finishProjectPick(false)}
+        onOpenLink={(link) => openLink(link, null)}
       />
     {/if}
 

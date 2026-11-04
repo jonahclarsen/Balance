@@ -1,5 +1,5 @@
 import { imageClipboardHTML } from './imageService'
-import { escapeHTML, htmlToPlainText, sanitizeInlineHTML } from './planner'
+import { escapeHTML, htmlToPlainText, linkifyExternalURLs, sanitizeInlineHTML } from './planner'
 import { parseTaskClipboardAsNoteBlocks } from './taskClipboard'
 import type { NoteItemKind } from './types'
 
@@ -67,7 +67,7 @@ export function parseNoteChecklistClipboard(plainText: string, html: string): Pa
     if (!match) {
       if (current && line.trim()) {
         const continuation = line.trimStart()
-        current.html += `<br>${escapeHTML(continuation)}`
+        current.html += `<br>${linkifyExternalURLs(escapeHTML(continuation))}`
         current.text += `\n${continuation}`
       }
       continue
@@ -77,7 +77,7 @@ export function parseNoteChecklistClipboard(plainText: string, html: string): Pa
     const text = match[3]
     const item: ParsedNoteClipboardItem = {
       kind: 'checklist',
-      html: escapeHTML(text),
+      html: linkifyExternalURLs(escapeHTML(text)),
       text,
       done: match[2] === '☑',
       children: [],
@@ -113,7 +113,7 @@ export function parseNotePlainTextClipboard(plainText: string): ParsedNoteClipbo
   if (lines.length < 2) return []
   return lines.map((text) => ({
     kind: 'paragraph',
-    html: escapeHTML(text),
+    html: linkifyExternalURLs(escapeHTML(text)),
     text,
     done: false,
     children: [],
@@ -130,7 +130,7 @@ function indentationWidth(indentation: string) {
 
 function clipboardInlineContent(element: Element, trimBlockBreak = false): string {
   const span = element.ownerDocument.createElement('span')
-  const content = sanitizeInlineHTML(element.innerHTML)
+  const content = linkifyExternalURLs(element.innerHTML)
   span.innerHTML = trimBlockBreak ? content.replace(/(?:<br>)+$/, '') : content
   if (element.hasAttribute('style')) span.setAttribute('style', element.getAttribute('style')!)
   return sanitizeInlineHTML(span.outerHTML)

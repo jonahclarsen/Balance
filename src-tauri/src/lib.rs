@@ -29,6 +29,8 @@ mod android_widget;
 mod database_keys;
 #[cfg(test)]
 mod theme_performance;
+#[cfg(all(feature = "typing-profile", target_os = "macos"))]
+mod typing_profile;
 mod voice_transcription;
 mod plan_regeneration;
 mod backup_browser;
@@ -1578,6 +1580,8 @@ async fn initialize_app_state(app: tauri::AppHandle, state_json: String) -> Resu
 
 #[tauri::command]
 async fn persist_operation(app: tauri::AppHandle, operation_json: String) -> Result<PersistResult, String> {
+    #[cfg(all(feature = "typing-profile", target_os = "macos"))]
+    let profile_started = std::time::Instant::now();
     let housekeeping_app = app.clone();
     let result = run_database_task(move || {
         let database_path = app_database_path(&app)?;
@@ -1589,6 +1593,8 @@ async fn persist_operation(app: tauri::AppHandle, operation_json: String) -> Res
         Ok(PersistResult { accepted, previous_revision, revision: state_revision(&connection)? })
     })
     .await?;
+    #[cfg(all(feature = "typing-profile", target_os = "macos"))]
+    typing_profile::record_persist(profile_started.elapsed());
     schedule_meaningful_database_housekeeping(&housekeeping_app);
     Ok(result)
 }
@@ -10921,6 +10927,11 @@ pub fn run() {
         );
     }
 
+    #[cfg(all(feature = "typing-profile", target_os = "macos"))]
+    {
+        builder = builder.plugin(typing_profile::plugin());
+    }
+
     builder = builder.plugin(tauri_plugin_dialog::init()).plugin(
         tauri_plugin_opener::Builder::new()
             .open_js_links_on_click(false)
@@ -11036,6 +11047,12 @@ pub fn run() {
             let _ = (window, event);
         })
         .invoke_handler(tauri::generate_handler![
+            #[cfg(all(feature = "typing-profile", target_os = "macos"))]
+            typing_profile::typing_profile_type,
+            #[cfg(all(feature = "typing-profile", target_os = "macos"))]
+            typing_profile::typing_profile_take_persists,
+            #[cfg(all(feature = "typing-profile", target_os = "macos"))]
+            typing_profile::typing_profile_finish,
             voice_transcription::transcribe_voice_clips,
             situate::situate_load,
             situate::situate_save,

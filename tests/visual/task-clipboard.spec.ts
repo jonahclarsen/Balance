@@ -262,7 +262,7 @@ test('a day question row pasted into a list keeps its question and answers', asy
   await page.getByRole('button', { name: '+ New list' }).click()
   await page.locator('[data-list-template-text-input]').first().click()
   await page.keyboard.press('Meta+V')
-  await expect(page.locator('.question-input')).toHaveValue('Workout?')
+  await expect(page.getByRole('textbox', { name: 'Question asked when generating the list' })).toHaveValue('Workout?')
   await expect(page.getByRole('textbox', { name: 'List item', exact: true })).toHaveText(['First item', 'Swim'])
   await expect(page.getByRole('textbox', { name: 'List item alternative' })).toHaveText(['Lift'])
 })

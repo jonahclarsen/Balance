@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { generateDay, openView, showPrimaryNavigation } from '../helpers/navigation'
+import { generateDay, hidePrimaryNavigation, openView, showPrimaryNavigation } from '../helpers/navigation'
 
 test.use({ timezoneId: 'America/Vancouver' })
 
@@ -15,7 +15,7 @@ async function readState(page: Page) {
     const { plannerStore } = await import(/* @vite-ignore */ path)
     let state: any
     plannerStore.subscribe((value: any) => { state = value })()
-    return structuredClone({ projects: state.projects, operation: state.operations.at(-1) })
+    return structuredClone({ projects: state.projects, projectHistoryNotes: state.projectHistoryNotes, operation: state.operations.at(-1) })
   })
 }
 
@@ -224,6 +224,7 @@ test('Project History is its own page under Projects, like List History', async 
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('balance:workspaceViewState')!).view)).toBe('projectHistory')
 
   // Undoing a stretch edit stays on History.
+  await hidePrimaryNavigation(page)
   await page.getByRole('button', { name: 'Add', exact: true }).click()
   const editor = page.getByRole('dialog', { name: 'Add active stretch', exact: true })
   await editor.getByRole('group', { name: 'Project' }).getByRole('button', { name: 'Synthetic garden' }).click()
@@ -626,13 +627,74 @@ test('rapid adding keeps the cursor in place, and the name field opens at its en
   expect(projects.find((project: any) => project.name.startsWith('Synthetic one')).name).toBe('Synthetic one plan')
 })
 
+test('find shows a project\'s full description only while it matches', async ({ page }) => {
+  await page.goto('/')
+  await openView(page, 'Projects')
+  await addProject(page, 'Synthetic find')
+  const card = page.locator('.project-card', { hasText: 'Synthetic find' })
+  await card.click()
+  const details = page.getByRole('dialog')
+  // Past the ellipsis on one line, and on a line the preview leaves out.
+  await details.getByRole('textbox', { name: 'Description' }).fill(`${'filler words '.repeat(100)}orchid\n\nSecond line tulip`)
+  await details.getByRole('textbox', { name: 'Description' }).press('Escape')
+  const description = card.locator('.project-description')
+  const preview = `${'filler words '.repeat(100)}orchid…`
+  await expect(description).toHaveText(preview)
+  const dotOffset = () => card.evaluate((element) => element.querySelector('.project-dot')!.getBoundingClientRect().top - element.getBoundingClientRect().top)
+  const previewDotOffset = await dotOffset()
+
+  const highlighted = () => page.evaluate(() => Array.from(CSS.highlights.get('balance-document-find-match') ?? [], (range) => {
+    if (!(range instanceof Range)) return null
+    const { left, right } = range.getBoundingClientRect()
+    return { text: range.toString(), onScreen: left >= 0 && right <= document.documentElement.clientWidth }
+  }))
+
+  await page.keyboard.press('Meta+f')
+  const find = page.getByLabel('Find text', { exact: true })
+  for (const word of ['tulip', 'orchid']) {
+    await find.fill(word)
+    await expect(page.locator('.find-status')).toHaveText('1/1')
+    await expect(description).toContainText('Second line tulip')
+    await expect.poll(highlighted).toEqual([{ text: word, onScreen: true }])
+    expect(await description.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+    expect(Math.abs(await dotOffset() - previewDotOffset)).toBeLessThanOrEqual(1)
+  }
+
+  // A match elsewhere on the card leaves the description alone.
+  await find.fill('Synthetic find')
+  await expect(page.locator('.find-status')).toHaveText('1/1')
+  await expect(description).toHaveText(preview)
+
+  await find.fill('tulip')
+  await expect(description).toContainText('Second line tulip')
+  await find.fill('absent')
+  await expect(page.locator('.find-status')).toHaveText('0/0')
+  await expect(description).toHaveText(preview)
+
+  await find.fill('tulip')
+  await expect(description).toContainText('Second line tulip')
+  await find.fill('')
+  await expect(description).toHaveText(preview)
+
+  await find.fill('tulip')
+  await expect(description).toContainText('Second line tulip')
+  await page.keyboard.press('Escape')
+  await expect(description).toHaveText(preview)
+
+  // Reopening restores the last query and its match.
+  await page.keyboard.press('Meta+f')
+  await expect(description).toContainText('Second line tulip')
+  await expect(page.locator('.find-status')).toHaveText('1/1')
+})
+
 test('long project descriptions truncate within the page and remain editable in full', async ({ page }) => {
   await page.goto('/')
   await openView(page, 'Projects')
   await addProject(page, 'Synthetic long description')
   const card = page.locator('.project-card', { hasText: 'Synthetic long description' })
   await card.click()
-  const description = 'A very long first line with words '.repeat(100)
+  // Long enough to overflow in any platform's font.
+  const description = 'A very long first line with words '.repeat(300)
   const details = page.getByRole('dialog')
   await details.getByRole('textbox', { name: 'Description' }).fill(description)
   await details.getByRole('textbox', { name: 'Description' }).press('Escape')
@@ -660,6 +722,26 @@ test('long project descriptions truncate within the page and remain editable in 
   expect(fit).toEqual({ bodyScrolls: false, editorScrolls: true, cardFull: true })
   await field.fill('Synthetic\nshort\nnotes\nthat\nfit')
   expect(await field.evaluate(editor => editor.scrollHeight <= editor.clientHeight)).toBe(true)
+})
+
+test('typing continues at the caret after new lines resize the project modal', async ({ page }) => {
+  await page.goto('/')
+  await openView(page, 'Projects')
+  await addProject(page, 'Synthetic growing')
+  await page.locator('.project-card', { hasText: 'Synthetic growing' }).click()
+  const dialog = page.getByRole('dialog')
+  const description = dialog.getByRole('textbox', { name: 'Description' })
+  await description.click()
+  await description.pressSequentially('first')
+  const height = (await dialog.boundingBox())!.height
+  for (let line = 0; line < 8; line += 1) await description.press('Enter')
+  await expect.poll(async () => (await dialog.boundingBox())!.height).toBeGreaterThan(height)
+  await expect(description).toBeFocused()
+  await description.pressSequentially('last')
+  await description.press('Escape')
+  const { projects } = await readState(page)
+  const saved = projects.find((project: any) => project.name === 'Synthetic growing')
+  expect(saved.description).toBe(`first${'\n'.repeat(8)}last`)
 })
 
 test('project descriptions turn pasted URLs into links like tasks do, and their links open', async ({ page }) => {
@@ -767,6 +849,26 @@ test('generating a day with no project active by noon settles ended projects and
   const days = pick.getByRole('group', { name: 'Days active' }).getByRole('button')
   await expect(days.first()).toBeDisabled()
 
+  // The outgoing session's History writing is editable here.
+  const outgoing = pick.getByRole('region', { name: 'wed september 9', exact: true })
+  await expect(outgoing.getByRole('heading', { name: 'wed september 9', exact: true })).toBeVisible()
+  await outgoing.locator('[contenteditable="true"], .note-empty-editor').first().click()
+  await page.keyboard.type('Synthetic went well')
+  await page.keyboard.press('Enter')
+  await page.keyboard.type('/')
+  await expect(outgoing.locator('.lexical-slash-menu')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(outgoing.locator('.lexical-slash-menu')).toBeHidden()
+  await expect(pick).toBeVisible()
+  await page.keyboard.press('Backspace')
+  const upcoming = pick.getByRole('region', { name: 'thurs september 10', exact: true })
+  await expect(upcoming.getByRole('heading', { name: 'thurs september 10', exact: true })).toBeVisible()
+  await upcoming.locator('[contenteditable="true"], .note-empty-editor').first().click()
+  await page.keyboard.type('Synthetic approach')
+  const historyNoteText = async (id: string) => (await readState(page)).projectHistoryNotes.find((note: any) => note.id === id)?.items[0]?.text
+  await expect.poll(() => historyNoteText('project-history-2026-09-09')).toBe('Synthetic went well')
+  await expect.poll(() => historyNoteText('project-history-2026-09-10')).toBe('Synthetic approach')
+
   // Closing skips generating the day.
   await pick.getByRole('button', { name: 'Close', exact: true }).click()
   await expect(pick).toBeHidden()
@@ -790,6 +892,16 @@ test('generating a day with no project active by noon settles ended projects and
   expect(byName['Synthetic next'].activeUntil).toBe('2026-09-12T14:00:00.000Z')
   expect(byName['Synthetic new'].activeUntil).toBe('2026-09-12T14:00:00.000Z')
   await expect(page.getByRole('region', { name: 'Daily plan' })).toBeVisible()
+
+  await openView(page, 'Projects')
+  await page.getByRole('button', { name: 'History', exact: true }).click()
+  await expect(page.getByRole('region', { name: 'wed september 9', exact: true })).toContainText('Synthetic went well')
+  // The new stretch is filed with the writing about it.
+  const newSession = page.getByRole('region', { name: 'thurs september 10', exact: true })
+  await expect(newSession).toContainText('Synthetic approach')
+  await expect(newSession.locator('li', { hasText: 'Synthetic next' })).toContainText('2d')
+  await expect(newSession.locator('li', { hasText: 'Synthetic new' })).toContainText('2d')
+  await openView(page, 'Today')
 
   // With a project active by noon, generating again asks nothing.
   await generateDay(page)

@@ -16,7 +16,22 @@ on:
         description: Lifecycle path to verify with synthetic data
         type: choice
         default: activity
-        options: [activity, situate, process, worker-start, offline-ideas, offline-history, offline-notifications, offline-latency, startup-ab]
+        options: [activity, situate, situate-stress, voice-recording, process, worker-start, offline-ideas, offline-history, offline-notifications, offline-latency, startup-ab]
+      situate_api:
+        description: Android API for Situate stress (all includes 31, 34, 36, and 37)
+        type: choice
+        default: all
+        options: [all, '31', '34', '36', '37']
+      situate_pages:
+        description: Page-size variant for API 36/37 (16k requires selecting one of those APIs)
+        type: choice
+        default: normal
+        options: [normal, 16k]
+      situate_case:
+        description: Situate stress case to run (all runs the full matrix)
+        type: choice
+        default: all
+        options: [all, restart, event-loss, navigation, idle]
       baseline_apk_run_id:
         description: For startup-ab, the lifecycle run whose APK is the baseline build
         type: string
@@ -38,9 +53,9 @@ permissions:
 
 jobs:
   capture-acknowledgement:
-    if: inputs.scenario != 'situate'
+    if: ${{ !startsWith(inputs.scenario, 'situate') && inputs.scenario != 'voice-recording' }}
     name: Offline refresh and durable capture
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
@@ -91,6 +106,11 @@ jobs:
           assert marker in source
           p.write_text(source.replace(marker, marker + '\n            isDebuggable = true'))
           PY
+      - name: Add synthetic event-loss fault injection and fixture apps
+        if: inputs.apk_run_id == '' && inputs.scenario == 'situate-stress'
+        run: |
+          node .github/scripts/inject-situate-ci-faults.mjs
+          bash .github/scripts/build-situate-ci-fixtures.sh
       - name: Build with release optimization and shrinking
         if: inputs.apk_run_id == ''
         run: pnpm tauri android build --apk --target x86_64 --features tauri/devtools
@@ -108,8 +128,59 @@ jobs:
           path: |
             balance-debug.apk
             sync-e2e-pairing-code.txt
+            situate-allowed.apk
+            situate-blocked.apk
+
+  voice-recording:
+    if: inputs.scenario == 'voice-recording'
+    name: Voice recording notification / Android ${{ matrix.api }}
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        # The Android 31 image's WebView 91 is too old for Balance to save anything.
+        api: [34, 36]
+    steps:
+      - uses: actions/checkout@v6
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v7
+        with:
+          name: Balance-android-lifecycle-test-apk
+      - name: Record in the background and stop from the notification
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          BALANCE_TEST_PACKAGE: app.balance.local
+        with:
+          api-level: ${{ matrix.api }}
+          arch: x86_64
+          target: google_apis
+          emulator-options: -no-window -gpu lavapipe -no-boot-anim -camera-back none
+          disable-animations: true
+          script: timeout --foreground --kill-after=10s 5m node .github/scripts/android-voice-recording-test.mjs
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: voice-recording-api-${{ matrix.api }}
+          path: |
+            logcat-voice-recording.txt
+            voice-recording-notifications.txt
+          if-no-files-found: ignore
 
   situate:
+    if: inputs.scenario != 'situate-stress' && inputs.scenario != 'voice-recording'
     name: Situate blocking / Android ${{ matrix.api }}
     needs: build
     runs-on: ubuntu-latest
@@ -132,6 +203,8 @@ jobs:
       - uses: actions/download-artifact@v7
         with:
           name: Balance-android-lifecycle-test-apk
+      - name: Prepare emulator with retryable SDK downloads
+        run: bash .github/scripts/prepare-situate-emulator.sh ${{ matrix.api }}
       - name: Verify blocking and unblocking with the optimized APK
         uses: reactivecircus/android-emulator-runner@v2
         env:
@@ -156,8 +229,60 @@ jobs:
             situate-gate-window.txt
           if-no-files-found: ignore
 
+  situate-stress:
+    if: inputs.scenario == 'situate-stress'
+    name: Situate stress / API ${{ matrix.api }} / ${{ matrix.scenario }}
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        api: ${{ fromJSON(inputs.situate_api && inputs.situate_api != 'all' && format('[{0}]', inputs.situate_api) || '[31,34,36,37]') }}
+        scenario: ${{ fromJSON(inputs.situate_case && inputs.situate_case != 'all' && format('["{0}"]', inputs.situate_case) || '["restart","event-loss","navigation","idle"]') }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v7
+        with:
+          name: Balance-android-lifecycle-test-apk
+      - name: Prepare emulator with retryable SDK downloads
+        run: bash .github/scripts/prepare-situate-emulator.sh ${{ matrix.api }} ${{ inputs.situate_pages == '16k' && 'google_apis_ps16k' || 'google_apis' }}
+      - name: Exercise lifecycle, identity recovery, and background restrictions
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          BALANCE_SITUATE_SCENARIO: ${{ matrix.scenario }}
+          BALANCE_SITUATE_SEED: ${{ matrix.api }}
+          BALANCE_SITUATE_REPEATS: ${{ inputs.repetitions || '20' }}
+          BALANCE_SITUATE_PAGES: ${{ inputs.situate_pages || 'normal' }}
+        with:
+          api-level: ${{ matrix.api == 37 && '37.0' || format('{0}', matrix.api) }}
+          arch: x86_64
+          target: ${{ inputs.situate_pages == '16k' && 'google_apis_ps16k' || 'google_apis' }}
+          emulator-options: -no-window -gpu lavapipe -noaudio -no-boot-anim -camera-back none
+          disable-animations: false
+          script: timeout --foreground --kill-after=15s 20m node .github/scripts/android-situate-stress.mjs
+      - name: Retain synthetic diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: situate-stress-${{ matrix.api }}-${{ matrix.scenario }}
+          path: situate-stress-*
+          if-no-files-found: ignore
+
   lifecycle:
-    if: inputs.scenario != 'situate'
+    if: ${{ !startsWith(inputs.scenario, 'situate') && inputs.scenario != 'voice-recording' }}
     name: Android ${{ matrix.api }} / ${{ matrix.scenario }}
     needs: build
     runs-on: ubuntu-latest

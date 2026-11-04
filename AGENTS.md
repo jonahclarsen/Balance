@@ -142,9 +142,12 @@ no `tauri android init`, no Android SDK/NDK/gradle/emulator installs). The local
 dev box doesn't have the toolchain and the disk is tight; attempting it wastes
 time and risks the environment.
 
-All Android verification happens in CI: `.github/workflows/android.yml` builds the
-debug APK (arm64 + x86_64) and runs an emulator smoke test. To validate Android
-changes, push the branch and let that workflow run.
+All Android verification happens in CI. Branch pushes do not start Android builds:
+push the branch, then dispatch `android.yml` with `gh workflow run android.yml
+--ref <branch>` for the debug APK and emulator smoke test. Set `build_release=true`
+and `minify_release=true` when verifying the signed arm64 release APK. Situate's
+optimized blocking and failure-recovery matrices are in `android-lifecycle-tests.yml`:
+use `scenario=situate` or `scenario=situate-stress`, respectively.
 
 ## Preserve operation compatibility
 

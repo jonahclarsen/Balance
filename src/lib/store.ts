@@ -4,7 +4,7 @@ import { generatedItemMarkers, preservedPlanItems, reconcileUneditedPlanItems } 
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import { noteItemsEqual } from './noteEditor/noteItems'
 import { pickerColorToHex } from './colors'
-import { isProjectActive, projectActiveUntil, projectActiveUntilOn, templateForGeneration, withActiveUntil } from './projects'
+import { isProjectActive, projectActiveUntil, projectActiveUntilOn, projectStartOn, templateForGeneration, withActiveUntil } from './projects'
 import { spreadPriorityItems } from './prioritize'
 import { get, writable, type Writable } from 'svelte/store'
 import {
@@ -46,6 +46,8 @@ import {
   formatPlanTitle,
   formatMinutes,
   generatePlanFromTemplate,
+  processUncheckedTasksDate,
+  processUncheckedTasksItems,
   htmlToPlainText,
   movePlanItem,
   movePlanItemWithinLevel,
@@ -1277,7 +1279,6 @@ function createPlannerStore() {
         notifications,
       )
 
-      const freshMarkers = generatedItemMarkers(generated.items)
       const previous = replaceExisting ? current.plans.find((plan) => plan.date === date) : undefined
       const previousIds = new Set(previous ? generatedItemMarkers(previous.items).map(({ id }) => id) : [])
       const preserved = previous ? preservedPlanItems(previous, current.uneditedPlanItems) : []
@@ -1287,10 +1288,19 @@ function createPlannerStore() {
         generated.id = previous.id
         generated.createdAt = previous.createdAt
       }
-      const visiblePlan = { ...generated, items: [...preserved, ...generated.items] }
+      // A kept row already covers its day. Fresh rows go above kept rows too.
+      const keptProcessDates = new Set(preserved.map(processUncheckedTasksDate))
+      const processRows = processUncheckedTasksItems(current.plans, date)
+        .filter((item) => !keptProcessDates.has(processUncheckedTasksDate(item)))
+      const visiblePlan = { ...generated, items: [...processRows, ...preserved, ...generated.items] }
+      generated.items = [...processRows, ...generated.items]
+      const freshMarkers = generatedItemMarkers(generated.items)
+      const insertPositions = processRows.length > 0
+        ? { insertPositions: Object.fromEntries(processRows.map(({ id }, position) => [id, position])) }
+        : {}
 
       // Keep the legacy wire field empty; the selected day belongs to this device.
-      commit('regenerate_plan', { templateId, date, replaceExisting, activePlanDate: '', generatedPlan: generated, replaceItems, requireUntouched: true }, (state) => {
+      commit('regenerate_plan', { templateId, date, replaceExisting, activePlanDate: '', generatedPlan: generated, replaceItems, requireUntouched: true, ...insertPositions }, (state) => {
         const plans = replaceExisting ? state.plans.filter((plan) => plan.date !== date) : state.plans
         const goals = state.goals.some((goal) => !goal.presentationTrackingStartedAt)
           ? state.goals.map((goal) => goal.presentationTrackingStartedAt
@@ -2320,7 +2330,7 @@ function createPlannerStore() {
           const ending = endings[project.id]
           const picked = activeIds.includes(project.id)
           if ((!ending && !picked) || project.archived || project.completedAt) return project
-          const rest = withActiveUntil(project, picked && (!ending || ending === 'open') ? activeUntil : null, new Date(timestamp), () => createId('project-period'))
+          const rest = withActiveUntil(project, picked && (!ending || ending === 'open') ? activeUntil : null, new Date(timestamp), () => createId('project-period'), projectStartOn(date, new Date(timestamp)))
           if (ending === 'completed') return { ...rest, completedAt: timestamp, updatedAt: timestamp }
           if (ending === 'archived') return { ...rest, archived: true, archivedAt: timestamp, updatedAt: timestamp }
           return { ...rest, updatedAt: timestamp }
@@ -2538,13 +2548,13 @@ function createPlannerStore() {
     },
 
     // The idea starts empty; transcription fills it in.
-    addVoiceIdea(recording: Pick<VoiceClip, 'dataURL' | 'durationMs' | 'peaks'>) {
+    addVoiceIdea(recording: Pick<VoiceClip, 'dataURL' | 'durationMs' | 'peaks'> & Partial<Pick<VoiceClip, 'id' | 'createdAt'>>) {
       const item: IdeaItem = { ...createPlanItem(''), bucketedAt: nowISO() }
-      const clip: VoiceClip = { id: createId('voice'), ideaId: item.id, ...recording, createdAt: nowISO() }
-      commitEntities('add_voice_idea', { itemId: item.id, clipId: clip.id }, (state) => ({
+      const clip: VoiceClip = { id: createId('voice'), createdAt: nowISO(), ...recording, ideaId: item.id }
+      commitEntities('add_voice_idea', { itemId: item.id, clipId: clip.id }, (state) => state.voiceClips.some((existing) => existing.id === clip.id) ? state : {
         ...updateIdeaGroup(state, 'proposition', (group) => ({ ...group, items: [...group.items, item] })),
         voiceClips: [...state.voiceClips, clip],
-      }))
+      })
       return item.id
     },
 

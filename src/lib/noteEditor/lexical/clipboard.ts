@@ -1,7 +1,7 @@
 import { parseNoteClipboardHTML, parseNoteChecklistClipboard } from '../../noteClipboard'
 // Notes clipboard formats (contract P-40..P-43), written to the spec.
 
-import { escapeHTML, htmlToPlainTextWithBreaks } from '../../planner'
+import { escapeHTML, htmlToPlainTextWithBreaks, linkifyExternalURLs } from '../../planner'
 import type { NoteItemKind } from '../../types'
 
 export type ClipboardBlock = {
@@ -120,7 +120,7 @@ export function parseChecklistClipboard(plain: string, html: string): PastedBloc
 export function parsePlainTextClipboard(plain: string): PastedBlock[] {
   const lines = plain.split(/\r?\n/)
   if (lines.length < 2) return []
-  return lines.map((line) => ({ kind: 'paragraph', html: escapeHTML(line), done: false, children: [] }))
+  return lines.map((line) => ({ kind: 'paragraph', html: linkifyExternalURLs(escapeHTML(line)), done: false, children: [] }))
 }
 
 export function parseClipboardHTML(html: string): PastedBlock[] {

@@ -1,9 +1,8 @@
 <script lang="ts">
   import { isTauri, invoke } from '@tauri-apps/api/core'
   import { situate, situateNow, situatePlatform, situateError, requestQuiz, activateMode } from './situate/store'
-  import { isActive, epoch, backOn, nextScheduled, scheduleToday, nightPassEnd, type Mode } from './situate/core'
+  import { isActive, epoch, backOn, nextScheduled, reminderWindow, scheduleToday, nightPassEnd, type Mode } from './situate/core'
   import { DEVICES, clockTime } from './situate/ui'
-  import { formatMinutes as minutesTime } from './planner'
   import { browsersMissingExtension, extensionSetupOpen } from './situate/extension'
   import SituateModeEditor from './SituateModeEditor.svelte'
   import SituateSchedule from './SituateSchedule.svelte'
@@ -21,7 +20,10 @@
     return Math.ceil((nightPassEnd($situate.settings, currentEpoch, $situateNow) - $situateNow) / 60000)
   }
   function summary(mode: Mode, active: boolean) {
-    if (mode.reminder) return `${minutesTime(mode.reminder.from)}–${minutesTime(mode.reminder.until)}`
+    if (mode.reminder) {
+      const { at, end } = reminderWindow(mode.reminder, new Date(today?.wake ?? $situateNow))
+      return `${clockTime(at)}–${clockTime(end)}`
+    }
     if (!active) {
       const until = backOn($situate, mode, $situateNow)
       return until ? `Back on at ${clockTime(until)}` : 'Off until you turn it on'
@@ -77,7 +79,7 @@
   {#if isTauri() && situatePlatform === 'android'}
     <section class="block">
       <h3>Device access</h3>
-      <div class="actions"><button type="button" on:click={() => permissionsAction('notifications')}>Notification access</button><button type="button" on:click={() => permissionsAction('mode-notifications')}>Mode notifications</button><button type="button" on:click={() => permissionsAction('accessibility')}>App blocking access</button><button type="button" on:click={() => permissionsAction('alarms')}>Schedule permission</button></div>
+      <div class="actions"><button type="button" on:click={() => permissionsAction('notifications')}>Notification access</button><button type="button" on:click={() => permissionsAction('mode-notifications')}>Mode notifications</button><button type="button" on:click={() => permissionsAction('accessibility')}>App blocking access</button><button type="button" on:click={() => permissionsAction('usage')}>App detection access</button><button type="button" on:click={() => permissionsAction('alarms')}>Schedule permission</button></div>
       {#if permissions}<p role="status" class="muted">{permissions}</p>{/if}
     </section>
     <section class="block"><SituateNotifications /></section>

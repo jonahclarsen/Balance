@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
-test('voice input integration is idempotent and grants headset routing permissions', async () => {
+test('voice input integration is idempotent and declares headset routing and background recording', async () => {
   const root = await mkdtemp(join(tmpdir(), 'balance-voice-input-generator-'))
   try {
     const source = join(root, 'java/app/balance/local')
@@ -20,10 +20,11 @@ test('voice input integration is idempotent and grants headset routing permissio
     assert.deepEqual(await Promise.all(paths.map((path) => readFile(join(root, path), 'utf8'))), first)
 
     const [manifest, activity, bridge] = first
-    for (const permission of ['RECORD_AUDIO', 'MODIFY_AUDIO_SETTINGS', 'BLUETOOTH_CONNECT']) {
+    for (const permission of ['RECORD_AUDIO', 'MODIFY_AUDIO_SETTINGS', 'BLUETOOTH_CONNECT', 'POST_NOTIFICATIONS', 'FOREGROUND_SERVICE', 'FOREGROUND_SERVICE_MICROPHONE']) {
       assert.match(manifest, new RegExp(`"android\\.permission\\.${permission}"`))
     }
     assert.match(manifest, /"android\.permission\.BLUETOOTH" android:maxSdkVersion="30"/)
+    assert.match(manifest, /BalanceVoiceRecordingService" android:exported="false" android:foregroundServiceType="microphone"/)
     assert.match(activity, /override fun onWebViewCreate\(webView: android\.webkit\.WebView\) \{\n\s*super\.onWebViewCreate\(webView\)\n\s*BalanceVoiceInput\.attach\(this, webView\)/)
     assert.match(bridge, /addJavascriptInterface\(BalanceVoiceInput\(activity\), "BalanceVoiceInput"\)/)
   } finally {

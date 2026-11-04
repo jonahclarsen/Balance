@@ -6,7 +6,7 @@
   import SituateTargets from './SituateTargets.svelte'
   import SituateIcon from './SituateIcon.svelte'
   import { situate, situateNow, mutateSituate } from './situate/store'
-  import { MODE_COLORS, regenerate, scheduleToday, validate, type Mode } from './situate/core'
+  import { MODE_COLORS, regenerate, reminderWindow, scheduleToday, timeZoneLocation, validate, type Mode, type Reminder } from './situate/core'
   import SituateDragValue from './SituateDragValue.svelte'
   import { DEVICES, clockTime } from './situate/ui'
   import { autoGrow } from './autoGrow'
@@ -17,6 +17,7 @@
   let error = ''
   let timer: number | undefined
   $: today = scheduleToday($situate, $situateNow)
+  $: tonight = draft.reminder && today && reminderWindow(draft.reminder, new Date(today.wake), location)
   // Every edit saves shortly after it is made; closing flushes the last one.
   $: queue(draft)
   function queue(value: Mode) {
@@ -36,6 +37,11 @@
   }
   onDestroy(flush)
   const HEADS_UP = [15, 5]
+  const location = timeZoneLocation()
+  const HOURS = [{ label: 'Start', time: 'from', offset: 'fromSunset', at: 'at' }, { label: 'End', time: 'until', offset: 'untilSunset', at: 'end' }] as const
+  function setHours(patch: Partial<Reminder>) {
+    if (draft.reminder) draft.reminder = { ...draft.reminder, ...patch }
+  }
   function setSchedule(scheduled: boolean, eveningOnly: boolean) {
     draft.scheduled = scheduled
     if (eveningOnly) draft.eveningOnly = true
@@ -70,10 +76,21 @@
       <section>
         <h3>On</h3>
         <div class="hours">
-          <SituateDragValue kind="clock" label="Reminder starts" value={draft.reminder.from} onChange={v => { if (draft.reminder) draft.reminder = { ...draft.reminder, from: v } }} /><span>to</span>
-          <SituateDragValue kind="clock" label="Reminder ends" value={draft.reminder.until} onChange={v => { if (draft.reminder) draft.reminder = { ...draft.reminder, until: v } }} />
+          {#each HOURS as row}
+            {@const offset = draft.reminder[row.offset]}
+            <span>{row.label}</span>
+            <div class="hour">
+              <SituateDragValue kind="clock" label={`Reminder ${row.label.toLowerCase()}`} value={draft.reminder[row.time]} onChange={v => setHours({ [row.time]: v })} />
+              {#if location}
+                <div class="devices"><button type="button" aria-label={`${row.label} or sunset`} aria-pressed={offset !== undefined} title={`Sunset in ${location.name}`} on:click={() => setHours({ [row.offset]: offset === undefined ? 120 : undefined })}>or sunset</button></div>
+                {#if offset !== undefined}
+                  <span>+</span><SituateDragValue kind="duration" min={0} label={`Hours after sunset for reminder ${row.label.toLowerCase()}`} value={offset} onChange={v => setHours({ [row.offset]: v })} /><span>if later</span>
+                  {#if tonight}<span class="muted">({clockTime(tonight[row.at])} tonight)</span>{/if}
+                {/if}
+              {/if}
+            </div>
+          {/each}
         </div>
-        <p class="muted">Blocks nothing. Clicking it shows the description.</p>
       </section>
     {:else}
     <section>
@@ -122,7 +139,8 @@
   .devices button:disabled { cursor:default; opacity:1; }
   p.muted { margin:0; font-size:13px; }
   .heads-up { display:flex; flex-wrap:wrap; align-items:center; gap:8px; font-size:13px; color:var(--muted); }
-  .hours { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--muted); }
+  .hours { display:grid; grid-template-columns:auto 1fr; align-items:center; gap:8px 12px; font-size:13px; color:var(--muted); }
+  .hour { display:flex; flex-wrap:wrap; align-items:center; gap:6px; }
   .quizzes { display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start; }
   .error { margin:0; color:var(--danger); }
   @media (max-width:640px) { .quizzes, .basics { grid-template-columns:1fr; } }

@@ -2,6 +2,7 @@
   import type { Project } from './types'
   import { escapeHTML, isURL, sanitizeInlineHTML } from './planner'
   import { openExternalURL } from './externalLinks'
+  import { activeFindQuery, findTextIncludes } from './documentFind'
   export let project: Project
   // Right-hand note: when it stops being active, or when it was completed or archived.
   export let note = ''
@@ -10,6 +11,7 @@
   export let onOpen: (projectId: string) => void
   $: nameHtml = withDescriptionColon(sanitizeInlineHTML(project.nameHtml ?? escapeHTML(project.name)), Boolean(project.description.trim()))
   $: descriptionPreview = previewLine(project.description)
+  $: descriptionFound = findTextIncludes(project.description, $activeFindQuery)
   // A trailing colon hints that the project has a description; only the card shows it.
   function withDescriptionColon(html: string, hasDescription: boolean) {
     if (!hasDescription) return html
@@ -64,10 +66,10 @@
     onOpen(project.id)
   }}
 >
-  <span class="project-dot" aria-hidden="true"></span>
+  <span class="project-dot-slot"><span class="project-dot" aria-hidden="true"></span></span>
   <span class="project-text">
     <span class="project-name">{@html nameHtml}</span>
-    {#if descriptionPreview}<span class="project-description">{descriptionPreview}</span>{/if}
+    {#if descriptionPreview}<span class="project-description" class:found={descriptionFound}>{descriptionFound ? project.description.trim() : descriptionPreview}</span>{/if}
   </span>
   {#if note}<span class="project-note">{note}</span>{/if}
 </div>
@@ -86,6 +88,14 @@
   .project-name, .project-description { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .project-name { font-size: 15px; }
   .project-description { color: var(--muted); font-size: 13px; }
+  .project-description.found { white-space: pre-line; overflow-wrap: anywhere; }
+  /* Keep the dot where it sits beside the one-line preview, centered on two empty
+     lines of the same sizes. Line heights depend on the font, so nothing here can be a number. */
+  .project-dot-slot { display: contents; }
+  div.project-card:has(.project-description.found) .project-dot-slot { display: grid; flex: 0 0 10px; align-self: flex-start; align-items: center; }
+  div.project-card:has(.project-description.found) .project-dot { grid-area: 1 / 1 / 3; }
+  div.project-card:has(.project-description.found) .project-dot-slot::before { content: '\200b'; grid-area: 1 / 1; font-size: 15px; }
+  div.project-card:has(.project-description.found) .project-dot-slot::after { content: '\200b'; grid-area: 2 / 1; font-size: 13px; }
   .project-name :global(a) { color: inherit; text-decoration: underline; text-decoration-color: var(--accent-strong); }
   .project-note { flex: 0 0 auto; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
   @media (prefers-reduced-motion: reduce) {

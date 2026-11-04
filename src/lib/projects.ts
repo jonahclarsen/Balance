@@ -43,17 +43,20 @@ function currentPeriod(project: Project, now: number): ProjectActivePeriod | und
 }
 
 // Sets or clears activeUntil and records the change in activePeriods:
-// extending the current stretch, ending it now, or starting a new one.
-export function withActiveUntil(project: Project, activeUntil: string | null, now = new Date(), createId: () => Id): Project {
-  const { activeUntil: _activeUntil, ...rest } = project
+// extending the current stretch, ending it now, or starting a new one. A
+// stretch ended before its start never happened, so it leaves no record.
+export function withActiveUntil(project: Project, activeUntil: string | null, now = new Date(), createId: () => Id, start = now): Project {
+  const { activeUntil: _activeUntil, activePeriods: _activePeriods, ...rest } = project
   const current = currentPeriod(project, now.getTime())
   const periods = project.activePeriods ?? []
   let activePeriods = periods
   if (current) {
     const end = activeUntil ?? now.toISOString()
-    activePeriods = periods.map((period) => period === current ? { ...period, end } : period)
+    activePeriods = Date.parse(end) < Date.parse(current.start)
+      ? periods.filter((period) => period !== current)
+      : periods.map((period) => period === current ? { ...period, end } : period)
   } else if (activeUntil) {
-    activePeriods = [...periods, { id: createId(), start: now.toISOString(), end: activeUntil }]
+    activePeriods = [...periods, { id: createId(), start: start.toISOString(), end: activeUntil }]
   }
   return {
     ...rest,
@@ -103,6 +106,11 @@ export function projectHistoryPeriods(projects: Project[], notedDays: string[] =
   return [...byDay].map(([day, entries]) => ({ day, entries })).sort((a, b) => b.day.localeCompare(a.day))
 }
 
+// The start day of the session that picking projects for `date` follows.
+export function outgoingHistoryDay(projects: Project[], date: string): string | null {
+  return projectHistoryPeriods(projects).find(({ day }) => day <= date)?.day ?? null
+}
+
 const HISTORY_NOTE_PREFIX = 'project-history-'
 export const PROJECT_BACKSTORY_NOTE_ID = `${HISTORY_NOTE_PREFIX}backstory`
 
@@ -148,6 +156,13 @@ export function hasActiveProjectOn(projects: Project[], date: string): boolean {
 // picking one day tonight covers all of tomorrow.
 export function projectActiveUntilOn(date: string, days: number): string {
   return projectActiveUntil(days, new Date(noonOn(date)))
+}
+
+// A stretch picked while generating another day starts at that day's 7 a.m.,
+// so History files it, and the writing about it, under the generated day.
+export function projectStartOn(date: string, now = new Date()): Date {
+  const today = localDate(now.getTime() - ACTIVE_DAY_START_HOUR * 60 * 60 * 1000)
+  return today === date ? now : new Date(periodFromDays(date, date).start)
 }
 
 // Open projects whose active stretch is over by noon on the given day.
