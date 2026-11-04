@@ -109,11 +109,12 @@ test('quick-added ideas land in Proposition Party and move with timed unlocks', 
   await page.keyboard.press('Alt+A')
   const input = page.getByRole('textbox', { name: 'New idea' })
   await expect(input).toBeFocused()
-  await input.fill('Synthetic idea one')
+  await input.fill('Synthetic idea two')
   await input.press('Enter')
   await expect(input).toBeHidden()
   await page.getByRole('button', { name: 'Add idea', exact: true }).click()
-  await input.fill('Synthetic idea two')
+  // The newest idea goes on top.
+  await input.fill('Synthetic idea one')
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   expect(await groups(page)).toEqual({ proposition: ['Synthetic idea one', 'Synthetic idea two'] })
 
@@ -151,6 +152,45 @@ test('quick-added ideas land in Proposition Party and move with timed unlocks', 
   await expect(page.getByRole('region', { name: 'Daily plan' })).toBeVisible()
   await openView(page, 'Ideas')
   await expect(rows(page, 'genuine')).toHaveText(['Synthetic idea one edited'])
+})
+
+test('Add item starts at the top of Proposition Party and the bottom of other groups', async ({ page }) => {
+  await open(page)
+  await openView(page, 'Ideas')
+  await storeCall(page, `
+    plannerStore.addIdea('Synthetic older')
+    plannerStore.addIdea('Synthetic kept', 'genuine')
+  `)
+
+  await pane(page, 'proposition').getByRole('button', { name: '+ Add item' }).click()
+  await expect(rows(page, 'proposition').first()).toBeFocused()
+  await page.keyboard.type('Synthetic newest')
+  await expect(rows(page, 'proposition')).toHaveText(['Synthetic newest', 'Synthetic older'])
+
+  await card(page, 'genuine').click()
+  await pane(page, 'genuine').getByRole('button', { name: '+ Add item' }).click()
+  await expect(rows(page, 'genuine').last()).toBeFocused()
+  await page.keyboard.type('Synthetic appended')
+  await expect(rows(page, 'genuine')).toHaveText(['Synthetic kept', 'Synthetic appended'])
+})
+
+test('Cmd+Shift+A selects the idea being edited', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
+  await open(page)
+  await openView(page, 'Ideas')
+  await storeCall(page, `
+    plannerStore.addIdea('Synthetic second')
+    plannerStore.addIdea('Synthetic first')
+  `)
+
+  await rows(page, 'proposition').nth(1).click()
+  await page.keyboard.press('Meta+Shift+A')
+  await expect(pane(page, 'proposition').locator('[data-plan-item-id].selected')).toHaveText(/Synthetic second/)
+  await expect(page.getByRole('group', { name: 'Move idea to' })).toBeVisible()
+  await expect(rows(page, 'proposition').nth(1)).not.toBeFocused()
+
+  await page.keyboard.press('ArrowUp')
+  await expect(pane(page, 'proposition').locator('[data-plan-item-id].selected')).toHaveText(/Synthetic first/)
 })
 
 test('quick add reopens the idea saved within the last 5 minutes', async ({ page }, testInfo) => {
@@ -206,10 +246,10 @@ test('a new day sorts every proposition one card at a time', async ({ page }, te
   test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
   await open(page)
   await storeCall(page, `
-    plannerStore.addIdea('Synthetic keep')
-    plannerStore.addIdea('Synthetic drop')
-    plannerStore.addIdea('Synthetic frag')
     plannerStore.addIdea('ment')
+    plannerStore.addIdea('Synthetic frag')
+    plannerStore.addIdea('Synthetic drop')
+    plannerStore.addIdea('Synthetic keep')
   `)
 
   const dialog = sorter(page)
@@ -260,10 +300,10 @@ test('sorting new ideas resumes after a reload until it is closed', async ({ pag
   test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
   await open(page)
   await storeCall(page, `
-    plannerStore.addIdea('Synthetic first')
     plannerStore.addIdea('Synthetic second')
+    plannerStore.addIdea('Synthetic first')
   `)
-  const choice = page.locator('.empty-state').getByRole('button', { name: 'Default day' })
+  const choice =page.locator('.empty-state').getByRole('button', { name: 'Default day' })
 
   await page.keyboard.press('Alt+Shift+D')
   await expectIdea(page, 1, 2)
@@ -297,10 +337,10 @@ test('Back undoes the previous sort decision so an idea never lands in two place
   test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
   await open(page)
   await storeCall(page, `
-    plannerStore.addIdea('Synthetic first')
     plannerStore.addIdea('Synthetic second')
+    plannerStore.addIdea('Synthetic first')
   `)
-  const state = () => page.evaluate(async () => {
+  const state =() => page.evaluate(async () => {
     const path = '/src/lib/store.ts'
     const { plannerStore } = await import(/* @vite-ignore */ path)
     let value: any
@@ -335,9 +375,9 @@ test('Back after a note or a group returns the idea to Proposition Party', async
   await open(page)
   await openView(page, 'Ideas')
   await storeCall(page, `
-    plannerStore.addIdea('Synthetic first')
-    plannerStore.addIdea('Synthetic second')
     plannerStore.addIdea('Synthetic third')
+    plannerStore.addIdea('Synthetic second')
+    plannerStore.addIdea('Synthetic first')
   `)
   const notes = () => page.evaluate(async () => {
     const path = '/src/lib/store.ts'
@@ -377,8 +417,8 @@ test('the Proposition Party Sort button opens the sorter on demand', async ({ pa
   await expect(sort).toBeDisabled()
 
   await storeCall(page, `
-    plannerStore.addIdea('Synthetic sort one')
     plannerStore.addIdea('Synthetic sort two')
+    plannerStore.addIdea('Synthetic sort one')
   `)
   await sort.click()
   await expectIdea(page, 1, 2)
@@ -397,10 +437,10 @@ test('the sorter stays with its page and cuts ideas to Trash and the clipboard',
   await open(page)
   await openView(page, 'Ideas')
   await storeCall(page, `
+    plannerStore.addIdea('Synthetic stay')
     const id = plannerStore.addIdea('Synthetic cut me', 'proposition', '<strong>Synthetic cut me</strong>')
     const child = plannerStore.addIdea('Synthetic cut child')
     plannerStore.moveIdeaItem('bucket_proposition', child, id, 'inside')
-    plannerStore.addIdea('Synthetic stay')
   `)
   await pane(page, 'proposition').getByRole('button', { name: 'Sort', exact: true }).click()
   await expectIdea(page, 1, 2)
@@ -437,12 +477,12 @@ test('the sorter stays with its page and cuts ideas to Trash and the clipboard',
 test('sorting moves ideas into new notes with their formatting and children, and supports undo', async ({ page }) => {
   await open(page)
   await storeCall(page, `
+    plannerStore.addIdea('Synthetic second note')
     const id = plannerStore.addIdea('Synthetic note', 'proposition', '<strong>Synthetic note</strong>')
     plannerStore.patchIdeaItem('bucket_proposition', id, { done: true })
     const child = plannerStore.addRootIdeaItem('bucket_proposition')
     plannerStore.patchIdeaItem('bucket_proposition', child, { text: 'Synthetic child', html: '<em>Synthetic child</em>' })
     plannerStore.moveIdeaItem('bucket_proposition', child, id, 'inside')
-    plannerStore.addIdea('Synthetic second note')
   `)
   await openView(page, 'Ideas')
   await pane(page, 'proposition').getByRole('button', { name: 'Sort', exact: true }).click()
@@ -486,8 +526,8 @@ test('a day generation sort can add ideas to the new day', async ({ page }, test
   test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
   await open(page)
   await storeCall(page, `
-    plannerStore.addIdea('Synthetic for today')
     plannerStore.addIdea('Synthetic later')
+    plannerStore.addIdea('Synthetic for today')
   `)
 
   // Sorts outside generation have no day to add to.
@@ -516,8 +556,8 @@ test('a day generation sort can add ideas to the new day', async ({ page }, test
 test('day choices survive closing, navigation and reload without applying to another date', async ({ page }) => {
   await open(page)
   await storeCall(page, `
-    plannerStore.addIdea('Synthetic reserved')
     plannerStore.addIdea('Synthetic remaining')
+    plannerStore.addIdea('Synthetic reserved')
   `)
   await generateDay(page)
   await page.keyboard.press('y')
@@ -556,9 +596,9 @@ test('a day keeps its sort progress across trash, cut and reopening', async ({ p
   test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
   await open(page)
   await storeCall(page, `
-    plannerStore.addIdea('Synthetic trash')
-    plannerStore.addIdea('Synthetic cut')
     plannerStore.addIdea('Synthetic later')
+    plannerStore.addIdea('Synthetic cut')
+    plannerStore.addIdea('Synthetic trash')
   `)
   const hint = sorter(page).locator('.paste-review-hint')
   await generateDay(page)
@@ -605,8 +645,8 @@ test('pasted lists import as ideas and open the sorter; trash clears after 30 da
   })
   await page.getByRole('button', { name: /^Import 2 ideas/ }).click()
   await page.keyboard.press('Escape')
-  await expect(rows(page, 'proposition').nth(5)).toHaveText('Synthetic **task** one')
-  await expect(rows(page, 'proposition').nth(7)).toHaveText('Synthetic task two')
+  await expect(rows(page, 'proposition').nth(0)).toHaveText('Synthetic **task** one')
+  await expect(rows(page, 'proposition').nth(2)).toHaveText('Synthetic task two')
 
   await page.getByRole('button', { name: 'Import', exact: true }).click()
   await paste.evaluate((element) => {
@@ -617,9 +657,9 @@ test('pasted lists import as ideas and open the sorter; trash clears after 30 da
   })
   await page.getByRole('button', { name: /^Import 3 ideas/ }).click()
   await page.keyboard.press('Escape')
-  await expect(rows(page, 'proposition').nth(8)).toHaveText('Synthetic apple title')
-  await expect(rows(page, 'proposition').nth(10)).toHaveText('Synthetic apple second')
-  await expect(rows(page, 'proposition').nth(10).locator('em')).toHaveText('second')
+  await expect(rows(page, 'proposition').nth(0)).toHaveText('Synthetic apple title')
+  await expect(rows(page, 'proposition').nth(2)).toHaveText('Synthetic apple second')
+  await expect(rows(page, 'proposition').nth(2).locator('em')).toHaveText('second')
 
   await pane(page, 'proposition').locator('[data-plan-item-id]').filter({ hasText: 'Synthetic delta' }).getByRole('button', { name: 'Select item' }).click()
   await page.keyboard.press('t')

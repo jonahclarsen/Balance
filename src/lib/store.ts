@@ -2543,7 +2543,7 @@ function createPlannerStore() {
       if (!trimmed) return null
       const item: IdeaItem = { ...createPlanItem(trimmed), ...(html ? { html } : {}), bucketedAt: nowISO() }
       commitEntities('add_idea', { kind, itemId: item.id }, (state) =>
-        updateIdeaGroup(state, kind, (group) => ({ ...group, items: [...group.items, item] })))
+        updateIdeaGroup(state, kind, (group) => withNewIdeas(group, [item])))
       return item.id
     },
 
@@ -2552,7 +2552,7 @@ function createPlannerStore() {
       const item: IdeaItem = { ...createPlanItem(''), bucketedAt: nowISO() }
       const clip: VoiceClip = { id: createId('voice'), createdAt: nowISO(), ...recording, ideaId: item.id }
       commitEntities('add_voice_idea', { itemId: item.id, clipId: clip.id }, (state) => state.voiceClips.some((existing) => existing.id === clip.id) ? state : {
-        ...updateIdeaGroup(state, 'proposition', (group) => ({ ...group, items: [...group.items, item] })),
+        ...updateIdeaGroup(state, 'proposition', (group) => withNewIdeas(group, [item])),
         voiceClips: [...state.voiceClips, clip],
       })
       return item.id
@@ -2589,7 +2589,7 @@ function createPlannerStore() {
       const bucketedAt = nowISO()
       const fresh = clonePlanItemsForPaste(items).map((item) => ({ ...item, bucketedAt }))
       commitEntities('import_ideas', { kind, count: fresh.length }, (state) =>
-        updateIdeaGroup(state, kind, (group) => ({ ...group, items: [...group.items, ...fresh] })))
+        updateIdeaGroup(state, kind, (group) => withNewIdeas(group, fresh)))
       return fresh.map((item) => item.id)
     },
 
@@ -2682,7 +2682,7 @@ function createPlannerStore() {
     addRootIdeaItem(groupId: Id) {
       const item: IdeaItem = { ...createPlanItem(), bucketedAt: nowISO() }
       commitEntities('add_idea_item', { groupId, parentId: null, item }, (state) =>
-        updateIdeaGroupById(state, groupId, (group) => ({ ...group, items: addPlanItem(group.items, null, item) })))
+        updateIdeaGroupById(state, groupId, (group) => withNewIdeas(group, [item])))
       return item.id
     },
 
@@ -4155,6 +4155,11 @@ function deleteOrTrashIdea(state: AppState, groupId: Id, itemId: Id, preserveChi
   const { dayAssignmentDate: _dayAssignmentDate, ...unassigned } = item as IdeaItem
   const trashed: IdeaItem = { ...unassigned, children, bucketedAt: nowISO() }
   return updateIdeaGroup(removed, 'trash', (trash) => ({ ...trash, items: [...trash.items, trashed] }))
+}
+
+// Proposition Party grows from the top; the other groups grow from the bottom.
+function withNewIdeas(group: IdeaGroup, items: IdeaItem[]): IdeaGroup {
+  return { ...group, items: group.kind === 'proposition' ? [...items, ...group.items] : [...group.items, ...items] }
 }
 
 // Idea groups are fixed records created on first write, so missing ones are

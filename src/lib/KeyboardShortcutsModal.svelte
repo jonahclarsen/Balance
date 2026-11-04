@@ -132,6 +132,7 @@
       title: 'Ideas',
       shortcuts: [
         { keys: ['G / P / A / T / U'], label: 'Move the selected idea to Genuinely / Possibly / Afterlife / Trash / Proposition Party' },
+        { keys: ['mod', 'shift', 'A'], label: 'Select the focused idea' },
         { keys: ['up'], label: 'Select the previous / next idea', alt: ['down'] },
         { keys: ['del'], label: 'Move the selected idea to Trash' },
         { keys: ['Y / N'], label: 'Sorting: answer the key question' },

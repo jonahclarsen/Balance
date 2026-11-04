@@ -115,12 +115,25 @@
     return active instanceof HTMLElement && (active.isContentEditable || active.matches('input, textarea, select'))
   }
 
+  function focusedIdeaId(): Id | null {
+    const active = document.activeElement
+    const row = active instanceof Element ? active.closest<HTMLElement>('.ideas-panel [data-plan-item-id]') : null
+    return row?.dataset.planItemId ?? null
+  }
+
+  // Cmd/Ctrl+Shift+A selects the idea being edited, like on Today.
+  function selectFocusedIdea(event: KeyboardEvent) {
+    const itemId = focusedIdeaId()
+    if (!itemId) return
+    event.preventDefault()
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+    select(itemId)
+  }
+
   // Cmd/Ctrl+D toggles done like on Today: the selected idea stays selected,
   // and completing the idea being edited moves the caret to the one below.
   function toggleDoneFromKeyboard(event: KeyboardEvent) {
-    const active = document.activeElement
-    const row = active instanceof Element ? active.closest<HTMLElement>('.ideas-panel [data-plan-item-id]') : null
-    const target = selectedItemId ?? row?.dataset.planItemId
+    const target = selectedItemId ?? focusedIdeaId()
     const found = target ? findIdea(groups, target) : null
     if (!found) return
     event.preventDefault()
@@ -133,6 +146,10 @@
   function handleKeydown(event: KeyboardEvent) {
     if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'd') {
       toggleDoneFromKeyboard(event)
+      return
+    }
+    if ((event.metaKey || event.ctrlKey) && !event.altKey && event.shiftKey && event.key.toLowerCase() === 'a') {
+      selectFocusedIdea(event)
       return
     }
     if (event.ctrlKey || event.altKey || event.repeat || editingText()) return
@@ -211,12 +228,11 @@
   }
 
   async function addItem(groupId: Id) {
-    plannerStore.addRootIdeaItem(groupId)
+    const itemId = plannerStore.addRootIdeaItem(groupId)
     await tick()
-    const input = Array.from(document.querySelectorAll<HTMLDivElement>(
-      `[data-plan-item-scope="${CSS.escape(groupId)}"] [data-plan-text-focus-target]`,
-    )).at(-1)
-    input?.focus()
+    document.querySelector<HTMLDivElement>(
+      `[data-plan-item-scope="${CSS.escape(groupId)}"] [data-plan-item-id="${CSS.escape(itemId)}"] [data-plan-text-focus-target]`,
+    )?.focus()
   }
 
   onDestroy(() => {
@@ -309,6 +325,9 @@
         </header>
       {/if}
       <div class="list-panel idea-group-list" data-plan-item-scope={groupsByKind[activeGroup].id}>
+        {#if activeGroup === 'proposition'}
+          <button class="add-row add-row-top" type="button" on:click={() => { void addItem(groupsByKind[activeGroup].id) }}>+ Add item</button>
+        {/if}
         {#each activeItems as item (item.id)}
           {@const clip = clipForIdea.get(item.id)}
           <PlanItemEditor
@@ -357,7 +376,9 @@
             </button>
           {/if}
         {/each}
-        <button class="add-row" type="button" on:click={() => { void addItem(groupsByKind[activeGroup].id) }}>+ Add item</button>
+        {#if activeGroup !== 'proposition'}
+          <button class="add-row" type="button" on:click={() => { void addItem(groupsByKind[activeGroup].id) }}>+ Add item</button>
+        {/if}
       </div>
       {#if selected}
         <div class="idea-move-strip" role="group" aria-label="Move idea to">
@@ -393,6 +414,7 @@
 <style>
   .ideas-panel { display: grid; gap: 12px; align-content: start; }
   .page-header h2 { margin: 0; }
+  .add-row-top { margin: 0 0 12px; }
   .template-panel-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
   .ideas-layout {
     display: grid;
