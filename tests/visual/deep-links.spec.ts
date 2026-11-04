@@ -188,8 +188,13 @@ test('each group copies a review link that reviews only its own ideas', async ({
   const dialog = page.locator('.idea-sort[role="dialog"]')
   for (const kind of ['possible', 'afterlife', 'genuine'] as const) {
     await openView(page, 'Ideas')
-    await page.locator(`[data-idea-group="${kind}"]`).click({ button: 'right' })
-    await page.getByRole('menuitem', { name: 'Copy review link' }).click()
+    // Any scroll closes the menu, and bringing a card into a phone's sideways strip scrolls it.
+    const reviewLink = page.getByRole('menuitem', { name: 'Copy review link' })
+    await expect(async () => {
+      await page.locator(`[data-idea-group="${kind}"]`).click({ button: 'right' })
+      await expect(reviewLink).toBeVisible({ timeout: 1000 })
+    }).toPass()
+    await reviewLink.click()
     expect(await page.evaluate(() => (window as any).__copiedLink)).toBe(`balance://ideas/review/${kind}`)
     if (kind === 'possible') {
       await openView(page, 'Today')
