@@ -17,5 +17,11 @@
       </array>
     </dict>
   </array>
+  <key>NSLocalNetworkUsageDescription</key>
+  <string>Balance syncs directly with your other paired devices on this network.</string>
+  <key>NSBonjourServices</key>
+  <array>
+    <string>_balance-sync._tcp</string>
+  </array>
 </dict>
 </plist>

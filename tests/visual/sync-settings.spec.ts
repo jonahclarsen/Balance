@@ -6,6 +6,9 @@ async function openSync(page: Page, mode = 'new') {
     const runtime = window as any
     runtime.isTauri = true
     runtime.__syncCalls = []
+    runtime.__callbacks = []
+    runtime.__listeners = {}
+    runtime.__stateReads = 0
     const settings = {
       enabled: ['connected', 'incomplete', 'failed'].includes(mode),
       pairingCode: ['connected', 'incomplete', 'failed'].includes(mode) ? 'BALSYNC1:synthetic-settings-fixture' : null,
@@ -14,10 +17,22 @@ async function openSync(page: Page, mode = 'new') {
     runtime.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => undefined }
     runtime.__TAURI_INTERNALS__ = {
       metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main' } },
-      transformCallback: () => 1,
+      transformCallback: (callback: (event: unknown) => void) => {
+        runtime.__callbacks.push(callback)
+        return runtime.__callbacks.length - 1
+      },
       invoke: async (command: string, args: any) => {
         if (command.startsWith('sync_') || command === 'set_sync_relay_url') runtime.__syncCalls.push(command)
+        if (command.startsWith('read_app_state')) runtime.__stateReads += 1
         switch (command) {
+          case 'plugin:event|listen':
+            runtime.__listeners[args.event] = runtime.__callbacks[args.handler]
+            return 1
+          case 'get_sync_network_offline': return Boolean(runtime.__offline)
+          case 'sync_local_network_once': {
+            const pass = runtime.__localNetworkPass
+            return typeof pass === 'function' ? pass() : pass ?? null
+          }
           case 'get_recovery_key_status': return { confirmed: true, recoveryKey: null, databasePath: '/tmp/synthetic.sqlite3' }
           case 'get_sync_settings':
             if (mode === 'unavailable') throw new Error('Synthetic settings failure')
@@ -284,4 +299,67 @@ test('existing devices can reconnect and replacing a key requires a new server',
   await replace.click()
   await expect(panel.getByText('Setup complete. You can now connect your other device.', { exact: true })).toBeVisible()
   await expect(panel.getByLabel('Sync server address', { exact: true })).toHaveValue('https://sync.invalid/synthetic-new-room')
+})
+
+const directPass = {
+  syncedDevices: 1,
+  pulledOperations: 1,
+  pushedOperations: 0,
+  stateChanged: true,
+  lastDirectSyncMs: 1_780_000_000_000,
+  error: null,
+}
+
+async function stateReads(page: Page) {
+  return page.evaluate(() => (window as any).__stateReads as number)
+}
+
+test('a direct exchange with a nearby device refreshes the planner and shows when it happened', async ({ page }) => {
+  await page.addInitScript((pass) => { (window as any).__localNetworkPass = pass }, directPass)
+  const panel = await openSync(page, 'connected')
+  await expect(panel.getByText(/Last direct sync:/)).toBeVisible()
+  await expect.poll(() => stateReads(page)).toBeGreaterThan(0)
+  await expect.poll(() => relayCalls(page)).toBeGreaterThan(0)
+  await expect(panel.getByText('Connected to sync server')).toBeVisible()
+})
+
+test('direct sync still runs while the relay is unreachable because the device is offline', async ({ page }) => {
+  await page.addInitScript((pass) => {
+    const runtime = window as any
+    runtime.__offline = true
+    runtime.__localNetworkPass = pass
+  }, directPass)
+  const panel = await openSync(page, 'connected')
+  await expect(panel.getByText('You’re offline')).toBeVisible()
+  await expect(panel.getByText(/Last direct sync:/)).toBeVisible()
+  expect(await relayCalls(page)).toBe(0)
+})
+
+test('a stalled or failing nearby device never holds up the relay or reports a sync error', async ({ page }) => {
+  await page.addInitScript(() => {
+    const runtime = window as any
+    runtime.__localNetworkPass = () => new Promise(() => undefined)
+  })
+  let panel = await openSync(page, 'connected')
+  await expect(panel.getByText('Connected to sync server')).toBeVisible()
+  await panel.getByRole('button', { name: 'Sync now' }).click()
+  await expect(panel.getByText('Sync complete.')).toBeVisible()
+
+  await page.addInitScript(() => {
+    (window as any).__localNetworkPass = () => { throw new Error('Synthetic nearby failure') }
+  })
+  await page.reload()
+  await openView(page, 'Settings')
+  panel = page.locator('.sync-panel')
+  await expect(panel.getByText('Connected to sync server')).toBeVisible()
+  await expect(panel.locator('#sync-error')).toHaveCount(0)
+})
+
+test('operations delivered by a nearby device refresh the planner', async ({ page }) => {
+  const panel = await openSync(page, 'connected')
+  await expect(panel.getByText('Connected to sync server')).toBeVisible()
+  await expect.poll(() => page.evaluate(() => Boolean((window as any).__listeners['balance-local-network-sync']))).toBe(true)
+  const before = await stateReads(page)
+  await page.evaluate(() => (window as any).__listeners['balance-local-network-sync']({ event: 'balance-local-network-sync', id: 1, payload: null }))
+  await expect.poll(() => stateReads(page)).toBeGreaterThan(before)
 })

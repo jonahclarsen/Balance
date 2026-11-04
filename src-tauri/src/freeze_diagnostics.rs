@@ -129,15 +129,17 @@ pub enum DatabaseUser {
     Widget,
     Notifications,
     Situate,
+    LocalNetwork,
 }
 
-const DATABASE_USERS: [DatabaseUser; 6] = [
+const DATABASE_USERS: [DatabaseUser; 7] = [
     DatabaseUser::App,
     DatabaseUser::Relay,
     DatabaseUser::BackgroundRelay,
     DatabaseUser::Widget,
     DatabaseUser::Notifications,
     DatabaseUser::Situate,
+    DatabaseUser::LocalNetwork,
 ];
 const LOCK_WAIT_MS: u64 = 2_000;
 const LOCK_HOLD_MS: u64 = 5_000;

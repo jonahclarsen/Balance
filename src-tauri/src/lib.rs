@@ -271,6 +271,7 @@ const PASTE_MATCH_STYLE_EVENT: &str = "balance-paste-match-style";
 #[cfg(target_os = "macos")]
 const MACOS_ALT_SHORTCUT_EVENT: &str = "balance-macos-alt-shortcut";
 const BALANCE_DEEP_LINK_EVENT: &str = "balance-deep-link";
+const LOCAL_NETWORK_SYNC_EVENT: &str = "balance-local-network-sync";
 #[cfg(target_os = "macos")]
 const MAIN_WINDOW_FRAME_DEFAULTS_KEY: &str = "BalanceMainWindowFrameV1";
 #[cfg(target_os = "macos")]
@@ -10772,6 +10773,7 @@ async fn sync_enable_primary(
     let pairing_code = normalize_sync_pairing_code(&pairing_code)?;
     let relay_url = relay_url.map(|url| normalize_sync_relay_url(&url)).transpose()?;
     run_database_task(move || {
+        sync::lan_service::forget_key();
         let connection = open_database(&app)?;
         backup_state_before_sync(&app, &connection)?;
         sync::enable_primary(&connection).map_err(sync::Error::into_string)?;
@@ -10798,6 +10800,7 @@ async fn sync_enable_joiner(
     let pairing_code = normalize_sync_pairing_code(&pairing_code)?;
     let relay_url = relay_url.map(|url| normalize_sync_relay_url(&url)).transpose()?;
     run_database_task(move || {
+        sync::lan_service::forget_key();
         let connection = open_database(&app)?;
         backup_state_before_sync(&app, &connection)?;
         sync::enable_joiner(&connection).map_err(sync::Error::into_string)?;
@@ -10881,6 +10884,65 @@ async fn sync_relay_once(
         result
     })
     .await
+}
+
+/// Sync directly with paired devices on the same local network. The exchange
+/// takes the database guard per phase and never across socket I/O, so it is
+/// not wrapped in `run_database_task`.
+#[tauri::command]
+async fn sync_local_network_once(
+    app: tauri::AppHandle,
+) -> Result<sync::lan_service::PassResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        // Passes run every few seconds; only the first opens the database, so
+        // polling with nobody nearby never competes with undo and saves.
+        if !sync::lan_service::has_key() {
+            // Install under the guard: changing the pairing forgets the key
+            // under the same guard, so an older key can never be installed
+            // after the new one was stored.
+            let _guard = database_access_guard(freeze_diagnostics::DatabaseUser::LocalNetwork)?;
+            let connection = open_database(&app)?;
+            if !sync::is_sync_enabled(&connection).map_err(sync::Error::into_string)? {
+                return Ok(sync::lan_service::PassResult::default());
+            }
+            let Some(pairing_code) =
+                sync::read_pairing_code(&connection).map_err(sync::Error::into_string)?
+            else {
+                return Ok(sync::lan_service::PassResult::default());
+            };
+            let key = sync::crypto::SyncKey::from_pairing_code(&pairing_code)
+                .map_err(sync::Error::into_string)?;
+            sync::lan_service::ensure(&app, &key).map_err(sync::Error::into_string)?;
+        }
+        let result = sync::lan_service::sync_nearby();
+        if result.state_changed {
+            refresh_projections_after_sync(&app);
+        }
+        Ok(result)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+/// A nearby device delivered operations to this one while it was serving.
+fn after_local_network_merge(app: &tauri::AppHandle) {
+    refresh_projections_after_sync(app);
+    let _ = app.emit(LOCAL_NETWORK_SYNC_EVENT, ());
+}
+
+fn refresh_projections_after_sync(app: &tauri::AppHandle) {
+    let refreshed = (|| -> Result<(), String> {
+        let _guard = database_access_guard(freeze_diagnostics::DatabaseUser::LocalNetwork)?;
+        let connection = open_database(app)?;
+        #[cfg(target_os = "macos")]
+        if let Err(error) = macos_widget::publish_snapshot(&connection) {
+            eprintln!("Could not refresh the macOS widget: {error}");
+        }
+        task_notifications::publish(&connection)
+    })();
+    if let Err(error) = refreshed {
+        log::warn!("Could not refresh widgets and notifications after local sync: {error}");
+    }
 }
 
 /// Export only one-way, account-keyed tokens and structural sync metadata.
@@ -11165,6 +11227,7 @@ pub fn run() {
             sync_enable_primary,
             sync_enable_joiner,
             sync_relay_once,
+            sync_local_network_once,
             connectivity::get_sync_network_offline,
             sync_anonymous_diagnostics,
             record_freeze_diagnostic,

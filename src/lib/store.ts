@@ -4396,6 +4396,21 @@ export async function syncRelayOnce(reason: string): Promise<SyncPassResult> {
   return invoke<SyncPassResult>('sync_relay_once', { reason })
 }
 
+export type LocalNetworkPassResult = {
+  syncedDevices: number
+  pulledOperations: number
+  pushedOperations: number
+  stateChanged: boolean
+  lastDirectSyncMs: number | null
+  error: string | null
+}
+
+/** Exchange directly with paired devices on this network. */
+export async function syncLocalNetworkOnce(): Promise<LocalNetworkPassResult | null> {
+  if (!isTauri()) return null
+  return invoke<LocalNetworkPassResult | null>('sync_local_network_once')
+}
+
 /**
  * Structural sync trace whose database strings are replaced with account-keyed
  * one-way tokens. Paired devices can be compared without exposing their text.

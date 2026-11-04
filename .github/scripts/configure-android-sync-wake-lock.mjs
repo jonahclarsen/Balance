@@ -8,6 +8,9 @@ let manifest = await readFile(manifestPath, 'utf8')
 const permissions = [
   'android.permission.ACCESS_NETWORK_STATE',
   'android.permission.WAKE_LOCK',
+  // Android drops incoming mDNS unless the app holds a Wi-Fi multicast lock.
+  'android.permission.ACCESS_WIFI_STATE',
+  'android.permission.CHANGE_WIFI_MULTICAST_STATE',
   // Android's vibrator APIs, including the Chromium WebView implementation of
   // navigator.vibrate(), require this normal manifest permission.
   'android.permission.VIBRATE',

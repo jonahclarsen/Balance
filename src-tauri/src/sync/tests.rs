@@ -247,6 +247,39 @@ impl TestStore {
     }
 }
 
+impl SyncStore for TestStore {
+    fn inventory(&self) -> Result<SyncInventory> {
+        self.read(sync_inventory)
+    }
+
+    fn diff(&self, peer: &SyncInventory) -> Result<(Vec<Op>, Vec<String>)> {
+        self.read(|conn| diff_against(conn, peer))
+    }
+
+    fn ops_by_id(&self, ids: &[String]) -> Result<Vec<Op>> {
+        self.read(|conn| ops_by_id(conn, ids))
+    }
+
+    fn merge(&self, ops: Vec<Op>) -> Result<usize> {
+        TestStore::merge(self, ops)
+    }
+}
+
+/// One direct exchange over the real authenticated local transport.
+fn lan_exchange(initiator: &TestStore, responder: &TestStore, keys: &lan::LanKeys) -> lan::Outcome {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    std::thread::scope(|scope| {
+        let served = scope.spawn(|| {
+            let (stream, _) = listener.accept().unwrap();
+            lan::serve(stream, keys, responder)
+        });
+        let outcome = lan::sync_with(address, keys, initiator).unwrap();
+        assert_eq!(served.join().unwrap().unwrap(), outcome.delivered);
+        outcome
+    })
+}
+
 /// Exercise encrypted operation replication independently of network transport.
 /// HTTP behavior is covered by the reference-relay tests below.
 fn exchange(a: &TestStore, b: &TestStore, key: &SyncKey) {
@@ -3471,3 +3504,181 @@ fn regeneration_preserves_future_fields_in_native_checkpoint_records() {
 }
 
 include!("../../../tests/ci/history-persistence-driver.rs");
+
+#[test]
+fn nearby_devices_converge_over_the_authenticated_local_transport() {
+    let sa = Scratch::new("lan-a");
+    let sb = Scratch::new("lan-b");
+    let a = open_seeded(
+        &sa.path,
+        "key-a",
+        &state("device-A", json!([{ "id": "g1", "name": "Read" }])),
+    );
+    let b = open_seeded(&sb.path, "key-b", &state("device-B", json!([])));
+    enable_primary(&a).unwrap();
+    enable_joiner(&b).unwrap();
+    let a = TestStore::new(a);
+    let b = TestStore::new(b);
+    let keys = lan::LanKeys::derive(&SyncKey::generate());
+
+    let first = lan_exchange(&b, &a, &keys);
+    assert_eq!(first.received, 1, "the joiner receives the baseline");
+    assert_eq!(b.state()["goals"], json!([{ "id": "g1", "name": "Read" }]));
+    assert_eq!(
+        a.read(|conn| state_hash(conn, &MATERIALIZED_TABLES).unwrap()),
+        b.read(|conn| state_hash(conn, &MATERIALIZED_TABLES).unwrap()),
+    );
+
+    a.write(|conn| {
+        persist_operation_to_database(
+            conn,
+            &set_active_plan_date_op("op-a-1", "device-A", 1, "2026-06-23T12:00:00.000Z", "2027-01-01"),
+        )
+        .unwrap()
+    });
+    b.write(|conn| {
+        persist_operation_to_database(
+            conn,
+            &set_active_plan_date_op("op-b-1", "device-B", 1, "2026-06-23T13:00:00.000Z", "2028-02-02"),
+        )
+        .unwrap()
+    });
+    assert_eq!(
+        lan_exchange(&a, &b, &keys),
+        lan::Outcome {
+            received: 1,
+            delivered: 1
+        }
+    );
+    assert_eq!(a.operation_ids(), b.operation_ids());
+    assert_eq!(a.state()["activePlanDate"], "2028-02-02");
+    assert_eq!(domain(&a.state()), domain(&b.state()));
+
+    assert_eq!(lan_exchange(&b, &a, &keys), lan::Outcome::default());
+}
+
+#[test]
+fn local_sync_moves_only_a_winning_checkpoint_and_then_goes_quiet() {
+    let sa = Scratch::new("lan-ckpt-a");
+    let sb = Scratch::new("lan-ckpt-b");
+    let a = open_seeded(&sa.path, "key-a", &state("device-A", json!([])));
+    let b = open_seeded(&sb.path, "key-b", &state("device-B", json!([])));
+    enable_primary(&a).unwrap();
+    enable_joiner(&b).unwrap();
+    let a = TestStore::new(a);
+    let b = TestStore::new(b);
+    let keys = lan::LanKeys::derive(&SyncKey::generate());
+    lan_exchange(&b, &a, &keys);
+
+    for (round, date) in [(1, "2027-01-01"), (2, "2027-02-02")] {
+        a.write(|conn| {
+            persist_operation_to_database(
+                conn,
+                &set_active_plan_date_op(
+                    &format!("op-a-{round}"),
+                    "device-A",
+                    round,
+                    &format!("2026-06-23T12:0{round}:00.000Z"),
+                    date,
+                ),
+            )
+            .unwrap()
+        });
+        a.read(|conn| checkpoint_operation_log(conn).unwrap());
+        let checkpoint = a.operation_ids();
+        assert_eq!(checkpoint.len(), 1);
+
+        // Either side may start the pass; only the newer checkpoint moves.
+        let outcome = if round == 1 {
+            lan_exchange(&b, &a, &keys)
+        } else {
+            lan_exchange(&a, &b, &keys)
+        };
+        assert_eq!(outcome.received + outcome.delivered, 1, "round {round}");
+        assert_eq!(b.operation_ids(), checkpoint);
+        assert_eq!(b.state()["activePlanDate"], date);
+        assert_eq!(domain(&a.state()), domain(&b.state()));
+
+        assert_eq!(lan_exchange(&a, &b, &keys), lan::Outcome::default());
+        assert_eq!(lan_exchange(&b, &a, &keys), lan::Outcome::default());
+    }
+
+    // A peer still holding an older checkpoint never asks for or resends it.
+    let stale = b.read(sync_inventory).unwrap();
+    let older = SyncInventory {
+        items: vec![InventoryItem {
+            id: "older-checkpoint".into(),
+            device_id: "device-A".into(),
+            sequence: 0,
+            generation: Some(1),
+        }],
+        frontiers: stale.frontiers.clone(),
+    };
+    let (send, want) = a.read(|conn| diff_against(conn, &older)).unwrap();
+    assert!(want.is_empty(), "a losing checkpoint is never requested");
+    assert_eq!(send.len(), 1, "the newer checkpoint is offered");
+    let (send, want) = a.read(|conn| diff_against(conn, &stale)).unwrap();
+    assert!(send.is_empty() && want.is_empty());
+}
+
+/// Uses real multicast on the host, so CI runs it as its own step.
+#[test]
+#[ignore = "needs multicast networking; run with --ignored"]
+fn paired_devices_on_one_network_discover_each_other_and_sync() {
+    use std::time::Instant;
+
+    let sa = Scratch::new("mdns-a");
+    let sb = Scratch::new("mdns-b");
+    let a = open_seeded(
+        &sa.path,
+        "key-a",
+        &state("device-A", json!([{ "id": "g1", "name": "Read" }])),
+    );
+    let b = open_seeded(&sb.path, "key-b", &state("device-B", json!([])));
+    enable_primary(&a).unwrap();
+    enable_joiner(&b).unwrap();
+    let a = TestStore::new(a);
+    let b = TestStore::new(b);
+    let keys = lan::LanKeys::derive(&SyncKey::generate());
+    let stranger = lan::LanKeys::derive(&SyncKey::generate());
+
+    let listener = TcpListener::bind("0.0.0.0:0").unwrap();
+    let a_port = listener.local_addr().unwrap().port();
+    let a_discovery = lan_service::Discovery::start(a_port);
+    a_discovery.advertise(&keys.discovery_tag(a_discovery.salt()));
+    let b_discovery = lan_service::Discovery::start(TcpListener::bind("0.0.0.0:0").unwrap().local_addr().unwrap().port());
+    b_discovery.advertise(&keys.discovery_tag(b_discovery.salt()));
+    let other = lan_service::Discovery::start(1);
+    other.advertise(&stranger.discovery_tag(other.salt()));
+
+    let deadline = Instant::now() + Duration::from_secs(30);
+    let addresses = loop {
+        let due = b_discovery.due(&keys);
+        if b_discovery.advertised_devices() >= 2 && !due.is_empty() {
+            assert_eq!(due.len(), 1, "a device with another key is not a peer");
+            break due.into_iter().next().unwrap().1;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "nearby devices were not discovered: saw {} Balance devices, {} paired",
+            b_discovery.advertised_devices(),
+            due.len(),
+        );
+        std::thread::sleep(Duration::from_millis(200));
+    };
+    assert!(addresses.iter().all(|address| address.port() == a_port));
+
+    std::thread::scope(|scope| {
+        let served = scope.spawn(|| {
+            let (stream, _) = listener.accept().unwrap();
+            lan::serve(stream, &keys, &a)
+        });
+        let outcome = addresses
+            .iter()
+            .find_map(|address| lan::sync_with(*address, &keys, &b).ok())
+            .expect("sync with the discovered device");
+        assert_eq!(outcome.received, 1);
+        served.join().unwrap().unwrap();
+    });
+    assert_eq!(b.state()["goals"], json!([{ "id": "g1", "name": "Read" }]));
+}

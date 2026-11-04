@@ -6,7 +6,8 @@
 //! of `(timestamp, device_id, sequence)`, and a deterministic materializer
 //! (`apply_operation`, driven by [`rematerialize`]).
 //!
-//! Globally unique operation ids make repeated relay delivery idempotent.
+//! Globally unique operation ids make repeated delivery idempotent, and between
+//! checkpoints they make direct local-network reconciliation an id-set diff.
 //! A checkpoint adds a compact per-device sequence frontier so an offline peer
 //! cannot resurrect removed history. No native SQLite extension is involved.
 //!
@@ -32,6 +33,8 @@ use sha2::{Digest, Sha256};
 pub mod crypto;
 pub mod entities;
 pub mod diagnostics;
+pub mod lan;
+pub mod lan_service;
 #[cfg(test)]
 pub mod relay;
 pub mod relay_client;
@@ -83,6 +86,61 @@ pub struct Op {
     pub op_type: String,
     pub timestamp: String,
     pub payload_json: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct InventoryItem {
+    pub id: String,
+    pub device_id: String,
+    pub sequence: i64,
+    /// Present only for the full-state checkpoint, so a peer can tell whether
+    /// it would win before asking for the whole state.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub generation: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct SyncInventory {
+    pub items: Vec<InventoryItem>,
+    pub frontiers: HashMap<String, i64>,
+}
+
+/// The database side of a direct exchange. The transport calls these between
+/// socket reads and writes; each implementation decides how it gets a
+/// connection (a borrowed one in tests, a freshly opened and globally guarded
+/// one in the app) so that **no lock and no connection is held across socket
+/// I/O**.
+pub trait SyncStore {
+    /// Current post-checkpoint operations plus compact covered frontiers.
+    fn inventory(&self) -> Result<SyncInventory>;
+    /// `(ops the peer is missing, ids this device wants from the peer)`.
+    fn diff(&self, peer: &SyncInventory) -> Result<(Vec<Op>, Vec<String>)>;
+    /// Full rows for the requested ids; ids this device lacks are skipped.
+    fn ops_by_id(&self, ids: &[String]) -> Result<Vec<Op>>;
+    /// Merge received ops, rematerializing state if anything was inserted.
+    /// Returns the number of ops actually inserted.
+    fn merge(&self, ops: Vec<Op>) -> Result<usize>;
+}
+
+/// [`SyncStore`] over an already-open connection (tests and [`selftest`]).
+pub struct ConnectionStore<'a>(pub &'a Connection);
+
+impl SyncStore for ConnectionStore<'_> {
+    fn inventory(&self) -> Result<SyncInventory> {
+        sync_inventory(self.0)
+    }
+
+    fn diff(&self, peer: &SyncInventory) -> Result<(Vec<Op>, Vec<String>)> {
+        diff_against(self.0, peer)
+    }
+
+    fn ops_by_id(&self, ids: &[String]) -> Result<Vec<Op>> {
+        ops_by_id(self.0, ids)
+    }
+
+    fn merge(&self, ops: Vec<Op>) -> Result<usize> {
+        merge_and_rematerialize(self.0, ops)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -207,20 +265,114 @@ fn validate_current_operation(op: &Op) -> Result<JsonValue> {
     Ok(payload)
 }
 
-/// Full rows for `ids`; unknown ids are skipped.
+/// Full rows for `ids` in canonical order; unknown ids are skipped.
 pub fn ops_by_id(conn: &Connection, ids: &[String]) -> Result<Vec<Op>> {
-    if ids.is_empty() {
-        return Ok(Vec::new());
+    let unique: Vec<&String> = {
+        let mut seen = HashSet::new();
+        ids.iter().filter(|id| seen.insert(id.as_str())).collect()
+    };
+    let mut ops = Vec::with_capacity(unique.len());
+    // Stay well below SQLite's bound-parameter limit.
+    for chunk in unique.chunks(500) {
+        let placeholders = vec!["?"; chunk.len()].join(",");
+        let mut stmt = conn.prepare(&format!(
+            "SELECT id, device_id, sequence, type, timestamp, payload_json \
+             FROM operations WHERE id IN ({placeholders})"
+        ))?;
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(chunk.iter()), row_to_op)?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        ops.extend(rows);
     }
-    let wanted: HashSet<&str> = ids.iter().map(String::as_str).collect();
-    let mut stmt = conn.prepare(SELECT_OPS)?;
-    let ops = stmt
-        .query_map([], row_to_op)?
-        .collect::<std::result::Result<Vec<_>, _>>()?;
-    Ok(ops
+    ops.sort_by(compare_canonical);
+    Ok(ops)
+}
+
+pub fn sync_inventory(conn: &Connection) -> Result<SyncInventory> {
+    let checkpoint = current_checkpoint(conn)?;
+    let mut stmt = conn.prepare("SELECT id, device_id, sequence, type FROM operations")?;
+    let items = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, String>(3)?,
+            ))
+        })?
+        .collect::<std::result::Result<Vec<_>, _>>()?
         .into_iter()
-        .filter(|op| wanted.contains(op.id.as_str()))
-        .collect())
+        .map(|(id, device_id, sequence, op_type)| {
+            let generation = (op_type == "replace_full_state").then(|| {
+                checkpoint
+                    .as_ref()
+                    .filter(|(_, current)| *current == id)
+                    .map_or(0, |(generation, _)| *generation)
+            });
+            InventoryItem {
+                id,
+                device_id,
+                sequence,
+                generation,
+            }
+        })
+        .collect();
+    Ok(SyncInventory {
+        items,
+        frontiers: sync_frontiers(conn)?,
+    })
+}
+
+/// The responder's half of reconciliation: what the peer is missing, and what
+/// this device wants back. Checkpoint frontiers suppress compacted operations,
+/// and a checkpoint moves only toward the side where it would win, so two
+/// peers never resend a losing full state on every pass.
+pub fn diff_against(conn: &Connection, peer: &SyncInventory) -> Result<(Vec<Op>, Vec<String>)> {
+    let mine = sync_inventory(conn)?;
+    let mine_ids: HashSet<&str> = mine.items.iter().map(|item| item.id.as_str()).collect();
+    let peer_ids: HashSet<&str> = peer.items.iter().map(|item| item.id.as_str()).collect();
+    let checkpoint_of = |inventory: &SyncInventory| {
+        inventory
+            .items
+            .iter()
+            .filter_map(|item| item.generation.map(|generation| (generation, item.id.clone())))
+            .max()
+    };
+    let my_checkpoint = checkpoint_of(&mine);
+    let peer_checkpoint = checkpoint_of(peer);
+    let covered = |frontiers: &HashMap<String, i64>, item: &InventoryItem| {
+        frontiers
+            .get(&item.device_id)
+            .is_some_and(|sequence| item.sequence <= *sequence)
+    };
+
+    let want = peer
+        .items
+        .iter()
+        .filter(|item| !mine_ids.contains(item.id.as_str()))
+        .filter(|item| match item.generation {
+            Some(generation) => my_checkpoint
+                .as_ref()
+                .map_or(true, |current| (generation, item.id.clone()) > *current),
+            None => !covered(&mine.frontiers, item),
+        })
+        .map(|item| item.id.clone())
+        .collect::<Vec<_>>();
+
+    let send = mine
+        .items
+        .iter()
+        .filter(|item| !peer_ids.contains(item.id.as_str()))
+        .filter(|item| match item.generation {
+            Some(generation) => peer_checkpoint
+                .as_ref()
+                .map_or(true, |theirs| (generation, item.id.clone()) > *theirs),
+            None => !covered(&peer.frontiers, item),
+        })
+        .map(|item| item.id.clone())
+        .collect::<Vec<_>>();
+
+    Ok((ops_by_id(conn, &send)?, want))
 }
 
 // ---------------------------------------------------------------------------
@@ -1029,8 +1181,9 @@ pub fn hex(bytes: &[u8]) -> String {
 /// enables a primary and joiner, persists the key on both sides, exchanges the
 /// encrypted operation log through a synthetic exchange, and verifies that data
 /// appears on the joining device. CI runs this inside the Android APK so
-/// SQLCipher, pairing, and the bootstrap path are covered together. HTTP relay
-/// transport is exercised separately against the reference server in CI.
+/// SQLCipher, pairing, and the bootstrap path are covered together, then repeats
+/// one exchange over the real authenticated local transport on loopback. HTTP
+/// relay transport is exercised separately against the reference server in CI.
 /// Cleans up after itself.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1041,6 +1194,7 @@ pub struct SyncSelftestProfile {
     bootstrap_ms: u128,
     long_task_persist_ms: u128,
     long_task_incremental_sync_ms: u128,
+    local_network_sync_ms: u128,
 }
 
 fn exchange_fixture_operations(
@@ -1141,6 +1295,36 @@ pub(crate) fn notification_selftest_fixture(scratch_dir: &Path, at: i64) -> Resu
     })();
     let _ = std::fs::remove_dir_all(&directory);
     result
+}
+
+/// One Noise-authenticated exchange over a real TCP socket between freshly
+/// opened connections, the same way two devices meet on a local network.
+fn local_network_exchange(
+    a_path: &Path,
+    a_key: &str,
+    b_path: &Path,
+    b_key: &str,
+    key: &crypto::SyncKey,
+) -> Result<lan::Outcome> {
+    let keys = lan::LanKeys::derive(key);
+    let listener =
+        std::net::TcpListener::bind("127.0.0.1:0").map_err(|e| Error::Codec(e.to_string()))?;
+    let address = listener
+        .local_addr()
+        .map_err(|e| Error::Codec(e.to_string()))?;
+    std::thread::scope(|scope| {
+        let served = scope.spawn(|| -> Result<usize> {
+            let (stream, _) = listener.accept().map_err(|e| Error::Codec(e.to_string()))?;
+            let connection = crate::open_database_at(a_path, a_key).map_err(Error::Codec)?;
+            lan::serve(stream, &keys, &ConnectionStore(&connection))
+        });
+        let connection = crate::open_database_at(b_path, b_key).map_err(Error::Codec)?;
+        let outcome = lan::sync_with(address, &keys, &ConnectionStore(&connection));
+        served
+            .join()
+            .map_err(|_| Error::Codec("local network responder panicked".into()))??;
+        outcome
+    })
 }
 
 pub fn selftest(scratch_dir: &Path) -> Result<SyncSelftestProfile> {
@@ -1533,6 +1717,42 @@ pub fn selftest(scratch_dir: &Path) -> Result<SyncSelftestProfile> {
             }
         }
 
+        crate::persist_operation_to_database(
+            &mut primary,
+            &json!({
+                "id": "ci-local-network-op",
+                "deviceId": "selftest-primary",
+                "sequence": 1_000_000,
+                "timestamp": "2026-07-14T13:00:00.000Z",
+                "type": "set_active_plan_date",
+                "payload": { "date": "2026-08-01" },
+            }),
+        )
+        .map_err(Error::Codec)?;
+        let local_network_started = std::time::Instant::now();
+        let outcome = local_network_exchange(
+            &a_path,
+            &primary_recovery_key,
+            &b_path,
+            &joiner_recovery_key,
+            &joiner_sync_key,
+        )?;
+        let local_network_sync_ms = local_network_started.elapsed().as_millis();
+        if outcome.received != 1 {
+            return Err(Error::Codec(format!(
+                "local network exchange received {} operations instead of 1",
+                outcome.received
+            )));
+        }
+        let joined_state = crate::read_app_state_from_database(&joiner)
+            .map_err(Error::Codec)?
+            .ok_or_else(|| Error::Codec("joiner state missing after local network sync".into()))?;
+        if joined_state["activePlanDate"] != "2026-08-01" {
+            return Err(Error::Codec(
+                "the local network exchange did not reach the joiner's state".into(),
+            ));
+        }
+
         Ok(SyncSelftestProfile {
             fixture_plans: FIXTURE_PLANS,
             fixture_plan_items,
@@ -1540,6 +1760,7 @@ pub fn selftest(scratch_dir: &Path) -> Result<SyncSelftestProfile> {
             bootstrap_ms,
             long_task_persist_ms,
             long_task_incremental_sync_ms,
+            local_network_sync_ms,
         })
     })();
 

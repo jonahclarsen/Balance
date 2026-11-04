@@ -32,9 +32,9 @@ with the frontend in `src/lib/SyncPanel.svelte` and automatic foreground
 scheduling in `src/lib/syncScheduler.ts`. Devices pair via QR codes and exchange
 compressed E2EE envelopes using XChaCha20-Poly1305.
 
-Sync uses only the internet relay and uploads durable incremental operation
-batches. Local-network discovery and direct TCP sync are not supported. No SQLite
-extension is loaded on any platform, so there is nothing sync-specific to
+The internet relay is the durable path and uploads incremental operation
+batches. Paired devices on one network also exchange operations directly; see
+below. No SQLite extension is loaded on any platform, so there is nothing sync-specific to
 cross-compile for Android. The Android workflow still needs the NDK because it
 cross-compiles the vendored OpenSSL linked by SQLCipher.
 
@@ -67,6 +67,32 @@ Unreadable batches are quarantined and retried without acknowledging past the
 failed sequence. Never silently skip them or promote a partial checkpoint.
 Well-formed additive feature data uses the generic storage path and should not
 need a feature-specific handler on the receiving device.
+
+## Keep direct local-network sync secure
+
+`sync/lan.rs` is the protocol and `sync/lan_service.rs` runs it in the app. It
+adds no setup step: the frontend scheduler starts it on its first pass and runs
+an independent direct pass beside each relay pass, including while the OS reports
+no default route. A failed direct pass is never a sync error.
+
+- Connections complete a `Noise_NNpsk0_25519_ChaChaPoly_BLAKE2s` handshake before
+  anything else is read. The PSK is HKDF-derived from the pairing secret, so the
+  raw key never crosses protocols. Never add a message that is handled, or a
+  store call that runs, before the handshake finishes and the Offer decrypts.
+- Pre-authentication input stays bounded: 128-byte frames, a total three-second
+  deadline, and four concurrent connections.
+- mDNS advertises only a random per-launch salt and a truncated HMAC of it. Never
+  advertise a device name, device ID, or anything stable. Advertisements are
+  unauthenticated, so they only ever decide whom to attempt a handshake with:
+  private and link-local IPv4 only, with capped peers and addresses.
+- Direct peers must share `PROTOCOL_VERSION`; otherwise the relay carries the
+  change. Checkpoints move only toward the side where they win, or two peers
+  would resend a losing full state on every pass.
+- Keep the `DATABASE_ACCESS_LOCK` rule: `AppStore` takes the guard per call and
+  never across socket I/O. A quiet pass with nobody nearby opens no database.
+- macOS's Local Network privacy blocks agent and CLI processes here, where it
+  surfaces as "No route to host" or silently dropped multicast. The real-multicast
+  test is ignored by default and runs in `sync-profile.yml`.
 
 ## Run the reference relay safely
 

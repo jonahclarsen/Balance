@@ -198,7 +198,7 @@
       </figure>
 
       <h2 id="sync">Sync</h2>
-      <p>Sync runs through your own relay server. Everything is encrypted before it leaves the device.</p>
+      <p>Sync runs through your own relay server. Everything is encrypted before it leaves the device. Paired devices on the same network also sync directly, even without internet.</p>
       <figure>
         <div class="mac"><div class="bar"><i></i><i></i><i></i></div><picture><source srcset="/images/mac-sync-dark.webp" media="(prefers-color-scheme: dark)"><img src="/images/mac-sync.webp" width="1920" height="1200" alt="Sync settings" loading="lazy"></picture></div>
       </figure>
@@ -222,6 +222,7 @@ npx wrangler secret put RELAY_SECRET</code></pre>
       <ul>
         <li><strong>On device:</strong> the database is SQLCipher-encrypted. Its key comes from your recovery key, kept in the macOS Keychain or Android Keystore.</li>
         <li><strong>In sync:</strong> end-to-end encrypted with XChaCha20-Poly1305. The relay sees only ciphertext.</li>
+        <li><strong>On your network:</strong> only devices holding your pairing code can connect, using a Noise handshake with forward secrecy. Others nearby can see that Balance is running, but not which device it is.</li>
         <li><strong>Widgets:</strong> get their own encrypted snapshot, never the database key.</li>
         <li><strong>Rotate:</strong> Settings → Database encryption key (Mac).</li>
       </ul>

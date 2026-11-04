@@ -18,6 +18,7 @@ on:
       - "src-tauri/src/lib.rs"
       - "src-tauri/src/sync/**"
       - "tests/visual/sync-freshness.spec.ts"
+      - "tests/visual/sync-settings.spec.ts"
   pull_request:
     paths:
       - ".github/workflows/sync-profile.yml"
@@ -32,6 +33,7 @@ on:
       - "src-tauri/src/lib.rs"
       - "src-tauri/src/sync/**"
       - "tests/visual/sync-freshness.spec.ts"
+      - "tests/visual/sync-settings.spec.ts"
   workflow_dispatch:
 
 permissions:
@@ -72,7 +74,7 @@ jobs:
         run: pnpm check
 
       - name: Test sync reload and manual completion races repeatedly
-        run: pnpm exec playwright test tests/visual/sync-freshness.spec.ts --repeat-each=3
+        run: pnpm exec playwright test tests/visual/sync-freshness.spec.ts tests/visual/sync-settings.spec.ts --repeat-each=3
 
       - name: Verify Enter behavior, probabilities and Android gate assertions
         run: |
@@ -123,6 +125,47 @@ jobs:
           path: |
             empty-poll-profile.json
             empty-poll-profile.txt
+
+  local-network:
+    name: Local network discovery and authenticated transport
+    # Match the other Linux jobs; ubuntu-latest (26.04) package mirrors can
+    # stall long enough to time out the WebKit install.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libappindicator3-dev librsvg2-dev libwebkit2gtk-4.1-dev
+
+      - name: Cache Cargo build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-local-network-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-local-network-
+
+      - name: Test the authenticated transport
+        run: |
+          cargo test --manifest-path src-tauri/Cargo.toml --lib -- \
+            sync::lan sync::tests::nearby_devices sync::tests::local_sync
+
+      - name: Discover and sync between paired devices over real multicast
+        run: |
+          cargo test --manifest-path src-tauri/Cargo.toml --lib \
+            sync::tests::paired_devices_on_one_network_discover_each_other_and_sync \
+            -- --exact --ignored --nocapture
 
   large-task-sync:
     name: Native convergence and large workspace

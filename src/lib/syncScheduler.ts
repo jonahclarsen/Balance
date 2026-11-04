@@ -1,9 +1,11 @@
 import { get, writable } from 'svelte/store'
 import { invoke, isTauri } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import {
   getSyncSettings,
   onPersistedOperation,
   plannerStore,
+  syncLocalNetworkOnce,
   syncRelayOnce,
   type SyncPassResult,
 } from './store'
@@ -25,6 +27,7 @@ const DESKTOP_SLOW_ACTIVITY_MS = 6_000
 // After this long away, a phone shows Syncing at once so stale state is never
 // mistaken for current.
 const STALE_AFTER_MS = 60_000
+const LOCAL_NETWORK_SYNC_EVENT = 'balance-local-network-sync'
 const isMobileDevice = typeof navigator !== 'undefined' && /android|iphone|ipad|ipod/i.test(navigator.userAgent)
 
 export type AutomaticSyncStatus = {
@@ -51,7 +54,10 @@ export const automaticSyncStatus = writable<AutomaticSyncStatus>({
   showActivity: false,
 })
 
+export const localNetworkSync = writable<{ lastDirectSyncAt: number | null }>({ lastDirectSyncAt: null })
+
 let running: Promise<SyncPassResult | null> | null = null
+let localNetworkPass: Promise<void> | null = null
 // Android reports a return to the app as both resume and focus. Until the
 // running refresh reads the backend, a second one only rereads the workspace.
 let runningRefreshUnread = false
@@ -87,6 +93,24 @@ async function refreshConnectivity(syncReportedOffline = false): Promise<boolean
     retryTimer = null
   }
   return offline
+}
+
+// Direct sync is an extra path beside the relay, not a step of its pass: a
+// nearby device that stalls must never hold up the relay or report a sync error.
+function syncLocalNetwork(): void {
+  if (localNetworkPass) return
+  localNetworkPass = (async () => {
+    const result = await syncLocalNetworkOnce()
+    if (!result) return
+    localNetworkSync.set({ lastDirectSyncAt: result.lastDirectSyncMs })
+    if (result.pulledOperations > 0 || result.pushedOperations > 0) {
+      lastChangeAt = Date.now()
+      schedulePoll()
+    }
+    if (result.stateChanged) await plannerStore.reloadFromBackend()
+  })()
+    .catch((error) => console.warn('Local network sync failed', error))
+    .finally(() => { localNetworkPass = null })
 }
 
 function pollDelay(): number {
@@ -244,6 +268,9 @@ export async function requestSync(reason: string): Promise<SyncPassResult | null
       if (offline) {
         // Local durability and Android background updates still matter offline.
         await plannerStore.flushPendingOperations()
+        // The OS reports no default route, but a nearby device may still be
+        // reachable on a network without internet.
+        syncLocalNetwork()
         await reloadVisibleState(reason, backendRefreshPending)
         backendRefreshPending = false
         automaticSyncStatus.update((status) => ({
@@ -277,6 +304,7 @@ export async function requestSync(reason: string): Promise<SyncPassResult | null
       // frontend is durable, or an incoming checkpoint can replace its older
       // database state before the pending operation is applied.
       await plannerStore.flushPendingOperations()
+      syncLocalNetwork()
       uploadStarted = true
       const result = await syncRelayOnce(reason)
       // WorkManager can update the database without
@@ -392,6 +420,15 @@ export function startAutomaticSync(): () => void {
   }
   const onPageHide = () => void plannerStore.flushPendingOperations()
   const stopPersisted = onPersistedOperation(triggerEdit)
+  // A nearby device delivered operations while this one was serving.
+  const stopLocalNetwork = isTauri()
+    ? listen(LOCAL_NETWORK_SYNC_EVENT, () => {
+      lastChangeAt = Date.now()
+      schedulePoll()
+      void plannerStore.reloadFromBackend()
+        .catch((error) => console.error('Could not refresh visible state after local sync', error))
+    }).catch(() => null)
+    : null
   window.addEventListener('online', onOnline)
   window.addEventListener('offline', onOffline)
   window.addEventListener('focus', onFocus)
@@ -401,6 +438,7 @@ export function startAutomaticSync(): () => void {
   return () => {
     automaticSyncStarted = false
     stopPersisted()
+    void stopLocalNetwork?.then((stop) => stop?.())
     if (editTimer) clearTimeout(editTimer)
     if (pollTimer) clearTimeout(pollTimer)
     if (retryTimer) clearTimeout(retryTimer)

@@ -19,7 +19,7 @@
     plannerStore,
   } from './store'
   import { invoke } from '@tauri-apps/api/core'
-  import { automaticSyncStatus, requestSync } from './syncScheduler'
+  import { automaticSyncStatus, localNetworkSync, requestSync } from './syncScheduler'
   import { getLastRenderedPlanSnapshot } from './renderedPlanDiagnostics'
 
   // Camera QR scanning is mobile-only (native plugin); on desktop you paste.
@@ -332,7 +332,7 @@
 <section class="settings-section sync-panel" data-cp="sync">
   <div>
     <h3>Sync across your devices</h3>
-    <p>Keep your planner in sync over the internet. Your data stays end-to-end encrypted.</p>
+    <p>Keep your planner in sync. Your data stays end-to-end encrypted.</p>
   </div>
 
   <div class="sync-body">
@@ -410,6 +410,9 @@
           </p>
           {#if configured && $automaticSyncStatus.lastSuccessAt}
             <p class="sync-state">Last successful sync: {new Date($automaticSyncStatus.lastSuccessAt).toLocaleString()}.</p>
+          {/if}
+          {#if configured && $localNetworkSync.lastDirectSyncAt}
+            <p class="sync-state">Last direct sync: {new Date($localNetworkSync.lastDirectSyncAt).toLocaleString()}.</p>
           {/if}
           {#if configured && backgroundSyncLoaded}
             <p class="sync-state">
