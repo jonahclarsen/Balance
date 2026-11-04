@@ -46,8 +46,8 @@ import {
   formatPlanTitle,
   formatMinutes,
   generatePlanFromTemplate,
-  processEventsDate,
-  processEventsItems,
+  processUncheckedTasksDate,
+  processUncheckedTasksItems,
   htmlToPlainText,
   movePlanItem,
   movePlanItemWithinLevel,
@@ -1289,9 +1289,9 @@ function createPlannerStore() {
         generated.createdAt = previous.createdAt
       }
       // A kept row already covers its day. Fresh rows go above kept rows too.
-      const keptProcessDates = new Set(preserved.map(processEventsDate))
-      const processRows = processEventsItems(current.plans, date)
-        .filter((item) => !keptProcessDates.has(processEventsDate(item)))
+      const keptProcessDates = new Set(preserved.map(processUncheckedTasksDate))
+      const processRows = processUncheckedTasksItems(current.plans, date)
+        .filter((item) => !keptProcessDates.has(processUncheckedTasksDate(item)))
       const visiblePlan = { ...generated, items: [...processRows, ...preserved, ...generated.items] }
       generated.items = [...processRows, ...generated.items]
       const freshMarkers = generatedItemMarkers(generated.items)

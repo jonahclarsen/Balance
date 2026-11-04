@@ -285,8 +285,8 @@ export function hasIncompletePlanItems(items: PlanItem[]): boolean {
 
 // Until 7 a.m. the previous calendar day is still being lived, so its open
 // tasks don't need processing yet even though Balance has rolled over.
-const PROCESS_EVENTS_ROLLOVER_HOUR = 7
-const PROCESS_EVENTS_HTML = /^Process events from <a href="balance:\/\/day\/(\d{4}-\d{2}-\d{2})">/
+const PROCESS_UNCHECKED_TASKS_ROLLOVER_HOUR = 7
+const PROCESS_UNCHECKED_TASKS_HTML = /^Process unchecked tasks from <a href="balance:\/\/day\/(\d{4}-\d{2}-\d{2})">/
 
 function hasOpenPlanTasks(items: PlanItem[]): boolean {
   return items.some((item) => (!item.done && !isPlanItemTextEmpty(item)) || hasOpenPlanTasks(item.children))
@@ -294,9 +294,9 @@ function hasOpenPlanTasks(items: PlanItem[]): boolean {
 
 // One linked task per earlier day that still has open tasks, oldest first.
 // Backfilling a past day adds none: follow-up belongs on the day being lived.
-export function processEventsItems(plans: DailyPlan[], date: string, now = new Date()): PlanItem[] {
+export function processUncheckedTasksItems(plans: DailyPlan[], date: string, now = new Date()): PlanItem[] {
   const currentDay = new Date(now)
-  if (currentDay.getHours() < PROCESS_EVENTS_ROLLOVER_HOUR) currentDay.setDate(currentDay.getDate() - 1)
+  if (currentDay.getHours() < PROCESS_UNCHECKED_TASKS_ROLLOVER_HOUR) currentDay.setDate(currentDay.getDate() - 1)
   const current = calendarDateISO(currentDay)
   if (date < current) return []
   return plans
@@ -306,14 +306,14 @@ export function processEventsItems(plans: DailyPlan[], date: string, now = new D
     .map((planDate) => {
       const label = new Intl.DateTimeFormat(undefined, { month: 'long', day: 'numeric' }).format(new Date(`${planDate}T12:00:00`))
       return {
-        ...createPlanItem(`Process events from ${label}`),
-        html: `Process events from <a href="${navigationURL('day', planDate)}">${label}</a>`,
+        ...createPlanItem(`Process unchecked tasks from ${label}`),
+        html: `Process unchecked tasks from <a href="${navigationURL('day', planDate)}">${label}</a>`,
       }
     })
 }
 
-export function processEventsDate(item: PlanItem): string | null {
-  return PROCESS_EVENTS_HTML.exec(item.html)?.[1] ?? null
+export function processUncheckedTasksDate(item: PlanItem): string | null {
+  return PROCESS_UNCHECKED_TASKS_HTML.exec(item.html)?.[1] ?? null
 }
 
 export function insertSiriReminder(items: PlanItem[], text: string): SiriReminderInsertion {

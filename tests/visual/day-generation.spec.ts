@@ -78,7 +78,7 @@ test('unshifted Cmd/Ctrl+G does not generate a day and Find keeps its shortcuts'
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('balance.appState.v1') || '{}').plans ?? [])).toEqual([])
 })
 
-test('generating a day puts a linked process-events row above everything else', async ({ page }) => {
+test('generating a day puts a linked process-unchecked-tasks row above everything else', async ({ page }) => {
   await page.clock.setFixedTime(new Date('2026-09-17T12:00:00'))
   await page.goto('/')
   await expect(page.getByRole('region', { name: 'Daily plan' })).toBeVisible()
@@ -102,7 +102,7 @@ test('generating a day puts a linked process-events row above everything else', 
     // An edited row survives regeneration, below the fresh process row.
     plannerStore.patchPlanItem(today.id, today.items[1].id, { text: 'Kept edit', html: 'Kept edit' })
   })
-  expect((await rows())[0]).toBe('Process events from September 16')
+  expect((await rows())[0]).toBe('Process unchecked tasks from September 16')
 
   await page.evaluate(async () => {
     const path = '/src/lib/store.ts'
@@ -113,8 +113,8 @@ test('generating a day puts a linked process-events row above everything else', 
     plannerStore.generatePlan(state.templates[0].id, '2026-09-17', true)
   })
   const regenerated = await rows()
-  expect(regenerated.slice(0, 2)).toEqual(['Process events from September 16', 'Kept edit'])
-  expect(regenerated.filter((text: string) => text.startsWith('Process events'))).toHaveLength(1)
+  expect(regenerated.slice(0, 2)).toEqual(['Process unchecked tasks from September 16', 'Kept edit'])
+  expect(regenerated.filter((text: string) => text.startsWith('Process unchecked tasks'))).toHaveLength(1)
 
   // A row the user touched is kept, not duplicated.
   await page.evaluate(async () => {
@@ -127,7 +127,7 @@ test('generating a day puts a linked process-events row above everything else', 
     plannerStore.patchPlanItemsDone(today.id, [today.items[0].id], false)
     plannerStore.generatePlan(state.templates[0].id, '2026-09-17', true)
   })
-  expect((await rows()).filter((text: string) => text.startsWith('Process events'))).toHaveLength(1)
+  expect((await rows()).filter((text: string) => text.startsWith('Process unchecked tasks'))).toHaveLength(1)
 
   await page.locator('.date-input').fill('2026-09-17')
   await page.locator('[data-plan-item-id]').first().getByRole('link', { name: 'September 16' }).click()

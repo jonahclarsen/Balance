@@ -121,7 +121,7 @@
   import { keepBelowPinnedParents, revealCaret, scrollMovedItemsIntoView, type ItemRowKind } from './lib/itemScroll'
   import { focusTaskBelow, focusTaskById, TASK_COMPLETION_FOCUS_EVENT, type TaskCaretOffsets, type TaskCompletionFocusDetail } from './lib/taskCompletionFocus'
   import { rememberFocusReturn, type FocusReturn } from './lib/focusReturn'
-  import { buildItemTimeWarnings, createPlanItem, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatMinutes, formatPlanTitle, hasActiveTimeRange, hasIncompletePlanItems, isUnwrittenNote, itemLinkFromURL, linkifyItemText, listTemplateQuizSteps, MAX_TIMELINE_MINUTES, processEventsDate, renderItemDisplayHTML, sanitizeInlineHTML, templateQuizSteps, todayISO, totalWordCount, type ItemLink, type TemplateQuizStep, type TemplateReviewKind } from './lib/planner'
+  import { buildItemTimeWarnings, createPlanItem, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatMinutes, formatPlanTitle, hasActiveTimeRange, hasIncompletePlanItems, isUnwrittenNote, itemLinkFromURL, linkifyItemText, listTemplateQuizSteps, MAX_TIMELINE_MINUTES, processUncheckedTasksDate, renderItemDisplayHTML, sanitizeInlineHTML, templateQuizSteps, todayISO, totalWordCount, type ItemLink, type TemplateQuizStep, type TemplateReviewKind } from './lib/planner'
   import { hexToPickerColor, pickerColorToHex, type PickerColor } from './lib/colors'
   import { automaticSyncStatus, requestSync, startAutomaticSync } from './lib/syncScheduler'
   import { DEFAULT_DATABASE_LOADING_MESSAGES, replicatedDayTheme } from './lib/preferences'
@@ -3811,8 +3811,8 @@ return rows`
     const found = itemIds.flatMap((itemId) => findIdea($plannerStore.ideaBuckets, itemId) ?? [])
     if (found.length === 0) return
     const items = found.map(({ item: { bucketedAt: _bucketedAt, dayAssignmentDate: _dayAssignmentDate, ...item } }) => item)
-    // Process-events rows stay on top.
-    const next = plan.items.find((item) => !processEventsDate(item))
+    // Process-unchecked-tasks rows stay on top.
+    const next = plan.items.find((item) => !processUncheckedTasksDate(item))
     const last = plan.items.at(-1)
     plannerStore.pastePlanItems(plan.id, items, next?.id ?? last?.id ?? null, next ? 'before' : 'after')
     for (const { group, item } of found) plannerStore.removeIdeaAfterTransfer(group.id, item.id)
