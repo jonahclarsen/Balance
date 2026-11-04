@@ -118,7 +118,7 @@ test('context links choose the nearest object and return to tasks and note parag
   await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible()
   await index(page)
   await page.locator('.note-document a').filter({ hasText: 'Empty group' }).click()
-  await expect(page.locator('[data-idea-group="trash"]')).toBeVisible()
+  await expect(page.locator('[data-idea-group="trash"]')).toHaveAttribute('aria-current', 'true')
   await index(page)
   await page.locator('.note-document a').filter({ hasText: 'Binned note' }).click()
   await expect(page.getByRole('heading', { name: 'Binned destination', exact: true })).toBeVisible()
@@ -188,7 +188,7 @@ test('each group copies a review link that reviews only its own ideas', async ({
   const dialog = page.locator('.idea-sort[role="dialog"]')
   for (const kind of ['possible', 'afterlife', 'genuine'] as const) {
     await openView(page, 'Ideas')
-    await page.locator(`[data-idea-group="${kind}"] h3`).click({ button: 'right' })
+    await page.locator(`[data-idea-group="${kind}"]`).click({ button: 'right' })
     await page.getByRole('menuitem', { name: 'Copy review link' }).click()
     expect(await page.evaluate(() => (window as any).__copiedLink)).toBe(`balance://ideas/review/${kind}`)
     if (kind === 'possible') {
@@ -210,7 +210,7 @@ test('each group copies a review link that reviews only its own ideas', async ({
   }
   // Sorting and trash stay separate from the three reviewable groups.
   for (const kind of ['proposition', 'trash']) {
-    await page.locator(`[data-idea-group="${kind}"] h3`).click({ button: 'right' })
+    await page.locator(`[data-idea-group="${kind}"]`).click({ button: 'right' })
     await expect(page.getByRole('menuitem', { name: 'Copy review link' })).toHaveCount(0)
     await page.keyboard.press('Escape')
   }

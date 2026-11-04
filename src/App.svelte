@@ -54,7 +54,7 @@
   import IdeaSortModal from './lib/IdeaSortModal.svelte'
   import { dayTemplateShortcutLetters } from './lib/dayTemplateShortcuts'
   import IdeaImportModal from './lib/IdeaImportModal.svelte'
-  import { ideaGroupItems, findIdea, IDEA_GROUPS, IDEA_REVIEW_GOAL_NAME } from './lib/ideas'
+  import { ideaGroupItems, findIdea, IDEA_GROUPS, IDEA_REVIEW_GOAL_NAME, readActiveIdeaGroup, saveActiveIdeaGroup } from './lib/ideas'
   import { awaitingTranscription } from './lib/voiceClips'
   import { IDEA_REVIEW_LABELS, type IdeaReviewKind } from './lib/ideaLinks'
   import { prioritizeReveal } from './lib/prioritize'
@@ -115,7 +115,7 @@
     runDatabaseMaintenanceIfNeeded,
   } from './lib/store'
   import type { DatabaseHistoryEntry, DatabaseInspection, DatabaseMaintenanceStatus, DatabaseOperationEntry, MetadataEntry, RecoveryEntry, RecoveryKeyStatus } from './lib/store'
-  import type { ArchivedListTemplateItem, ColorSchemePreference, DailyPlan, DailyTemplate, DeviceAppearancePreferences, Goal, Id, ListInstance, ListTemplate, ListTemplateItem, Metric, MetricEntry, MetricQuestion, MoveDirection, MovePlacement, Note, NoteViewState, PlanItem, TemplateItem, TemplateQuizAnswers } from './lib/types'
+  import type { ArchivedListTemplateItem, ColorSchemePreference, DailyPlan, DailyTemplate, DeviceAppearancePreferences, Goal, Id, IdeaGroupKind, ListInstance, ListTemplate, ListTemplateItem, Metric, MetricEntry, MetricQuestion, MoveDirection, MovePlacement, Note, NoteViewState, PlanItem, TemplateItem, TemplateQuizAnswers } from './lib/types'
   import { historyDestination, type HistoryDestination } from './lib/historyNavigation'
   import { captureTreeEditorSelection, restoreTreeEditorSelection } from './lib/treeEditorSelection'
   import type { SearchResult } from './lib/search'
@@ -442,6 +442,7 @@
   let ideaSort: { queue: import('./lib/types').IdeaItem[]; title: string; view: View; sortedBefore: number; addToDay?: (itemId: Id) => void; resolve: (completed: boolean) => void } | null = null
   $: ideaSortVisible = Boolean(ideaSort && view === ideaSort.view)
   let ideaImportOpen = false
+  let activeIdeaGroup = readActiveIdeaGroup()
   // Tracks each plan item's done state so we can fire a goal burst the moment an
   // item that contributes to a goal transitions to done (via any completion path).
   let goalItemDoneById = new Map<Id, boolean>()
@@ -1847,7 +1848,7 @@ return rows`
         plannerStore.setActivePlanDate(list.date)
         listViewTemplateId = list.listTemplateId
         openListHistory()
-      } else if (idea) { revealTaskParents(idea.items, target.id); view = 'ideas' }
+      } else if (idea) { revealTaskParents(idea.items, target.id); showIdeaGroup(idea.kind); view = 'ideas' }
       else return unavailableLink()
       selector = `[data-plan-item-id="${CSS.escape(target.id)}"]`
     } else if (target.kind === 'note') {
@@ -1898,6 +1899,7 @@ return rows`
       prioritizeReveal.set({ sessionId: target.id, itemId: target.itemId })
     } else if (target.kind === 'idea-group') {
       if (!IDEA_GROUPS.some(group => group.kind === target.id)) return unavailableLink()
+      showIdeaGroup(target.id as IdeaGroupKind)
       view = 'ideas'
       selector = `[data-idea-group="${CSS.escape(target.id)}"]`
     }
@@ -3347,7 +3349,13 @@ return rows`
   }
 
   // Only Genuinely Worth Doing counts toward the seeded weekly review goal.
+  function showIdeaGroup(kind: IdeaGroupKind) {
+    activeIdeaGroup = kind
+    saveActiveIdeaGroup(kind)
+  }
+
   async function startIdeaReview(kind: IdeaReviewKind = 'genuine') {
+    showIdeaGroup(kind)
     const queue = ideaGroupItems($plannerStore.ideaBuckets, kind)
     if (queue.length === 0) return
     const completed = await askIdeaSort(queue, IDEA_REVIEW_LABELS[kind])
@@ -3364,6 +3372,7 @@ return rows`
 
   function importIdeas(items: PlanItem[]) {
     ideaImportOpen = false
+    showIdeaGroup('proposition')
     const ids = new Set(plannerStore.importIdeas(items))
     const queue = ideaGroupItems($plannerStore.ideaBuckets, 'proposition').filter((item) => ids.has(item.id))
     if (queue.length > 0) void askIdeaSort(queue, 'Sort imported ideas')
@@ -8100,6 +8109,8 @@ return rows`
         {metrics}
         {notes}
         mobile={isMobile}
+        activeGroup={activeIdeaGroup}
+        onSelectGroup={showIdeaGroup}
         onOpenLink={(link, itemId) => openLink(link, null)}
         onImport={() => (ideaImportOpen = true)}
         onReview={() => { void startIdeaReview() }}

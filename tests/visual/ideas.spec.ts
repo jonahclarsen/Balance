@@ -33,7 +33,8 @@ async function open(page: Page) {
 }
 
 const card = (page: Page, kind: string) => page.locator(`.idea-group-card[data-idea-group="${kind}"]`)
-const rows = (page: Page, kind: string) => card(page, kind).locator('[data-plan-text-input]')
+const pane = (page: Page, kind: string) => page.locator(`.idea-group-pane[data-idea-pane="${kind}"]`)
+const rows = (page: Page, kind: string) => pane(page, kind).locator('[data-plan-text-input]')
 const sorter = (page: Page) => page.locator('.idea-sort[role="dialog"]')
 // The sorter shows one card at a time; its progress bar counts the cards behind it.
 async function expectIdea(page: Page, position: number, total: number) {
@@ -42,6 +43,44 @@ async function expectIdea(page: Page, position: number, total: number) {
   await expect(progress).toHaveAttribute('aria-valuemax', String(total))
   await expect(sorter(page).locator('.idea-sort-card')).toHaveCount(1)
 }
+
+test('group cards stay visible and each opens only its own ideas', async ({ page }, testInfo) => {
+  await open(page)
+  await storeCall(page, `
+    plannerStore.addIdea('Synthetic proposition')
+    plannerStore.addIdea('Synthetic possible', 'possible')
+    plannerStore.addIdea('Synthetic possible two', 'possible')
+  `)
+  await openView(page, 'Ideas')
+  await expect(page.locator('.idea-group-card')).toHaveCount(5)
+  await expect(card(page, 'proposition')).toHaveAttribute('aria-current', 'true')
+  await expect(rows(page, 'proposition')).toHaveText(['Synthetic proposition'])
+  await expect(card(page, 'possible').locator('.idea-group-count')).toHaveText('2')
+
+  await card(page, 'possible').click()
+  await expect(rows(page, 'possible')).toHaveText(['Synthetic possible', 'Synthetic possible two'])
+  await expect(page.locator('.idea-group-pane [data-plan-text-input]')).toHaveCount(2)
+
+  // Selection stays within the open group and is dropped on leaving it.
+  if (testInfo.project.name !== 'mobile') {
+    await pane(page, 'possible').getByRole('button', { name: 'Select item' }).first().click()
+    await expect(page.getByRole('group', { name: 'Move idea to' })).toBeVisible()
+    await card(page, 'genuine').click()
+    await expect(page.getByRole('group', { name: 'Move idea to' })).toHaveCount(0)
+  }
+
+  // The open group survives leaving the page and reloading.
+  await card(page, 'possible').click()
+  await page.reload()
+  await expect(page.getByRole('region', { name: 'Daily plan' })).toBeVisible()
+  await openView(page, 'Ideas')
+  await expect(rows(page, 'possible')).toHaveCount(2)
+
+  // Long pages keep the cards in reach.
+  await storeCall(page, `for (let index = 0; index < 60; index += 1) plannerStore.addIdea('Synthetic filler ' + index, 'possible')`)
+  await rows(page, 'possible').last().scrollIntoViewIfNeeded()
+  await expect(card(page, 'possible')).toBeInViewport()
+})
 
 test('links pasted into quick add are clickable, whatever their scheme', async ({ page }) => {
   await open(page)
@@ -80,10 +119,10 @@ test('quick-added ideas land in Proposition Party and move with timed unlocks', 
 
   await openView(page, 'Ideas')
   await expect(rows(page, 'proposition')).toHaveText(['Synthetic idea one', 'Synthetic idea two'])
-  await expect(card(page, 'proposition').locator('.add-time')).toHaveCount(0)
+  await expect(pane(page, 'proposition').locator('.add-time')).toHaveCount(0)
 
   // A fresh selection shakes Genuinely instead of moving until its delay passes.
-  await card(page, 'proposition').getByRole('button', { name: 'Select item' }).first().click()
+  await pane(page, 'proposition').getByRole('button', { name: 'Select item' }).first().click()
   const genuinely = page.getByRole('group', { name: 'Move idea to' }).getByRole('button', { name: /Genuinely/ })
   await expect(genuinely).toHaveAttribute('aria-disabled', 'true')
   await page.keyboard.press('g')
@@ -92,13 +131,15 @@ test('quick-added ideas land in Proposition Party and move with timed unlocks', 
   await page.clock.fastForward(3000)
   await expect(genuinely).not.toHaveAttribute('aria-disabled', 'true')
   await page.keyboard.press('g')
-  await expect(rows(page, 'genuine')).toHaveText(['Synthetic idea one'])
   await expect(rows(page, 'proposition')).toHaveText(['Synthetic idea two'])
+  await card(page, 'genuine').click()
+  await expect(rows(page, 'genuine')).toHaveText(['Synthetic idea one'])
 
   // Moves between the other groups are instant and undo restores them.
-  await card(page, 'genuine').getByRole('button', { name: 'Select item' }).click()
+  await pane(page, 'genuine').getByRole('button', { name: 'Select item' }).click()
   await page.keyboard.press('a')
-  await expect(rows(page, 'afterlife')).toHaveText(['Synthetic idea one'])
+  await expect(rows(page, 'genuine')).toHaveCount(0)
+  await expect(card(page, 'afterlife').locator('.idea-group-count')).toHaveText('1')
   await page.keyboard.press('ControlOrMeta+z')
   await expect(rows(page, 'genuine')).toHaveText(['Synthetic idea one'])
 
@@ -307,7 +348,7 @@ test('Back after a note or a group returns the idea to Proposition Party', async
   })
   const initialNotes = await notes()
 
-  await card(page, 'proposition').getByRole('button', { name: 'Sort', exact: true }).click()
+  await pane(page, 'proposition').getByRole('button', { name: 'Sort', exact: true }).click()
   await page.keyboard.press('y')
   await page.clock.fastForward(3000)
   await page.keyboard.press('p')
@@ -332,7 +373,7 @@ test('Back after a note or a group returns the idea to Proposition Party', async
 test('the Proposition Party Sort button opens the sorter on demand', async ({ page }) => {
   await open(page)
   await openView(page, 'Ideas')
-  const sort = card(page, 'proposition').getByRole('button', { name: 'Sort', exact: true })
+  const sort = pane(page, 'proposition').getByRole('button', { name: 'Sort', exact: true })
   await expect(sort).toBeDisabled()
 
   await storeCall(page, `
@@ -361,7 +402,7 @@ test('the sorter stays with its page and cuts ideas to Trash and the clipboard',
     plannerStore.moveIdeaItem('bucket_proposition', child, id, 'inside')
     plannerStore.addIdea('Synthetic stay')
   `)
-  await card(page, 'proposition').getByRole('button', { name: 'Sort', exact: true }).click()
+  await pane(page, 'proposition').getByRole('button', { name: 'Sort', exact: true }).click()
   await expectIdea(page, 1, 2)
 
   // The sidebar stays usable; returning to the page resumes the same sort.
@@ -404,7 +445,7 @@ test('sorting moves ideas into new notes with their formatting and children, and
     plannerStore.addIdea('Synthetic second note')
   `)
   await openView(page, 'Ideas')
-  await card(page, 'proposition').getByRole('button', { name: 'Sort', exact: true }).click()
+  await pane(page, 'proposition').getByRole('button', { name: 'Sort', exact: true }).click()
   await sorter(page).getByRole('button', { name: 'Yes (Y)' }).click()
   await sorter(page).getByRole('button', { name: 'Add to new note (N)' }).click()
   await expectIdea(page, 2, 2)
@@ -451,7 +492,7 @@ test('a day generation sort can add ideas to the new day', async ({ page }, test
 
   // Sorts outside generation have no day to add to.
   await openView(page, 'Ideas')
-  await card(page, 'proposition').getByRole('button', { name: 'Sort', exact: true }).click()
+  await pane(page, 'proposition').getByRole('button', { name: 'Sort', exact: true }).click()
   await page.keyboard.press('y')
   await expect(sorter(page).getByRole('button', { name: 'Cut (X)' })).toBeVisible()
   await expect(sorter(page).getByRole('button', { name: 'Add to day (D)' })).toHaveCount(0)
@@ -580,12 +621,10 @@ test('pasted lists import as ideas and open the sorter; trash clears after 30 da
   await expect(rows(page, 'proposition').nth(10)).toHaveText('Synthetic apple second')
   await expect(rows(page, 'proposition').nth(10).locator('em')).toHaveText('second')
 
-  await card(page, 'proposition').locator('[data-plan-item-id]').filter({ hasText: 'Synthetic delta' }).getByRole('button', { name: 'Select item' }).click()
+  await pane(page, 'proposition').locator('[data-plan-item-id]').filter({ hasText: 'Synthetic delta' }).getByRole('button', { name: 'Select item' }).click()
   await page.keyboard.press('t')
-  // Trash stays collapsed until its header is clicked.
   await expect(card(page, 'trash').locator('.idea-group-count')).toHaveText('1')
-  await expect(rows(page, 'trash')).toHaveCount(0)
-  await card(page, 'trash').getByRole('button', { name: 'Trash' }).click()
+  await card(page, 'trash').click()
   await expect(rows(page, 'trash')).toHaveText(['Synthetic delta'])
   // The minute sweep runs against the moved clock.
   await page.clock.setSystemTime(new Date(NOW.getTime() + 29 * 24 * 60 * 60 * 1000))
@@ -624,7 +663,7 @@ test('the review goal seeds once with a link that runs the Genuinely review', as
   // Reviews keep the unlock delay, counted from the answer rather than the card.
   await page.clock.fastForward(5000)
   await page.keyboard.press('y')
-  const genuinely = page.getByRole('button', { name: /Genuinely Worth Doing/ })
+  const genuinely = sorter(page).getByRole('button', { name: /Genuinely Worth Doing/ })
   await page.keyboard.press('g')
   await expect(genuinely).toHaveClass(/shaking/)
   await expectIdea(page, 1, 2)
@@ -733,7 +772,8 @@ test('Cmd+D toggles ideas done like Today tasks', async ({ page }, testInfo) => 
     plannerStore.addIdea('Synthetic second', 'genuine')
   `)
   await openView(page, 'Ideas')
-  const ideaRows = card(page, 'genuine').locator('[data-plan-item-id]')
+  await card(page, 'genuine').click()
+  const ideaRows = pane(page, 'genuine').locator('[data-plan-item-id]')
   const checkbox = (index: number) => ideaRows.nth(index).getByRole('checkbox').first()
 
   // Completing the idea being edited moves the caret to the idea below.
@@ -743,7 +783,7 @@ test('Cmd+D toggles ideas done like Today tasks', async ({ page }, testInfo) => 
   await expect(rows(page, 'genuine').nth(1)).toBeFocused()
 
   // A selected idea toggles and stays selected; undo restores it.
-  await card(page, 'genuine').getByRole('button', { name: 'Select item' }).nth(1).click()
+  await pane(page, 'genuine').getByRole('button', { name: 'Select item' }).nth(1).click()
   await page.keyboard.press('ControlOrMeta+d')
   await expect(checkbox(1)).toBeChecked()
   await page.keyboard.press('ControlOrMeta+d')
@@ -761,9 +801,10 @@ test('deleting ideas from the keyboard moves them to Trash; blank rows are disca
     plannerStore.addIdea('Synthetic line end', 'genuine')
     plannerStore.addIdea('Synthetic cleared', 'genuine')
   `)
+  await card(page, 'genuine').click()
   await expect(rows(page, 'genuine')).toHaveCount(3)
 
-  await card(page, 'genuine').locator('.select-handle').first().click()
+  await pane(page, 'genuine').locator('.select-handle').first().click()
   await page.keyboard.press('Backspace')
   expect(await groups(page)).toMatchObject({ genuine: ['Synthetic line end', 'Synthetic cleared'], trash: ['Synthetic selected'] })
 
@@ -779,8 +820,8 @@ test('deleting ideas from the keyboard moves them to Trash; blank rows are disca
   expect(await groups(page)).toMatchObject({ genuine: [], trash: ['Synthetic selected', 'Synthetic line end'] })
 
   // Deleting from Trash discards the idea.
-  await card(page, 'trash').getByRole('button', { name: 'Trash' }).click()
-  await card(page, 'trash').locator('.select-handle').first().click()
+  await card(page, 'trash').click()
+  await pane(page, 'trash').locator('.select-handle').first().click()
   await page.keyboard.press('Backspace')
   expect(await groups(page)).toMatchObject({ trash: ['Synthetic line end'] })
 })

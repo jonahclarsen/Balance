@@ -37,5 +37,5 @@ test('mobile header quick add saves ideas with Enter or Save and closes with Can
   expect(await ideas()).toHaveLength(2)
 
   await openView(page, 'Ideas')
-  await expect(page.locator('.idea-group-card[data-idea-group="proposition"] [data-plan-text-input]')).toHaveText(['Synthetic enter idea', 'Synthetic save idea'])
+  await expect(page.locator('.idea-group-pane[data-idea-pane="proposition"] [data-plan-text-input]')).toHaveText(['Synthetic enter idea', 'Synthetic save idea'])
 })

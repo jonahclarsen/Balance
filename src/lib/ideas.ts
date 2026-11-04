@@ -28,6 +28,26 @@ export function ideaGroupKindForKey(key: string): IdeaGroupKind | null {
   return IDEA_GROUPS.find((group) => group.key === key.toLowerCase())?.kind ?? null
 }
 
+const ACTIVE_IDEA_GROUP_KEY = 'balance.activeIdeaGroup.v1'
+
+// Which group the Ideas page shows is per device, like the selected day template.
+export function readActiveIdeaGroup(): IdeaGroupKind {
+  try {
+    const stored = localStorage.getItem(ACTIVE_IDEA_GROUP_KEY)
+    return IDEA_GROUPS.find((group) => group.kind === stored)?.kind ?? 'proposition'
+  } catch {
+    return 'proposition'
+  }
+}
+
+export function saveActiveIdeaGroup(kind: IdeaGroupKind) {
+  try {
+    localStorage.setItem(ACTIVE_IDEA_GROUP_KEY, kind)
+  } catch {
+    // The choice just won't outlast this session.
+  }
+}
+
 // Committing an idea takes progressively longer the higher it lands, so the
 // buttons unlock on a delay instead of being explained. The Ideas page applies
 // it only to ideas leaving Proposition Party; the sorter applies it after every answer.

@@ -33,7 +33,7 @@ async function open(page: Page) {
   await openView(page, 'Ideas')
 }
 
-const proposition = (page: Page) => page.locator('.idea-group-card[data-idea-group="proposition"]')
+const proposition = (page: Page) => page.locator('.ideas-panel')
 
 test('a recorded idea persists, waits for transcription and leaves with its idea', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop', 'Fake capture devices are Chromium-only')
@@ -99,6 +99,8 @@ test('the Android notification stops and saves a recording after leaving Ideas',
   // Discarding also clears the notification.
   await proposition(page).getByRole('button', { name: 'Record an idea' }).click()
   await expect(proposition(page).getByRole('button', { name: 'Stop recording' })).toBeVisible()
+  // The controls stay reachable from any group, and a new recording returns to Proposition Party.
+  await page.locator('.idea-group-card[data-idea-group="trash"]').click()
   await proposition(page).getByRole('button', { name: 'Discard recording' }).click()
   await expect.poll(async () => (await calls()).slice(before)).toEqual(['started', 'stopped'])
 

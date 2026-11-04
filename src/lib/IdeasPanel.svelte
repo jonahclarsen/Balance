@@ -4,7 +4,7 @@
   import VoiceIdeaModal from './VoiceIdeaModal.svelte'
   import { plannerStore } from './store'
   import { focusTaskBelow } from './taskCompletionFocus'
-  import { ideaUnlockDelay, findIdea, ideaGroupId, ideaGroupKindForKey, IDEA_GROUPS, IDEA_TRASH_RETENTION_DAYS } from './ideas'
+  import { ideaUnlockDelay, findIdea, ideaGroupId, ideaGroupKindForKey, ideaGroupMeta, IDEA_GROUPS, IDEA_TRASH_RETENTION_DAYS } from './ideas'
   import type { ItemLink, ItemTimeWarning } from './planner'
   import { clipsByIdea, formatClipDuration } from './voiceClips'
   import { canChooseVoiceMic, cancelVoiceRecording, chooseVoiceMic, finishVoiceRecording, startVoiceRecording, voiceMic, voiceRecording, voiceRecordingError } from './voiceRecorder'
@@ -17,6 +17,8 @@
   export let metrics: Metric[] = []
   export let notes: Note[] = []
   export let mobile = false
+  export let activeGroup: IdeaGroupKind = 'proposition'
+  export let onSelectGroup: (kind: IdeaGroupKind) => void = () => {}
   export let onOpenLink: (link: ItemLink, itemId: Id) => void = () => {}
   export let onImport: () => void
   export let onReview: () => void
@@ -32,7 +34,6 @@
   let unlockTick = 0
   let shaking: IdeaGroupKind | null = null
   let shakeTimer: number | null = null
-  let trashOpen = false
   let openClipId: Id | null = null
   let now = Date.now()
   let clock: number | null = null
@@ -47,11 +48,15 @@
   $: transcribing = $transcriptionStatus
   // Drop the selection once its idea disappears (undo, sync, purge).
   $: dropMissingSelection(groups)
+  // An idea stays selected only while its group is the one showing.
+  $: if (selected && selected.group.kind !== activeGroup) select(null)
   $: selectedItemIdSet = new Set(selectedItemId ? [selectedItemId] : [])
   // Missing groups render empty; the map keeps the template reactive to `groups`.
   $: groupsByKind = Object.fromEntries(IDEA_GROUPS.map((meta) => [
     meta.kind, groups.find((group) => group.kind === meta.kind) ?? { id: ideaGroupId(meta.kind), kind: meta.kind, items: [] },
   ])) as Record<IdeaGroupKind, IdeaGroup>
+  $: activeMeta = ideaGroupMeta(activeGroup)
+  $: activeItems = groupsByKind[activeGroup].items
 
   function dropMissingSelection(current: IdeaGroup[]) {
     if (selectedItemId && !findIdea(current, selectedItemId)) selectedItemId = null
@@ -97,14 +102,8 @@
     select(null)
   }
 
-  function rootIdsInOrder(): Id[] {
-    return IDEA_GROUPS
-      .filter((meta) => meta.kind !== 'trash' || trashOpen)
-      .flatMap((meta) => groupsByKind[meta.kind].items.map((item) => item.id))
-  }
-
   function moveSelection(direction: -1 | 1) {
-    const ids = rootIdsInOrder()
+    const ids = activeItems.map((item) => item.id)
     if (ids.length === 0) return
     const index = selectedItemId ? ids.indexOf(selectedItemId) : -1
     const next = index === -1 ? (direction === 1 ? 0 : ids.length - 1) : Math.min(ids.length - 1, Math.max(0, index + direction))
@@ -174,6 +173,21 @@
     now = Date.now()
   }
 
+  // A new recording lands in Proposition Party, so show it there.
+  function startRecording() {
+    onSelectGroup('proposition')
+    void startVoiceRecording()
+  }
+
+  // The phone rail scrolls sideways; keep the open card on screen.
+  function revealWhenActive(node: HTMLElement, active: boolean) {
+    const reveal = (isActive: boolean) => {
+      if (isActive && mobile) node.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    }
+    reveal(active)
+    return { update: reveal }
+  }
+
   function transcribe(clips: VoiceClip[]) {
     void transcribeClips(clips, plannerStore.applyVoiceTranscript)
   }
@@ -218,132 +232,149 @@
   <header class="page-header">
     <h2>Ideas</h2>
     <div class="template-panel-actions">
+      <div class="voice-idea-controls">
+        {#if recording}
+          <span class="voice-recording-dot" style:--level={recording.level} aria-hidden="true"></span>
+          <span class="voice-recording-time">{formatClipDuration(now - recording.startedAt)}</span>
+          <button class="ghost" type="button" aria-label="Discard recording" title="Discard" on:click={cancelVoiceRecording}>✕</button>
+          <button class="voice-record-button recording" type="button" aria-label="Stop recording" title="Stop" on:click={() => { void finishVoiceRecording() }}>■</button>
+        {:else}
+          {#if canTranscribe && untranscribed.length > 0}
+            <button class="ghost" type="button" disabled={transcribing.state !== 'idle'} on:click={() => transcribe(untranscribed)}>
+              {#if transcribing.state === 'downloading'}Downloading {Math.round(transcribing.fraction * 100)}%{:else if transcribing.state === 'transcribing'}Transcribing {transcribing.done + 1}/{transcribing.total}{:else if transcribing.state === 'preparing'}Transcribing…{:else}Transcribe {untranscribed.length}{/if}
+            </button>
+          {/if}
+          {#if canChooseVoiceMic()}
+            <div class="voice-mic-choice">
+              <button class="ghost" type="button" aria-label="Headset microphone" title="Headset" aria-pressed={$voiceMic === 'headset'} on:click={() => chooseVoiceMic('headset')}>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 14v-2a8 8 0 0 1 16 0v2M4 14h3v6H4zM17 14h3v6h-3z" /></svg>
+              </button>
+              <button class="ghost" type="button" aria-label="Phone microphone" title="Phone" aria-pressed={$voiceMic === 'phone'} on:click={() => chooseVoiceMic('phone')}>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3h8a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM11 18h2" /></svg>
+              </button>
+            </div>
+          {/if}
+          <button
+            class="voice-record-button"
+            type="button"
+            aria-label="Record an idea"
+            title="Record"
+            disabled={$voiceRecording.state !== 'idle'}
+            on:click={startRecording}
+          >●</button>
+        {/if}
+      </div>
       <button type="button" on:click={onImport}>Import</button>
     </div>
   </header>
 
-  {#each IDEA_GROUPS as meta (meta.kind)}
-    {@const group = groupsByKind[meta.kind]}
-    <section class="idea-group-card" data-idea-group={meta.kind} data-balance-link={`balance://idea-group/${meta.kind}`} aria-label={meta.label}>
-      <header class="idea-group-card-header">
-        {#if meta.kind === 'trash'}
-          <h3><button class="idea-group-toggle" type="button" aria-expanded={trashOpen} on:click={() => { trashOpen = !trashOpen }}>{meta.label}</button></h3>
-        {:else}
-          <h3>{meta.label}</h3>
-        {/if}
-        <span class="idea-group-count">{group.items.length}</span>
-        {#if meta.kind === 'proposition'}
-          <div class="voice-idea-controls">
-            {#if recording}
-              <span class="voice-recording-dot" style:--level={recording.level} aria-hidden="true"></span>
-              <span class="voice-recording-time">{formatClipDuration(now - recording.startedAt)}</span>
-              <button class="ghost" type="button" aria-label="Discard recording" title="Discard" on:click={cancelVoiceRecording}>✕</button>
-              <button class="voice-record-button recording" type="button" aria-label="Stop recording" title="Stop" on:click={() => { void finishVoiceRecording() }}>■</button>
-            {:else}
-              {#if canTranscribe && untranscribed.length > 0}
-                <button class="ghost" type="button" disabled={transcribing.state !== 'idle'} on:click={() => transcribe(untranscribed)}>
-                  {#if transcribing.state === 'downloading'}Downloading {Math.round(transcribing.fraction * 100)}%{:else if transcribing.state === 'transcribing'}Transcribing {transcribing.done + 1}/{transcribing.total}{:else if transcribing.state === 'preparing'}Transcribing…{:else}Transcribe {untranscribed.length}{/if}
-                </button>
-              {/if}
-              {#if canChooseVoiceMic()}
-                <div class="voice-mic-choice">
-                  <button class="ghost" type="button" aria-label="Headset microphone" title="Headset" aria-pressed={$voiceMic === 'headset'} on:click={() => chooseVoiceMic('headset')}>
-                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 14v-2a8 8 0 0 1 16 0v2M4 14h3v6H4zM17 14h3v6h-3z" /></svg>
-                  </button>
-                  <button class="ghost" type="button" aria-label="Phone microphone" title="Phone" aria-pressed={$voiceMic === 'phone'} on:click={() => chooseVoiceMic('phone')}>
-                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3h8a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM11 18h2" /></svg>
-                  </button>
-                </div>
-              {/if}
-              <button
-                class="voice-record-button"
-                type="button"
-                aria-label="Record an idea"
-                title="Record"
-                disabled={$voiceRecording.state !== 'idle'}
-                on:click={() => { void startVoiceRecording() }}
-              >●</button>
-            {/if}
-          </div>
-          <button class="ghost idea-group-review-button" type="button" disabled={group.items.length === 0} on:click={onSortPropositions}>Sort</button>
-        {:else if meta.kind === 'genuine'}
-          <button class="ghost idea-group-review-button" type="button" on:click={onReview}>Review</button>
-        {:else if meta.kind === 'trash'}
+  {#if $voiceRecordingError || $transcriptionError}
+    <p class="voice-idea-error" role="alert">{$voiceRecordingError ?? $transcriptionError}</p>
+  {/if}
+
+  <div class="ideas-layout">
+    <nav class="idea-group-cards" aria-label="Idea groups">
+      {#each IDEA_GROUPS as meta (meta.kind)}
+        {@const items = groupsByKind[meta.kind].items}
+        {@const preview = items.find((item) => item.text.trim())?.text}
+        <button
+          type="button"
+          class="idea-group-card"
+          class:active={meta.kind === activeGroup}
+          aria-current={meta.kind === activeGroup ? 'true' : undefined}
+          data-idea-group={meta.kind}
+          data-balance-link={`balance://idea-group/${meta.kind}`}
+          use:revealWhenActive={meta.kind === activeGroup}
+          on:click={() => onSelectGroup(meta.kind)}
+        >
+          <strong>{meta.label}</strong>
+          <span class="idea-group-count">{items.length}</span>
+          {#if preview}<small>{preview}</small>{/if}
+        </button>
+      {/each}
+    </nav>
+
+    <section class="idea-group-pane" data-idea-pane={activeGroup} data-balance-link={`balance://idea-group/${activeGroup}`} aria-label={activeMeta.label}>
+      {#if activeGroup === 'proposition'}
+        <header class="idea-group-pane-header">
+          <button class="ghost" type="button" disabled={activeItems.length === 0} on:click={onSortPropositions}>Sort</button>
+        </header>
+      {:else if activeGroup === 'genuine'}
+        <header class="idea-group-pane-header">
+          <button class="ghost" type="button" on:click={onReview}>Review</button>
+        </header>
+      {:else if activeGroup === 'trash'}
+        <header class="idea-group-pane-header">
           <span class="idea-group-note">clears after {IDEA_TRASH_RETENTION_DAYS} days</span>
-        {/if}
-      </header>
-      {#if meta.kind === 'proposition' && ($voiceRecordingError || $transcriptionError)}
-        <p class="voice-idea-error" role="alert">{$voiceRecordingError ?? $transcriptionError}</p>
+        </header>
       {/if}
-      {#if meta.kind !== 'trash' || trashOpen}
-        <div class="list-panel idea-group-list" data-plan-item-scope={group.id}>
-          {#each group.items as item (item.id)}
-            {@const clip = clipForIdea.get(item.id)}
-            <PlanItemEditor
-              {item}
-              allItems={group.items}
-              timeWarnings={noTimeWarnings}
-              planId={group.id}
-              patchItem={plannerStore.patchIdeaItem}
-              splitItem={plannerStore.splitIdeaItem}
-              backspaceItemAtStart={plannerStore.backspaceIdeaItemAtStart}
-              deleteItem={plannerStore.deleteIdeaItem}
-              deleteItemPreservingChildren={plannerStore.deleteIdeaItemPreservingChildren}
-              moveItem={plannerStore.moveIdeaItem}
-              moveItemWithinLevel={plannerStore.moveIdeaItemWithinLevel}
-              outdentItem={plannerStore.outdentIdeaItem}
-              historyRevision={$plannerStore.historyRevision}
-              selectedItemIds={selectedItemIdSet}
-              onSelectionPointerDown={handleSelectionPointerDown}
-              onMobileSelectionStart={(itemId) => select(itemId)}
-              onMobileSelectionToggle={(itemId) => select(selectedItemId === itemId ? null : itemId)}
-              {mobile}
-              mobileSelectionMode={mobile && selectedItemId !== null}
-              {listTemplates}
-              {metrics}
-              {notes}
-              {onOpenLink}
-              hideTime
-              collapsible
-              placeholder={clip ? 'Voice idea' : undefined}
-            />
-            {#if clip}
-              <button
-                use:alignWithText
-                type="button"
-                class="voice-clip-chip"
-                data-voice-clip={clip.id}
-                aria-label={`Voice idea, ${formatClipDuration(clip.durationMs)}`}
-                on:click={() => { openClipId = clip.id }}
-              >
-                <svg viewBox={`0 0 ${Math.min(48, clip.peaks.length)} 16`} preserveAspectRatio="none" aria-hidden="true">
-                  {#each Array.from({ length: Math.min(48, clip.peaks.length) }, (_, index) => clip.peaks[Math.floor((index * clip.peaks.length) / Math.min(48, clip.peaks.length))] ?? 0) as peak, index}
-                    <rect x={index + 0.15} width="0.7" y={8 - Math.max(0.6, (peak / 255) * 8)} height={Math.max(1.2, (peak / 255) * 16)} />
-                  {/each}
-                </svg>
-                <span>{formatClipDuration(clip.durationMs)}</span>
-              </button>
-            {/if}
+      <div class="list-panel idea-group-list" data-plan-item-scope={groupsByKind[activeGroup].id}>
+        {#each activeItems as item (item.id)}
+          {@const clip = clipForIdea.get(item.id)}
+          <PlanItemEditor
+            {item}
+            allItems={activeItems}
+            timeWarnings={noTimeWarnings}
+            planId={groupsByKind[activeGroup].id}
+            patchItem={plannerStore.patchIdeaItem}
+            splitItem={plannerStore.splitIdeaItem}
+            backspaceItemAtStart={plannerStore.backspaceIdeaItemAtStart}
+            deleteItem={plannerStore.deleteIdeaItem}
+            deleteItemPreservingChildren={plannerStore.deleteIdeaItemPreservingChildren}
+            moveItem={plannerStore.moveIdeaItem}
+            moveItemWithinLevel={plannerStore.moveIdeaItemWithinLevel}
+            outdentItem={plannerStore.outdentIdeaItem}
+            historyRevision={$plannerStore.historyRevision}
+            selectedItemIds={selectedItemIdSet}
+            onSelectionPointerDown={handleSelectionPointerDown}
+            onMobileSelectionStart={(itemId) => select(itemId)}
+            onMobileSelectionToggle={(itemId) => select(selectedItemId === itemId ? null : itemId)}
+            {mobile}
+            mobileSelectionMode={mobile && selectedItemId !== null}
+            {listTemplates}
+            {metrics}
+            {notes}
+            {onOpenLink}
+            hideTime
+            collapsible
+            placeholder={clip ? 'Voice idea' : undefined}
+          />
+          {#if clip}
+            <button
+              use:alignWithText
+              type="button"
+              class="voice-clip-chip"
+              data-voice-clip={clip.id}
+              aria-label={`Voice idea, ${formatClipDuration(clip.durationMs)}`}
+              on:click={() => { openClipId = clip.id }}
+            >
+              <svg viewBox={`0 0 ${Math.min(48, clip.peaks.length)} 16`} preserveAspectRatio="none" aria-hidden="true">
+                {#each Array.from({ length: Math.min(48, clip.peaks.length) }, (_, index) => clip.peaks[Math.floor((index * clip.peaks.length) / Math.min(48, clip.peaks.length))] ?? 0) as peak, index}
+                  <rect x={index + 0.15} width="0.7" y={8 - Math.max(0.6, (peak / 255) * 8)} height={Math.max(1.2, (peak / 255) * 16)} />
+                {/each}
+              </svg>
+              <span>{formatClipDuration(clip.durationMs)}</span>
+            </button>
+          {/if}
+        {/each}
+        <button class="add-row" type="button" on:click={() => { void addItem(groupsByKind[activeGroup].id) }}>+ Add item</button>
+      </div>
+      {#if selected}
+        <div class="idea-move-strip" role="group" aria-label="Move idea to">
+          {#each IDEA_GROUPS.filter((target) => target.kind !== activeGroup) as target (target.kind)}
+            <button
+              type="button"
+              class="idea-group-button"
+              class:locked={locked(target.kind, unlockTick)}
+              class:shaking={shaking === target.kind}
+              aria-disabled={locked(target.kind, unlockTick) ? 'true' : undefined}
+              on:click={() => attemptMove(target.kind)}
+            >{target.label} <kbd aria-hidden="true">{target.key.toUpperCase()}</kbd></button>
           {/each}
-          <button class="add-row" type="button" on:click={() => { void addItem(group.id) }}>+ Add item</button>
         </div>
-        {#if selected && selected.group.kind === meta.kind}
-          <div class="idea-move-strip" role="group" aria-label="Move idea to">
-            {#each IDEA_GROUPS.filter((target) => target.kind !== meta.kind) as target (target.kind)}
-              <button
-                type="button"
-                class="idea-group-button"
-                class:locked={locked(target.kind, unlockTick)}
-                class:shaking={shaking === target.kind}
-                aria-disabled={locked(target.kind, unlockTick) ? 'true' : undefined}
-                on:click={() => attemptMove(target.kind)}
-              >{target.label} <kbd aria-hidden="true">{target.key.toUpperCase()}</kbd></button>
-            {/each}
-          </div>
-        {/if}
       {/if}
     </section>
-  {/each}
+  </div>
 </section>
 
 {#if openClip && openIdea}
@@ -362,38 +393,62 @@
 <style>
   .ideas-panel { display: grid; gap: 12px; align-content: start; }
   .page-header h2 { margin: 0; }
+  .template-panel-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .ideas-layout {
+    display: grid;
+    grid-template-columns: 230px minmax(0, 1fr);
+    gap: 12px;
+    align-items: start;
+  }
+  .idea-group-cards {
+    position: sticky;
+    top: calc(var(--tree-sticky-base, 0px) + 12px);
+    z-index: 1;
+    display: grid;
+    gap: 6px;
+  }
   .idea-group-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 4px 8px;
+    width: 100%;
+    padding: 10px 11px;
+    border-color: var(--line);
+    background: var(--paper);
+    text-align: left;
+  }
+  .idea-group-card:hover,
+  .idea-group-card.active { background: var(--paper-strong); }
+  .idea-group-card.active { box-shadow: inset 3px 0 var(--accent); }
+  .idea-group-card strong { font-size: 13px; line-height: 1.35; }
+  .idea-group-card small {
+    grid-column: 1 / -1;
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .idea-group-count { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .idea-group-pane {
+    min-width: 0;
     border: 1px solid var(--line);
     border-radius: 8px;
     background: var(--paper);
     padding: 6px 10px 8px;
   }
-  .idea-group-card-header {
+  .idea-group-pane-header {
     display: flex;
-    align-items: baseline;
-    gap: 10px;
+    align-items: center;
+    justify-content: flex-end;
     min-height: 28px;
   }
-  .idea-group-card-header h3 { margin: 0; font-size: 15px; }
-  .idea-group-toggle {
-    padding: 0;
-    border: 0;
-    background: none;
-    color: inherit;
-    font: inherit;
-    cursor: pointer;
-  }
-  .idea-group-toggle::after { content: ' ▸'; color: var(--muted); }
-  .idea-group-toggle[aria-expanded='true']::after { content: ' ▾'; }
-  .idea-group-count { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
-  .idea-group-note { margin-left: auto; color: var(--muted); font-size: 12px; }
-  .idea-group-review-button { margin-left: auto; padding: 2px 8px; font-size: 13px; }
-  .voice-idea-controls + .idea-group-review-button { margin-left: 0; }
+  .idea-group-pane-header button { padding: 2px 8px; font-size: 13px; }
+  .idea-group-note { color: var(--muted); font-size: 12px; }
   .voice-idea-controls {
     display: flex;
     align-items: center;
     gap: 6px;
-    margin-left: auto;
   }
   .voice-idea-controls button { padding: 2px 8px; font-size: 13px; }
   .voice-mic-choice { display: inline-flex; gap: 2px; }
@@ -419,7 +474,7 @@
     transition: box-shadow 80ms linear;
   }
   .voice-recording-time { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
-  .voice-idea-error { margin: 2px 0 4px; color: var(--danger); font-size: 13px; }
+  .voice-idea-error { margin: 0; color: var(--danger); font-size: 13px; }
   .voice-clip-chip {
     display: inline-flex;
     align-items: center;
@@ -444,5 +499,30 @@
     margin-left: 4px;
     font-size: 11px;
     opacity: 0.7;
+  }
+  @media (max-width: 760px) {
+    .ideas-layout { grid-template-columns: minmax(0, 1fr); }
+    /* The cards stay pinned as a sideways strip under the phone header. */
+    .idea-group-cards {
+      top: var(--tree-sticky-base, 0px);
+      z-index: 10;
+      display: flex;
+      flex-wrap: nowrap;
+      height: 56px;
+      margin-inline: -12px;
+      padding: 8px 12px;
+      overflow-x: auto;
+      /* Some themes use translucent paper; keep scrolled ideas from showing through. */
+      background: var(--paper-strong);
+      scrollbar-width: none;
+    }
+    .idea-group-card {
+      flex: 0 0 auto;
+      width: auto;
+      align-items: center;
+      padding-block: 0;
+    }
+    .idea-group-card small { display: none; }
+    .idea-group-pane { --tree-sticky-base: calc(var(--mobile-header-height, 0px) + 56px); }
   }
 </style>

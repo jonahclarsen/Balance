@@ -1,6 +1,6 @@
 # Voice ideas
 
-The record button in Proposition Party captures an idea by voice. Recording uses
+The record button on the Ideas page captures an idea by voice into Proposition Party. Recording uses
 the WebView's microphone (`MediaRecorder`, WebM/Opus at 128 kbps). On Android,
 Balance asks for the Nearby devices (Bluetooth) and notification permissions the
 first time so a connected headset's microphone is used; elsewhere the system
