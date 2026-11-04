@@ -9,7 +9,7 @@ const DEFAULT_THEME_ID: &str = "iridescent";
 // Historical day records can reference these IDs forever. Never delete or
 // rename an ID or its web/macOS/Android renderer. Retire it from current
 // selection instead; see the balance-themes skill.
-const ACTIVE_RANDOM_THEME_IDS: [&str; 13] = [
+const ACTIVE_RANDOM_THEME_IDS: [&str; 14] = [
     "iridescent",
     "graphite",
     "crimson",
@@ -21,8 +21,9 @@ const ACTIVE_RANDOM_THEME_IDS: [&str; 13] = [
     "ocean",
     "midnight",
     "violet",
-    "windows98",
     "system1",
+    "windowsxp",
+    "windowsvista",
 ];
 const FNV_OFFSET_64: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME_64: u64 = 0x0000_0100_0000_01b3;
@@ -212,7 +213,8 @@ pub(crate) fn active_projects(projects: &Value, now: DateTime<Utc>) -> Vec<Widge
 fn normalize_theme_id(theme_id: &str) -> &str {
     match theme_id {
         "iridescent" | "graphite" | "forest" | "ocean" | "violet" | "orange" | "earth"
-        | "crimson" | "banana" | "pink" | "midnight" | "windows98" | "system1" => theme_id,
+        | "crimson" | "banana" | "pink" | "midnight" | "windows98" | "system1" | "windowsxp"
+        | "windowsvista" => theme_id,
         "berry" => "banana",
         _ => DEFAULT_THEME_ID,
     }
@@ -603,7 +605,7 @@ mod tests {
 
     #[test]
     fn retro_widget_snapshots_keep_the_selected_theme() {
-        for theme in ["windows98", "system1"] {
+        for theme in ["windows98", "system1", "windowsxp", "windowsvista"] {
             let snapshot = snapshot_from_plan("2026-10-14", None, theme);
             assert_eq!(snapshot.theme_id, theme);
         }
@@ -616,8 +618,14 @@ mod tests {
             6_228_563_125_600_655_469
         );
         // Freeze the original catalog: a newly added theme may win these dates.
-        assert_eq!(random_theme_for_date_from("2026-08-24", &ACTIVE_RANDOM_THEME_IDS[..11]), "midnight");
-        assert_eq!(random_theme_for_date_from("2026-08-25", &ACTIVE_RANDOM_THEME_IDS[..11]), "graphite");
+        assert_eq!(
+            random_theme_for_date_from("2026-08-24", &ACTIVE_RANDOM_THEME_IDS[..11]),
+            "midnight"
+        );
+        assert_eq!(
+            random_theme_for_date_from("2026-08-25", &ACTIVE_RANDOM_THEME_IDS[..11]),
+            "graphite"
+        );
     }
 
     #[test]
@@ -653,11 +661,12 @@ mod tests {
             let winner = random_theme_for_date(&format!("synthetic-day-{index}"));
             *counts.entry(winner).or_insert(0usize) += 1;
         }
-        // Expected count is about 297 per theme. This broad deterministic
-        // bound catches a biased hash/catalog implementation without asserting
-        // that a finite sample must be perfectly even.
+        // A broad proportional bound survives additions and retirements while
+        // still detecting a biased hash/catalog over this deterministic sample.
+        let expected = 3_264 / ACTIVE_RANDOM_THEME_IDS.len();
         for theme_id in ACTIVE_RANDOM_THEME_IDS {
-            assert!((220..=380).contains(counts.get(theme_id).unwrap()));
+            let count = *counts.get(theme_id).unwrap();
+            assert!((expected * 7 / 10..=expected * 13 / 10).contains(&count));
         }
     }
 }

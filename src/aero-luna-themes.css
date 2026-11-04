@@ -1,0 +1,334 @@
+/* XP Luna gradients informed by XP.css (license in public/theme-licenses).
+   Vista follows Microsoft's Aero reviewer guide, not Windows 7's flat taskbar.
+   No inherited variables or viewport backgrounds animate. */
+@font-face {
+  font-family: 'Vista UI';
+  src: local('Segoe UI'), url('/fonts/local/segoeui-regular.woff') format('woff'), url('/fonts/Selawik-Regular.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Vista UI';
+  src: local('Segoe UI Semibold'), url('/fonts/local/segoeui-semibold.woff') format('woff'), url('/fonts/Selawik-Bold.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 600 900;
+  font-display: swap;
+}
+
+:root[data-theme='windowsxp'] {
+  --font-interface: Tahoma, Verdana, sans-serif;
+  --font-content: Tahoma, Verdana, sans-serif;
+  --font-mono: 'Courier New', monospace;
+  --app-background: url('/themes/luna-hills.svg') center / cover;
+  --paper: #ffffff;
+  --paper-strong: #ffffff;
+  --ink: #000000;
+  --muted: #454339;
+  --line: #aca899;
+  --line-strong: #716f64;
+  --accent: #0055b8;
+  --accent-strong: #003b82;
+  --theme-checkbox: #0055b8;
+  --theme-done: #347b2a;
+  --danger: #a62716;
+  --sidebar: #ece9d8;
+  --active-nav: #d5e4f9;
+  --row-border: #e1dfd5;
+  --drop-inside: #e3edfb;
+  --time-border: #7f9db9;
+  --time-bg: #f5f3e9;
+  --time-warn-bg: #fff2c7;
+  --time-warn-ink: #743f00;
+  --focus-ring: #d78500;
+  --shadow: 2px 3px 4px #08285866;
+  --radius-modal: 7px;
+  --modal-backdrop: #071b4355;
+  --xp-face: #ece9d8;
+  --xp-button-top: #ffffff;
+  --xp-button-bottom: #dedbd2;
+  --xp-frame: #0055ea;
+  --xp-caption: linear-gradient(180deg, #0997ff 0%, #0053ee 8%, #0050ee 40%, #0066ff 88%, #005bff 95%, #003dd7 100%);
+}
+
+:root[data-color-scheme='dark'][data-theme='windowsxp'] {
+  --app-background: linear-gradient(#03102099, #03102099), url('/themes/luna-hills.svg') center / cover;
+  --paper: #202631;
+  --paper-strong: #303846;
+  --ink: #f4f4ef;
+  --muted: #c1c7d2;
+  --line: #727e91;
+  --line-strong: #9caac0;
+  --accent: #8abeff;
+  --accent-strong: #c5deff;
+  --theme-checkbox: #8abeff;
+  --theme-done: #9acb82;
+  --danger: #ffafa2;
+  --sidebar: #283349;
+  --active-nav: #29476e;
+  --row-border: #445168;
+  --drop-inside: #29476e;
+  --time-border: #727e91;
+  --time-bg: #303846;
+  --time-warn-bg: #4b3b20;
+  --time-warn-ink: #ffe4a1;
+  --focus-ring: #ffce70;
+  --shadow: 2px 3px 4px #00000088;
+  --xp-face: #303846;
+  --xp-button-top: #46536a;
+  --xp-button-bottom: #283143;
+}
+
+:root[data-theme='windowsvista'] {
+  --font-interface: 'Vista UI', sans-serif;
+  --font-content: 'Vista UI', sans-serif;
+  --font-mono: Consolas, 'Courier New', monospace;
+  --app-background: url('/themes/aero-aurora.svg') center / cover;
+  --paper: #ffffff;
+  --paper-strong: #eff7fb;
+  --ink: #14232d;
+  --muted: #455e6d;
+  --line: #7e9dad;
+  --line-strong: #4d768d;
+  --accent: #176b98;
+  --accent-strong: #174f70;
+  --theme-checkbox: #176b98;
+  --theme-done: #277b50;
+  --danger: #a8291e;
+  --sidebar: #d9eaf2;
+  --active-nav: #d9edf8;
+  --row-border: #dce6ec;
+  --drop-inside: #d9edf8;
+  --time-border: #8caabd;
+  --time-bg: #e4f1f9;
+  --time-warn-bg: #fff2c9;
+  --time-warn-ink: #784800;
+  --focus-ring: #1b85bb;
+  --shadow: 0 4px 18px #071b3680;
+  --radius-modal: 7px;
+  --modal-backdrop: #09192466;
+  --aero-glass: linear-gradient(125deg, #eefaff9c, #75a8c285 40%, #bedeea9c 64%, #5893acb8);
+  --aero-button: linear-gradient(#ffffff, #f0f5f8 48%, #e1eaf0 49%, #f6fbfe);
+  --aero-button-hover: linear-gradient(#f5fcff, #d9f0ff 48%, #b5e1fa 49%, #e2f5ff);
+  --aero-caption-ink: #102431;
+  --aero-caption-glow: #ffffff;
+}
+
+:root[data-color-scheme='dark'][data-theme='windowsvista'] {
+  --app-background: linear-gradient(#07141b66, #07141b66), url('/themes/aero-aurora.svg') center / cover;
+  --paper: #17242c;
+  --paper-strong: #20343e;
+  --ink: #f1f7fa;
+  --muted: #bed0d9;
+  --line: #658b9e;
+  --line-strong: #9dbaca;
+  --accent: #99d9fa;
+  --accent-strong: #c5ecff;
+  --theme-checkbox: #99d9fa;
+  --theme-done: #94dab0;
+  --danger: #ffb6a8;
+  --sidebar: #20343e;
+  --active-nav: #24475a;
+  --row-border: #3d5867;
+  --drop-inside: #24475a;
+  --time-border: #658b9e;
+  --time-bg: #203e4f;
+  --time-warn-bg: #493d24;
+  --time-warn-ink: #ffe7b0;
+  --focus-ring: #99d9fa;
+  --shadow: 0 4px 18px #00000099;
+  --aero-glass: linear-gradient(125deg, #3b6179e8, #1a3544e8 40%, #32596ee8 64%, #162e3de8);
+  --aero-button: linear-gradient(#435e6e, #314957 48%, #233b49 49%, #385363);
+  --aero-button-hover: linear-gradient(#526f82, #3c6077 48%, #274f68 49%, #426b83);
+  --aero-caption-ink: #f1f7fa;
+  --aero-caption-glow: #071821;
+}
+
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) :is(.sidebar-brand-heading h1, .database-loading-brand, .mobile-app-title strong) {
+  font-family: var(--font-interface);
+  font-size: 20px;
+  letter-spacing: 0;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) {
+  --list-progress-stop-1: #25822b;
+  --list-progress-stop-2: #4fa53d;
+  --list-progress-stop-3: #7ac853;
+  --list-progress-stop-4: #99dc6c;
+  --list-progress-stop-5: #70c94a;
+  --list-progress-stop-6: #57b935;
+  --list-progress-stop-7: #3d9c2d;
+  --list-progress-stop-8: #25822b;
+}
+
+:root[data-theme='windowsxp'] .sidebar {
+  background: linear-gradient(#f3f7ff, var(--sidebar) 180px);
+  border-right: 2px solid #245edb;
+}
+:root[data-color-scheme='dark'][data-theme='windowsxp'] .sidebar {
+  background: linear-gradient(#243b62, var(--sidebar) 180px);
+}
+:root[data-theme='windowsxp'] :is(.page-header, .overlay-header) {
+  border: 1px solid #0831d9;
+  border-bottom: 2px solid #003dd7;
+  border-radius: 7px 7px 0 0;
+  background: var(--xp-caption);
+  box-shadow: inset 1px 1px #67b4ff, inset -1px 0 #001ea0;
+  padding: 9px 12px;
+  color: #ffffff;
+  text-shadow: 1px 1px #0f1089;
+}
+:root[data-theme='windowsxp'] :is(.page-header h2, .page-header .day-pane-heading > h2, .overlay-header h3, .page-header .daily-reminder-button) {
+  font-family: 'Trebuchet MS', Tahoma, sans-serif;
+  color: #ffffff;
+  font-size: 18px;
+  font-weight: 700;
+}
+:root[data-theme='windowsxp'] :is(.list-panel, .template-panel, .settings-panel, .notes-workspace, .overlay-card) {
+  border: 3px solid var(--xp-frame);
+  border-radius: 3px;
+  box-shadow: inset 1px 1px #c5ddff, var(--shadow);
+}
+:root[data-theme='windowsxp'] button:where(:not(.ghost):not(.check):not(.time-part):not(.daily-reminder-button):not(.quiet):not(.plan-goal-badge):not(.select-handle)) {
+  border-radius: 3px;
+  border: 1px solid #003c74;
+  background: linear-gradient(var(--xp-button-top), var(--xp-face) 86%, var(--xp-button-bottom));
+  box-shadow: inset 1px 1px #ffffff66;
+}
+:root[data-theme='windowsxp'] button:where(:not(.ghost):not(.check):not(.time-part):not(.daily-reminder-button):not(.quiet):not(.plan-goal-badge):not(.select-handle)):hover {
+  box-shadow: inset 0 0 0 2px #e9ad47;
+}
+:root[data-theme='windowsxp'] button:where(:not(.ghost):not(.check):not(.time-part):not(.daily-reminder-button):not(.quiet):not(.plan-goal-badge):not(.select-handle)):active {
+  background: linear-gradient(var(--xp-button-bottom), var(--xp-face));
+  box-shadow: inset 1px 1px #6e6b6266;
+}
+:root[data-theme='windowsxp'] :is(button.primary, .generate-day-button) {
+  border-color: #245c16;
+  color: #ffffff;
+  background: linear-gradient(#73bb59, #3d9532 20%, #32822a 80%, #1f601a);
+  text-shadow: 1px 1px #205213;
+}
+:root[data-theme='windowsxp'] .sidebar nav button.active {
+  background: var(--xp-caption);
+  color: #ffffff;
+  border-color: #003c74;
+}
+:root[data-theme='windowsxp'] .sidebar nav button.active .nav-shortcut { color: inherit; }
+:root[data-theme='windowsxp'] :is(input:not([type='checkbox']), select, .rich-text-field) {
+  border: 1px solid #7f9db9;
+  border-radius: 0;
+}
+:root[data-theme='windowsxp'] .check { border-radius: 0; border-color: #1c5180; }
+:root[data-theme='windowsxp'] .overlay-header button[aria-label='Close'] {
+  background: linear-gradient(135deg, #f3aa8d, #ce4a26 52%, #a32306);
+  border: 1px solid #ffffff;
+  border-radius: 3px;
+  color: #ffffff;
+  box-shadow: inset 1px 1px #ffd6bd;
+}
+
+:root[data-theme='windowsvista'] .sidebar {
+  background: var(--aero-glass);
+  backdrop-filter: blur(12px);
+  border-right: 1px solid #ffffff88;
+  box-shadow: inset -1px 0 #173e5277;
+}
+:root[data-theme='windowsvista'] :is(.page-header, .overlay-header) {
+  background: var(--aero-glass);
+  backdrop-filter: blur(12px);
+  border: 1px solid #ffffffaa;
+  border-radius: 7px 7px 0 0;
+  box-shadow: 0 0 0 1px #18374899, inset 0 1px #ffffffaa;
+  color: var(--aero-caption-ink);
+  padding: 10px 14px;
+}
+:root[data-theme='windowsvista'] :is(.page-header h2, .page-header .day-pane-heading > h2, .overlay-header h3, .page-header .daily-reminder-button) {
+  font-family: var(--font-interface);
+  font-size: 19px;
+  font-weight: 400;
+  color: var(--aero-caption-ink);
+  text-shadow: 0 0 4px var(--aero-caption-glow), 0 0 9px var(--aero-caption-glow), 0 0 14px var(--aero-caption-glow);
+}
+:root[data-theme='windowsvista'] :is(.list-panel, .template-panel, .settings-panel, .notes-workspace, .overlay-card) {
+  border: 5px solid color-mix(in srgb, var(--line) 64%, transparent);
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px #0c2d4388, inset 0 0 0 1px #ffffffaa, var(--shadow);
+}
+:root[data-theme='windowsvista'] button:where(:not(.ghost):not(.check):not(.time-part):not(.daily-reminder-button):not(.quiet):not(.plan-goal-badge):not(.select-handle)) {
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  background: var(--aero-button);
+  box-shadow: inset 0 0 0 1px #ffffff88;
+}
+:root[data-theme='windowsvista'] button:where(:not(.ghost):not(.check):not(.time-part):not(.daily-reminder-button):not(.quiet):not(.plan-goal-badge):not(.select-handle)):hover {
+  background: var(--aero-button-hover);
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px #ffffffaa, 0 0 4px #58c8f366;
+}
+:root[data-theme='windowsvista'] button:where(:not(.ghost):not(.check):not(.time-part):not(.daily-reminder-button):not(.quiet):not(.plan-goal-badge):not(.select-handle)):active {
+  box-shadow: inset 0 1px 3px #163e5877;
+}
+:root[data-theme='windowsvista'] button.primary {
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1px #ffffffaa, inset 0 0 0 2px #50c6f4;
+}
+:root[data-theme='windowsvista'] .sidebar nav button.active {
+  background: var(--aero-button-hover);
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+:root[data-theme='windowsvista'] .sidebar nav button.active .nav-shortcut { color: inherit; }
+:root[data-theme='windowsvista'] :is(input:not([type='checkbox']), select, .rich-text-field) {
+  border-radius: 2px;
+  box-shadow: inset 0 1px 2px #143b531f;
+}
+:root[data-theme='windowsvista'] .check { border-radius: 2px; }
+:root[data-theme='windowsvista'] .overlay-header button[aria-label='Close'] {
+  background: linear-gradient(#e5a298, #b74430 48%, #8d1d0d 49%, #d8674f);
+  color: #ffffff;
+  border: 1px solid #763b2e;
+  border-radius: 0 0 4px 4px;
+  box-shadow: inset 0 0 0 1px #ffffff99;
+}
+:root[data-color-scheme='dark']:is([data-theme='windowsxp'], [data-theme='windowsvista']) .check:checked {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 12'%3E%3Cpath d='m2 6 3 3 7-7' fill='none' stroke='black' stroke-linecap='round' stroke-linejoin='round' stroke-width='2.4'/%3E%3C/svg%3E");
+}
+
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .nav-icon {
+  fill: var(--era-icon-fill);
+  stroke: #1b5078;
+  stroke-width: 1.25;
+  opacity: 1;
+  filter: drop-shadow(0 1px 0 #ffffffb3);
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .nav-icon:is([data-icon='projects'], [data-icon='today'], [data-icon='ideas']) {
+  --era-icon-color: #efb52f;
+  stroke: #865911;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .nav-icon:is([data-icon='goals'], [data-icon='prioritize'], [data-icon='next']) {
+  --era-icon-color: #75b95b;
+  stroke: #326332;
+}
+
+/* The original caption/UI faces and point-size hierarchy, independently of
+   Balance's user-selected window zoom. Content gets a little more reading room. */
+:root[data-theme='windowsxp'] { font-size: 11px; --font-mono: var(--font-interface); }
+:root[data-theme='windowsvista'] { font-size: 12px; --font-mono: var(--font-interface); }
+:root[data-theme='windowsxp'] .sidebar { font-size: 11px; }
+:root[data-theme='windowsvista'] .sidebar { font-size: 12px; }
+:root[data-theme='windowsxp'] :is(.page-header h2, .page-header .day-pane-heading > h2, .overlay-header h3, .page-header .daily-reminder-button, .sidebar-brand-heading h1) {
+  font-family: 'Trebuchet MS', Tahoma, sans-serif;
+  font-size: 13px;
+}
+:root[data-theme='windowsvista'] :is(.page-header h2, .page-header .day-pane-heading > h2, .overlay-header h3, .page-header .daily-reminder-button) { font-size: 12px; }
+:root[data-theme='windowsvista'] .sidebar-brand-heading h1 { font-size: 14px; }
+:root[data-theme='windowsxp'] :is(.item-text, .item-text-display, .template-text, .note-text) { font-size: 13px; }
+:root[data-theme='windowsvista'] :is(.item-text, .item-text-display, .template-text, .note-text) { font-size: 14px; }
+
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) :is(.rail-chip.active, .goal-date-head.viewed) {
+  background: var(--active-nav);
+  color: var(--accent-strong);
+  box-shadow: inset 0 2px var(--accent);
+}
+:root[data-theme='windowsvista'] .sidebar {
+  background: var(--aero-glass), var(--sidebar);
+}

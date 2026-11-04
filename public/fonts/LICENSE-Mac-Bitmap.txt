@@ -1,0 +1,12 @@
+ChiKareGo2 and FindersKeepers — Giles Booth
+Pixel reconstructions of Susan Kare's Chicago 12 and Geneva 9.
+Author releases, licensed Creative Commons Attribution:
+https://www.pentacom.jp/pentacom/bitfontmaker2/gallery/?id=3780
+https://www.pentacom.jp/pentacom/bitfontmaker2/gallery/?id=3809
+Unmodified WOFF2 builds from https://github.com/sakofchit/system.css/tree/main/fonts
+
+Monaco — Jamie Place (FontBlast)
+https://fontstruct.com/fontstructions/show/753435
+Creative Commons Attribution-ShareAlike 3.0
+https://creativecommons.org/licenses/by-sa/3.0/
+Unmodified WOFF2 build from https://github.com/sakofchit/system.css/tree/main/fonts

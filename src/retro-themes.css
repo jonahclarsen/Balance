@@ -1,3 +1,26 @@
+/* Giles Booth's pixel reconstructions of Chicago 12 and Geneva 9. */
+@font-face {
+  font-family: 'Mac Chicago';
+  src: url('/fonts/ChiKareGo2.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Mac Geneva';
+  src: url('/fonts/FindersKeepers.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Mac Monaco';
+  src: url('/fonts/MacMonaco.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
 @font-face {
   font-family: 'Balance MS Sans Serif';
   src: url('/fonts/PixelatedMSSansSerif-Regular.ttf') format('truetype');
@@ -79,8 +102,12 @@
 }
 
 :root[data-theme='system1'] {
-  --font-interface: Geneva, 'Chicago', 'Lucida Grande', Arial, sans-serif;
-  --font-content: var(--font-interface);
+  --font-interface: 'Mac Chicago', monospace;
+  --font-content: 'Mac Geneva', monospace;
+  --font-mono: 'Mac Monaco', monospace;
+  -webkit-font-smoothing: none;
+  text-rendering: auto;
+  font-size: 16px;
   --app-background: repeating-conic-gradient(#000000 0% 25%, #ffffff 0% 50%) 0 / 4px 4px;
   --paper: #ffffff;
   --paper-strong: #ffffff;
@@ -94,7 +121,7 @@
   --theme-done: #404040;
   --danger: #000000;
   --sidebar: #ffffff;
-  --active-nav: #000000;
+  --active-nav: #e0e0e0;
   --row-border: #d0d0d0;
   --drop-inside: #e0e0e0;
   --time-border: #000000;
@@ -123,7 +150,7 @@
   --theme-done: #bdbdbd;
   --danger: #ffffff;
   --sidebar: #181818;
-  --active-nav: #ffffff;
+  --active-nav: #383838;
   --retro-selection-ink: #000000;
   --row-border: #505050;
   --drop-inside: #303030;
@@ -184,7 +211,7 @@
   box-shadow: inset 1px 1px var(--retro-light), inset -1px -1px var(--retro-shadow), 1px 1px var(--retro-dark);
 }
 
-:root[data-theme='windows98'] button:where(:not(.ghost):not(.check):not(.time-part):not(.daily-reminder-button):not(.quiet)) {
+:root[data-theme='windows98'] button:where(:not(.ghost):not(.check):not(.time-part):not(.daily-reminder-button):not(.quiet):not(.plan-goal-badge):not(.select-handle)) {
   border-radius: 0;
   border: 1px solid;
   border-color: var(--retro-light) var(--retro-dark) var(--retro-dark) var(--retro-light);
@@ -192,7 +219,7 @@
   box-shadow: inset -1px -1px var(--retro-shadow);
 }
 
-:root[data-theme='windows98'] button:where(:not(.ghost):not(.check):not(.time-part):not(.daily-reminder-button):not(.quiet)):active,
+:root[data-theme='windows98'] button:where(:not(.ghost):not(.check):not(.time-part):not(.daily-reminder-button):not(.quiet):not(.plan-goal-badge):not(.select-handle)):active,
 :root[data-theme='windows98'] button[aria-pressed='true']:not(.check) {
   border-color: var(--retro-dark) var(--retro-light) var(--retro-light) var(--retro-dark);
   box-shadow: inset 1px 1px var(--retro-shadow);
@@ -224,13 +251,13 @@
   font-weight: 700;
 }
 
-:root[data-theme='system1'] button:where(:not(.ghost):not(.check):not(.time-part):not(.daily-reminder-button):not(.quiet)) {
+:root[data-theme='system1'] button:where(:not(.ghost):not(.check):not(.time-part):not(.daily-reminder-button):not(.quiet):not(.plan-goal-badge):not(.select-handle)) {
   border-radius: 4px;
   border-color: var(--ink);
   box-shadow: none;
 }
 
-:root[data-theme='system1'] button:where(:not(.ghost):not(.check):not(.time-part):not(.daily-reminder-button):not(.quiet)):active {
+:root[data-theme='system1'] button:where(:not(.ghost):not(.check):not(.time-part):not(.daily-reminder-button):not(.quiet):not(.plan-goal-badge):not(.select-handle)):active {
   background: var(--ink);
   color: var(--paper);
 }
@@ -259,4 +286,83 @@
 :root[data-theme='system1'] button.primary {
   background: var(--ink);
   color: var(--paper);
+}
+
+/* Active-fill tokens are deliberately pale. Most shared controls pair them
+   with accent text; only explicit inverted selections use black/white. */
+:root[data-theme='system1'] :is(.sidebar nav button.active, .rail-chip.active, .goal-date-head.viewed) {
+  background: var(--ink);
+  color: var(--paper);
+}
+:root[data-theme='system1'] :is(.rail-chip.active:hover, .rail-chip.active:focus-visible) {
+  color: var(--paper);
+}
+:root[data-theme='system1'] :is(.rail-chip.active .rail-chip-archived, .sidebar nav button.active .nav-shortcut) {
+  color: inherit;
+}
+:root:is([data-theme='system1'], [data-theme='windows98']) :is(.sidebar-brand-heading h1, .database-loading-brand, .mobile-app-title strong) {
+  font-family: var(--font-interface);
+  letter-spacing: 0;
+}
+:root[data-theme='system1'] :is(.sidebar-brand-heading h1, .database-loading-brand, .mobile-app-title strong) {
+  font-size: 16px;
+  font-weight: 400;
+}
+:root[data-theme='system1'] :is(.sidebar, button, .page-header h2, .overlay-header h3) {
+  font-size: 16px;
+}
+:root[data-theme='system1'] .page-header .day-pane-heading > h2 {
+  font-family: var(--font-interface);
+  font-size: 16px;
+}
+:root[data-theme='system1'] :is(.item-text, .template-text, .item-text-display, .note-text, .note-empty-editor) {
+  font-size: 32px;
+  line-height: 1;
+}
+:root[data-theme='system1'] :is(.time-range, .date-input, .word-cap-count) {
+  font-family: var(--font-mono);
+  font-size: 24px;
+}
+:root[data-theme='system1'] .app-shell {
+  --app-default-zoom: 1;
+  --notes-page-zoom: 1;
+  --notes-page-zoom-inverse: 1;
+}
+
+:root[data-theme='system1'] :is(.item-text.done, .item-text-display.done, .plan-row.done .item-text-display) {
+  text-decoration-thickness: 1px;
+}
+
+/* The desktop pattern belongs outside windows, never behind readable text. */
+:root[data-theme='system1'] .workspace {
+  background: var(--paper);
+  margin: 12px;
+  outline: 1px solid var(--ink);
+}
+:root[data-theme='system1'] .next-task-card {
+  border-radius: 0;
+}
+:root[data-theme='system1'] .next-task-text {
+  font-size: 32px;
+  line-height: 1;
+}
+:root[data-theme='system1'] .note-done .note-text {
+  text-decoration-thickness: 1px;
+}
+@media (max-width: 760px) {
+  :root[data-theme='system1'] .workspace { margin: 4px; }
+}
+
+:root[data-theme='system1'] .link-context-menu { border-radius: 0; }
+:root[data-theme='system1'] .link-context-menu button:is(:hover, :focus-visible) {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+:root[data-theme='system1'] .nav-icon {
+  stroke-width: 1;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+  shape-rendering: crispEdges;
+  opacity: 1;
 }

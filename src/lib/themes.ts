@@ -98,6 +98,7 @@ export const THEME_PRESETS = [
   {
     id: 'windows98',
     name: 'Windows 98',
+    retired: true,
     description: 'Teal desktop, silver bevels, navy titles',
     swatches: ['#008080', '#c0c0c0', '#000080'],
     checkboxColor: '#000080',
@@ -105,11 +106,27 @@ export const THEME_PRESETS = [
   },
   {
     id: 'system1',
-    name: 'System 1',
+    name: 'Mac System 1',
     description: 'Monochrome, striped titles, crisp edges',
     swatches: ['#ffffff', '#000000', 'repeating-conic-gradient(#000 0% 25%, #fff 0% 50%) 0 / 4px 4px'],
     checkboxColor: '#000000',
     doneColor: '#404040',
+  },
+  {
+    id: 'windowsxp',
+    name: 'Windows XP',
+    description: 'Luna blue, warm silver, green accents',
+    swatches: ['#0055ea', '#ece9d8', '#3c8d2f'],
+    checkboxColor: '#0055b8',
+    doneColor: '#347b2a',
+  },
+  {
+    id: 'windowsvista',
+    name: 'Windows Vista',
+    description: 'Aero glass, blue-green light, glossy controls',
+    swatches: ['linear-gradient(135deg, #172b32, #68abb9)', '#eff7fb', '#329ead'],
+    checkboxColor: '#176b98',
+    doneColor: '#277b50',
   },
 ] as const
 

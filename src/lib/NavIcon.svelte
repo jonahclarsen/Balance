@@ -3,7 +3,8 @@
     | 'next' | 'today' | 'templates' | 'listTemplates' | 'lists' | 'notes' | 'metrics'
     | 'goals' | 'projects' | 'prioritize' | 'ideas' | 'situate' | 'settings'
 </script>
-<svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
+<svg class="nav-icon" data-icon={name} style={`--era-icon-fill: url(#nav-fill-${name})`} viewBox="0 0 24 24" aria-hidden="true">
+  <defs><linearGradient id={`nav-fill-${name}`} x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="var(--era-icon-color, #6ba9db)"/></linearGradient></defs>
   {#if name === 'next'}<path d="M4 12h12M11 6l6 6-6 6M20 5v14" />
   {:else if name === 'today'}<circle cx="12" cy="12" r="4" /><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4" />
   {:else if name === 'templates'}<rect x="4" y="5" width="16" height="15" rx="2.5" /><path d="M4 10h16M8.5 3v4M15.5 3v4" />

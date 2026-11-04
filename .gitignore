@@ -34,3 +34,6 @@ sync-spike
 
 # Python companion test caches
 integrations/situate/__pycache__/
+
+# Optional, already-licensed fonts supplied locally by the owner; never publish.
+public/fonts/local/

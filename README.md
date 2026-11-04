@@ -21,9 +21,11 @@ Current slice:
 
 ## Retro themes
 
-Settings → Color theme includes **Windows 98** and **System 1**, with light and dark appearances and matching native widget palettes. Windows 98 uses a teal desktop, beveled controls, and navy title bars; System 1 uses a dithered desktop and monochrome striped headers.
+Settings → Color theme includes **Mac System 1**, **Windows XP**, and **Windows Vista**, with light and dark appearances and matching native widget palettes. Windows 98 is retired from selection and Random; its renderer remains for saved historical days.
 
-References: [Herdr 98](https://github.com/herdrdev/herdr-app), [98.css](https://jdan.github.io/98.css/), and the [Computer History Museum's 1984 Macintosh screenshot](https://www.computerhistory.org/revolution/personal-computers/17/303/1200). The unmodified Pixelated MS Sans Serif fonts are by lou (2017), licensed under CC BY-SA 3.0; attribution is in `public/fonts/LICENSE-MSSansSerif.txt`.
+Mac System 1 bundles Giles Booth's Chicago 12 and Geneva 9 bitmap recreations, with Jamie Place's Monaco for numeric fields. XP uses the original Tahoma UI face and Trebuchet MS captions where installed. Vista uses Segoe UI where installed, with Microsoft's open-source Selawik as its distributable fallback. The optional `public/fonts/local/` folder is ignored by Git and can hold already-licensed local Segoe UI WOFF files (`segoeui-regular.woff` and `segoeui-semibold.woff`); never commit those files. Exact font rendering can still vary with the OS and window zoom.
+
+References and typography provenance are in [docs/retro-themes.md](docs/retro-themes.md). The fonts' attribution and licenses are under `public/fonts/`. Run the focused desktop `tests/visual/retro-themes.spec.ts` to check the actual rendered Mac font, selection contrast, theme persistence, and synthetic page screenshots.
 
 ## Times and sunset in templates
 

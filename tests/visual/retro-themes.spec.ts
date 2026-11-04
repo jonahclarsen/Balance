@@ -2,8 +2,8 @@ import { expect, test } from '@playwright/test'
 import { openView } from '../helpers/navigation'
 import { createScreenshotState } from '../../website/capture/seed'
 
-for (const [id, name] of [['windows98', 'Windows 98'], ['system1', 'System 1']] as const) {
-  test(`${name} can be selected, survives reload, and stays usable in both appearances`, async ({ page }, testInfo) => {
+for (const [id, name] of [['system1', 'Mac System 1'], ['windowsxp', 'Windows XP'], ['windowsvista', 'Windows Vista']] as const) {
+  test(`${name} can be selected, survives reload, and stays usable in both appearances`, async ({ page, browserName, isMobile }, testInfo) => {
     await page.clock.install({ time: new Date('2026-10-14T14:20:00') })
     await page.emulateMedia({ colorScheme: 'light' })
     await page.goto('/')
@@ -18,6 +18,19 @@ for (const [id, name] of [['windows98', 'Windows 98'], ['system1', 'System 1']] 
     await expect(page.locator('html')).toHaveAttribute('data-theme', id)
     await page.reload()
     await expect(page.locator('html')).toHaveAttribute('data-theme', id)
+    if (!isMobile && browserName === 'chromium' && id !== 'system1') {
+      await page.evaluate(() => document.fonts.ready)
+      const cdp = await page.context().newCDPSession(page)
+      await cdp.send('DOM.enable')
+      await cdp.send('CSS.enable')
+      const { root } = await cdp.send('DOM.getDocument')
+      const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector: '.sidebar .nav-label' })
+      const { fonts } = await cdp.send('CSS.getPlatformFontsForNode', { nodeId })
+      await testInfo.attach('rendered-sidebar-fonts', { body: JSON.stringify(fonts), contentType: 'application/json' })
+      const expected = id === 'windowsvista' ? /Segoe UI|Selawik/i : /Tahoma|Verdana/i
+      expect(fonts.some(font => expected.test(font.familyName) && font.glyphCount > 0)).toBe(true)
+      await cdp.detach()
+    }
     await openView(page, 'Today')
     for (const scheme of ['light', 'dark'] as const) {
       await page.emulateMedia({ colorScheme: scheme })
@@ -28,10 +41,10 @@ for (const [id, name] of [['windows98', 'Windows 98'], ['system1', 'System 1']] 
         (document.activeElement as HTMLElement | null)?.blur()
         for (const el of document.querySelectorAll('*')) if (el.scrollTop) el.scrollTop = 0
       })
-      await page.screenshot({ path: testInfo.outputPath(`${id}-${scheme}.png`) })
+      await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`${id}-${scheme}.png`) })
       await openView(page, 'Settings')
       await expect(page.getByRole('group', { name: 'Color theme', exact: true }).getByRole('button', { name: new RegExp(`^${name} `) })).toHaveAttribute('aria-pressed', 'true')
-      await page.screenshot({ path: testInfo.outputPath(`${id}-${scheme}-settings.png`) })
+      await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`${id}-${scheme}-settings.png`) })
       await openView(page, 'Today')
     }
     const checkbox = page.locator('.plan-row .check:not(:checked)').first()
@@ -42,3 +55,70 @@ for (const [id, name] of [['windows98', 'Windows 98'], ['system1', 'System 1']] 
 
   })
 }
+
+test('Mac System 1 typography and selection readability across the app', async ({ page, isMobile, browserName }, testInfo) => {
+  test.skip(isMobile || browserName !== 'chromium', 'Desktop typography and screenshot audit')
+  test.setTimeout(120_000)
+  await page.clock.install({ time: new Date('2026-10-14T14:20:00') })
+  await page.goto('/')
+  await page.evaluate(state => {
+    localStorage.clear()
+    localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+    localStorage.setItem('balance:deviceAppearance.v1', JSON.stringify({ version: 1, themeId: 'system1', colorScheme: 'system' }))
+  }, createScreenshotState('2026-10-14'))
+  await page.reload()
+  await page.evaluate(() => document.fonts.ready)
+  const cdp = await page.context().newCDPSession(page)
+  await cdp.send('DOM.enable')
+  await cdp.send('CSS.enable')
+  const { root } = await cdp.send('DOM.getDocument')
+  for (const selector of ['.sidebar-brand-heading h1', '.sidebar .nav-label']) {
+    const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector })
+    const { fonts } = await cdp.send('CSS.getPlatformFontsForNode', { nodeId })
+    expect(fonts.some(font => font.isCustomFont && /ChiKareGo/i.test(font.familyName) && font.glyphCount > 0)).toBe(true)
+  }
+  for (const scheme of ['light', 'dark'] as const) {
+    await page.emulateMedia({ colorScheme: scheme })
+    for (const view of ['Today', 'Next', 'Days', 'Lists', 'Notes', 'Quizzes', 'Goals', 'Projects', 'Prioritize', 'Ideas', 'Situate', 'Settings']) {
+      await openView(page, view)
+      await page.evaluate(() => {
+        (document.activeElement as HTMLElement | null)?.blur()
+        for (const el of document.querySelectorAll('*')) if (el.scrollTop) el.scrollTop = 0
+      })
+      // Relative contrast protects readable selected labels without fixing RGB values.
+      const contrast = await page.locator('.rail-chip.active, .sidebar nav button.active, .goal-date-head.viewed').evaluateAll(elements => {
+        const rgb = (color: string) => (color.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number)
+        const lum = (color: number[]) => color.map(v => v / 255).map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4).reduce((sum, v, i) => sum + v * [.2126, .7152, .0722][i], 0)
+        return elements.filter(el => (el as HTMLElement).offsetWidth > 0).map(el => {
+          const s = getComputedStyle(el)
+          const [a, b] = [lum(rgb(s.color)), lum(rgb(s.backgroundColor))].sort((a, b) => b - a)
+          return { label: el.textContent?.trim(), ratio: (a + .05) / (b + .05) }
+        })
+      })
+      for (const entry of contrast) expect(entry.ratio, `${view}: ${entry.label}`).toBeGreaterThanOrEqual(4.5)
+      await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`mac-system1-${scheme}-${view.toLowerCase()}.png`) })
+    }
+    await page.keyboard.press('Alt+/')
+    const shortcuts = page.getByRole('dialog', { name: 'Keyboard shortcuts' })
+    await expect(shortcuts).toBeVisible()
+    await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`mac-system1-${scheme}-shortcuts.png`) })
+    await shortcuts.getByRole('button', { name: 'Close', exact: true }).click()
+    await page.keyboard.press('Alt+c')
+    const search = page.getByRole('dialog', { name: 'Search Balance' })
+    await expect(search).toBeVisible()
+    await search.getByRole('searchbox', { name: 'Search everything' }).fill('garden')
+    await expect(search.locator('.search-result').first()).toBeVisible()
+    await search.getByRole('searchbox', { name: 'Search everything' }).press('ArrowDown')
+    await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`mac-system1-${scheme}-search.png`) })
+    await search.getByRole('button', { name: 'Close', exact: true }).click()
+    await openView(page, 'Today')
+    await page.locator('.day-pane .page-header h2').click({ button: 'right' })
+    const menu = page.getByRole('menu', { name: 'Links' })
+    await expect(menu).toBeVisible()
+    const menuItem = menu.getByRole('menuitem').first()
+    await menuItem.hover()
+    expect(await menuItem.evaluate(el => getComputedStyle(el).color === getComputedStyle(el).backgroundColor)).toBe(false)
+    await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`mac-system1-${scheme}-menu.png`) })
+    await page.keyboard.press('Escape')
+  }
+})

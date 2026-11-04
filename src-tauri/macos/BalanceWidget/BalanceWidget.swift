@@ -710,6 +710,10 @@ private struct WidgetPalette {
                 return WidgetPalette(paper: 0x181C29, surface: 0x212638, ink: 0xE9ECF5, muted: 0xA1A9BD, line: 0x343B52, accent: 0x91A7E4)
             case "windows98":
                 return WidgetPalette(paper: 0x202020, surface: 0x303030, ink: 0xF2F2F2, muted: 0xC0C0C0, line: 0x808080, accent: 0x80D0D0, taskAccent: 0x80D0D0, doneAccent: 0x80C0B0, timePill: 0x303030, timePillInk: 0x80D0D0)
+            case "windowsxp":
+                return WidgetPalette(paper: 0x202631, surface: 0x303846, ink: 0xF4F4EF, muted: 0xC1C7D2, line: 0x727E91, accent: 0x8ABEFF, taskAccent: 0x8ABEFF, doneAccent: 0x9ACB82, timePill: 0x303846, timePillInk: 0xC5DEFF)
+            case "windowsvista":
+                return WidgetPalette(paper: 0x17242C, surface: 0x20343E, ink: 0xF1F7FA, muted: 0xBED0D9, line: 0x658B9E, accent: 0x99D9FA, taskAccent: 0x99D9FA, doneAccent: 0x94DAB0, timePill: 0x203E4F, timePillInk: 0xC5ECFF)
             case "system1":
                 return WidgetPalette(paper: 0x101010, surface: 0x181818, ink: 0xFFFFFF, muted: 0xBDBDBD, line: 0xBDBDBD, accent: 0xFFFFFF, taskAccent: 0xFFFFFF, doneAccent: 0xBDBDBD, timePill: 0x181818, timePillInk: 0xFFFFFF)
             case "graphite":
@@ -763,6 +767,10 @@ private struct WidgetPalette {
             return WidgetPalette(paper: 0xFAFBFE, surface: 0xFFFFFF, ink: 0x202738, muted: 0x687083, line: 0xD1D6E2, accent: 0x425B9B)
         case "windows98":
             return WidgetPalette(paper: 0xFFFFFF, surface: 0xC0C0C0, ink: 0x000000, muted: 0x404040, line: 0x808080, accent: 0x000080, taskAccent: 0x000080, doneAccent: 0x006060, timePill: 0xDFDFDF, timePillInk: 0x000080)
+        case "windowsxp":
+            return WidgetPalette(paper: 0xFFFFFF, surface: 0xECE9D8, ink: 0x000000, muted: 0x454339, line: 0xACA899, accent: 0x0055B8, taskAccent: 0x0055B8, doneAccent: 0x347B2A, timePill: 0xF5F3E9, timePillInk: 0x003B82)
+        case "windowsvista":
+            return WidgetPalette(paper: 0xFFFFFF, surface: 0xEFF7FB, ink: 0x14232D, muted: 0x455E6D, line: 0x7E9DAD, accent: 0x176B98, taskAccent: 0x176B98, doneAccent: 0x277B50, timePill: 0xE4F1F9, timePillInk: 0x174F70)
         case "system1":
             return WidgetPalette(paper: 0xFFFFFF, surface: 0xFFFFFF, ink: 0x000000, muted: 0x404040, line: 0x000000, accent: 0x000000, taskAccent: 0x000000, doneAccent: 0x404040, timePill: 0xFFFFFF, timePillInk: 0x000000)
         case "graphite":

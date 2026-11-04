@@ -379,6 +379,8 @@ object BalanceWidgets {
     private fun themeLayout(themeId: String): Int = when (themeId) {
         "iridescent" -> R.layout.balance_home_widget_iridescent
         "windows98" -> R.layout.balance_home_widget_windows98
+        "windowsxp" -> R.layout.balance_home_widget_windowsxp
+        "windowsvista" -> R.layout.balance_home_widget_windowsvista
         "system1" -> R.layout.balance_home_widget_system1
         "graphite" -> R.layout.balance_home_widget_graphite
         "forest" -> R.layout.balance_home_widget_forest
@@ -519,6 +521,8 @@ const widgetThemes = [
   { id: 'graphite', paper: '#F9F9F7', surface: '#FFFFFF', ink: '#191918', muted: '#6D6D69', line: '#D1D1CD', accent: '#3A3A38' },
   { id: 'windows98', paper: '#FFFFFF', surface: '#C0C0C0', ink: '#000000', muted: '#404040', line: '#808080', accent: '#000080', taskAccent: '#000080', doneAccent: '#006060', timePill: '#DFDFDF', timePillInk: '#000080' },
   { id: 'system1', paper: '#FFFFFF', surface: '#FFFFFF', ink: '#000000', muted: '#404040', line: '#000000', accent: '#000000', taskAccent: '#000000', doneAccent: '#404040', timePill: '#FFFFFF', timePillInk: '#000000' },
+  { id: 'windowsxp', paper: '#FFFFFF', surface: '#ECE9D8', ink: '#000000', muted: '#454339', line: '#ACA899', accent: '#0055B8', taskAccent: '#0055B8', doneAccent: '#347B2A', timePill: '#F5F3E9', timePillInk: '#003B82' },
+  { id: 'windowsvista', paper: '#FFFFFF', surface: '#EFF7FB', ink: '#14232D', muted: '#455E6D', line: '#7E9DAD', accent: '#176B98', taskAccent: '#176B98', doneAccent: '#277B50', timePill: '#E4F1F9', timePillInk: '#174F70' },
 ]
 
 const darkWidgetThemes = [
@@ -535,6 +539,8 @@ const darkWidgetThemes = [
   { id: 'graphite', paper: '#161617', surface: '#202022', ink: '#F0F0ED', muted: '#A1A19D', line: '#343436', accent: '#70706E', timePillInk: '#FFFFFF' },
   { id: 'windows98', paper: '#202020', surface: '#303030', ink: '#F2F2F2', muted: '#C0C0C0', line: '#808080', accent: '#80D0D0', taskAccent: '#80D0D0', doneAccent: '#80C0B0', timePill: '#303030', timePillInk: '#80D0D0' },
   { id: 'system1', paper: '#101010', surface: '#181818', ink: '#FFFFFF', muted: '#BDBDBD', line: '#BDBDBD', accent: '#FFFFFF', taskAccent: '#FFFFFF', doneAccent: '#BDBDBD', timePill: '#181818', timePillInk: '#FFFFFF' },
+  { id: 'windowsxp', paper: '#202631', surface: '#303846', ink: '#F4F4EF', muted: '#C1C7D2', line: '#727E91', accent: '#8ABEFF', taskAccent: '#8ABEFF', doneAccent: '#9ACB82', timePill: '#303846', timePillInk: '#C5DEFF' },
+  { id: 'windowsvista', paper: '#17242C', surface: '#20343E', ink: '#F1F7FA', muted: '#BED0D9', line: '#658B9E', accent: '#99D9FA', taskAccent: '#99D9FA', doneAccent: '#94DAB0', timePill: '#203E4F', timePillInk: '#C5ECFF' },
 ]
 
 const alphaColor = (hex, alpha) => `#${alpha}${hex.slice(1)}`
