@@ -815,7 +815,7 @@ test('recovery-key failure surfaces even if state hydration remains blocked', as
   await expect(page.getByText(/recovery key is unavailable/i)).toBeVisible()
 })
 
-test('empty days generate from a template button or its Alt+Shift letter', async ({ page }) => {
+test('empty days generate from a template button or its Cmd+Shift letter', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -854,8 +854,8 @@ test('empty days generate from a template button or its Alt+Shift letter', async
   const firstDay = await page.locator('.date-input').inputValue()
   const choices = page.locator('.empty-state').getByRole('group', { name: 'Day template' })
   await expect(choices.getByRole('button')).toHaveCount(2)
-  await expect(choices.getByRole('button', { name: 'Default day' })).toHaveAttribute('aria-keyshortcuts', 'Alt+Shift+D')
-  await expect(choices.getByRole('button', { name: 'Weekend' })).toHaveAttribute('aria-keyshortcuts', 'Alt+Shift+W')
+  await expect(choices.getByRole('button', { name: 'Default day' })).toHaveAttribute('aria-keyshortcuts', /(?:Meta|Control)\+Shift\+D/)
+  await expect(choices.getByRole('button', { name: 'Weekend' })).toHaveAttribute('aria-keyshortcuts', /(?:Meta|Control)\+Shift\+W/)
   await choices.getByRole('button', { name: 'Weekend' }).click()
   await expect(page.locator('[data-plan-text-input]').filter({ hasText: 'Rest' })).toBeVisible()
 
@@ -863,7 +863,7 @@ test('empty days generate from a template button or its Alt+Shift letter', async
   await expect(page.locator('.date-input')).toHaveValue(addDays(firstDay, 1))
   await page.reload()
   await expect(choices.getByRole('button')).toHaveCount(2)
-  await page.keyboard.press('Alt+Shift+W')
+  await page.keyboard.press('Meta+Shift+W')
   await expect(page.locator('[data-plan-text-input]').filter({ hasText: 'Rest' })).toBeVisible()
 })
 

@@ -305,7 +305,7 @@ test('sorting new ideas resumes after a reload until it is closed', async ({ pag
   `)
   const choice =page.locator('.empty-state').getByRole('button', { name: 'Default day' })
 
-  await page.keyboard.press('Alt+Shift+D')
+  await page.keyboard.press('Meta+Shift+D')
   await expectIdea(page, 1, 2)
   await page.keyboard.press('n')
   await page.keyboard.press('t')

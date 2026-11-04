@@ -4217,8 +4217,8 @@ return rows`
       return
     }
 
-    // Option-Shift and a template's letter generate an empty day with it.
-    if (view === 'today' && !activePlan && !dayQuiz && !projectPick && event.altKey && event.shiftKey && !primaryModifier && event.code.startsWith('Key')) {
+    // Cmd/Ctrl-Shift and a template's letter generate an empty day with it.
+    if (view === 'today' && !activePlan && !dayQuiz && !projectPick && primaryModifier && event.shiftKey && !event.altKey && event.code.startsWith('Key')) {
       const index = dayTemplateShortcuts.indexOf(event.code.slice(3))
       if (templates[index]) {
         event.preventDefault()
@@ -7489,11 +7489,11 @@ return rows`
                         class="day-template-option"
                         class:selected={dayGenerationTemplateId === template.id}
                         type="button"
-                        aria-keyshortcuts={letter ? `Alt+Shift+${letter}` : undefined}
+                        aria-keyshortcuts={letter ? `${isMac ? 'Meta' : 'Control'}+Shift+${letter}` : undefined}
                         on:click={() => generateEmptyDay(template.id)}
                       >
                         <span>{template.name || 'Untitled day'}</span>
-                        {#if letter}<kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel(shiftShortcutLabel(letter))}</kbd>{/if}
+                        {#if letter}<kbd class="nav-shortcut" aria-hidden="true">{primaryShortcutLabel(shiftShortcutLabel(letter))}</kbd>{/if}
                       </button>
                     {/each}
                   </div>
