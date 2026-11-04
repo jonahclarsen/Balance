@@ -131,6 +131,7 @@
     {
       title: 'Ideas',
       shortcuts: [
+        { keys: ['mod', 'V'], label: 'Paste copied items into the open bucket' },
         { keys: ['G / P / A / T / U'], label: 'Move the selected idea to Genuinely / Possibly / Afterlife / Trash / Proposition Party' },
         { keys: ['mod', 'shift', 'A'], label: 'Select the focused idea' },
         { keys: ['up'], label: 'Select the previous / next idea', alt: ['down'] },

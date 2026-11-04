@@ -266,3 +266,60 @@ test('a day question row pasted into a list keeps its question and answers', asy
   await expect(page.getByRole('textbox', { name: 'List item', exact: true })).toHaveText(['First item', 'Swim'])
   await expect(page.getByRole('textbox', { name: 'List item alternative' })).toHaveText(['Lift'])
 })
+
+test('Today batches paste into the open Ideas bucket with hierarchy, persistence and undo', async ({ page }, info) => {
+  test.skip(info.project.name === 'mobile', 'desktop keyboard clipboard')
+  await page.clock.install({ time: new Date('2026-10-08T18:00:00Z') })
+  await page.goto('/')
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+  await page.evaluate(() => {
+    localStorage.clear()
+    const item = (id: string, text: string, html = text, children: unknown[] = []) => ({
+      id, text, html, children, done: false, startMinutes: null, endMinutes: null,
+    })
+    const date = new Date().toISOString().slice(0, 10)
+    localStorage.setItem('balance.appState.v1', JSON.stringify({
+      schemaVersion: 1, deviceId: 'clipboard-test', localSequence: 0, historyRevision: 0,
+      activePlanDate: date, templates: [], goals: [], goalCompletions: [], operations: [],
+      plans: [{ id: 'clipboard-plan', date, dailyReminder: '', items: [
+        item('parent', 'Parent', '<strong>Parent</strong>', [item('child', 'Read docs', 'Read <a href="https://example.com/docs">docs</a>')]),
+        item('sibling', 'Sibling'),
+      ] }],
+    }))
+  })
+  await page.reload()
+  await page.locator('[data-plan-text-input]').first().focus()
+  await page.keyboard.press('Escape')
+  await page.keyboard.press('Meta+A')
+  await page.keyboard.press('Meta+C')
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain('<balance>')
+  await openView(page, 'Ideas')
+  await page.locator('[data-idea-group="possible"]').click()
+  await page.keyboard.press('Meta+V')
+  const inputs = page.locator('.ideas-panel [data-plan-text-input]')
+  await expect(inputs).toHaveText(['Parent', 'Read docs', 'Sibling'])
+  await expect(inputs.first().locator('strong')).toHaveText('Parent')
+  await expect(inputs.locator('a')).toHaveAttribute('href', 'https://example.com/docs')
+  await page.keyboard.press('Meta+Z')
+  await expect(inputs).toHaveCount(0)
+  await page.keyboard.press('Meta+Shift+Z')
+  await expect(inputs).toHaveCount(3)
+  await page.reload()
+  await openView(page, 'Ideas')
+  await expect(inputs).toHaveCount(3)
+  // After reload the portable text representation still pastes as separate rows.
+  await page.locator('[data-idea-group="afterlife"]').click()
+  await page.locator('.idea-group-pane').evaluate(async (element) => {
+    const clipboardData = new DataTransfer()
+    clipboardData.setData('text/plain', await navigator.clipboard.readText())
+    element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData }))
+  })
+  await expect(inputs).toHaveText(['Parent', 'Read docs', 'Sibling'])
+  // An ordinary text paste remains an edit within the focused idea.
+  await page.evaluate(() => navigator.clipboard.writeText(' plus text'))
+  await inputs.last().focus()
+  await page.keyboard.press('End')
+  await page.keyboard.press('Meta+V')
+  await expect(inputs.last()).toContainText('plus text')
+  await expect(inputs).toHaveCount(3)
+})

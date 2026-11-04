@@ -4633,6 +4633,13 @@ return rows`
 
     if (!primaryModifier || event.altKey) return
 
+    if (canPasteIdeas() && key === 'v' && !event.shiftKey) {
+      if (isTauri() && isRichTextActive()) return
+      event.preventDefault()
+      void pasteIdeasSystemClipboard()
+      return
+    }
+
     if (activeItemSurface() === 'plan' && activePlan && key === 'd' && !event.shiftKey && selectedItemIds.length > 0) {
       event.preventDefault()
       toggleSelectedPlanItemsDone(activePlan.id)
@@ -5746,7 +5753,30 @@ return rows`
     scrollMovedItemsIntoView(surface satisfies ItemRowKind, rootIds, direction)
   }
 
+  function canPasteIdeas() {
+    return view === 'ideas' && !document.querySelector('[role="dialog"], dialog[open]') &&
+      !isFormFieldActive() && !hasActiveRichTextSelection()
+  }
+
+  async function pasteIdeasSystemClipboard(contents?: ClipboardContents) {
+    const kind = activeIdeaGroup
+    const clipboard = contents ?? await readSystemClipboard()
+    const source = parsePlanItemClipboard(clipboard.structuredPayload) ?? plainPlanItemClipboard(clipboard.plainText)
+    if (source) plannerStore.importIdeas(source.items, kind)
+    else pastePlainClipboardIntoActiveEditor(clipboard)
+  }
+
   async function handleNativeEditorPaste(event: ClipboardEvent) {
+    if (canPasteIdeas() && event.clipboardData && !event.defaultPrevented) {
+      if (clipboardHasDirectImage(event.clipboardData) || event.clipboardData.getData(IMAGE_CLIPBOARD_TYPE)) return
+      event.preventDefault()
+      event.stopPropagation()
+      const fallback: ClipboardContents = { structuredPayload: null, plainText: event.clipboardData.getData('text/plain'), html: event.clipboardData.getData('text/html') }
+      const clipboard = await readSystemClipboard().catch(() => fallback)
+      await pasteIdeasSystemClipboard(clipboard.structuredPayload ? clipboard : fallback)
+      return
+    }
+
     if (!isTauri() || !activeItemSurface() || !isRichTextActive() || hasActiveRichTextSelection() || !event.clipboardData || event.defaultPrevented) return
     // Images go straight to the shared editor, just as they do in Notes. A
     // separate pasteboard read can omit the raster representation WebKit offers.
