@@ -19,6 +19,12 @@ Current slice:
 - Use the macOS 15+ “Add Task to Balance” action in Shortcuts to capture a task verbatim under “reminders from siri:”. Balance uses today while it has incomplete tasks, then rolls capture forward to tomorrow. To use Siri on Mac, create a custom shortcut named “Add to Balance” containing this action; the distinct names keep Siri from bypassing the custom shortcut's input prompt. Siri will run the shortcut by name and ask for the task. Apple does not support direct App Shortcut phrases on macOS.
 - Record local mutations in an operation log for future sync work.
 
+## Retro themes
+
+Settings → Color theme includes **Windows 98** and **System 1**, with light and dark appearances and matching native widget palettes. Windows 98 uses a teal desktop, beveled controls, and navy title bars; System 1 uses a dithered desktop and monochrome striped headers.
+
+References: [Herdr 98](https://github.com/herdrdev/herdr-app), [98.css](https://jdan.github.io/98.css/), and the [Computer History Museum's 1984 Macintosh screenshot](https://www.computerhistory.org/revolution/personal-computers/17/303/1200). The unmodified Pixelated MS Sans Serif fonts are by lou (2017), licensed under CC BY-SA 3.0; attribution is in `public/fonts/LICENSE-MSSansSerif.txt`.
+
 ## Times and sunset in templates
 
 Put `{sunset}` or `[sunset]` in a day or list template task to insert Vancouver,

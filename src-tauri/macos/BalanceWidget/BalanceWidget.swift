@@ -708,6 +708,10 @@ private struct WidgetPalette {
                 return WidgetPalette(paper: 0x261A20, surface: 0x312229, ink: 0xF4E8EE, muted: 0xBAA3AF, line: 0x4D3541, accent: 0xF08DB8)
             case "midnight":
                 return WidgetPalette(paper: 0x181C29, surface: 0x212638, ink: 0xE9ECF5, muted: 0xA1A9BD, line: 0x343B52, accent: 0x91A7E4)
+            case "windows98":
+                return WidgetPalette(paper: 0x202020, surface: 0x303030, ink: 0xF2F2F2, muted: 0xC0C0C0, line: 0x808080, accent: 0x80D0D0, taskAccent: 0x80D0D0, doneAccent: 0x80C0B0, timePill: 0x303030, timePillInk: 0x80D0D0)
+            case "system1":
+                return WidgetPalette(paper: 0x101010, surface: 0x181818, ink: 0xFFFFFF, muted: 0xBDBDBD, line: 0xBDBDBD, accent: 0xFFFFFF, taskAccent: 0xFFFFFF, doneAccent: 0xBDBDBD, timePill: 0x181818, timePillInk: 0xFFFFFF)
             case "graphite":
                 return WidgetPalette(paper: 0x161617, surface: 0x202022, ink: 0xF0F0ED, muted: 0xA1A19D, line: 0x343436, accent: 0x70706E, timePillInk: 0xFFFFFF)
             default:
@@ -757,6 +761,10 @@ private struct WidgetPalette {
             return WidgetPalette(paper: 0xFFF9FC, surface: 0xFFFFFF, ink: 0x31232B, muted: 0x7D6A74, line: 0xE6D0DC, accent: 0xC33F7A)
         case "midnight":
             return WidgetPalette(paper: 0xFAFBFE, surface: 0xFFFFFF, ink: 0x202738, muted: 0x687083, line: 0xD1D6E2, accent: 0x425B9B)
+        case "windows98":
+            return WidgetPalette(paper: 0xFFFFFF, surface: 0xC0C0C0, ink: 0x000000, muted: 0x404040, line: 0x808080, accent: 0x000080, taskAccent: 0x000080, doneAccent: 0x006060, timePill: 0xDFDFDF, timePillInk: 0x000080)
+        case "system1":
+            return WidgetPalette(paper: 0xFFFFFF, surface: 0xFFFFFF, ink: 0x000000, muted: 0x404040, line: 0x000000, accent: 0x000000, taskAccent: 0x000000, doneAccent: 0x404040, timePill: 0xFFFFFF, timePillInk: 0x000000)
         case "graphite":
             return WidgetPalette(paper: 0xF9F9F7, surface: 0xFFFFFF, ink: 0x191918, muted: 0x6D6D69, line: 0xD1D1CD, accent: 0x3A3A38)
         default:

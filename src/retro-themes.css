@@ -1,0 +1,262 @@
+@font-face {
+  font-family: 'Balance MS Sans Serif';
+  src: url('/fonts/PixelatedMSSansSerif-Regular.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Balance MS Sans Serif';
+  src: url('/fonts/PixelatedMSSansSerif-Bold.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 600 900;
+  font-display: swap;
+}
+
+/* Desktop references: Herdr 98, 98.css, and the 1984 Macintosh desktop.
+   Keep these IDs renderable for saved days. All decoration is static. */
+:root[data-theme='windows98'] {
+  --font-interface: 'Balance MS Sans Serif', Tahoma, 'MS Sans Serif', Arial, sans-serif;
+  --font-content: var(--font-interface);
+  --app-background: #008080;
+  --paper: #ffffff;
+  --paper-strong: #ffffff;
+  --ink: #000000;
+  --muted: #404040;
+  --line: #808080;
+  --line-strong: #404040;
+  --accent: #000080;
+  --accent-strong: #000080;
+  --theme-checkbox: #000080;
+  --theme-done: #006060;
+  --danger: #a00000;
+  --sidebar: #c0c0c0;
+  --active-nav: #000080;
+  --row-border: #dfdfdf;
+  --drop-inside: #e0eeee;
+  --time-border: #808080;
+  --time-bg: #dfdfdf;
+  --time-warn-bg: #ffffcc;
+  --time-warn-ink: #800000;
+  --focus-ring: #000080;
+  --shadow: 1px 1px 0 #000000;
+  --retro-selection-ink: #ffffff;
+  --radius-modal: 0px;
+  --modal-backdrop: #00000066;
+  --retro-face: #c0c0c0;
+  --retro-light: #ffffff;
+  --retro-shadow: #808080;
+  --retro-dark: #000000;
+  --retro-title: linear-gradient(90deg, #000080, #1084d0);
+}
+
+:root[data-color-scheme='dark'][data-theme='windows98'] {
+  --app-background: #003b3b;
+  --line: #808080;
+  --line-strong: #a0a0a0;
+  --active-nav: #000080;
+  --time-border: #808080;
+  --shadow: 1px 1px 0 #000000;
+  --paper: #202020;
+  --paper-strong: #303030;
+  --ink: #f2f2f2;
+  --muted: #c0c0c0;
+  --accent: #80d0d0;
+  --accent-strong: #80d0d0;
+  --theme-checkbox: #80d0d0;
+  --theme-done: #80c0b0;
+  --danger: #ff9b9b;
+  --sidebar: #303030;
+  --row-border: #505050;
+  --drop-inside: #304848;
+  --time-warn-bg: #403b20;
+  --time-warn-ink: #ffffcc;
+  --focus-ring: #80d0d0;
+  --time-bg: #303030;
+  --retro-face: #303030;
+  --retro-light: #737373;
+}
+
+:root[data-theme='system1'] {
+  --font-interface: Geneva, 'Chicago', 'Lucida Grande', Arial, sans-serif;
+  --font-content: var(--font-interface);
+  --app-background: repeating-conic-gradient(#000000 0% 25%, #ffffff 0% 50%) 0 / 4px 4px;
+  --paper: #ffffff;
+  --paper-strong: #ffffff;
+  --ink: #000000;
+  --muted: #404040;
+  --line: #000000;
+  --line-strong: #000000;
+  --accent: #000000;
+  --accent-strong: #000000;
+  --theme-checkbox: #000000;
+  --theme-done: #404040;
+  --danger: #000000;
+  --sidebar: #ffffff;
+  --active-nav: #000000;
+  --row-border: #d0d0d0;
+  --drop-inside: #e0e0e0;
+  --time-border: #000000;
+  --time-bg: #ffffff;
+  --time-warn-bg: #ffffff;
+  --time-warn-ink: #000000;
+  --focus-ring: #000000;
+  --shadow: 2px 2px 0 #000000;
+  --retro-selection-ink: #ffffff;
+  --radius-modal: 0px;
+  --modal-backdrop: #00000066;
+}
+
+:root[data-color-scheme='dark'][data-theme='system1'] {
+  --app-background: repeating-conic-gradient(#101010 0% 25%, #505050 0% 50%) 0 / 4px 4px;
+  --shadow: 2px 2px 0 #000000;
+  --paper: #101010;
+  --paper-strong: #181818;
+  --ink: #ffffff;
+  --muted: #bdbdbd;
+  --line: #bdbdbd;
+  --line-strong: #ffffff;
+  --accent: #ffffff;
+  --accent-strong: #ffffff;
+  --theme-checkbox: #ffffff;
+  --theme-done: #bdbdbd;
+  --danger: #ffffff;
+  --sidebar: #181818;
+  --active-nav: #ffffff;
+  --retro-selection-ink: #000000;
+  --row-border: #505050;
+  --drop-inside: #303030;
+  --time-border: #ffffff;
+  --time-bg: #181818;
+  --time-warn-bg: #101010;
+  --time-warn-ink: #ffffff;
+  --focus-ring: #ffffff;
+}
+
+:root:is([data-theme='windows98'], [data-theme='system1']) {
+  --list-progress-stop-1: var(--theme-checkbox);
+  --list-progress-stop-2: var(--theme-checkbox);
+  --list-progress-stop-3: var(--theme-checkbox);
+  --list-progress-stop-4: var(--theme-checkbox);
+  --list-progress-stop-5: var(--theme-checkbox);
+  --list-progress-stop-6: var(--theme-checkbox);
+  --list-progress-stop-7: var(--theme-checkbox);
+  --list-progress-stop-8: var(--theme-checkbox);
+}
+
+:root:is([data-theme='windows98'], [data-theme='system1']) :is(
+  .list-panel, .template-panel, .settings-panel, .empty-state, .export-panel,
+  .theme-option, .color-scheme-option, .overlay-card, input, select, .rich-text-field, .check
+) {
+  border-radius: 0;
+}
+
+:root:is([data-theme='windows98'], [data-theme='system1']) .sidebar nav button.active {
+  color: var(--retro-selection-ink);
+  background: var(--active-nav);
+}
+
+:root:is([data-theme='windows98'], [data-theme='system1']) .sidebar nav button.active .nav-shortcut {
+  color: inherit;
+}
+
+
+:root[data-theme='windows98'] .sidebar {
+  border-right: 2px solid var(--retro-dark);
+  box-shadow: inset -1px 0 var(--retro-light);
+}
+
+:root[data-theme='windows98'] :is(.page-header, .overlay-header) {
+  background: var(--retro-title);
+  border: 2px solid var(--retro-face);
+  box-shadow: inset 1px 1px var(--retro-light), 1px 1px var(--retro-dark);
+  padding: 8px 12px;
+  color: #ffffff;
+}
+
+:root[data-theme='windows98'] :is(.page-header h2, .overlay-header h3, .overlay-eyebrow) {
+  color: #ffffff;
+}
+
+:root[data-theme='windows98'] :is(.list-panel, .template-panel, .settings-panel, .overlay-card) {
+  border: 2px solid var(--retro-face);
+  box-shadow: inset 1px 1px var(--retro-light), inset -1px -1px var(--retro-shadow), 1px 1px var(--retro-dark);
+}
+
+:root[data-theme='windows98'] button:where(:not(.ghost):not(.check):not(.time-part):not(.daily-reminder-button):not(.quiet)) {
+  border-radius: 0;
+  border: 1px solid;
+  border-color: var(--retro-light) var(--retro-dark) var(--retro-dark) var(--retro-light);
+  background-color: var(--retro-face);
+  box-shadow: inset -1px -1px var(--retro-shadow);
+}
+
+:root[data-theme='windows98'] button:where(:not(.ghost):not(.check):not(.time-part):not(.daily-reminder-button):not(.quiet)):active,
+:root[data-theme='windows98'] button[aria-pressed='true']:not(.check) {
+  border-color: var(--retro-dark) var(--retro-light) var(--retro-light) var(--retro-dark);
+  box-shadow: inset 1px 1px var(--retro-shadow);
+}
+
+:root[data-theme='windows98'] :is(input:not([type='checkbox']), select, .rich-text-field) {
+  box-shadow: inset 1px 1px var(--retro-shadow);
+  border-color: var(--retro-dark) var(--retro-light) var(--retro-light) var(--retro-dark);
+}
+
+:root[data-theme='system1'] .sidebar {
+  border-right: 2px solid var(--ink);
+}
+
+:root[data-theme='system1'] :is(.page-header, .overlay-header) {
+  background: repeating-linear-gradient(to bottom, var(--paper) 0 2px, var(--ink) 2px 3px, var(--paper) 3px 5px);
+  border: 1px solid var(--ink);
+  padding: 8px 12px;
+}
+
+:root[data-theme='system1'] :is(.page-header h2, .overlay-title, .overlay-header-middle) {
+  background: var(--paper);
+  color: var(--ink);
+  padding: 2px 8px;
+}
+
+:root[data-theme='system1'] :is(.page-header h2, .overlay-header h3) {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+:root[data-theme='system1'] button:where(:not(.ghost):not(.check):not(.time-part):not(.daily-reminder-button):not(.quiet)) {
+  border-radius: 4px;
+  border-color: var(--ink);
+  box-shadow: none;
+}
+
+:root[data-theme='system1'] button:where(:not(.ghost):not(.check):not(.time-part):not(.daily-reminder-button):not(.quiet)):active {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+:root[data-theme='system1'] .check {
+  border-color: var(--ink);
+}
+
+:root[data-color-scheme='dark']:is([data-theme='windows98'], [data-theme='system1']) .check:checked {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 12'%3E%3Cpath d='m2 6 3 3 7-7' fill='none' stroke='black' stroke-linecap='round' stroke-linejoin='round' stroke-width='2.4'/%3E%3C/svg%3E");
+}
+
+:root:is([data-theme='windows98'], [data-theme='system1']) :is(.time-range, .time-side, .mobile-time-summary) {
+  border-radius: 0;
+}
+
+:root[data-theme='windows98'] :is(.page-header .day-pane-heading > h2, .page-header .daily-reminder-button) {
+  color: #ffffff;
+}
+
+:root[data-theme='windows98'] button.primary {
+  background: #000080;
+  color: #ffffff;
+}
+
+:root[data-theme='system1'] button.primary {
+  background: var(--ink);
+  color: var(--paper);
+}

@@ -378,6 +378,8 @@ object BalanceWidgets {
 
     private fun themeLayout(themeId: String): Int = when (themeId) {
         "iridescent" -> R.layout.balance_home_widget_iridescent
+        "windows98" -> R.layout.balance_home_widget_windows98
+        "system1" -> R.layout.balance_home_widget_system1
         "graphite" -> R.layout.balance_home_widget_graphite
         "forest" -> R.layout.balance_home_widget_forest
         "ocean" -> R.layout.balance_home_widget_ocean
@@ -515,6 +517,8 @@ const widgetThemes = [
   { id: 'pink', paper: '#FFF9FC', surface: '#FFFFFF', ink: '#31232B', muted: '#7D6A74', line: '#E6D0DC', accent: '#C33F7A' },
   { id: 'midnight', paper: '#FAFBFE', surface: '#FFFFFF', ink: '#202738', muted: '#687083', line: '#D1D6E2', accent: '#425B9B' },
   { id: 'graphite', paper: '#F9F9F7', surface: '#FFFFFF', ink: '#191918', muted: '#6D6D69', line: '#D1D1CD', accent: '#3A3A38' },
+  { id: 'windows98', paper: '#FFFFFF', surface: '#C0C0C0', ink: '#000000', muted: '#404040', line: '#808080', accent: '#000080', taskAccent: '#000080', doneAccent: '#006060', timePill: '#DFDFDF', timePillInk: '#000080' },
+  { id: 'system1', paper: '#FFFFFF', surface: '#FFFFFF', ink: '#000000', muted: '#404040', line: '#000000', accent: '#000000', taskAccent: '#000000', doneAccent: '#404040', timePill: '#FFFFFF', timePillInk: '#000000' },
 ]
 
 const darkWidgetThemes = [
@@ -529,6 +533,8 @@ const darkWidgetThemes = [
   { id: 'pink', paper: '#261A20', surface: '#312229', ink: '#F4E8EE', muted: '#BAA3AF', line: '#4D3541', accent: '#F08DB8' },
   { id: 'midnight', paper: '#181C29', surface: '#212638', ink: '#E9ECF5', muted: '#A1A9BD', line: '#343B52', accent: '#91A7E4' },
   { id: 'graphite', paper: '#161617', surface: '#202022', ink: '#F0F0ED', muted: '#A1A19D', line: '#343436', accent: '#70706E', timePillInk: '#FFFFFF' },
+  { id: 'windows98', paper: '#202020', surface: '#303030', ink: '#F2F2F2', muted: '#C0C0C0', line: '#808080', accent: '#80D0D0', taskAccent: '#80D0D0', doneAccent: '#80C0B0', timePill: '#303030', timePillInk: '#80D0D0' },
+  { id: 'system1', paper: '#101010', surface: '#181818', ink: '#FFFFFF', muted: '#BDBDBD', line: '#BDBDBD', accent: '#FFFFFF', taskAccent: '#FFFFFF', doneAccent: '#BDBDBD', timePill: '#181818', timePillInk: '#FFFFFF' },
 ]
 
 const alphaColor = (hex, alpha) => `#${alpha}${hex.slice(1)}`

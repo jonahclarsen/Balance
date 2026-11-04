@@ -9,7 +9,7 @@ const DEFAULT_THEME_ID: &str = "iridescent";
 // Historical day records can reference these IDs forever. Never delete or
 // rename an ID or its web/macOS/Android renderer. Retire it from current
 // selection instead; see the balance-themes skill.
-const ACTIVE_RANDOM_THEME_IDS: [&str; 11] = [
+const ACTIVE_RANDOM_THEME_IDS: [&str; 13] = [
     "iridescent",
     "graphite",
     "crimson",
@@ -21,6 +21,8 @@ const ACTIVE_RANDOM_THEME_IDS: [&str; 11] = [
     "ocean",
     "midnight",
     "violet",
+    "windows98",
+    "system1",
 ];
 const FNV_OFFSET_64: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME_64: u64 = 0x0000_0100_0000_01b3;
@@ -210,7 +212,7 @@ pub(crate) fn active_projects(projects: &Value, now: DateTime<Utc>) -> Vec<Widge
 fn normalize_theme_id(theme_id: &str) -> &str {
     match theme_id {
         "iridescent" | "graphite" | "forest" | "ocean" | "violet" | "orange" | "earth"
-        | "crimson" | "banana" | "pink" | "midnight" => theme_id,
+        | "crimson" | "banana" | "pink" | "midnight" | "windows98" | "system1" => theme_id,
         "berry" => "banana",
         _ => DEFAULT_THEME_ID,
     }
@@ -600,13 +602,22 @@ mod tests {
     }
 
     #[test]
+    fn retro_widget_snapshots_keep_the_selected_theme() {
+        for theme in ["windows98", "system1"] {
+            let snapshot = snapshot_from_plan("2026-10-14", None, theme);
+            assert_eq!(snapshot.theme_id, theme);
+        }
+    }
+
+    #[test]
     fn deterministic_random_theme_vectors_are_stable() {
         assert_eq!(
             stable_theme_hash_64("balance-random-v1\02026-08-24\0pink"),
             6_228_563_125_600_655_469
         );
-        assert_eq!(random_theme_for_date("2026-08-24"), "midnight");
-        assert_eq!(random_theme_for_date("2026-08-25"), "graphite");
+        // Freeze the original catalog: a newly added theme may win these dates.
+        assert_eq!(random_theme_for_date_from("2026-08-24", &ACTIVE_RANDOM_THEME_IDS[..11]), "midnight");
+        assert_eq!(random_theme_for_date_from("2026-08-25", &ACTIVE_RANDOM_THEME_IDS[..11]), "graphite");
     }
 
     #[test]

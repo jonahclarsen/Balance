@@ -95,6 +95,22 @@ export const THEME_PRESETS = [
     checkboxColor: '#7c5aaa',
     doneColor: '#8a63b8',
   },
+  {
+    id: 'windows98',
+    name: 'Windows 98',
+    description: 'Teal desktop, silver bevels, navy titles',
+    swatches: ['#008080', '#c0c0c0', '#000080'],
+    checkboxColor: '#000080',
+    doneColor: '#006060',
+  },
+  {
+    id: 'system1',
+    name: 'System 1',
+    description: 'Monochrome, striped titles, crisp edges',
+    swatches: ['#ffffff', '#000000', 'repeating-conic-gradient(#000 0% 25%, #fff 0% 50%) 0 / 4px 4px'],
+    checkboxColor: '#000000',
+    doneColor: '#404040',
+  },
 ] as const
 
 export type PresetThemeId = (typeof THEME_PRESETS)[number]['id']
