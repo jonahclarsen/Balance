@@ -89,11 +89,13 @@ async function manifest() {
   assert(response.ok)
   return response.json()
 }
-// The app opens on Next; the repro observes the day on Today.
+// The app opens on Next, or on Today after a reload; the repro observes the
+// synthetic active day there. Choosing Today while it is already open jumps to
+// the real date, so leave an open Today view alone.
 async function openToday() {
   await waitFor(() => client.evaluate(`(() => {
     const button = document.querySelector('.sidebar button[aria-keyshortcuts="Alt+T"]')
-    button?.click()
+    if (button && !button.classList.contains('active')) button.click()
     return Boolean(button)
   })()`), 'the Today navigation button')
 }
