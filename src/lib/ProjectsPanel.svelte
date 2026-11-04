@@ -10,6 +10,7 @@
   import { projectReordering } from './projectReordering'
   import { mountInContentShell } from './contentShellOverlay'
   import RichTextEditor from './RichTextEditor.svelte'
+  import { showCaretOnResize } from './showCaretOnResize'
   import { escapeHTML, htmlToPlainTextWithBreaks, sanitizeInlineHTML, type ItemLink } from './planner'
   import { isProjectActive, isProjectOpen, PROJECT_ACTIVE_DAY_COUNTS } from './projects'
   export let projects: Project[] = []
@@ -207,7 +208,7 @@
         }}
         onChange={(html, text) => { if (text.trim() && (text.trim() !== project.name || html !== (project.nameHtml ?? escapeHTML(project.name)))) plannerStore.updateProject(project.id, { name: text.trim(), nameHtml: html }) }}
       /></div>
-      <div class="description-field"><span>Description</span><RichTextEditor
+      <div class="description-field" use:showCaretOnResize><span>Description</span><RichTextEditor
         className="rich-text-field description-editor"
         kind="project-description"
         inputId={`project-description:${project.id}`}

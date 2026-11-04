@@ -724,6 +724,26 @@ test('long project descriptions truncate within the page and remain editable in 
   expect(await field.evaluate(editor => editor.scrollHeight <= editor.clientHeight)).toBe(true)
 })
 
+test('typing continues at the caret after new lines resize the project modal', async ({ page }) => {
+  await page.goto('/')
+  await openView(page, 'Projects')
+  await addProject(page, 'Synthetic growing')
+  await page.locator('.project-card', { hasText: 'Synthetic growing' }).click()
+  const dialog = page.getByRole('dialog')
+  const description = dialog.getByRole('textbox', { name: 'Description' })
+  await description.click()
+  await description.pressSequentially('first')
+  const height = (await dialog.boundingBox())!.height
+  for (let line = 0; line < 8; line += 1) await description.press('Enter')
+  await expect.poll(async () => (await dialog.boundingBox())!.height).toBeGreaterThan(height)
+  await expect(description).toBeFocused()
+  await description.pressSequentially('last')
+  await description.press('Escape')
+  const { projects } = await readState(page)
+  const saved = projects.find((project: any) => project.name === 'Synthetic growing')
+  expect(saved.description).toBe(`first${'\n'.repeat(8)}last`)
+})
+
 test('project descriptions turn pasted URLs into links like tasks do, and their links open', async ({ page }) => {
   await page.goto('/')
   await openView(page, 'Projects')
