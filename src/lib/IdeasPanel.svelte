@@ -248,6 +248,13 @@
   <header class="page-header">
     <h2>Ideas</h2>
     <div class="template-panel-actions">
+      {#if activeGroup === 'proposition'}
+        <button type="button" disabled={activeItems.length === 0} on:click={onSortPropositions}>Sort</button>
+      {:else if activeGroup === 'genuine'}
+        <button type="button" on:click={onReview}>Review</button>
+      {:else if activeGroup === 'trash'}
+        <span class="idea-group-note">clears after {IDEA_TRASH_RETENTION_DAYS} days</span>
+      {/if}
       <div class="voice-idea-controls">
         {#if recording}
           <span class="voice-recording-dot" style:--level={recording.level} aria-hidden="true"></span>
@@ -311,19 +318,6 @@
     </nav>
 
     <section class="idea-group-pane" data-idea-pane={activeGroup} data-balance-link={`balance://idea-group/${activeGroup}`} aria-label={activeMeta.label}>
-      {#if activeGroup === 'proposition'}
-        <header class="idea-group-pane-header">
-          <button class="ghost" type="button" disabled={activeItems.length === 0} on:click={onSortPropositions}>Sort</button>
-        </header>
-      {:else if activeGroup === 'genuine'}
-        <header class="idea-group-pane-header">
-          <button class="ghost" type="button" on:click={onReview}>Review</button>
-        </header>
-      {:else if activeGroup === 'trash'}
-        <header class="idea-group-pane-header">
-          <span class="idea-group-note">clears after {IDEA_TRASH_RETENTION_DAYS} days</span>
-        </header>
-      {/if}
       <div class="list-panel idea-group-list" data-plan-item-scope={groupsByKind[activeGroup].id}>
         {#if activeGroup === 'proposition'}
           <button class="add-row add-row-top" type="button" on:click={() => { void addItem(groupsByKind[activeGroup].id) }}>+ Add item</button>
@@ -412,14 +406,16 @@
 {/if}
 
 <style>
-  .ideas-panel { display: grid; gap: 12px; align-content: start; }
+  .ideas-panel { display: grid; align-content: start; }
   .page-header h2 { margin: 0; }
   .add-row-top { margin: 0 0 12px; }
+  .idea-group-list > .add-row:first-child:last-child { margin: 0; }
   .template-panel-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .template-panel-actions button { font-size: 14px; padding: 6px 10px; }
   .ideas-layout {
     display: grid;
     grid-template-columns: 230px minmax(0, 1fr);
-    gap: 12px;
+    gap: 16px;
     align-items: start;
   }
   .idea-group-cards {
@@ -435,14 +431,14 @@
     gap: 4px 8px;
     width: 100%;
     padding: 10px 11px;
-    border-color: var(--line);
-    background: var(--paper);
     text-align: left;
   }
-  .idea-group-card:hover,
-  .idea-group-card.active { background: var(--paper-strong); }
-  .idea-group-card.active { box-shadow: inset 3px 0 var(--accent); }
-  .idea-group-card strong { font-size: 13px; line-height: 1.35; }
+  .idea-group-card:not(.active) {
+    border-color: var(--line);
+    background: var(--paper);
+  }
+  .idea-group-card:not(.active):hover { background: var(--paper-strong); }
+  .idea-group-card strong { font-size: 14px; font-weight: 600; line-height: 1.35; }
   .idea-group-card small {
     grid-column: 1 / -1;
     overflow: hidden;
@@ -452,34 +448,20 @@
     white-space: nowrap;
   }
   .idea-group-count { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
-  .idea-group-pane {
-    min-width: 0;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    background: var(--paper);
-    padding: 6px 10px 8px;
-  }
-  .idea-group-pane-header {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    min-height: 28px;
-  }
-  .idea-group-pane-header button { padding: 2px 8px; font-size: 13px; }
+  .idea-group-pane { min-width: 0; }
   .idea-group-note { color: var(--muted); font-size: 12px; }
   .voice-idea-controls {
     display: flex;
     align-items: center;
     gap: 6px;
   }
-  .voice-idea-controls button { padding: 2px 8px; font-size: 13px; }
   .voice-mic-choice { display: inline-flex; gap: 2px; }
-  .voice-idea-controls .voice-mic-choice button { display: inline-grid; place-items: center; width: 26px; height: 26px; padding: 0; color: var(--muted); }
+  .voice-idea-controls .voice-mic-choice button { display: inline-grid; place-items: center; width: 32px; height: 32px; padding: 0; color: var(--muted); }
   .voice-idea-controls .voice-mic-choice button[aria-pressed='true'] { color: var(--ink); background: color-mix(in srgb, var(--ink) 12%, transparent); }
   .voice-mic-choice svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   .voice-record-button.voice-record-button {
-    width: 26px;
-    height: 26px;
+    width: 32px;
+    height: 32px;
     padding: 0;
     border-radius: 50%;
     color: var(--danger);
@@ -496,7 +478,7 @@
     transition: box-shadow 80ms linear;
   }
   .voice-recording-time { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
-  .voice-idea-error { margin: 0; color: var(--danger); font-size: 13px; }
+  .voice-idea-error { margin: 0 0 12px; color: var(--danger); font-size: 13px; }
   .voice-clip-chip {
     display: inline-flex;
     align-items: center;
@@ -510,20 +492,20 @@
   }
   .voice-clip-chip svg { width: 56px; height: 14px; fill: currentColor; }
   .voice-clip-chip span { color: var(--muted); }
-  .idea-group-list { padding: 0; }
   .idea-move-strip {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
-    padding: 6px 0 2px;
+    margin-top: 12px;
   }
+  .idea-move-strip button { font-size: 14px; padding: 6px 10px; }
   .idea-move-strip kbd {
     margin-left: 4px;
     font-size: 11px;
     opacity: 0.7;
   }
   @media (max-width: 760px) {
-    .ideas-layout { grid-template-columns: minmax(0, 1fr); }
+    .ideas-layout { grid-template-columns: minmax(0, 1fr); gap: 12px; }
     /* The cards stay pinned as a sideways strip under the phone header. */
     .idea-group-cards {
       top: var(--tree-sticky-base, 0px);

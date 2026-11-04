@@ -388,7 +388,7 @@ test('Back after a note or a group returns the idea to Proposition Party', async
   })
   const initialNotes = await notes()
 
-  await pane(page, 'proposition').getByRole('button', { name: 'Sort', exact: true }).click()
+  await page.locator('.ideas-panel').getByRole('button', { name: 'Sort', exact: true }).click()
   await page.keyboard.press('y')
   await page.clock.fastForward(3000)
   await page.keyboard.press('p')
@@ -413,7 +413,7 @@ test('Back after a note or a group returns the idea to Proposition Party', async
 test('the Proposition Party Sort button opens the sorter on demand', async ({ page }) => {
   await open(page)
   await openView(page, 'Ideas')
-  const sort = pane(page, 'proposition').getByRole('button', { name: 'Sort', exact: true })
+  const sort = page.locator('.ideas-panel').getByRole('button', { name: 'Sort', exact: true })
   await expect(sort).toBeDisabled()
 
   await storeCall(page, `
@@ -442,7 +442,7 @@ test('the sorter stays with its page and cuts ideas to Trash and the clipboard',
     const child = plannerStore.addIdea('Synthetic cut child')
     plannerStore.moveIdeaItem('bucket_proposition', child, id, 'inside')
   `)
-  await pane(page, 'proposition').getByRole('button', { name: 'Sort', exact: true }).click()
+  await page.locator('.ideas-panel').getByRole('button', { name: 'Sort', exact: true }).click()
   await expectIdea(page, 1, 2)
 
   // The sidebar stays usable; returning to the page resumes the same sort.
@@ -485,7 +485,7 @@ test('sorting moves ideas into new notes with their formatting and children, and
     plannerStore.moveIdeaItem('bucket_proposition', child, id, 'inside')
   `)
   await openView(page, 'Ideas')
-  await pane(page, 'proposition').getByRole('button', { name: 'Sort', exact: true }).click()
+  await page.locator('.ideas-panel').getByRole('button', { name: 'Sort', exact: true }).click()
   await sorter(page).getByRole('button', { name: 'Yes (Y)' }).click()
   await sorter(page).getByRole('button', { name: 'Add to new note (N)' }).click()
   await expectIdea(page, 2, 2)
@@ -532,7 +532,7 @@ test('a day generation sort can add ideas to the new day', async ({ page }, test
 
   // Sorts outside generation have no day to add to.
   await openView(page, 'Ideas')
-  await pane(page, 'proposition').getByRole('button', { name: 'Sort', exact: true }).click()
+  await page.locator('.ideas-panel').getByRole('button', { name: 'Sort', exact: true }).click()
   await page.keyboard.press('y')
   await expect(sorter(page).getByRole('button', { name: 'Cut (X)' })).toBeVisible()
   await expect(sorter(page).getByRole('button', { name: 'Add to day (D)' })).toHaveCount(0)
