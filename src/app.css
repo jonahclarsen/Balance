@@ -7752,11 +7752,46 @@ textarea.note-title {
   padding: 6px 10px;
 }
 
+/* Children hang off a guide line under their parent's checkbox, each level
+   under the checkbox above it, like a compact version of the planner tree. */
 .idea-sort-children {
-  margin: 4px 0 0;
-  padding-left: 34px;
-  color: var(--muted);
-  font-size: 14px;
+  --idea-child-check: 26px;
+  margin: 0 0 0 calc(var(--idea-child-check) / 2);
+  padding: 0 0 0 8px;
+  border-left: 1px solid var(--line);
+  list-style: none;
+}
+
+.paste-review-line + .idea-sort-children {
+  /* The idea's checkbox target is wider than a child's; centre the guide under it. */
+  margin-left: 17px;
+}
+
+.idea-sort-child {
+  display: flex;
+  align-items: flex-start;
+  min-width: 0;
+  gap: 6px;
+}
+
+.idea-sort-child .check-target {
+  width: var(--idea-child-check);
+  height: var(--idea-child-check);
+}
+
+.idea-sort-child .check {
+  width: 15px;
+  height: 15px;
+  background-size: 11px 9px;
+}
+
+.idea-sort .idea-sort-child-text {
+  min-height: 0;
+  padding: 3px 0;
+  border: 0;
+  font-size: 15px;
+  line-height: 20px;
+  overflow-wrap: anywhere;
 }
 
 /* Commitment buttons dim until their unlock delay passes; an early press shakes. */

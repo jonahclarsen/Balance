@@ -632,7 +632,13 @@ test('pasted lists import as ideas and open the sorter; trash clears after 30 da
   })
   await page.getByRole('button', { name: /^Import 4 ideas/ }).click()
   await expectIdea(page, 1, 4)
-  await expect(page.locator('.idea-sort-children li')).toHaveText(['Synthetic alpha child'])
+  const child = sorter(page).locator('.idea-sort-child')
+  await expect(child).toHaveText(['Synthetic alpha child'])
+  // Children check off from the sorter like the idea itself, without advancing.
+  await child.getByRole('checkbox', { name: 'Complete item' }).check()
+  await expect(child.locator('.idea-sort-child-text')).toHaveClass(/done/)
+  await expectIdea(page, 1, 4)
+  await expect.poll(() => storeCall(page, "let value; plannerStore.subscribe((state) => { value = state })(); return value.ideaBuckets.find((group) => group.kind === 'proposition').items.find((item) => item.text === 'Synthetic alpha').children[0].done")).toBe(true)
   await page.keyboard.press('Escape')
   await expect(rows(page, 'proposition')).toHaveText(['Synthetic gamma', 'Synthetic delta', 'Synthetic beta', 'Synthetic alpha', 'Synthetic alpha child'])
 

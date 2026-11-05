@@ -9001,7 +9001,7 @@ return rows`
           onDecide={(itemId, kind) => plannerStore.moveIdeaToGroup(itemId, kind)}
           onAppendToPrevious={(itemId, previousId) => plannerStore.appendIdeaToPrevious(itemId, previousId)}
           onEdit={(itemId, html, text) => { const found = findIdea($plannerStore.ideaBuckets, itemId); if (found) plannerStore.patchIdeaItem(found.group.id, itemId, { text, html }) }}
-          onToggleDone={(itemId, done) => { const found = findIdea($plannerStore.ideaBuckets, itemId); if (found) plannerStore.patchIdeaItem(found.group.id, itemId, { done }) }}
+          onToggleDone={(ideaId, itemId, done) => { const found = findIdea($plannerStore.ideaBuckets, ideaId); if (found) plannerStore.patchIdeaItem(found.group.id, itemId, { done }) }}
           onCut={cutSortedIdea}
           onAddToNote={plannerStore.moveIdeaToNewNote}
           onAddToDay={ideaSort.addToDay}

@@ -7,7 +7,7 @@
   import { IDEA_UNLOCK_MS, findIdea, ideaGroupMeta, IDEA_SORT_QUESTION } from './ideas'
   import { renderItemDisplayHTML, type ItemLink, type ItemTextSegment } from './planner'
   import { openClickedLink, openRenderedLinkFromShortcut } from './externalLinks'
-  import type { Id, IdeaGroup, IdeaGroupKind, IdeaItem, IdeaSnapshot } from './types'
+  import type { Id, IdeaGroup, IdeaGroupKind, IdeaItem, IdeaSnapshot, PlanItem } from './types'
 
   // Ideas are sorted one card at a time in queue order (bottom of the list first). Each card asks
   // the key question; Yes picks a keep group, No picks a discard group.
@@ -23,7 +23,8 @@
   export let onDecide: (itemId: Id, kind: IdeaGroupKind) => void
   export let onAppendToPrevious: (itemId: Id, previousId: Id) => boolean
   export let onEdit: (itemId: Id, html: string, text: string) => void
-  export let onToggleDone: (itemId: Id, done: boolean) => void
+  // Toggles the idea or one of its children, found under the idea being sorted.
+  export let onToggleDone: (ideaId: Id, itemId: Id, done: boolean) => void
   // Removes the idea and puts it on the clipboard to paste where it belongs.
   export let onCut: (itemId: Id) => void
   export let onAddToNote: (itemId: Id) => Id | null
@@ -65,7 +66,7 @@
   $: options = step === 'yes' ? (['possible', 'genuine'] as const) : step === 'no' ? (['trash', 'afterlife'] as const) : []
   $: resetCard(index)
 
-  function renderIdeaHTML(item: IdeaItem) {
+  function renderIdeaHTML(item: PlanItem) {
     return renderItemDisplayHTML(item.html, item.text, linkSegments(item.text))
   }
 
@@ -278,6 +279,30 @@
 
 <svelte:window on:keydown={handleKeydown} />
 
+<!-- Children read as the idea's own checklist: the same checkbox and text as
+     the idea, smaller, hanging under its text on a tree guide. -->
+{#snippet childRows(ideaId: Id, items: PlanItem[])}
+  <ul class="idea-sort-children">
+    {#each items as child (child.id)}
+      <li>
+        <div class="idea-sort-child">
+          <TaskCheckbox
+            checked={child.done}
+            onChange={(event) => onToggleDone(ideaId, child.id, event.currentTarget.checked)}
+          />
+          <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+          <div
+            on:click={(event) => openClickedLink(event, onOpenLink)}
+            class="item-text item-text-display idea-sort-child-text"
+            class:done={child.done}
+          >{@html renderIdeaHTML(child)}</div>
+        </div>
+        {#if child.children.length > 0}{@render childRows(ideaId, child.children)}{/if}
+      </li>
+    {/each}
+  </ul>
+{/snippet}
+
 <!-- Shares the paste-review layout so card sorting looks the same everywhere.
      Sits inside .content-shell so the sidebar stays usable. -->
 <OverlayModal
@@ -310,7 +335,7 @@
             <div class="paste-review-line">
               <TaskCheckbox
                 checked={current.done}
-                onChange={(event) => onToggleDone(current.id, event.currentTarget.checked)}
+                onChange={(event) => onToggleDone(current.id, current.id, event.currentTarget.checked)}
               />
               {#if editing}
                 <RichTextEditor
@@ -342,11 +367,7 @@
                 >{@html current.text?.trim() ? renderIdeaHTML(current) : '(empty idea)'}</div>
               {/if}
             </div>
-            {#if current.children.length > 0}
-              <ul class="idea-sort-children">
-                {#each current.children as child (child.id)}<li>{child.text}</li>{/each}
-              </ul>
-            {/if}
+            {#if current.children.length > 0}{@render childRows(current.id, current.children)}{/if}
           </div>
         {/key}
       {/if}
