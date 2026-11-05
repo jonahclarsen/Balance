@@ -407,6 +407,8 @@ export type IdeaGroup = {
   id: Id
   kind: IdeaGroupKind
   items: IdeaItem[]
+  // Days between scheduled reviews; absent uses the group's default.
+  reviewDays?: number
 }
 
 export type PrioritySession = {

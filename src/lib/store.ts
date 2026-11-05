@@ -161,7 +161,7 @@ import type {
 import { dayThemePreferenceKey, normalizeReplicatedPreferences } from './preferences'
 import { isNoteTrashExpired } from './noteTrash'
 import { copyNoteItemsWithNewIds, noteVersionGroupId } from './noteVersions'
-import { findIdea, ideaGroupId, IDEA_GROUP_KINDS, isIdeaTrashExpired } from './ideas'
+import { findIdea, ideaGroupId, IDEA_GROUP_KINDS, isIdeaTrashExpired, parseIdeaReviewDays, type ScheduledIdeaReviewKind } from './ideas'
 import { reconcileTaskNotifications } from './taskNotifications'
 import { reconcileVoiceClips } from './voiceClips'
 import { withListCompletionTime } from './listTiming'
@@ -2667,6 +2667,14 @@ function createPlannerStore() {
         return updateIdeaGroup(removed, previous.group.kind, (group) => ({ ...group, items: group.items.map((candidate) => candidate.id === previousId ? joined : candidate) }))
       })
       return merged
+    },
+
+    setIdeaReviewDays(kind: ScheduledIdeaReviewKind, value: number) {
+      const days = parseIdeaReviewDays(value)
+      if (days === null) return false
+      commitEntities('set_idea_review_days', { kind, days }, (state) =>
+        updateIdeaGroup(state, kind, (group) => group.reviewDays === days ? group : { ...group, reviewDays: days }))
+      return true
     },
 
     purgeExpiredIdeas(now = Date.now()) {

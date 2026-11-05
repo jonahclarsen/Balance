@@ -99,6 +99,22 @@ export const IDEA_REVIEW_SCHEDULE: readonly { kind: ScheduledIdeaReviewKind; day
   { kind: 'genuine', days: 10 },
   { kind: 'possible', days: 45 },
 ]
+export const IDEA_REVIEW_MAX_DAYS = 365
+
+export function scheduledIdeaReviewDefault(kind: IdeaGroupKind): number | null {
+  return IDEA_REVIEW_SCHEDULE.find((schedule) => schedule.kind === kind)?.days ?? null
+}
+
+// Whole days from 1 to a year, or null for anything else.
+export function parseIdeaReviewDays(value: unknown): number | null {
+  const days = typeof value === 'number' ? value : Number(String(value).trim())
+  return Number.isInteger(days) && days >= 1 && days <= IDEA_REVIEW_MAX_DAYS ? days : null
+}
+
+export function ideaReviewDays(groups: IdeaGroup[], kind: ScheduledIdeaReviewKind): number {
+  const stored = groups.find((group) => group.kind === kind)?.reviewDays
+  return parseIdeaReviewDays(stored) ?? scheduledIdeaReviewDefault(kind)!
+}
 
 export type DueIdeaReview = { kind: ScheduledIdeaReviewKind; days: number; items: IdeaItem[] }
 
@@ -111,7 +127,8 @@ function bucketedDay(item: IdeaItem): string {
 // last review. A review is due that many days later and covers every idea
 // placed before the due day; ideas sorted in since then wait for the next one.
 export function dueIdeaReviews(groups: IdeaGroup[], today = todayISO()): DueIdeaReview[] {
-  return IDEA_REVIEW_SCHEDULE.flatMap(({ kind, days }) => {
+  return IDEA_REVIEW_SCHEDULE.flatMap(({ kind }) => {
+    const days = ideaReviewDays(groups, kind)
     const items = ideaGroupItems(groups, kind)
     if (items.length === 0) return []
     const stampDays = items.map(bucketedDay)

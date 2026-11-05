@@ -3,6 +3,7 @@ import {
   ideaUnlockDelay,
   ideaGroupKindForKey,
   dueIdeaReviews,
+  parseIdeaReviewDays,
   isIdeaTrashExpired,
   parseIdeaImportText,
   IDEA_GROUPS,
@@ -76,6 +77,16 @@ test('Genuinely reviews come every 10 days and Possibly every 45, covering ideas
     ['genuine', ['Synthetic old', 'Synthetic newer']],
     ['possible', ['Synthetic maybe']],
   ])
+})
+
+test('a group cadence replaces its default; invalid cadences fall back', () => {
+  const genuine = [idea('Synthetic old', '2026-10-01T12:00:00')]
+  expect(due([{ id: 'g', kind: 'genuine', items: genuine, reviewDays: 3 }], '2026-10-04')).toEqual([['genuine', ['Synthetic old']]])
+  expect(due([{ id: 'g', kind: 'genuine', items: genuine, reviewDays: 3 }], '2026-10-03')).toEqual([])
+  expect(due([{ id: 'g', kind: 'genuine', items: genuine, reviewDays: 0 }], '2026-10-10')).toEqual([])
+  expect(due([{ id: 'g', kind: 'genuine', items: genuine, reviewDays: 0 }], '2026-10-11')).toEqual([['genuine', ['Synthetic old']]])
+  expect([parseIdeaReviewDays('14'), parseIdeaReviewDays(' 7 '), parseIdeaReviewDays('0'), parseIdeaReviewDays('2.5'), parseIdeaReviewDays('366'), parseIdeaReviewDays('')])
+    .toEqual([14, 7, null, null, null, null])
 })
 
 test('undated ideas are due for review at once and empty groups never are', () => {

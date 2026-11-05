@@ -8189,7 +8189,7 @@ return rows`
         onSelectGroup={showIdeaGroup}
         onOpenLink={(link, itemId) => openLink(link, null)}
         onImport={() => (ideaImportOpen = true)}
-        onReview={() => { void startIdeaReview() }}
+        onReview={() => { void startIdeaReview(activeIdeaGroup === 'possible' ? 'possible' : 'genuine') }}
         onSortPropositions={sortPropositions}
         onCopyItem={(groupId, itemId) => copyIdeaFromMenu(groupId, itemId)}
         onCutItem={(groupId, itemId) => copyIdeaFromMenu(groupId, itemId, true)}

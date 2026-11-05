@@ -2,9 +2,10 @@
   import { onDestroy, tick } from 'svelte'
   import PlanItemEditor from './PlanItemEditor.svelte'
   import VoiceIdeaModal from './VoiceIdeaModal.svelte'
+  import IdeaReviewCadence from './IdeaReviewCadence.svelte'
   import { plannerStore } from './store'
   import { focusTaskBelow } from './taskCompletionFocus'
-  import { ideaUnlockDelay, findIdea, ideaGroupId, ideaGroupKindForKey, ideaGroupMeta, IDEA_GROUPS, IDEA_TRASH_RETENTION_DAYS } from './ideas'
+  import { ideaUnlockDelay, findIdea, ideaGroupId, ideaGroupKindForKey, ideaGroupMeta, IDEA_GROUPS, IDEA_TRASH_RETENTION_DAYS, scheduledIdeaReviewDefault, type ScheduledIdeaReviewKind } from './ideas'
   import type { ItemLink, ItemTimeWarning } from './planner'
   import { clipsByIdea, formatClipDuration } from './voiceClips'
   import { canChooseVoiceMic, cancelVoiceRecording, chooseVoiceMic, finishVoiceRecording, startVoiceRecording, voiceMic, voiceRecording, voiceRecordingError } from './voiceRecorder'
@@ -59,6 +60,11 @@
     meta.kind, groups.find((group) => group.kind === meta.kind) ?? { id: ideaGroupId(meta.kind), kind: meta.kind, items: [] },
   ])) as Record<IdeaGroupKind, IdeaGroup>
   $: activeMeta = ideaGroupMeta(activeGroup)
+  $: activeScheduled = scheduledKind(activeGroup)
+
+  function scheduledKind(kind: IdeaGroupKind): ScheduledIdeaReviewKind | null {
+    return scheduledIdeaReviewDefault(kind) === null ? null : kind as ScheduledIdeaReviewKind
+  }
   $: activeItems = groupsByKind[activeGroup].items
 
   function dropMissingSelection(current: IdeaGroup[]) {
@@ -240,7 +246,8 @@
     <div class="template-panel-actions">
       {#if activeGroup === 'proposition'}
         <button type="button" disabled={activeItems.length === 0} on:click={onSortPropositions}>Sort</button>
-      {:else if activeGroup === 'genuine'}
+      {:else if activeScheduled}
+        {#if mobile}<IdeaReviewCadence kind={activeScheduled} {groups} label={activeMeta.label} />{/if}
         <button type="button" on:click={onReview}>Review</button>
       {:else if activeGroup === 'trash'}
         <span class="idea-group-note">clears after {IDEA_TRASH_RETENTION_DAYS} days</span>
@@ -290,9 +297,12 @@
       {#each IDEA_GROUPS as meta (meta.kind)}
         {@const items = groupsByKind[meta.kind].items}
         {@const preview = items.find((item) => item.text.trim())?.text}
+        {@const scheduled = mobile ? null : scheduledKind(meta.kind)}
+        <div class="idea-group-slot">
         <button
           type="button"
           class="idea-group-card"
+          class:scheduled
           class:active={meta.kind === activeGroup}
           aria-current={meta.kind === activeGroup ? 'true' : undefined}
           data-idea-group={meta.kind}
@@ -304,6 +314,12 @@
           <span class="idea-group-count">{items.length}</span>
           {#if preview}<small>{preview}</small>{/if}
         </button>
+        <!-- A sibling, since inputs can't sit inside the card button; it
+             occupies the card's reserved bottom padding. -->
+        {#if scheduled}
+          <div class="idea-group-card-cadence"><IdeaReviewCadence kind={scheduled} {groups} label={meta.label} /></div>
+        {/if}
+        </div>
       {/each}
     </nav>
 
@@ -428,6 +444,13 @@
     padding: 10px 11px;
     text-align: left;
   }
+  .idea-group-slot { position: relative; }
+  .idea-group-card.scheduled { padding-bottom: 34px; }
+  .idea-group-card-cadence {
+    position: absolute;
+    left: 11px;
+    bottom: 9px;
+  }
   .idea-group-card:not(.active) {
     border-color: var(--line);
     background: var(--paper);
@@ -515,6 +538,7 @@
       background: var(--paper-strong);
       scrollbar-width: none;
     }
+    .idea-group-slot { display: flex; flex: 0 0 auto; }
     .idea-group-card {
       flex: 0 0 auto;
       width: auto;

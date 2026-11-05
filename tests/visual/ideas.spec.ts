@@ -711,6 +711,36 @@ test('the Genuinely review button sorts every idea in the group', async ({ page 
   expect((await groups(page)).genuine).toEqual(['Synthetic later', 'Synthetic reviewed'])
 })
 
+test('each scheduled group sets its review cadence from its card', async ({ page }, testInfo) => {
+  // Phones show only the open group's cadence, in the page header.
+  const mobile = testInfo.project.name === 'mobile'
+  await open(page)
+  await storeCall(page, "plannerStore.addIdea('Synthetic keep', 'genuine')")
+  await openView(page, 'Ideas')
+  await expect(page.getByRole('spinbutton', { name: /review days/ })).toHaveCount(mobile ? 0 : 2)
+  if (mobile) await card(page, 'genuine').click()
+  else await expect(page.getByRole('spinbutton', { name: 'Possibly Worth Doing review days' })).toHaveValue('45')
+  const genuine = page.getByRole('spinbutton', { name: 'Genuinely Worth Doing review days' })
+  await expect(genuine).toHaveValue('10')
+  // Typing digits stays in the field instead of moving ideas.
+  await genuine.fill('3')
+  await genuine.press('Enter')
+  await expect(genuine).not.toBeFocused()
+  await genuine.fill('0')
+  await genuine.press('Tab')
+  await expect(genuine).toHaveValue('3')
+  await page.reload()
+  await expect(page.getByRole('region', { name: 'Daily plan' })).toBeVisible()
+  await openView(page, 'Ideas')
+  await expect(genuine).toHaveValue('3')
+
+  await page.clock.setSystemTime(new Date(NOW.getTime() + 3 * 24 * 60 * 60 * 1000))
+  await page.reload()
+  await expect(page.getByRole('region', { name: 'Daily plan' })).toBeVisible()
+  await generateDay(page)
+  await expect(sorter(page).locator('.idea-sort-intro')).toContainText('Every 3 days')
+})
+
 test('a due review blocks day generation until every older idea is sorted', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
   await open(page)
