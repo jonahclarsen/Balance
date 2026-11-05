@@ -1115,6 +1115,10 @@
 :root[data-theme='windowsxp'] :is(.theme-option.active, .color-scheme-option.active, .note-card.active, .note-card.selected, .day-template-option.selected, .idea-group-card.active) :is(strong, small, span, p) {
   color: inherit;
 }
+:root[data-theme='windowsxp'] .day-template-option.selected .nav-shortcut {
+  color: inherit;
+  opacity: 1;
+}
 :root[data-theme='windowsvista'] :is(.theme-option, .color-scheme-option, .note-card, .day-template-option, .idea-group-card):hover {
   border-color: transparent;
   border-image: url('/themes/windowsvista/ui/select-hot.png') 3 fill / 3px stretch;
