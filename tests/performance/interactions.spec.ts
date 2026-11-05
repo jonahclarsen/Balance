@@ -20,6 +20,8 @@ const ACTIVE_DATE = '2026-08-16'
 const RETRO_EXPERIMENT = process.env.BALANCE_RETRO_EXPERIMENT ?? 'baseline'
 const RETRO_STYLES: Record<string, string> = {
   baseline: '',
+  'sidebar-no-blur': '.sidebar { backdrop-filter: none !important; }',
+  'header-no-blur': '.page-header { backdrop-filter: none !important; }',
   'sidebar-style': '.sidebar { contain: style; }',
   'sidebar-layout': '.sidebar { contain: layout style; }',
   'sidebar-layer': '.sidebar { will-change: transform; }',

@@ -7,7 +7,7 @@ on:
     inputs:
       experiments:
         description: Comma-separated interventions (baseline always supported)
-        default: baseline,sidebar-style,sidebar-layout,sidebar-layer,header-layer,panel-style,panel-layout,workspace-style
+        default: baseline,sidebar-no-blur,header-no-blur,sidebar-style,sidebar-layout,sidebar-layer,header-layer,panel-style,panel-layout,workspace-style
         type: string
       rounds:
         description: Repetitions, alternating intervention order
@@ -28,6 +28,7 @@ jobs:
     env:
       EXPERIMENTS: ${{ inputs.experiments }}
       ROUNDS: ${{ inputs.rounds }}
+      BALANCE_INTERACTION_PERF_RELEASE: '1'
       BALANCE_INTERACTION_PERF_PROFILE_ONLY: '1'
       BALANCE_INTERACTION_PERF_THEME: ${{ matrix.theme }}
       BALANCE_INTERACTION_PERF_PLANS: ${{ matrix.size == 'decade' && '3650' || '365' }}
@@ -50,6 +51,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
       - run: node .github/scripts/profile-retro-themes.mjs
+      - run: node .github/scripts/summarize-retro-themes.mjs >> "$GITHUB_STEP_SUMMARY"
+        if: always()
       - uses: actions/upload-artifact@v7
         if: always()
         with:

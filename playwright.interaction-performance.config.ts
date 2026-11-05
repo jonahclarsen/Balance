@@ -1,5 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 
+const release = process.env.BALANCE_INTERACTION_PERF_RELEASE === '1'
+
 export default defineConfig({
   testDir: './tests/performance',
   testMatch: 'interactions.spec.ts',
@@ -35,7 +37,9 @@ export default defineConfig({
     trace: 'retain-on-failure',
   },
   webServer: {
-    command: 'pnpm exec vite --host 127.0.0.1 --port 5124',
+    command: release
+      ? 'pnpm exec vite build && pnpm exec vite preview --host 127.0.0.1 --port 5124 --strictPort'
+      : 'pnpm exec vite --host 127.0.0.1 --port 5124 --strictPort',
     env: { VITE_BALANCE_START_VIEW: 'today', VITE_BALANCE_SKIP_SEED_GOALS: '1' },
     url: 'http://127.0.0.1:5124',
     reuseExistingServer: !process.env.CI,
