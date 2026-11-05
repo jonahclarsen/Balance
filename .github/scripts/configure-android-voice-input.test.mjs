@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { access, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -26,6 +26,8 @@ test('voice input integration is idempotent and declares headset routing and bac
     assert.match(manifest, /"android\.permission\.BLUETOOTH" android:maxSdkVersion="30"/)
     assert.match(manifest, /BalanceVoiceRecordingService" android:exported="false" android:foregroundServiceType="microphone"/)
     assert.match(activity, /override fun onWebViewCreate\(webView: android\.webkit\.WebView\) \{\n\s*super\.onWebViewCreate\(webView\)\n\s*BalanceVoiceInput\.attach\(this, webView\)/)
+    for (const density of ['mdpi', 'hdpi', 'xhdpi', 'xxhdpi', 'xxxhdpi']) await access(join(root, `res/drawable-${density}/ic_balance_notification.png`))
+    assert.match(bridge, /setSmallIcon\(R\.drawable\.ic_balance_notification\)/)
     assert.match(bridge, /addJavascriptInterface\(BalanceVoiceInput\(activity\), "BalanceVoiceInput"\)/)
   } finally {
     await rm(root, { recursive: true, force: true })

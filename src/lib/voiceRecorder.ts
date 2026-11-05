@@ -132,32 +132,46 @@ export function peaksFromSamples(samples: Float32Array, sampleRate: number): num
   return peaks.map((rms) => Math.round(Math.min(1, rms / loudest) * 255))
 }
 
+// The recorder takes its audio from an AudioContext rather than the
+// microphone itself, so the microphone can change mid-recording: a MediaRecorder
+// stops when its stream's tracks change.
 type Session = {
   id: string
   recorder: MediaRecorder
-  stream: MediaStream
+  input: MediaStream
+  source: MediaStreamAudioSourceNode
+  analyser: AnalyserNode
   context: AudioContext
   chunks: Blob[]
   meter: number
   startedAt: number
   written: Promise<unknown>
-  discarded: boolean
+  stopping: boolean
 }
 
 let session: Session | null = null
 
+export const voiceMicSwitching = writable(false)
+
 export async function startVoiceRecording() {
-  if (session) return
+  if (session || get(voiceRecording).state !== 'idle') return
   voiceRecordingError.set(null)
   voiceRecording.set({ state: 'starting' })
+  // Created before the microphone opens, while the tap still counts as one.
+  const context = new AudioContext()
   try {
-    const stream = await openMicrophone()
-    const mimeType = MIME_TYPES.find((type) => MediaRecorder.isTypeSupported(type))
-    const recorder = new MediaRecorder(stream, { ...(mimeType ? { mimeType } : {}), audioBitsPerSecond: VOICE_BITRATE })
-    const context = new AudioContext()
+    const input = await openMicrophone()
+    // Never awaited: without a user gesture it would wait forever.
+    if (context.state === 'suspended') void context.resume()
     const analyser = context.createAnalyser()
     analyser.fftSize = 1024
-    context.createMediaStreamSource(stream).connect(analyser)
+    const output = context.createMediaStreamDestination()
+    output.channelCount = 1
+    analyser.connect(output)
+    const source = context.createMediaStreamSource(input)
+    source.connect(analyser)
+    const mimeType = MIME_TYPES.find((type) => MediaRecorder.isTypeSupported(type))
+    const recorder = new MediaRecorder(output.stream, { ...(mimeType ? { mimeType } : {}), audioBitsPerSecond: VOICE_BITRATE })
     const buffer = new Float32Array(analyser.fftSize)
     const startedAt = Date.now()
     const meter = window.setInterval(() => {
@@ -167,10 +181,10 @@ export async function startVoiceRecording() {
     }, 80)
     const chunks: Blob[] = []
     const id = createId('voice')
-    const current: Session = { id, recorder, stream, context, chunks, meter, startedAt, written: Promise.resolve(), discarded: false }
+    const current: Session = { id, recorder, input, source, analyser, context, chunks, meter, startedAt, written: Promise.resolve(), stopping: false }
     let sequence = 0
     recorder.ondataavailable = (event) => {
-      if (event.data.size === 0 || current.discarded) return
+      if (event.data.size === 0) return
       chunks.push(event.data)
       // A failed write only costs recovery: the chunks in memory still save.
       current.written = appendVoiceChunk({ recordingId: id, sequence: sequence++, startedAt, mimeType: recorder.mimeType, data: event.data })
@@ -181,28 +195,55 @@ export async function startVoiceRecording() {
     androidVoiceInput()?.recordingStarted(startedAt)
     voiceRecording.set({ state: 'recording', startedAt, level: 0 })
   } catch (error) {
+    void context.close()
     voiceRecording.set({ state: 'idle' })
     voiceRecordingError.set(error instanceof DOMException && error.name === 'NotAllowedError' ? 'Microphone access is off' : 'Could not record')
     console.error('Could not start recording', error)
   }
 }
 
-function release(current: Session) {
-  window.clearInterval(current.meter)
-  current.stream.getTracks().forEach((track) => track.stop())
-  void current.context.close()
-  session = null
+// The old microphone closes first: Android may not open two at once, and
+// leaving a headset's microphone open would keep its call profile on. The
+// recording carries on through the gap as silence.
+export async function switchVoiceMic(mic: VoiceMic) {
+  const current = session
+  const previous = get(voiceMic)
+  if (!current || current.stopping || mic === previous || get(voiceMicSwitching)) return
+  voiceMicSwitching.set(true)
+  chooseVoiceMic(mic)
+  current.source.disconnect()
+  current.input.getTracks().forEach((track) => track.stop())
+  try {
+    let input: MediaStream
+    try {
+      input = await openMicrophone()
+    } catch (error) {
+      console.error('Could not switch microphones', error)
+      voiceRecordingError.set('Could not switch microphones')
+      chooseVoiceMic(previous)
+      input = await openMicrophone()
+    }
+    if (session !== current) {
+      input.getTracks().forEach((track) => track.stop())
+      return
+    }
+    current.input = input
+    current.source = current.context.createMediaStreamSource(input)
+    current.source.connect(current.analyser)
+  } catch (error) {
+    // Without a microphone, keep what was recorded.
+    console.error('Could not reopen the microphone', error)
+    if (session === current) await finishVoiceRecording()
+  } finally {
+    voiceMicSwitching.set(false)
+  }
 }
 
-export function cancelVoiceRecording() {
-  if (!session) return
-  const current = session
-  current.discarded = true
-  current.recorder.stop()
-  release(current)
-  voiceRecording.set({ state: 'idle' })
-  void current.written.then(() => removeVoiceChunks(current.id)).catch((error) => console.error('Could not remove a discarded recording', error))
-  androidVoiceInput()?.recordingStopped()
+function release(current: Session) {
+  window.clearInterval(current.meter)
+  current.input.getTracks().forEach((track) => track.stop())
+  void current.context.close()
+  session = null
 }
 
 type Recording = { id: string; startedAt: number; mimeType: string; chunks: Blob[] }
@@ -224,32 +265,49 @@ async function encodedClip(recording: Recording): Promise<Pick<VoiceClip, 'id' |
   }
 }
 
-async function saveRecording(clip: NonNullable<Awaited<ReturnType<typeof encodedClip>>>) {
-  plannerStore.addVoiceIdea(clip)
+export type VoiceIdeaText = { text: string; html: string }
+
+async function saveRecording(clip: NonNullable<Awaited<ReturnType<typeof encodedClip>>>, typed?: VoiceIdeaText) {
+  plannerStore.addVoiceIdea(clip, typed)
   // The app may be in the background, where it can be frozen at any time.
   await plannerStore.flushPendingOperations()
 }
 
-export async function finishVoiceRecording() {
+// Typed text, from the Add idea dialog, goes in the clip's idea.
+export async function finishVoiceRecording(typed?: VoiceIdeaText) {
   const current = session
-  if (!current) return
+  if (!current || current.stopping) return
+  current.stopping = true
+  // The meter would otherwise report recording again.
+  window.clearInterval(current.meter)
   voiceRecording.set({ state: 'saving' })
   const stopped = new Promise((resolve) => { current.recorder.onstop = resolve })
   current.recorder.stop()
   await stopped
   release(current)
+  let pendingText = typed
   try {
     const clip = await encodedClip({ id: current.id, startedAt: current.startedAt, mimeType: current.recorder.mimeType, chunks: current.chunks })
-    if (clip) await saveRecording(clip)
+    const save = clip ? saveRecording(clip, pendingText) : saveTyped(pendingText)
+    pendingText = undefined
+    await save
     await current.written
     await removeVoiceChunks(current.id)
   } catch (error) {
     voiceRecordingError.set('Could not save')
     console.error('Could not save recording', error)
+    // The chunks stay for recovery; the words can't wait for it.
+    await saveTyped(pendingText).catch((saveError) => console.error('Could not save the typed idea', saveError))
   } finally {
     voiceRecording.set({ state: 'idle' })
     androidVoiceInput()?.recordingStopped()
   }
+}
+
+async function saveTyped(typed?: VoiceIdeaText) {
+  if (!typed?.text.trim()) return
+  plannerStore.addIdea(typed.text, 'proposition', typed.html)
+  await plannerStore.flushPendingOperations()
 }
 
 // Saves what was on disk when the app last closed mid-recording. Runs once the

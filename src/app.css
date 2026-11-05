@@ -3654,6 +3654,10 @@ body.mobile-checkbox-dragging {
   border-bottom: 0;
 }
 
+.quick-add-voice {
+  margin-right: auto;
+}
+
 .quick-add-edit-last-button {
   display: flex;
   align-items: center;

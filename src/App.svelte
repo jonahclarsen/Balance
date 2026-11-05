@@ -51,7 +51,8 @@
   import { activeProjects, needsProjectPick, templateForGeneration } from './lib/projects'
   import PrioritizePanel from './lib/PrioritizePanel.svelte'
   import IdeasPanel from './lib/IdeasPanel.svelte'
-  import { recoverVoiceRecordings } from './lib/voiceRecorder'
+  import { finishVoiceRecording, recoverVoiceRecordings, voiceRecording, voiceRecordingError } from './lib/voiceRecorder'
+  import VoiceRecordControls from './lib/VoiceRecordControls.svelte'
   import IdeaSortModal from './lib/IdeaSortModal.svelte'
   import { dayTemplateShortcutLetters } from './lib/dayTemplateShortcuts'
   import IdeaImportModal from './lib/IdeaImportModal.svelte'
@@ -554,6 +555,8 @@ return rows`
   let lastQuickAddedIdea: { id: Id; at: number } | null = null
   let quickAddCanEditLast = false
   let quickAddEditing = false
+  // Set once a recording starts from the dialog.
+  let quickAddRecorded = false
   let quickAddReturnFocus: FocusReturn | null = null
   let prioritizeSessionOpen = false
   let quickAddText = ''
@@ -3242,6 +3245,7 @@ return rows`
     quickAddHTML = ''
     quickAddPendingId = null
     quickAddEditing = false
+    quickAddRecorded = false
     quickAddCanEditLast = Boolean(
       lastQuickAddedIdea &&
       Date.now() - lastQuickAddedIdea.at < QUICK_ADD_EDIT_WINDOW_MS &&
@@ -3290,10 +3294,27 @@ return rows`
     returnFocus?.restore()
   }
 
+  // Closing never throws away audio recorded here; it saves like Save.
+  function dismissQuickAdd() {
+    if (quickAddRecorded && $voiceRecording.state === 'recording') void saveQuickAdd()
+    else closeQuickAdd()
+  }
+
   // Quick add drops the text into Proposition Party; the next day generation sorts it.
   async function saveQuickAdd() {
     if (quickAddSaving) return
     const text = quickAddText.trim()
+    // A recording takes the typed text into its idea.
+    if (!quickAddEditing && $voiceRecording.state === 'recording') {
+      quickAddSaving = true
+      try {
+        await finishVoiceRecording({ text, html: quickAddHTML })
+      } finally {
+        quickAddSaving = false
+      }
+      closeQuickAdd()
+      return
+    }
     if (!text) return
     quickAddSaving = true
     try {
@@ -3387,7 +3408,7 @@ return rows`
     if (event.key === 'Escape') {
       event.preventDefault()
       event.stopPropagation()
-      closeQuickAdd()
+      dismissQuickAdd()
     } else if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
       event.preventDefault()
       saveQuickAdd()
@@ -8928,7 +8949,7 @@ return rows`
 {/if}
 
 {#if quickAddOpen}
-  <OverlayModal title={quickAddEditing ? 'Edit idea' : 'Add idea'} cover="viewport" z={100} maxWidth={480} backdropStyle={appShellStyle} onClose={closeQuickAdd} closeDisabled={quickAddSaving} closeOnBackdrop={false}>
+  <OverlayModal title={quickAddEditing ? 'Edit idea' : 'Add idea'} cover="viewport" z={100} maxWidth={480} backdropStyle={appShellStyle} onClose={dismissQuickAdd} closeDisabled={quickAddSaving} closeOnBackdrop={false}>
     <svelte:fragment slot="header-middle">
       {#if quickAddCanEditLast}
         <button
@@ -8970,10 +8991,23 @@ return rows`
       </div>
       {#if $persistenceError}
         <p role="alert">{$persistenceError}</p>
+      {:else if $voiceRecordingError && !quickAddEditing}
+        <p role="alert">{$voiceRecordingError}</p>
       {/if}
       <div class="modal-actions">
-        <button type="button" on:click={closeQuickAdd} disabled={quickAddSaving}>Cancel</button>
-        <button class="primary" type="submit" disabled={quickAddSaving || !quickAddText.trim()}>Save</button>
+        {#if !quickAddEditing}
+          <div class="quick-add-voice">
+            <VoiceRecordControls
+              disabled={quickAddSaving}
+              onStart={() => { quickAddRecorded = true }}
+              onStop={() => { void saveQuickAdd() }}
+            />
+          </div>
+        {/if}
+        {#if !(quickAddRecorded && $voiceRecording.state === 'recording')}
+          <button type="button" on:click={closeQuickAdd} disabled={quickAddSaving}>Cancel</button>
+        {/if}
+        <button class="primary" type="submit" disabled={quickAddSaving || (!quickAddText.trim() && ($voiceRecording.state !== 'recording' || quickAddEditing))}>Save</button>
       </div>
     </form>
   </OverlayModal>

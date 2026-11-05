@@ -96,14 +96,8 @@ test('the Android notification stops and saves a recording after leaving Ideas',
   const calls = () => page.evaluate(() => (window as any).__voiceBridgeCalls.slice())
   const before = (await calls()).length
 
-  // Discarding also clears the notification.
-  await proposition(page).getByRole('button', { name: 'Record an idea' }).click()
-  await expect(proposition(page).getByRole('button', { name: 'Stop recording' })).toBeVisible()
   // The controls stay reachable from any group, and a new recording returns to Proposition Party.
   await page.locator('.idea-group-card[data-idea-group="trash"]').click()
-  await proposition(page).getByRole('button', { name: 'Discard recording' }).click()
-  await expect.poll(async () => (await calls()).slice(before)).toEqual(['started', 'stopped'])
-
   await proposition(page).getByRole('button', { name: 'Record an idea' }).click()
   await expect(proposition(page).getByRole('button', { name: 'Stop recording' })).toBeVisible()
   await page.waitForTimeout(1200)
@@ -112,7 +106,7 @@ test('the Android notification stops and saves a recording after leaving Ideas',
 
   await expect.poll(async () => (await state(page)).voiceClips.length).toBe(1)
   expect((await state(page)).voiceClips[0].durationMs).toBeGreaterThan(800)
-  await expect.poll(async () => (await calls()).slice(before)).toEqual(['started', 'stopped', 'started', 'stopped'])
+  await expect.poll(async () => (await calls()).slice(before)).toEqual(['started', 'stopped'])
 
   await openView(page, 'Ideas')
   await expect(proposition(page).locator('.voice-clip-chip')).toBeVisible()
@@ -122,12 +116,6 @@ test('the Android notification stops and saves a recording after leaving Ideas',
 test('closing the app mid-recording keeps the clip, once', async ({ page, context }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop', 'Fake capture devices are Chromium-only')
   await open(page)
-
-  // A discarded recording stays gone.
-  await proposition(page).getByRole('button', { name: 'Record an idea' }).click()
-  await expect(proposition(page).getByRole('button', { name: 'Stop recording' })).toBeVisible()
-  await page.waitForTimeout(1300)
-  await proposition(page).getByRole('button', { name: 'Discard recording' }).click()
 
   await proposition(page).getByRole('button', { name: 'Record an idea' }).click()
   await expect(proposition(page).getByRole('button', { name: 'Stop recording' })).toBeVisible()
@@ -152,7 +140,7 @@ test('closing the app mid-recording keeps the clip, once', async ({ page, contex
   expect((await state(reopened)).voiceClips).toHaveLength(1)
 })
 
-test('the phone microphone records unprocessed, away from a connected headset', async ({ page }, testInfo) => {
+test('the microphone switches mid-recording, to the phone unprocessed', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop', 'Fake capture devices are Chromium-only')
   await page.addInitScript(() => {
     const requests: unknown[] = []
@@ -178,28 +166,68 @@ test('the phone microphone records unprocessed, away from a connected headset', 
   await open(page)
   const headset = proposition(page).getByRole('button', { name: 'Headset microphone' })
   const phone = proposition(page).getByRole('button', { name: 'Phone microphone' })
-  const lastRequest = () => page.evaluate(() => (window as any).__micRequests.at(-1))
-  const record = async () => {
-    await proposition(page).getByRole('button', { name: 'Record an idea' }).click()
-    await proposition(page).getByRole('button', { name: 'Discard recording' }).click()
-  }
+  const stop = proposition(page).getByRole('button', { name: 'Stop recording' })
+  const requests = () => page.evaluate(() => (window as any).__micRequests.slice())
+
+  // The choice only shows while recording.
+  await expect(phone).toHaveCount(0)
+  await proposition(page).getByRole('button', { name: 'Record an idea' }).click()
   await expect(headset).toHaveAttribute('aria-pressed', 'true')
-  await record()
   // The headset choice keeps the system's processed input; only Android names the headset.
-  expect(await lastRequest()).toEqual({ audio: true })
+  expect(await requests()).toEqual([{ audio: true }])
+  await page.waitForTimeout(1200)
 
   await phone.click()
-  await record()
-  expect(await lastRequest()).toEqual({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, deviceId: { exact: 'phone' } } })
+  await expect(phone).toHaveAttribute('aria-pressed', 'true')
+  await expect(phone).toBeEnabled()
+  expect((await requests()).at(-1)).toEqual({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, deviceId: { exact: 'phone' } } })
+  await page.waitForTimeout(1200)
+  await stop.click()
+
+  // One clip spans both microphones.
+  await expect.poll(async () => (await state(page)).voiceClips.length).toBe(1)
+  expect((await state(page)).voiceClips[0].durationMs).toBeGreaterThan(2000)
+  await expect(phone).toHaveCount(0)
 
   // The choice lasts, and later recordings ask for the phone from the start.
   await page.reload()
   await openView(page, 'Ideas')
-  await expect(phone).toHaveAttribute('aria-pressed', 'true')
+  const before = (await requests()).length
   await proposition(page).getByRole('button', { name: 'Record an idea' }).click()
-  await proposition(page).getByRole('button', { name: 'Discard recording' }).click()
-  const first = await page.evaluate(() => (window as any).__micRequests[0])
-  expect(first.audio.deviceId).toEqual({ ideal: 'phone' })
+  await expect(phone).toHaveAttribute('aria-pressed', 'true')
+  expect((await requests())[before].audio.deviceId).toEqual({ ideal: 'phone' })
+  await stop.click()
+})
+
+test('the Add idea dialog records an idea with its typed text', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'Fake capture devices are Chromium-only')
+  await open(page)
+  await openView(page, 'Today')
+  await page.keyboard.press('Alt+KeyA')
+  const dialog = page.getByRole('dialog', { name: 'Add idea' })
+  await expect(dialog).toBeVisible()
+  await page.keyboard.type('Synthetic typed words')
+  await dialog.getByRole('button', { name: 'Record an idea' }).click()
+  await expect(dialog.getByRole('button', { name: 'Stop recording' })).toBeVisible()
+  // Recording leaves only Save and Stop: closing would save too.
+  await expect(dialog.getByRole('button', { name: 'Cancel' })).toHaveCount(0)
+  await page.waitForTimeout(1200)
+  await dialog.getByRole('button', { name: 'Stop recording' }).click()
+  await expect(dialog).toBeHidden()
+
+  await expect.poll(async () => (await state(page)).voiceClips.length).toBe(1)
+  const current = await state(page)
+  const idea = current.ideaBuckets[0].items.find((item: any) => item.id === current.voiceClips[0].ideaId)
+  expect(idea.text).toBe('Synthetic typed words')
+
+  // Escape mid-recording keeps the audio.
+  await page.keyboard.press('Alt+KeyA')
+  await dialog.getByRole('button', { name: 'Record an idea' }).click()
+  await expect(dialog.getByRole('button', { name: 'Stop recording' })).toBeVisible()
+  await page.waitForTimeout(1200)
+  await page.keyboard.press('Escape')
+  await expect(dialog).toBeHidden()
+  await expect.poll(async () => (await state(page)).voiceClips.length).toBe(2)
 })
 
 test('the transcript and waveform follow each other', async ({ page }, testInfo) => {

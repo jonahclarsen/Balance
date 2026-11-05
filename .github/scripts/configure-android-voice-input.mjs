@@ -1,4 +1,4 @@
-import { readFile, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
 // Voice ideas record through the WebView's getUserMedia. wry asks for the
@@ -10,6 +10,14 @@ const activityPath = join(source, 'MainActivity.kt')
 const manifestPath = join(root, 'AndroidManifest.xml')
 
 await writeFile(join(source, 'BalanceVoiceInput.kt'), await readFile(new URL('../android/BalanceVoiceInput.kt', import.meta.url), 'utf8'))
+
+// The recording notification shows the app's logo, traced from app-icon.png.
+const resources = new URL('../android/res/', import.meta.url)
+for (const density of await readdir(resources)) {
+  if (!density.startsWith('drawable-')) continue
+  await mkdir(join(root, 'res', density), { recursive: true })
+  await copyFile(new URL(`${density}/ic_balance_notification.png`, resources), join(root, 'res', density, 'ic_balance_notification.png'))
+}
 
 let activity = await readFile(activityPath, 'utf8')
 if (!activity.includes('BalanceVoiceInput.attach(this, webView)')) {

@@ -1,14 +1,19 @@
 # Voice ideas
 
-The record button on the Ideas page captures an idea by voice into Proposition Party. Recording uses
-the WebView's microphone (`MediaRecorder`, WebM/Opus at 128 kbps). On Android,
+The record button on the Ideas page and in the Add idea dialog captures an idea
+by voice into Proposition Party; the dialog puts its typed text in the clip's
+idea, and closing it mid-recording saves like Save. Recordings are never
+discarded: Stop always saves. Recording uses the WebView's microphone through an
+`AudioContext` into `MediaRecorder` (WebM/Opus at 128 kbps), so the microphone
+can change mid-recording. On Android,
 Balance asks for the Nearby devices (Bluetooth) and notification permissions the
 first time so a connected headset's microphone is used; elsewhere the system
 input is used. A microphone foreground service keeps Android recording while the
-app is in the background and shows a notification with a Stop button, which
-saves the clip.
+app is in the background and shows a notification with the app's logo and a
+Stop button, which saves the clip.
 
-On Android the mic buttons choose between the headset and the phone. A headset's
+On Android, mic buttons shown while recording switch between the headset and the
+phone; the choice is remembered for the next recording. A headset's
 microphone forces Bluetooth's call profile. The phone choice records without
 voice processing from the named built-in input, which keeps Chromium out of
 Android's call mode so music keeps playing normally.

@@ -3,12 +3,13 @@
   import PlanItemEditor from './PlanItemEditor.svelte'
   import VoiceIdeaModal from './VoiceIdeaModal.svelte'
   import IdeaReviewCadence from './IdeaReviewCadence.svelte'
+  import VoiceRecordControls from './VoiceRecordControls.svelte'
   import { plannerStore } from './store'
   import { focusTaskBelow } from './taskCompletionFocus'
   import { ideaUnlockDelay, findIdea, ideaGroupId, ideaGroupKindForKey, ideaGroupMeta, IDEA_GROUPS, IDEA_TRASH_RETENTION_DAYS, scheduledIdeaReviewDefault, type ScheduledIdeaReviewKind } from './ideas'
   import type { ItemLink, ItemTimeWarning } from './planner'
   import { clipsByIdea, formatClipDuration } from './voiceClips'
-  import { canChooseVoiceMic, cancelVoiceRecording, chooseVoiceMic, finishVoiceRecording, startVoiceRecording, voiceMic, voiceRecording, voiceRecordingError } from './voiceRecorder'
+  import { voiceRecording, voiceRecordingError } from './voiceRecorder'
   import { canTranscribe, transcribeClips, transcriptionError, transcriptionStatus } from './voiceTranscription'
   import type { Id, IdeaGroup, IdeaGroupKind, ListTemplate, Metric, Note, VoiceClip } from './types'
 
@@ -39,16 +40,12 @@
   let shaking: IdeaGroupKind | null = null
   let shakeTimer: number | null = null
   let openClipId: Id | null = null
-  let now = Date.now()
-  let clock: number | null = null
 
   $: selected = selectedItemId ? findIdea(groups, selectedItemId) : null
   $: clipForIdea = clipsByIdea(voiceClips)
   $: untranscribed = voiceClips.filter((clip) => !clip.transcript)
   $: openClip = openClipId ? voiceClips.find((clip) => clip.id === openClipId) ?? null : null
   $: openIdea = openClip ? findIdea(groups, openClip.ideaId) : null
-  $: recording = $voiceRecording.state === 'recording' ? $voiceRecording : null
-  $: syncClock(recording !== null)
   $: transcribing = $transcriptionStatus
   // Drop the selection once its idea disappears (undo, sync, purge).
   $: dropMissingSelection(groups)
@@ -190,21 +187,6 @@
     attemptMove(kind)
   }
 
-  function syncClock(running: boolean) {
-    if (running && clock === null) clock = window.setInterval(() => { now = Date.now() }, 250)
-    else if (!running && clock !== null) {
-      window.clearInterval(clock)
-      clock = null
-    }
-    now = Date.now()
-  }
-
-  // A new recording lands in Proposition Party, so show it there.
-  function startRecording() {
-    onSelectGroup('proposition')
-    void startVoiceRecording()
-  }
-
   // The phone rail scrolls sideways; keep the open card on screen.
   function revealWhenActive(node: HTMLElement, active: boolean) {
     const reveal = (isActive: boolean) => {
@@ -234,7 +216,6 @@
   onDestroy(() => {
     for (const timer of unlockTimers) window.clearTimeout(timer)
     if (shakeTimer !== null) window.clearTimeout(shakeTimer)
-    if (clock !== null) window.clearInterval(clock)
   })
 </script>
 
@@ -252,38 +233,13 @@
       {:else if activeGroup === 'trash'}
         <span class="idea-group-note">clears after {IDEA_TRASH_RETENTION_DAYS} days</span>
       {/if}
-      <div class="voice-idea-controls">
-        {#if recording}
-          <span class="voice-recording-dot" style:--level={recording.level} aria-hidden="true"></span>
-          <span class="voice-recording-time">{formatClipDuration(now - recording.startedAt)}</span>
-          <button class="ghost" type="button" aria-label="Discard recording" title="Discard" on:click={cancelVoiceRecording}>✕</button>
-          <button class="voice-record-button recording" type="button" aria-label="Stop recording" title="Stop" on:click={() => { void finishVoiceRecording() }}>■</button>
-        {:else}
-          {#if canTranscribe && untranscribed.length > 0}
-            <button class="ghost" type="button" disabled={transcribing.state !== 'idle'} on:click={() => transcribe(untranscribed)}>
-              {#if transcribing.state === 'downloading'}Downloading {Math.round(transcribing.fraction * 100)}%{:else if transcribing.state === 'transcribing'}Transcribing {transcribing.done + 1}/{transcribing.total}{:else if transcribing.state === 'preparing'}Transcribing…{:else}Transcribe {untranscribed.length}{/if}
-            </button>
-          {/if}
-          {#if canChooseVoiceMic()}
-            <div class="voice-mic-choice">
-              <button class="ghost" type="button" aria-label="Headset microphone" title="Headset" aria-pressed={$voiceMic === 'headset'} on:click={() => chooseVoiceMic('headset')}>
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 14v-2a8 8 0 0 1 16 0v2M4 14h3v6H4zM17 14h3v6h-3z" /></svg>
-              </button>
-              <button class="ghost" type="button" aria-label="Phone microphone" title="Phone" aria-pressed={$voiceMic === 'phone'} on:click={() => chooseVoiceMic('phone')}>
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3h8a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM11 18h2" /></svg>
-              </button>
-            </div>
-          {/if}
-          <button
-            class="voice-record-button"
-            type="button"
-            aria-label="Record an idea"
-            title="Record"
-            disabled={$voiceRecording.state !== 'idle'}
-            on:click={startRecording}
-          >●</button>
-        {/if}
-      </div>
+      {#if canTranscribe && untranscribed.length > 0 && $voiceRecording.state === 'idle'}
+        <button class="ghost" type="button" disabled={transcribing.state !== 'idle'} on:click={() => transcribe(untranscribed)}>
+          {#if transcribing.state === 'downloading'}Downloading {Math.round(transcribing.fraction * 100)}%{:else if transcribing.state === 'transcribing'}Transcribing {transcribing.done + 1}/{transcribing.total}{:else if transcribing.state === 'preparing'}Transcribing…{:else}Transcribe {untranscribed.length}{/if}
+        </button>
+      {/if}
+      <!-- A new recording lands in Proposition Party, so show it there. -->
+      <VoiceRecordControls onStart={() => onSelectGroup('proposition')} />
       <button type="button" on:click={onImport}>Import</button>
     </div>
   </header>
@@ -469,34 +425,6 @@
   .idea-group-count { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
   .idea-group-pane { min-width: 0; }
   .idea-group-note { color: var(--muted); font-size: 12px; }
-  .voice-idea-controls {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .voice-mic-choice { display: inline-flex; gap: 2px; }
-  .voice-idea-controls .voice-mic-choice button { display: inline-grid; place-items: center; width: 32px; height: 32px; padding: 0; color: var(--muted); }
-  .voice-idea-controls .voice-mic-choice button[aria-pressed='true'] { color: var(--ink); background: color-mix(in srgb, var(--ink) 12%, transparent); }
-  .voice-mic-choice svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-  .voice-record-button.voice-record-button {
-    width: 32px;
-    height: 32px;
-    padding: 0;
-    border-radius: 50%;
-    color: var(--danger);
-    font-size: 14px;
-    line-height: 1;
-  }
-  .voice-record-button.recording { color: var(--ink); font-size: 11px; }
-  .voice-recording-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background: var(--danger);
-    box-shadow: 0 0 0 calc(var(--level, 0) * 7px) color-mix(in srgb, var(--danger) 30%, transparent);
-    transition: box-shadow 80ms linear;
-  }
-  .voice-recording-time { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
   .voice-idea-error { margin: 0 0 12px; color: var(--danger); font-size: 13px; }
   .voice-clip-chip {
     display: inline-flex;

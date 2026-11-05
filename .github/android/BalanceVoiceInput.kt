@@ -51,16 +51,24 @@ internal class BalanceVoiceInput(private val activity: AppCompatActivity) {
         val permissions = missing()
         if (permissions.isEmpty() || pending) return
         pending = true
-        activity.runOnUiThread { launcher.launch(permissions.toTypedArray()) }
+        activity.runOnUiThread {
+            try {
+                launcher.launch(permissions.toTypedArray())
+            } catch (error: RuntimeException) {
+                pending = false
+                Log.w("BalanceVoiceInput", "Could not ask for recording permissions", error)
+            }
+        }
     }
 
     // Android silences the microphone of a backgrounded app unless a microphone
-    // foreground service was started while the app was visible.
+    // foreground service was started while the app was visible. An exception
+    // escaping a JavaScript interface crashes the app, so none may.
     @JavascriptInterface
     fun recordingStarted(startedAt: Long) {
         try {
             activity.startService(Intent(activity, BalanceVoiceRecordingService::class.java).putExtra(STARTED_AT, startedAt))
-        } catch (error: IllegalStateException) {
+        } catch (error: RuntimeException) {
             Log.w("BalanceVoiceInput", "Could not start the recording notification", error)
         }
     }
@@ -68,7 +76,11 @@ internal class BalanceVoiceInput(private val activity: AppCompatActivity) {
     // Called after the clip is saved, so the process stays foreground until then.
     @JavascriptInterface
     fun recordingStopped() {
-        activity.stopService(Intent(activity, BalanceVoiceRecordingService::class.java))
+        try {
+            activity.stopService(Intent(activity, BalanceVoiceRecordingService::class.java))
+        } catch (error: RuntimeException) {
+            Log.w("BalanceVoiceInput", "Could not stop the recording notification", error)
+        }
     }
 
     companion object {
@@ -133,7 +145,7 @@ class BalanceVoiceRecordingService : Service() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         val builder = Notification.Builder(this, CHANNEL)
-            .setSmallIcon(R.drawable.ic_task_notification)
+            .setSmallIcon(R.drawable.ic_balance_notification)
             .setContentIntent(open)
             .setOngoing(true)
             .setCategory(Notification.CATEGORY_SERVICE)
@@ -154,7 +166,7 @@ class BalanceVoiceRecordingService : Service() {
             .setWhen(startedAt)
             .setShowWhen(true)
             .setUsesChronometer(true)
-            .addAction(Notification.Action.Builder(Icon.createWithResource(this, R.drawable.ic_task_notification), "Stop", stop).build())
+            .addAction(Notification.Action.Builder(Icon.createWithResource(this, R.drawable.ic_balance_notification), "Stop", stop).build())
             .build()
     }
 

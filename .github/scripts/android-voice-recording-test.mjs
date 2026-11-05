@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-// Records voice ideas on a disposable emulator install: stopping from the
-// notification in the background, keeping Android out of call mode with the
-// phone microphone, and recovering after the app is killed. The emulator's
+// Records voice ideas on a disposable emulator install: stopping in the app and
+// from the notification in the background, switching to the phone microphone
+// mid-recording to keep Android out of call mode, and recovering after the app
+// is killed. The emulator's
 // microphone only produces silence, and it has no echo canceller, so Chromium
 // stays out of call mode with either microphone.
 
@@ -111,13 +112,15 @@ async function run() {
   await click('.mobile-menu-button')
   await click('button[data-nav-view="ideas"]')
 
-  // Discarding removes the notification.
+  // Stopping in the app saves the clip and removes the notification.
   await click(record)
   await waitFor(() => has(stopInApp), 'recording to start', 30_000)
   await waitFor(notification, 'the recording notification')
   console.log(`Audio mode with the default microphone: ${audioMode()}`)
-  await click('[aria-label="Discard recording"]')
-  await waitFor(() => !notification(), 'the discarded recording to clear its notification')
+  await sleep(2_000)
+  await click(stopInApp)
+  await waitFor(async () => (await readClips(evaluate)).length === 1, 'the clip stopped in the app to be saved', 60_000)
+  await waitFor(() => !notification(), 'the stopped recording to clear its notification')
 
   // The recording keeps running behind the notification.
   await click(record)
@@ -136,20 +139,23 @@ async function run() {
   // The app stays in the background: stopping must save without reopening it.
   const clips = await waitFor(async () => {
     const saved = await readClips(evaluate)
-    return saved.length === 1 ? saved : null
+    return saved.length === 2 ? saved : null
   }, 'the clip to be saved in the background', 60_000)
   if (!(await evaluate('document.hidden'))) throw new Error('The app came to the screen while saving')
-  if (clips[0].durationMs < backgroundMs) throw new Error(`The clip stopped early: ${clips[0].durationMs} ms`)
+  const background = clips.reduce((longest, clip) => clip.durationMs > longest.durationMs ? clip : longest)
+  if (background.durationMs < backgroundMs) throw new Error(`The clip stopped early: ${background.durationMs} ms`)
   await waitFor(() => !notification(), 'the saved recording to clear its notification')
 
   adb(['shell', 'monkey', '-p', packageName, '-c', 'android.intent.category.LAUNCHER', '1'])
   await waitFor(() => has('.voice-clip-chip'), 'the saved clip on screen')
-  console.log(`Saved a ${clips[0].durationMs} ms clip from the notification`)
+  console.log(`Saved a ${background.durationMs} ms clip from the notification`)
 
-  // The phone microphone leaves Android out of call mode.
-  await click('[aria-label="Phone microphone"]')
+  // Switching to the phone microphone mid-recording leaves Android out of call mode.
   await click(record)
-  await waitFor(() => has(stopInApp), 'phone recording to start', 30_000)
+  await waitFor(() => has(stopInApp), 'recording to start again', 30_000)
+  await sleep(2_000)
+  await click('[aria-label="Phone microphone"]')
+  await waitFor(() => has('[aria-label="Phone microphone"][aria-pressed="true"]:not([disabled])'), 'the phone microphone to open', 30_000)
   await sleep(3_000)
   const devices = await evaluate(`navigator.mediaDevices.enumerateDevices().then((list) => list.filter((d) => d.kind === 'audioinput').map((d) => d.label))`)
   const mode = audioMode()
@@ -164,10 +170,11 @@ async function run() {
   const reopened = await connect()
   const recovered = await waitFor(async () => {
     const saved = await readClips(reopened)
-    return saved.length === 2 ? saved : null
+    return saved.length === 3 ? saved : null
   }, 'the killed recording to be recovered', 60_000)
-  const clip = recovered.find((candidate) => candidate.id !== clips[0].id)
-  if (clip.durationMs < 3_000) throw new Error(`The recovered clip is too short: ${clip.durationMs} ms`)
+  const clip = recovered.find((candidate) => !clips.some((saved) => saved.id === candidate.id))
+  // It spans both microphones.
+  if (clip.durationMs < 6_000) throw new Error(`The recovered clip is too short: ${clip.durationMs} ms`)
   console.log(`Recovered a ${clip.durationMs} ms clip after the app was killed`)
   process.exit(0)
 }
