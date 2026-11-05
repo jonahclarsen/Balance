@@ -31,6 +31,8 @@ const RETRO_STYLES: Record<string, string> = {
   'panel-style': '.list-panel { contain: style; }',
   'panel-layout': '.list-panel { contain: layout style; }',
   'workspace-style': '.workspace { contain: style; }',
+  'row-style': '.plan-row { contain: style; }',
+  'row-layout': '.plan-row:not(.sticky-parent) { contain: layout style; }',
 }
 
 const EDITOR_SELECTOR = `[data-plan-text-input-id="plan_${PLAN_COUNT - 1}_item_1"]`
