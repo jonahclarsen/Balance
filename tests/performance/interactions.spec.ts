@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { writeFileSync } from 'node:fs'
 import { openView } from '../helpers/navigation'
 
 const PLAN_COUNT = performanceSize('BALANCE_INTERACTION_PERF_PLANS', 365)
@@ -561,11 +562,11 @@ test('profiles common typing and backspacing paths', async ({ page }, testInfo) 
     visuallyIdentical = candidate.equals(baseline)
     await styles.evaluate(el => { (el as HTMLStyleElement).disabled = false })
     if (!visuallyIdentical) {
-      await testInfo.attach('experiment.png', { body: candidate, contentType: 'image/png' })
-      await testInfo.attach('baseline.png', { body: baseline, contentType: 'image/png' })
+      writeFileSync(testInfo.outputPath('experiment.png'), candidate)
+      writeFileSync(testInfo.outputPath('baseline.png'), baseline)
     }
   }
-  await testInfo.attach('appearance.png', { body: await page.screenshot({ animations: 'disabled', caret: 'hide' }), contentType: 'image/png' })
+  writeFileSync(testInfo.outputPath('appearance.png'), await page.screenshot({ animations: 'disabled', caret: 'hide' }))
   const renderer = await page.context().newCDPSession(page)
   await renderer.send('Performance.enable')
   const beforeMetrics = await renderer.send('Performance.getMetrics')
@@ -593,7 +594,8 @@ test('profiles common typing and backspacing paths', async ({ page }, testInfo) 
     line: node.callFrame.lineNumber + 1,
     samples: hits.get(node.id) ?? 0,
   })).filter(node => node.samples > 0).sort((a, b) => b.samples - a.samples).slice(0, 35))}`)
-  await testInfo.attach('typing.cpuprofile', { body: JSON.stringify(cpu), contentType: 'application/json' })
+  writeFileSync(testInfo.outputPath('typing.cpuprofile'), JSON.stringify(cpu))
+  await testInfo.attach('typing.cpuprofile', { path: testInfo.outputPath('typing.cpuprofile'), contentType: 'application/json' })
   const afterMetrics = await renderer.send('Performance.getMetrics')
   await renderer.detach()
   const before = new Map(beforeMetrics.metrics.map(m => [m.name, m.value]))

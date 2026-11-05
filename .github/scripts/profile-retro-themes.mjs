@@ -22,7 +22,7 @@ function appearance(dir) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const path = resolve(dir, entry.name)
     if (entry.isDirectory()) { const found = appearance(path); if (found) return found }
-    else if (entry.name.startsWith('appearance-') && entry.name.endsWith('.png')) return path
+    else if (entry.name === 'appearance.png') return path
   }
 }
 const screenshots = new Map()
