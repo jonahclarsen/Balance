@@ -64,7 +64,7 @@ function ideaGroups(items: Partial<Record<IdeaGroupKind, ReturnType<typeof idea>
 const due = (groups: IdeaGroup[], today: string) =>
   dueIdeaReviews(groups, today).map(({ kind, items }) => [kind, items.map((item) => item.text)])
 
-test('Genuinely reviews come every 10 days and Possibly every 45, covering ideas placed before the due day', () => {
+test('Genuinely reviews come every 10 days and Possibly every 45, covering ideas placed before today', () => {
   // Noon local time, clear of the 5 a.m. day boundary.
   const groups = ideaGroups({
     genuine: [idea('Synthetic old', '2026-10-01T12:00:00'), idea('Synthetic newer', '2026-10-10T12:00:00'), idea('Synthetic fresh', '2026-10-11T12:00:00')],
@@ -74,9 +74,19 @@ test('Genuinely reviews come every 10 days and Possibly every 45, covering ideas
   expect(due(groups, '2026-10-10')).toEqual([])
   expect(due(groups, '2026-10-11')).toEqual([['genuine', ['Synthetic old', 'Synthetic newer']]])
   expect(due(groups, '2026-11-15')).toEqual([
-    ['genuine', ['Synthetic old', 'Synthetic newer']],
+    ['genuine', ['Synthetic old', 'Synthetic newer', 'Synthetic fresh']],
     ['possible', ['Synthetic maybe']],
   ])
+})
+
+test('finishing a review pushes the next one a full cadence out', () => {
+  const reviewed = idea('Synthetic reviewed', '2026-11-05T12:00:00')
+  const groups = ideaGroups({ genuine: [reviewed, idea('Synthetic later', '2026-10-20T12:00:00')] })
+  expect(due(groups, '2026-11-05')).toEqual([['genuine', ['Synthetic later']]])
+  const after = ideaGroups({ genuine: [reviewed, idea('Synthetic later', '2026-11-05T12:30:00')] })
+  expect(due(after, '2026-11-05')).toEqual([])
+  expect(due(after, '2026-11-14')).toEqual([])
+  expect(due(after, '2026-11-15')).toEqual([['genuine', ['Synthetic reviewed', 'Synthetic later']]])
 })
 
 test('a group cadence replaces its default; invalid cadences fall back', () => {

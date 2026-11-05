@@ -124,7 +124,8 @@ function bucketedDay(item: IdeaItem): string {
 
 // Every sort decision restamps bucketedAt, so a group's oldest stamp marks its
 // last review. A review is due that many days later and covers every idea
-// placed before the due day; ideas sorted in since then wait for the next one.
+// placed before today, so finishing it pushes the next one a full cadence out;
+// ideas sorted in today wait for the next one.
 export function dueIdeaReviews(groups: IdeaGroup[], today = todayISO()): DueIdeaReview[] {
   return IDEA_REVIEW_SCHEDULE.flatMap(({ kind }) => {
     const days = ideaReviewDays(groups, kind)
@@ -134,7 +135,7 @@ export function dueIdeaReviews(groups: IdeaGroup[], today = todayISO()): DueIdea
     const oldest = [...stampDays].sort()[0]!
     const dueDay = oldest ? shiftISODate(oldest, days) : today
     if (today < dueDay) return []
-    return [{ kind, days, items: items.filter((_, index) => stampDays[index]! < dueDay) }]
+    return [{ kind, days, items: items.filter((_, index) => stampDays[index]! < today) }]
   })
 }
 
