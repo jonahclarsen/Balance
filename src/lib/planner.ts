@@ -1813,6 +1813,11 @@ export function escapeHTML(value: string): string {
 export function sanitizeInlineHTML(value: string): string {
   if (!globalThis.document) return escapeHTML(value)
 
+  // Text without markup, entities, or HTML input-normalization characters
+  // parses unchanged. Avoid two detached DOM parses for ordinary task text
+  // during hydration; keep the same escaping and trailing-newline cleanup.
+  if (!/[<&\u0000\r]/.test(value)) return escapeHTML(value.replace(/\n+$/, ''))
+
   const template = document.createElement('template')
   template.innerHTML = value
   const sanitized = Array.from(template.content.childNodes).map(sanitizeNode).join('')
