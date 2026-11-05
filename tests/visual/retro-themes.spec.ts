@@ -181,7 +181,10 @@ for (const themeId of ['system1', 'windowsxp', 'windowsvista']) {
     await expect(page.locator('html')).toHaveAttribute('data-theme', themeId)
 
     await page.evaluate(() => document.fonts.ready)
-    await page.getByRole('region', { name: 'Daily plan' }).getByRole('button', { name: 'Enter IMAX mode' }).click()
+    const maximize = themeId === 'system1'
+      ? page.getByRole('region', { name: 'Daily plan' }).getByRole('button', { name: 'Enter IMAX mode' })
+      : page.getByRole('button', { name: 'Maximize', exact: true })
+    await maximize.click()
 
     const handoff = page.locator('.imax-click-handoff')
     await expect(handoff).toHaveCount(1)

@@ -48,7 +48,7 @@ for (let round = 0; round < rounds; round++) {
     if (held) {
       const identical = readFileSync(held).equals(readFileSync(imagePath))
       appendFileSync(`${out}/appearance-comparisons.jsonl`, JSON.stringify({ experiment, round: round + 1, identical }) + '\n')
-      if (!identical) console.log(`APPEARANCE_MISMATCH ${pairKey}`)
+      if (!identical) { console.log(`APPEARANCE_MISMATCH ${pairKey}`); failed = true }
     } else screenshots.set(pairKey, imagePath)
     const row = { revision: variant.revision, round: round + 1, ...JSON.parse(line.slice('INTERACTION_PERF '.length)) }
     appendFileSync(`${out}/results.jsonl`, JSON.stringify(row) + '\n')
