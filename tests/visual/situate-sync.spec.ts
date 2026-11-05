@@ -1,5 +1,8 @@
 import { expect, test, type Page } from '@playwright/test'
 
+// Only a Mac starts the shared record, and the mobile project reports Android.
+test.use({ userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/131.0 Safari/537.36' })
+
 // A synthetic backend holds Situate's rules.json and the replicated planner state.
 async function start(page: Page, setup: { description?: string; remoteDescription?: string }) {
   await page.addInitScript((setup) => {
