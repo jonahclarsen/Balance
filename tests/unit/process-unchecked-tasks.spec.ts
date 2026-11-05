@@ -39,3 +39,8 @@ test('future days get rows and backfilled past days do not', () => {
   expect(processUncheckedTasksItems(plans, '2026-11-05', noon)).toHaveLength(1)
   expect(processUncheckedTasksItems(plans, '2026-11-02', noon)).toEqual([])
 })
+
+test('only the past 30 days are checked', () => {
+  const plans = [plan('2026-10-03', [open()]), plan('2026-10-04', [open()])]
+  expect(processUncheckedTasksItems(plans, '2026-11-03', noon).map(processUncheckedTasksDate)).toEqual(['2026-10-04'])
+})

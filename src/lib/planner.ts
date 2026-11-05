@@ -287,21 +287,27 @@ export function hasIncompletePlanItems(items: PlanItem[]): boolean {
 // Until 7 a.m. the previous calendar day is still being lived, so its open
 // tasks don't need processing yet even though Balance has rolled over.
 const PROCESS_UNCHECKED_TASKS_ROLLOVER_HOUR = 7
+// Days older than this are treated as abandoned rather than awaiting processing.
+const PROCESS_UNCHECKED_TASKS_LOOKBACK_DAYS = 30
 const PROCESS_UNCHECKED_TASKS_HTML = /^Process unchecked tasks from <a href="balance:\/\/day\/(\d{4}-\d{2}-\d{2})">/
 
 function hasOpenPlanTasks(items: PlanItem[]): boolean {
   return items.some((item) => (!item.done && !isPlanItemTextEmpty(item)) || hasOpenPlanTasks(item.children))
 }
 
-// One linked task per earlier day that still has open tasks, oldest first.
+// One linked task per earlier day in the past 30 that still has open tasks,
+// oldest first.
 // Backfilling a past day adds none: follow-up belongs on the day being lived.
 export function processUncheckedTasksItems(plans: DailyPlan[], date: string, now = new Date()): PlanItem[] {
   const currentDay = new Date(now)
   if (currentDay.getHours() < PROCESS_UNCHECKED_TASKS_ROLLOVER_HOUR) currentDay.setDate(currentDay.getDate() - 1)
   const current = calendarDateISO(currentDay)
   if (date < current) return []
+  const earliestDay = new Date(currentDay)
+  earliestDay.setDate(earliestDay.getDate() - PROCESS_UNCHECKED_TASKS_LOOKBACK_DAYS)
+  const earliest = calendarDateISO(earliestDay)
   return plans
-    .filter((plan) => plan.date < current && hasOpenPlanTasks(plan.items))
+    .filter((plan) => plan.date >= earliest && plan.date < current && hasOpenPlanTasks(plan.items))
     .map((plan) => plan.date)
     .sort()
     .map((planDate) => {
