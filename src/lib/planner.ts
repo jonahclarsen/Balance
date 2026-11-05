@@ -1936,6 +1936,7 @@ function pruneTrailingLineBreaks(parent: ParentNode, removeBreaks: boolean): boo
 
 export function htmlToPlainText(value: string): string {
   if (!globalThis.document) return value.replace(/<[^>]+>/g, '')
+  if (!/[<&\u0000\r]/.test(value)) return value.replace(/\n+$/, '')
 
   const div = document.createElement('div')
   div.innerHTML = sanitizeInlineHTML(value)
@@ -1946,6 +1947,7 @@ export function htmlToPlainText(value: string): string {
 // being dropped. Used for read-only rendering (e.g. locked list items) where the
 // text is shown with white-space: pre-wrap, so the breaks need to survive.
 export function htmlToPlainTextWithBreaks(value: string): string {
+  if (globalThis.document && !/[<&\u0000\r]/.test(value)) return value.replace(/\n+$/, '')
   const withBreaks = sanitizeInlineHTML(value).replace(/<br>/g, '\n')
   if (!globalThis.document) return withBreaks.replace(/<[^>]+>/g, '')
 

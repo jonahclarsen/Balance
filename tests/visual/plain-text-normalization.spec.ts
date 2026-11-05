@@ -3,8 +3,8 @@ import { expect, test } from '@playwright/test'
 test('plain task hydration agrees with browser parsing for generated text', async ({ page }) => {
   await page.goto('/')
   const differences = await page.evaluate(async () => {
-    const load = new Function('return import("/src/lib/planner.ts")') as () => Promise<{ sanitizeInlineHTML: (value: string) => string }>
-    const { sanitizeInlineHTML } = await load()
+    const load = new Function('return import("/src/lib/planner.ts")') as () => Promise<{ sanitizeInlineHTML: (value: string) => string; htmlToPlainText: (value: string) => string; htmlToPlainTextWithBreaks: (value: string) => string }>
+    const { sanitizeInlineHTML, htmlToPlainText, htmlToPlainTextWithBreaks } = await load()
     const escape = (value: string) => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;')
     const values = ['', 'plain', 'trailing\n\n', '  \n', '\r\n', '\u0000', 'a\u0000b', '\uD800', 'x\uDFFF', '"quoted" > \'apostrophe\'', 'caf\u00e9 \uD83C\uDF3F', 'a &amp; b', '&lt;script&gt;']
     let seed = 0x4162
@@ -29,8 +29,11 @@ test('plain task hydration agrees with browser parsing for generated text', asyn
       const parsed = cleanup.content.textContent ?? ''
       const stripped = parsed.replace(/\n+$/, '')
       const expected = stripped === parsed ? sanitized : escape(stripped)
-      const actual = sanitizeInlineHTML(value)
-      return actual === expected ? [] : [{ value, expected, actual }]
+      const decoded = document.createElement('div')
+      decoded.innerHTML = expected
+      const text = decoded.textContent ?? ''
+      const actual = { html: sanitizeInlineHTML(value), text: htmlToPlainText(value), breaks: htmlToPlainTextWithBreaks(value) }
+      return actual.html === expected && actual.text === text && actual.breaks === text ? [] : [{ value, expected: { html: expected, text, breaks: text }, actual }]
     })
   })
   expect(differences).toEqual([])
