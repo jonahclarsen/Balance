@@ -71,9 +71,15 @@ jobs:
           BASELINE_REF: ${{ inputs.baseline_ref }}
         run: |
           set -euo pipefail
-          git fetch --no-tags origin "$BASELINE_REF"
+          if git rev-parse --verify --end-of-options "${BASELINE_REF}^{commit}" >/dev/null 2>&1; then
+            baseline_sha="$(git rev-parse --verify --end-of-options "${BASELINE_REF}^{commit}")"
+          else
+            git fetch --no-tags origin "$BASELINE_REF"
+            baseline_sha="$(git rev-parse FETCH_HEAD)"
+          fi
+          echo "Baseline revision: $baseline_sha" >> "$GITHUB_STEP_SUMMARY"
           baseline="$RUNNER_TEMP/retro-baseline"
-          git worktree add --detach "$baseline" FETCH_HEAD
+          git worktree add --detach "$baseline" "$baseline_sha"
           cp tests/performance/interactions.spec.ts "$baseline/tests/performance/interactions.spec.ts"
           cp tests/helpers/navigation.ts "$baseline/tests/helpers/navigation.ts"
           cp playwright.interaction-performance.config.ts "$baseline/playwright.interaction-performance.config.ts"
