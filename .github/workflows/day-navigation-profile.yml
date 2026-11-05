@@ -3,6 +3,11 @@ name: Profile day navigation
 on:
   workflow_dispatch:
     inputs:
+      theme:
+        description: Theme for both matched revisions
+        default: graphite
+        type: choice
+        options: [graphite, system1, windowsxp, windowsvista, iridescent]
       runner:
         description: Runner for matched browser checks (macOS remains the default)
         required: false
@@ -47,6 +52,7 @@ jobs:
     runs-on: ${{ inputs.runner || 'macos-15' }}
     timeout-minutes: 40
     env:
+      BALANCE_DAY_NAV_THEME: ${{ inputs.theme || 'graphite' }}
       BASELINE_REF: ${{ inputs.baseline_ref }}
       CANDIDATE_REF: ${{ inputs.candidate_ref }}
       CPU_CONTENTION: ${{ inputs.cpu_contention }}
