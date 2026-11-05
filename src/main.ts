@@ -1,5 +1,6 @@
 import { mount } from 'svelte'
 import './app.css'
+import './aero-luna-themes.css'
 import App from './App.svelte'
 import {
   applyIridescentHueShift,

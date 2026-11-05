@@ -70,6 +70,7 @@
   import MetricQuestionEditor from './lib/MetricQuestionEditor.svelte'
   import RichTextEditor from './lib/RichTextEditor.svelte'
   import NavIcon from './lib/NavIcon.svelte'
+  import WindowCaption from './lib/WindowCaption.svelte'
   import SearchModal from './lib/SearchModal.svelte'
   import KeyboardShortcutsModal from './lib/KeyboardShortcutsModal.svelte'
   import ThemeTaskPreview from './lib/ThemeTaskPreview.svelte'
@@ -186,6 +187,22 @@
   ]
 
   type View = 'situate' | 'next' | 'today' | 'templates' | 'listTemplates' | 'lists' | 'notes' | 'projects' | 'projectHistory' | 'prioritize' | 'ideas' | 'metrics' | 'goals' | 'settings'
+  const WINDOW_CAPTIONS = {
+    situate: { title: 'Situate', icon: 'situate' },
+    next: { title: 'Next', icon: 'next' },
+    today: { title: 'Today', icon: 'today' },
+    templates: { title: 'Days', icon: 'templates' },
+    listTemplates: { title: 'Lists', icon: 'listTemplates' },
+    lists: { title: 'List History', icon: 'lists' },
+    notes: { title: 'Notes', icon: 'notes' },
+    projects: { title: 'Projects', icon: 'projects' },
+    projectHistory: { title: 'Project History', icon: 'projects' },
+    prioritize: { title: 'Prioritize', icon: 'prioritize' },
+    ideas: { title: 'Ideas', icon: 'ideas' },
+    metrics: { title: 'Quizzes', icon: 'metrics' },
+    goals: { title: 'Goals', icon: 'goals' },
+    settings: { title: 'Settings', icon: 'settings' },
+  } as const satisfies Record<View, { title: string; icon: string }>
   type Opener = { container: 'plan' | 'list'; containerId: Id; itemId: Id }
   type ExportSettings = {
     exportDirectory: string
@@ -310,14 +327,14 @@
     : (resumesLastView && storedWorkspaceViewState?.view) || 'next'
   let linkedProjectId = ''
 
-  function applyDefaultZoom() {
+  function applyDefaultZoom(zoom = APP_DEFAULT_ZOOM) {
     if (!isTauri()) {
       document.documentElement.dataset.balanceCssZoom = 'true'
       return
     }
 
     delete document.documentElement.dataset.balanceCssZoom
-    void getCurrentWebview().setZoom(APP_DEFAULT_ZOOM).catch((error) => {
+    void getCurrentWebview().setZoom(zoom).catch((error) => {
       console.error('Could not set the default app zoom', error)
     })
   }
@@ -903,8 +920,11 @@ return rows`
   $: checkboxPickerColor = hexToPickerColor(checkboxColorHex)
   // Blend the chosen color in lightly so the row reads as a tint, not a fill.
   $: doneTintValue = `color-mix(in srgb, ${doneTintHex} 14%, transparent)`
+  // XP and Vista draw real bitmaps, which only stay crisp at whole-pixel scales.
+  $: windowsChrome = activeTheme.id === 'windowsxp' || activeTheme.id === 'windowsvista'
+  $: if (isTauri() && !isMobile) applyDefaultZoom(windowsChrome ? 1 : APP_DEFAULT_ZOOM)
   $: appShellStyle = [
-    doneTintColor ? `--done-tint: ${doneTintValue}` : '',
+    doneTintColor ? `--done-tint: ${doneTintValue}; --done-color: ${doneTintHex}` : '',
     checkboxColor ? `--checkbox-checked: ${checkboxColorHex}` : '',
     checkboxColor
       ? `--checkbox-checked-hover: color-mix(in srgb, ${checkboxColorHex} 88%, black)`
@@ -7135,6 +7155,15 @@ return rows`
 >
   {#if isMac && !isMobile}
     <div class="macos-titlebar-drag-region" data-tauri-drag-region aria-hidden="true"></div>
+  {/if}
+  {#if windowsChrome && !isMobile}
+    <WindowCaption
+      title={WINDOW_CAPTIONS[view].title}
+      icon={WINDOW_CAPTIONS[view].icon}
+      maximized={viewMaximized}
+      canMaximize={viewSupportsImax(view)}
+      onToggleMaximized={(event) => toggleViewMaximized(view, event)}
+    />
   {/if}
 
   {#if maximizeClickHandoff}

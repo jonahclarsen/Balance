@@ -193,3 +193,59 @@ for (const themeId of ['system1', 'windowsxp', 'windowsvista']) {
     expect(shown.equals(await page.screenshot({ animations: 'disabled', clip }))).toBe(true)
   })
 }
+
+for (const [themeId, name] of [['windowsxp', 'Windows XP'], ['windowsvista', 'Windows Vista']] as const) {
+  test(`${name} window caption drives IMAX and every theme bitmap loads`, async ({ page, isMobile }) => {
+    test.skip(isMobile, 'The window caption is desktop only')
+    test.setTimeout(90_000)
+    await page.goto('/')
+    await page.evaluate(([state, themeId]) => {
+      localStorage.clear()
+      localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+      localStorage.setItem('balance:deviceAppearance.v1', JSON.stringify({ version: 1, themeId, colorScheme: 'light' }))
+    }, [createScreenshotState('2026-10-14'), themeId] as const)
+    await page.reload()
+    await expect(page.locator('html')).toHaveAttribute('data-theme', themeId)
+
+    const caption = page.locator('.window-caption')
+    await openView(page, 'Today')
+    await expect(caption.locator('.window-caption-title')).toHaveText('Today')
+    // A browser has no window to minimize or close.
+    await expect(caption.getByRole('button', { name: 'Minimize' })).toBeDisabled()
+    await expect(caption.getByRole('button', { name: 'Close' })).toBeDisabled()
+    await caption.getByRole('button', { name: 'Maximize' }).click()
+    await expect(page.locator('.app-shell')).toHaveClass(/page-maximized/)
+    // On macOS a click handoff covers the spot, so click where a person would.
+    const restore = await caption.getByRole('button', { name: 'Restore' }).boundingBox()
+    if (!restore) throw new Error('Restore button has no box')
+    await page.mouse.click(restore.x + restore.width / 2, restore.y + restore.height / 2)
+    await expect(page.locator('.app-shell')).not.toHaveClass(/page-maximized/)
+    await openView(page, 'Settings')
+    await expect(caption.locator('.window-caption-title')).toHaveText('Settings')
+    await expect(caption.getByRole('button', { name: 'Maximize' })).toBeDisabled()
+
+    // Every bitmap the theme stylesheet names must exist; a missing one only shows as a gap.
+    const urls = await page.evaluate(() => {
+      const found = new Set<string>()
+      for (const sheet of Array.from(document.styleSheets)) {
+        let rules: CSSRuleList
+        try { rules = sheet.cssRules } catch { continue }
+        const walk = (list: CSSRuleList) => {
+          for (const rule of Array.from(list)) {
+            if ('cssRules' in rule) walk((rule as CSSGroupingRule).cssRules)
+            for (const match of rule.cssText.matchAll(/url\(["']?(\/themes\/windows(?:xp|vista)\/[^"')]+)["']?\)/g)) found.add(match[1])
+          }
+        }
+        walk(rules)
+      }
+      return [...found]
+    })
+    expect(urls.length).toBeGreaterThan(100)
+    // The dev server answers unknown paths with the app's HTML, so check the type too.
+    const responses = await Promise.all(urls.map(async url => ({ url, response: await page.request.get(url) })))
+    for (const { url, response } of responses) {
+      expect(response.status(), url).toBe(200)
+      expect(response.headers()['content-type'], url).toMatch(/^image\//)
+    }
+  })
+}
