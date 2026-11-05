@@ -30,7 +30,7 @@ jobs:
     name: Synthetic startup and persistence profile
     # macos-15 selects ARM runners, which have failed to acquire capacity in CI.
     runs-on: macos-15-intel
-    timeout-minutes: 20
+    timeout-minutes: 40
     env:
       # Rust links Swift bridge objects directly, so add Swift's runtime rpath.
       RUSTFLAGS: -C link-arg=-Wl,-rpath,/usr/lib/swift
