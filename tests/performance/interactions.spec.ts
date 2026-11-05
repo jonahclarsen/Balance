@@ -292,7 +292,11 @@ async function installSyntheticWorkspace(page: Page) {
 }
 
 async function profileEdits(page: Page, selector: string, direction: 'type' | 'backspace', editCount = EDIT_COUNT) {
-  await page.locator(selector).evaluate((element) => {
+  // Resolve once: repeated Playwright selector scans of the large Goal Rhythm
+  // DOM otherwise dominate the CPU profile rather than application work.
+  const input = await page.locator(selector).elementHandle()
+  if (!input) throw new Error(`Missing editor: ${selector}`)
+  await input.evaluate((element) => {
     const editor = element as HTMLElement
     editor.focus()
     const range = document.createRange()
@@ -303,7 +307,7 @@ async function profileEdits(page: Page, selector: string, direction: 'type' | 'b
   })
   const samples: Sample[] = []
   for (let index = 0; index < editCount; index += 1) {
-    await page.locator(selector).evaluate((element) => {
+    await input.evaluate((element) => {
       const runtime = window as unknown as { typingSample: Promise<Sample> }
       runtime.typingSample = new Promise((resolve) => {
         let started = 0
@@ -319,6 +323,7 @@ async function profileEdits(page: Page, selector: string, direction: 'type' | 'b
     await page.keyboard.press(direction === 'type' ? 'x' : 'Backspace')
     samples.push(await page.evaluate(() => (window as unknown as { typingSample: Promise<Sample> }).typingSample))
   }
+  await input.dispose()
   return samples
 }
 
