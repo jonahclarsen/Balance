@@ -17,6 +17,18 @@ const CLICK_COUNT = performanceSize('BALANCE_INTERACTION_PERF_CLICKS', 12)
 const FRAME_SAMPLE_MS = performanceSize('BALANCE_INTERACTION_PERF_FRAME_SAMPLE_MS', 1_500)
 const SURFACE = process.env.BALANCE_INTERACTION_PERF_SURFACE ?? 'today'
 const ACTIVE_DATE = '2026-08-16'
+const RETRO_EXPERIMENT = process.env.BALANCE_RETRO_EXPERIMENT ?? 'baseline'
+const RETRO_STYLES: Record<string, string> = {
+  baseline: '',
+  'sidebar-style': '.sidebar { contain: style; }',
+  'sidebar-layout': '.sidebar { contain: layout style; }',
+  'sidebar-layer': '.sidebar { will-change: transform; }',
+  'header-layer': '.page-header { will-change: transform; }',
+  'panel-style': '.list-panel { contain: style; }',
+  'panel-layout': '.list-panel { contain: layout style; }',
+  'workspace-style': '.workspace { contain: style; }',
+}
+
 const EDITOR_SELECTOR = `[data-plan-text-input-id="plan_${PLAN_COUNT - 1}_item_1"]`
 
 type Sample = {
@@ -238,7 +250,8 @@ async function installSyntheticWorkspace(page: Page) {
         operations,
       }
 
-      localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+      // The native fixture must exceed browser storage quotas for decade-scale
+      // workspaces. Hydration below supplies the generated snapshot directly.
       localStorage.setItem('balance:activePlanDate', activeDate)
       // Appearance now bootstraps separately from planner hydration. Seed both
       // contracts so a Graphite run cannot briefly measure default Iridescent.
@@ -445,12 +458,15 @@ async function profileGoalRhythmScroll(page: Page, frameCount = GOAL_SCROLL_FRAM
 }
 
 test.beforeEach(async ({ page }, testInfo) => {
+  test.setTimeout(300_000)
   await installSyntheticWorkspace(page)
   if (testInfo.project.name.includes('6x-cpu')) {
     const session = await page.context().newCDPSession(page)
     await session.send('Emulation.setCPUThrottlingRate', { rate: 6 })
   }
   await page.goto('/')
+  if (!(RETRO_EXPERIMENT in RETRO_STYLES)) throw new Error(`Unknown experiment: ${RETRO_EXPERIMENT}`)
+  if (RETRO_STYLES[RETRO_EXPERIMENT]) await page.addStyleTag({ content: RETRO_STYLES[RETRO_EXPERIMENT] })
   if (IRIDESCENT_MOTION_PROFILE === 'full-focused-borders') {
     await page.addStyleTag({ content: KEEP_ONLY_FOCUSED_BORDER_MOTION })
   } else if (IRIDESCENT_MOTION_PROFILE !== 'full') {
@@ -506,6 +522,26 @@ test('profiles common typing and backspacing paths', async ({ page }, testInfo) 
     })
     expect(motionAnimations.taskListBorder.name).toBe('none')
   }
+  await page.evaluate(() => document.fonts.ready)
+  // Every intervention is checked against the same unmodified page, fonts,
+  // data and clock before collecting timings. Keep rejected screenshots.
+  let visuallyIdentical = true
+  if (RETRO_EXPERIMENT !== 'baseline') {
+    const styles = page.locator('style').last()
+    const screenshot = () => page.screenshot({ animations: 'disabled', caret: 'hide' })
+    const candidate = await screenshot()
+    await styles.evaluate(el => { (el as HTMLStyleElement).disabled = true })
+    const baseline = await screenshot()
+    visuallyIdentical = candidate.equals(baseline)
+    await styles.evaluate(el => { (el as HTMLStyleElement).disabled = false })
+    if (!visuallyIdentical) {
+      await testInfo.attach('experiment.png', { body: candidate, contentType: 'image/png' })
+      await testInfo.attach('baseline.png', { body: baseline, contentType: 'image/png' })
+    }
+  }
+  const renderer = await page.context().newCDPSession(page)
+  await renderer.send('Performance.enable')
+  const beforeMetrics = await renderer.send('Performance.getMetrics')
   const idle = await profileIdleRenderer(page)
   const taskActions = await profileTaskActions(page, EDITOR_SELECTOR)
   let typingSelector = EDITOR_SELECTOR
@@ -531,7 +567,15 @@ test('profiles common typing and backspacing paths', async ({ page }, testInfo) 
     samples: hits.get(node.id) ?? 0,
   })).filter(node => node.samples > 0).sort((a, b) => b.samples - a.samples).slice(0, 35))}`)
   await testInfo.attach('typing.cpuprofile', { body: JSON.stringify(cpu), contentType: 'application/json' })
+  const afterMetrics = await renderer.send('Performance.getMetrics')
+  await renderer.detach()
+  const before = new Map(beforeMetrics.metrics.map(m => [m.name, m.value]))
+  const rendererDelta = Object.fromEntries(afterMetrics.metrics.map(m => [m.name, m.value - (before.get(m.name) ?? 0)]))
   const profile = {
+    experiment: RETRO_EXPERIMENT,
+    visuallyIdentical,
+    rendererDelta,
+    startupMs: await page.evaluate(() => performance.getEntriesByType('navigation')[0]?.duration),
     project: testInfo.project.name,
     fixture: {
       surface: SURFACE,
