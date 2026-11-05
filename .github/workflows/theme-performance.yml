@@ -71,10 +71,14 @@ jobs:
             | sed 's/^THEME_PERF //' > "$RUNNER_TEMP/theme-browser-performance.jsonl"
           test "$(wc -l < "$RUNNER_TEMP/theme-browser-performance.jsonl")" -eq 2
 
+      # Keep native measurements independent of browser gates; an earlier
+      # failure still fails the job and its diagnostics remain available.
       - name: Verify native persistence behavior
+        if: ${{ !cancelled() }}
         run: cargo test --manifest-path src-tauri/Cargo.toml
 
       - name: Verify diagnostics survive a failed native assertion
+        if: ${{ !cancelled() }}
         run: |
           set -euo pipefail
           results="$RUNNER_TEMP/theme-failure-diagnostics"
@@ -100,6 +104,7 @@ jobs:
           ' "$results/theme-native-performance.json" > /dev/null
 
       - name: Measure encrypted device and synced day-theme writes
+        if: ${{ !cancelled() }}
         run: bash scripts/profile-native-theme.sh "$RUNNER_TEMP"
 
       - name: Summarize profile
