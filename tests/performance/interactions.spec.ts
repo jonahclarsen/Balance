@@ -459,6 +459,9 @@ async function profileGoalRhythmScroll(page: Page, frameCount = GOAL_SCROLL_FRAM
 
 test.beforeEach(async ({ page }, testInfo) => {
   test.setTimeout(300_000)
+  // Freeze Date only: preserve real rAF/performance timings while keeping
+  // goal reconciliation inside Balance's rolling recalculation window.
+  await page.clock.setFixedTime(new Date(`${ACTIVE_DATE}T12:00:00`))
   await installSyntheticWorkspace(page)
   if (testInfo.project.name.includes('6x-cpu')) {
     const session = await page.context().newCDPSession(page)
@@ -466,7 +469,7 @@ test.beforeEach(async ({ page }, testInfo) => {
   }
   await page.goto('/')
   if (!(RETRO_EXPERIMENT in RETRO_STYLES)) throw new Error(`Unknown experiment: ${RETRO_EXPERIMENT}`)
-  if (RETRO_STYLES[RETRO_EXPERIMENT]) await page.addStyleTag({ content: RETRO_STYLES[RETRO_EXPERIMENT] })
+  if (RETRO_STYLES[RETRO_EXPERIMENT]) await page.addStyleTag({ content: RETRO_STYLES[RETRO_EXPERIMENT] }).then(style => style.evaluate(el => el.setAttribute('data-retro-experiment', 'true')))
   if (IRIDESCENT_MOTION_PROFILE === 'full-focused-borders') {
     await page.addStyleTag({ content: KEEP_ONLY_FOCUSED_BORDER_MOTION })
   } else if (IRIDESCENT_MOTION_PROFILE !== 'full') {
@@ -478,6 +481,7 @@ test.beforeEach(async ({ page }, testInfo) => {
   }
   await expect(page.locator(EDITOR_SELECTOR)).toBeVisible()
   await expect(page.locator('html')).toHaveAttribute('data-theme', THEME_ID)
+  await page.evaluate(() => performance.mark('interaction-workspace-ready'))
   // Let the selected theme reach a painted frame before collecting timings.
   await page.evaluate(() => new Promise<void>(resolve => {
     requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
@@ -527,7 +531,7 @@ test('profiles common typing and backspacing paths', async ({ page }, testInfo) 
   // data and clock before collecting timings. Keep rejected screenshots.
   let visuallyIdentical = true
   if (RETRO_EXPERIMENT !== 'baseline') {
-    const styles = page.locator('style').last()
+    const styles = page.locator('style[data-retro-experiment]')
     const screenshot = () => page.screenshot({ animations: 'disabled', caret: 'hide' })
     const candidate = await screenshot()
     await styles.evaluate(el => { (el as HTMLStyleElement).disabled = true })
@@ -575,7 +579,7 @@ test('profiles common typing and backspacing paths', async ({ page }, testInfo) 
     experiment: RETRO_EXPERIMENT,
     visuallyIdentical,
     rendererDelta,
-    startupMs: await page.evaluate(() => performance.getEntriesByType('navigation')[0]?.duration),
+    workspaceReadyMs: await page.evaluate(() => performance.getEntriesByName('interaction-workspace-ready')[0]?.startTime),
     project: testInfo.project.name,
     fixture: {
       surface: SURFACE,
