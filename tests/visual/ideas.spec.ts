@@ -246,10 +246,10 @@ test('a new day sorts every proposition one card at a time', async ({ page }, te
   test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
   await open(page)
   await storeCall(page, `
-    plannerStore.addIdea('ment')
-    plannerStore.addIdea('Synthetic frag')
-    plannerStore.addIdea('Synthetic drop')
     plannerStore.addIdea('Synthetic keep')
+    plannerStore.addIdea('Synthetic drop')
+    plannerStore.addIdea('Synthetic frag')
+    plannerStore.addIdea('ment')
   `)
 
   const dialog = sorter(page)
@@ -300,8 +300,8 @@ test('sorting new ideas resumes after a reload until it is closed', async ({ pag
   test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
   await open(page)
   await storeCall(page, `
-    plannerStore.addIdea('Synthetic second')
     plannerStore.addIdea('Synthetic first')
+    plannerStore.addIdea('Synthetic second')
   `)
   const choice =page.locator('.empty-state').getByRole('button', { name: 'Default day' })
 
@@ -337,8 +337,8 @@ test('Back undoes the previous sort decision so an idea never lands in two place
   test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
   await open(page)
   await storeCall(page, `
-    plannerStore.addIdea('Synthetic second')
     plannerStore.addIdea('Synthetic first')
+    plannerStore.addIdea('Synthetic second')
   `)
   const state =() => page.evaluate(async () => {
     const path = '/src/lib/store.ts'
@@ -375,9 +375,9 @@ test('Back after a note or a group returns the idea to Proposition Party', async
   await open(page)
   await openView(page, 'Ideas')
   await storeCall(page, `
-    plannerStore.addIdea('Synthetic third')
-    plannerStore.addIdea('Synthetic second')
     plannerStore.addIdea('Synthetic first')
+    plannerStore.addIdea('Synthetic second')
+    plannerStore.addIdea('Synthetic third')
   `)
   const notes = () => page.evaluate(async () => {
     const path = '/src/lib/store.ts'
@@ -401,12 +401,12 @@ test('Back after a note or a group returns the idea to Proposition Party', async
   await page.keyboard.press('b')
   await expect(sorter(page).locator('.idea-sort-card')).toContainText('Synthetic second')
   expect(await notes()).toBe(initialNotes)
-  expect(await groups(page)).toMatchObject({ proposition: ['Synthetic second', 'Synthetic third'], possible: ['Synthetic first'] })
+  expect(await groups(page)).toMatchObject({ proposition: ['Synthetic third', 'Synthetic second'], possible: ['Synthetic first'] })
 
   await page.keyboard.press('b')
   await expectIdea(page, 1, 3)
   await expect(sorter(page).locator('.idea-sort-card')).toContainText('Synthetic first')
-  expect(await groups(page)).toMatchObject({ proposition: ['Synthetic first', 'Synthetic second', 'Synthetic third'], possible: [] })
+  expect(await groups(page)).toMatchObject({ proposition: ['Synthetic third', 'Synthetic second', 'Synthetic first'], possible: [] })
   await expect(sorter(page).getByRole('button', { name: 'Back (B)' })).toBeDisabled()
 })
 
@@ -417,8 +417,8 @@ test('the Proposition Party Sort button opens the sorter on demand', async ({ pa
   await expect(sort).toBeDisabled()
 
   await storeCall(page, `
-    plannerStore.addIdea('Synthetic sort two')
     plannerStore.addIdea('Synthetic sort one')
+    plannerStore.addIdea('Synthetic sort two')
   `)
   await sort.click()
   await expectIdea(page, 1, 2)
@@ -437,10 +437,10 @@ test('the sorter stays with its page and cuts ideas to Trash and the clipboard',
   await open(page)
   await openView(page, 'Ideas')
   await storeCall(page, `
-    plannerStore.addIdea('Synthetic stay')
     const id = plannerStore.addIdea('Synthetic cut me', 'proposition', '<strong>Synthetic cut me</strong>')
     const child = plannerStore.addIdea('Synthetic cut child')
     plannerStore.moveIdeaItem('bucket_proposition', child, id, 'inside')
+    plannerStore.addIdea('Synthetic stay')
   `)
   await page.locator('.ideas-panel').getByRole('button', { name: 'Sort', exact: true }).click()
   await expectIdea(page, 1, 2)
@@ -467,7 +467,7 @@ test('the sorter stays with its page and cuts ideas to Trash and the clipboard',
 
   await page.keyboard.press('b')
   await expectIdea(page, 1, 2)
-  expect(await groups(page)).toMatchObject({ proposition: ['Synthetic cut me', 'Synthetic stay'], trash: [] })
+  expect(await groups(page)).toMatchObject({ proposition: ['Synthetic stay', 'Synthetic cut me'], trash: [] })
   await page.keyboard.press('y')
   await page.keyboard.press('x')
   await page.reload()
@@ -477,12 +477,12 @@ test('the sorter stays with its page and cuts ideas to Trash and the clipboard',
 test('sorting moves ideas into new notes with their formatting and children, and supports undo', async ({ page }) => {
   await open(page)
   await storeCall(page, `
-    plannerStore.addIdea('Synthetic second note')
     const id = plannerStore.addIdea('Synthetic note', 'proposition', '<strong>Synthetic note</strong>')
     plannerStore.patchIdeaItem('bucket_proposition', id, { done: true })
     const child = plannerStore.addRootIdeaItem('bucket_proposition')
     plannerStore.patchIdeaItem('bucket_proposition', child, { text: 'Synthetic child', html: '<em>Synthetic child</em>' })
     plannerStore.moveIdeaItem('bucket_proposition', child, id, 'inside')
+    plannerStore.addIdea('Synthetic second note')
   `)
   await openView(page, 'Ideas')
   await page.locator('.ideas-panel').getByRole('button', { name: 'Sort', exact: true }).click()
@@ -526,8 +526,8 @@ test('a day generation sort can add ideas to the new day', async ({ page }, test
   test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
   await open(page)
   await storeCall(page, `
-    plannerStore.addIdea('Synthetic later')
     plannerStore.addIdea('Synthetic for today')
+    plannerStore.addIdea('Synthetic later')
   `)
 
   // Sorts outside generation have no day to add to.
@@ -556,8 +556,8 @@ test('a day generation sort can add ideas to the new day', async ({ page }, test
 test('day choices survive closing, navigation and reload without applying to another date', async ({ page }) => {
   await open(page)
   await storeCall(page, `
-    plannerStore.addIdea('Synthetic remaining')
     plannerStore.addIdea('Synthetic reserved')
+    plannerStore.addIdea('Synthetic remaining')
   `)
   await generateDay(page)
   await page.keyboard.press('y')
@@ -596,9 +596,9 @@ test('a day keeps its sort progress across trash, cut and reopening', async ({ p
   test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
   await open(page)
   await storeCall(page, `
-    plannerStore.addIdea('Synthetic later')
-    plannerStore.addIdea('Synthetic cut')
     plannerStore.addIdea('Synthetic trash')
+    plannerStore.addIdea('Synthetic cut')
+    plannerStore.addIdea('Synthetic later')
   `)
   const hint = sorter(page).locator('.paste-review-hint')
   await generateDay(page)
@@ -626,15 +626,15 @@ test('pasted lists import as ideas and open the sorter; trash clears after 30 da
   await expect(paste).toBeFocused()
   await paste.evaluate((element) => {
     const data = new DataTransfer()
-    data.setData('text/html', '<ul><li>Synthetic alpha<ul><li>Synthetic alpha child</li></ul></li><li><p>Synthetic beta</p></li></ul><div>Synthetic gamma<br>Synthetic delta</div>')
-    data.setData('text/plain', 'Synthetic alpha\n  Synthetic alpha child\nSynthetic beta\nSynthetic gamma\nSynthetic delta')
+    data.setData('text/html', '<div>Synthetic gamma<br>Synthetic delta</div><ul><li><p>Synthetic beta</p></li><li>Synthetic alpha<ul><li>Synthetic alpha child</li></ul></li></ul>')
+    data.setData('text/plain', 'Synthetic gamma\nSynthetic delta\nSynthetic beta\nSynthetic alpha\n  Synthetic alpha child')
     element.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }))
   })
   await page.getByRole('button', { name: /^Import 4 ideas/ }).click()
   await expectIdea(page, 1, 4)
   await expect(page.locator('.idea-sort-children li')).toHaveText(['Synthetic alpha child'])
   await page.keyboard.press('Escape')
-  await expect(rows(page, 'proposition')).toHaveText(['Synthetic alpha', 'Synthetic alpha child', 'Synthetic beta', 'Synthetic gamma', 'Synthetic delta'])
+  await expect(rows(page, 'proposition')).toHaveText(['Synthetic gamma', 'Synthetic delta', 'Synthetic beta', 'Synthetic alpha', 'Synthetic alpha child'])
 
   // Balance task blocks and Apple Notes markup go through the notes paste parser.
   await page.getByRole('button', { name: 'Import', exact: true }).click()
@@ -699,9 +699,9 @@ test('the review goal seeds once with a link that runs the Genuinely review', as
   const editor = page.getByRole('textbox', { name: 'Edit idea' })
   await expect(editor).toBeFocused()
   await page.keyboard.type('!')
-  await expect(editor).toHaveText('Synthetic reviewed!')
+  await expect(editor).toHaveText('Synthetic later!')
   await page.keyboard.press('Escape')
-  await expect(sorter(page).locator('.idea-sort-card')).toContainText('Synthetic reviewed')
+  await expect(sorter(page).locator('.idea-sort-card')).toContainText('Synthetic later')
   await expect(sorter(page).locator('.idea-sort-card')).not.toContainText('!')
   // Reviews keep the unlock delay, counted from the answer rather than the card.
   await page.clock.fastForward(5000)
@@ -713,13 +713,13 @@ test('the review goal seeds once with a link that runs the Genuinely review', as
   await page.clock.fastForward(3000)
   await page.keyboard.press('g')
   await expectIdea(page, 2, 2)
-  // Keeping an idea in Genuinely requeues it at the end of the group.
-  expect((await groups(page)).genuine).toEqual(['Synthetic later', 'Synthetic reviewed'])
+  await expect(sorter(page).locator('.idea-sort-card')).toContainText('Synthetic reviewed')
   await page.keyboard.press('y')
   await page.clock.fastForward(3000)
-  await page.keyboard.press('p')
+  await page.keyboard.press('g')
   await expect(sorter(page)).toBeHidden()
-  expect((await groups(page)).genuine).toEqual(['Synthetic reviewed'])
+  // Keeping an idea in Genuinely requeues it at the end of the group.
+  expect((await groups(page)).genuine).toEqual(['Synthetic later', 'Synthetic reviewed'])
   const todayTasks = await page.evaluate(() => JSON.parse(localStorage.getItem('balance.appState.v1')!).plans[0].items.map((item: any) => [item.text, item.done]))
   expect(todayTasks).toContainEqual(['Filter Genuinely Worth Doing', true])
 })

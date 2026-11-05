@@ -3353,10 +3353,12 @@ return rows`
     plannerStore.ensureIdeaReviewGoal()
   }
 
+  // Sorting starts at the bottom of the list and works up, so Proposition
+  // Party, which grows from the top, is sorted oldest first.
   function askIdeaSort(queue: import('./lib/types').IdeaItem[], title: string, addToDay?: (itemId: Id) => void, sortedBefore = 0): Promise<boolean> {
     ideaSort?.resolve(false)
     return new Promise((resolve) => {
-      ideaSort = { queue, title, view, sortedBefore, addToDay, resolve }
+      ideaSort = { queue: [...queue].reverse(), title, view, sortedBefore, addToDay, resolve }
     })
   }
 

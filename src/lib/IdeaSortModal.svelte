@@ -9,7 +9,7 @@
   import { openClickedLink, openRenderedLinkFromShortcut } from './externalLinks'
   import type { Id, IdeaGroup, IdeaGroupKind, IdeaItem, IdeaSnapshot } from './types'
 
-  // Ideas are sorted one card at a time in their original order. Each card asks
+  // Ideas are sorted one card at a time in queue order (bottom of the list first). Each card asks
   // the key question; Yes picks a keep group, No picks a discard group.
   export let queue: IdeaItem[]
   export let groups: IdeaGroup[]
