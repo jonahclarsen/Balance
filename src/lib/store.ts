@@ -161,7 +161,7 @@ import type {
 import { dayThemePreferenceKey, normalizeReplicatedPreferences } from './preferences'
 import { isNoteTrashExpired } from './noteTrash'
 import { copyNoteItemsWithNewIds, noteVersionGroupId } from './noteVersions'
-import { findIdea, ideaGroupId, ideaReviewGoalHue, ideaReviewGoalNameHtml, IDEA_GROUP_KINDS, IDEA_REVIEW_GOAL_CADENCE_DAYS, IDEA_REVIEW_GOAL_ID, IDEA_REVIEW_GOAL_NAME, isIdeaTrashExpired, needsIdeaReviewGoal } from './ideas'
+import { findIdea, ideaGroupId, IDEA_GROUP_KINDS, isIdeaTrashExpired } from './ideas'
 import { reconcileTaskNotifications } from './taskNotifications'
 import { reconcileVoiceClips } from './voiceClips'
 import { withListCompletionTime } from './listTiming'
@@ -2598,13 +2598,16 @@ function createPlannerStore() {
       return fresh.map((item) => item.id)
     },
 
+    // Reviewed ideas keep their group until the day is generated; the fresh
+    // stamp counts the reservation as their review decision.
     assignIdeaToDay(itemId: Id, date: string) {
       commitEntities('assign_idea_to_day', { itemId, date }, (state) => {
         const found = findIdea(state.ideaBuckets, itemId)
-        if (!found || found.group.kind !== 'proposition') return state
-        return updateIdeaGroup(state, 'proposition', (group) => ({
+        if (!found || found.group.kind === 'trash') return state
+        const reviewed = found.group.kind === 'proposition' ? {} : { bucketedAt: nowISO() }
+        return updateIdeaGroup(state, found.group.kind, (group) => ({
           ...group,
-          items: group.items.map((item) => item.id === itemId ? { ...item, dayAssignmentDate: date } : item),
+          items: group.items.map((item) => item.id === itemId ? { ...item, ...reviewed, dayAssignmentDate: date } : item),
         }))
       })
     },
@@ -2669,19 +2672,6 @@ function createPlannerStore() {
           const items = group.items.filter((item) => !isIdeaTrashExpired(item, now))
           return items.length === group.items.length ? group : { ...group, items }
         }), { undoable: false })
-    },
-
-    // Seeds the weekly review goal once per database; the fixed id converges
-    // when two devices seed before syncing.
-    ensureIdeaReviewGoal() {
-      if (!needsIdeaReviewGoal(get(store).goals)) return false
-      const goal = createGoal(
-        IDEA_REVIEW_GOAL_NAME, IDEA_REVIEW_GOAL_CADENCE_DAYS, [IDEA_REVIEW_GOAL_NAME.toLowerCase()],
-        ideaReviewGoalHue(get(store).goals), 50, todayISO(), IDEA_REVIEW_GOAL_ID, undefined, ideaReviewGoalNameHtml(),
-      )
-      commitEntities('replace_goal_data', { action: 'add_goal', goalId: goal.id }, (state) =>
-        needsIdeaReviewGoal(state.goals) ? { ...state, goals: [...state.goals, goal] } : state, { undoable: false })
-      return true
     },
 
     addRootIdeaItem(groupId: Id) {

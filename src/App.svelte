@@ -55,7 +55,7 @@
   import IdeaSortModal from './lib/IdeaSortModal.svelte'
   import { dayTemplateShortcutLetters } from './lib/dayTemplateShortcuts'
   import IdeaImportModal from './lib/IdeaImportModal.svelte'
-  import { ideaGroupItems, findIdea, IDEA_GROUPS, IDEA_REVIEW_GOAL_NAME, readActiveIdeaGroup, saveActiveIdeaGroup } from './lib/ideas'
+  import { dueIdeaReviews, ideaGroupItems, findIdea, IDEA_GROUPS, readActiveIdeaGroup, saveActiveIdeaGroup } from './lib/ideas'
   import { awaitingTranscription } from './lib/voiceClips'
   import { IDEA_REVIEW_LABELS, type IdeaReviewKind } from './lib/ideaLinks'
   import { prioritizeReveal } from './lib/prioritize'
@@ -458,7 +458,7 @@
   // A sort belongs to the page it was opened on: it hides while another page is
   // open and picks up where it left off on return.
   // Sorts run during day generation can also pick ideas for the new day.
-  let ideaSort: { queue: import('./lib/types').IdeaItem[]; title: string; view: View; sortedBefore: number; addToDay?: (itemId: Id) => void; resolve: (completed: boolean) => void } | null = null
+  let ideaSort: { queue: import('./lib/types').IdeaItem[]; title: string; view: View; sortedBefore: number; addToDay?: (itemId: Id) => void; intro?: { days: number }; resolve: (completed: boolean) => void } | null = null
   $: ideaSortVisible = Boolean(ideaSort && view === ideaSort.view)
   let ideaImportOpen = false
   let activeIdeaGroup = readActiveIdeaGroup()
@@ -2550,7 +2550,6 @@ return rows`
       plannerStore.purgeExpiredIdeas()
       noteTrashCleanupTimer = window.setInterval(() => { plannerStore.purgeExpiredNotes(); plannerStore.purgeExpiredIdeas() }, 60 * 1000)
       plannerStore.retireProjectCheckIns()
-      seedDefaultGoals()
 
       // Android may serialize event-plugin registration with command IPC while
       // the WebView is starting. Register optional listeners only after the
@@ -2641,7 +2640,6 @@ return rows`
       plannerStore.purgeExpiredNotes()
       plannerStore.purgeExpiredIdeas()
       plannerStore.retireProjectCheckIns()
-      seedDefaultGoals()
 
       if (!recoveryKeyStatus?.recoveryKey) {
         await runLaunchDatabaseMaintenance()
@@ -3346,19 +3344,12 @@ return rows`
     }
   }
 
-  // Seeds the weekly "Filter Genuinely Worth Doing" goal once per database.
-  // Browser test runs opt out so goal counts in fixtures stay predictable.
-  function seedDefaultGoals() {
-    if (import.meta.env.VITE_BALANCE_SKIP_SEED_GOALS === '1') return
-    plannerStore.ensureIdeaReviewGoal()
-  }
-
   // Sorting starts at the bottom of the list and works up, so Proposition
   // Party, which grows from the top, is sorted oldest first.
-  function askIdeaSort(queue: import('./lib/types').IdeaItem[], title: string, addToDay?: (itemId: Id) => void, sortedBefore = 0): Promise<boolean> {
+  function askIdeaSort(queue: import('./lib/types').IdeaItem[], title: string, addToDay?: (itemId: Id) => void, sortedBefore = 0, intro?: { days: number }): Promise<boolean> {
     ideaSort?.resolve(false)
     return new Promise((resolve) => {
-      ideaSort = { queue: [...queue].reverse(), title, view, sortedBefore, addToDay, resolve }
+      ideaSort = { queue: [...queue].reverse(), title, view, sortedBefore, addToDay, intro, resolve }
     })
   }
 
@@ -3392,7 +3383,6 @@ return rows`
     if (structured) plannerStore.pasteIdeaItems(groupId, structured.items, itemId, 'after')
   }
 
-  // Only Genuinely Worth Doing counts toward the seeded weekly review goal.
   function showIdeaGroup(kind: IdeaGroupKind) {
     activeIdeaGroup = kind
     saveActiveIdeaGroup(kind)
@@ -3401,11 +3391,7 @@ return rows`
   async function startIdeaReview(kind: IdeaReviewKind = 'genuine') {
     showIdeaGroup(kind)
     const queue = ideaGroupItems($plannerStore.ideaBuckets, kind)
-    if (queue.length === 0) return
-    const completed = await askIdeaSort(queue, IDEA_REVIEW_LABELS[kind])
-    if (!completed || kind !== 'genuine') return
-    const plan = $plannerStore.plans.find((candidate) => candidate.date === todayISO())
-    if (plan) plannerStore.addCompletedPlanItem(plan.id, IDEA_REVIEW_GOAL_NAME)
+    if (queue.length > 0) await askIdeaSort(queue, IDEA_REVIEW_LABELS[kind])
   }
 
   function sortPropositions() {
@@ -3827,9 +3813,16 @@ return rows`
     const waiting = awaitingTranscription($plannerStore.voiceClips)
     const propositions = ideaGroupItems($plannerStore.ideaBuckets, 'proposition')
       .filter((item) => item.dayAssignmentDate !== date && !waiting.has(item.id))
+    const addToDay = (itemId: Id) => plannerStore.assignIdeaToDay(itemId, date)
     if (propositions.length > 0 && !(await askIdeaSort(
-      propositions, 'Sort new ideas', (itemId) => plannerStore.assignIdeaToDay(itemId, date), plannerStore.showDayGenerationIdeas(date, propositions.map(({ id }) => id)),
+      propositions, 'Sort new ideas', addToDay, plannerStore.showDayGenerationIdeas(date, propositions.map(({ id }) => id)),
     ))) return false
+    // Scheduled reviews block generation like new ideas do. Each decision
+    // restamps its idea, so closing midway resumes with the rest.
+    for (const review of dueIdeaReviews($plannerStore.ideaBuckets)) {
+      const queue = review.items.filter((item) => item.dayAssignmentDate !== date)
+      if (queue.length > 0 && !(await askIdeaSort(queue, IDEA_REVIEW_LABELS[review.kind], addToDay, 0, { days: review.days }))) return false
+    }
     if (needsProjectPick($plannerStore.projects, date) && !(await askProjectPick(date))) return false
 
     const steps = templateQuizSteps(
@@ -3855,8 +3848,8 @@ return rows`
       todayISO(),
     )
     plannerStore.generatePlan(template.id, date, replaceExisting, quizAnswers)
-    const dayIdeaIds = ideaGroupItems($plannerStore.ideaBuckets, 'proposition')
-      .filter((item) => item.dayAssignmentDate === date).map((item) => item.id)
+    const dayIdeaIds = $plannerStore.ideaBuckets.filter((group) => group.kind !== 'trash')
+      .flatMap((group) => group.items).filter((item) => item.dayAssignmentDate === date).map((item) => item.id)
     moveIdeasToDay(dayIdeaIds, date)
     view = 'today'
     if (doabilityReviews.length > 0) goalDoabilityReviews = doabilityReviews
@@ -9012,6 +9005,7 @@ return rows`
           onCut={cutSortedIdea}
           onAddToNote={plannerStore.moveIdeaToNewNote}
           onAddToDay={ideaSort.addToDay}
+          intro={ideaSort.intro}
           onRestore={plannerStore.restoreSortedIdeas}
           onFinish={finishIdeaSort}
         />

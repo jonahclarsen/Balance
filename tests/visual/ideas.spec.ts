@@ -675,23 +675,12 @@ test('pasted lists import as ideas and open the sorter; trash clears after 30 da
   await expect(rows(page, 'trash')).toHaveCount(0)
 })
 
-test('the review goal seeds once with a link that runs the Genuinely review', async ({ page }, testInfo) => {
+test('the Genuinely review button sorts every idea in the group', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
   await open(page)
-  await generateDay(page)
-  expect(await storeCall(page, 'return [plannerStore.ensureIdeaReviewGoal(), plannerStore.ensureIdeaReviewGoal()]')).toEqual([true, false])
-  const goal = await page.evaluate(() => JSON.parse(localStorage.getItem('balance.appState.v1')!).goals.find((goal: any) => goal.id === 'goal_idea_review'))
-  expect(goal).toBeTruthy()
-  expect(goal.cadenceDays).toBe(7)
-  expect(goal.nameHtml).toContain('balance://ideas/review')
-
   await storeCall(page, "plannerStore.addIdea('Synthetic reviewed', 'genuine'); plannerStore.addIdea('Synthetic later', 'genuine')")
-  // The goal name carries the link that starts the review.
-  await openView(page, 'Goals')
-  await page.locator('.goal-name-input a[href="balance://ideas/review"]').click()
-  await expectIdea(page, 1, 2)
-  await page.keyboard.press('Escape')
-  await expect(page.getByRole('heading', { name: 'Ideas', level: 2 })).toBeVisible()
+  await openView(page, 'Ideas')
+  await card(page, 'genuine').click()
   await page.getByRole('button', { name: 'Review', exact: true }).click()
   await expectIdea(page, 1, 2)
   // Editing starts with the caret after the text rather than selecting it.
@@ -720,8 +709,54 @@ test('the review goal seeds once with a link that runs the Genuinely review', as
   await expect(sorter(page)).toBeHidden()
   // Keeping an idea in Genuinely requeues it at the end of the group.
   expect((await groups(page)).genuine).toEqual(['Synthetic later', 'Synthetic reviewed'])
-  const todayTasks = await page.evaluate(() => JSON.parse(localStorage.getItem('balance.appState.v1')!).plans[0].items.map((item: any) => [item.text, item.done]))
-  expect(todayTasks).toContainEqual(['Filter Genuinely Worth Doing', true])
+})
+
+test('a due review blocks day generation until every older idea is sorted', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
+  await open(page)
+  await storeCall(page, `
+    plannerStore.addIdea('Synthetic keep', 'genuine')
+    plannerStore.addIdea('Synthetic today', 'genuine')
+    plannerStore.addIdea('Synthetic maybe', 'possible')
+  `)
+  await page.clock.setSystemTime(new Date(NOW.getTime() + 10 * 24 * 60 * 60 * 1000))
+  await page.reload()
+  await expect(page.getByRole('region', { name: 'Daily plan' })).toBeVisible()
+  // Ideas placed on the due day wait for the next review.
+  await storeCall(page, "plannerStore.addIdea('Synthetic fresh', 'genuine')")
+  const generated = () => page.evaluate(() => JSON.parse(localStorage.getItem('balance.appState.v1')!).plans.some((plan: any) => plan.date === '2026-10-18'))
+
+  const intro = sorter(page).locator('.idea-sort-intro')
+  await generateDay(page)
+  await expect(sorter(page)).toContainText('Review Genuinely Worth Doing')
+  await expect(intro).toContainText('2 ideas')
+  await expect(intro).toContainText('Every 10 days')
+  await page.keyboard.press('Escape')
+  await expect(sorter(page)).toBeHidden()
+  expect(await generated()).toBe(false)
+
+  await generateDay(page)
+  await page.keyboard.press('Enter')
+  await expectIdea(page, 1, 2)
+  await expect(sorter(page).locator('.idea-sort-card')).toContainText('Synthetic today')
+  await page.keyboard.press('y')
+  await page.clock.fastForward(3000)
+  await page.keyboard.press('g')
+  await expectIdea(page, 2, 2)
+  await page.keyboard.press('Escape')
+  expect(await generated()).toBe(false)
+
+  // Decisions stick, so the review resumes with the rest.
+  await generateDay(page)
+  await expect(intro).toContainText('1 idea')
+  await page.keyboard.press('Enter')
+  await expect(sorter(page).locator('.idea-sort-card')).toContainText('Synthetic keep')
+  await page.keyboard.press('y')
+  await page.keyboard.press('d')
+  await expect(sorter(page)).toBeHidden()
+  const plan = page.getByRole('region', { name: 'Daily plan' })
+  await expect(plan.locator('[data-plan-text-input]').first()).toHaveText('Synthetic keep')
+  expect(await groups(page)).toMatchObject({ genuine: ['Synthetic fresh', 'Synthetic today'], possible: ['Synthetic maybe'] })
 })
 
 test('sort new ideas opens web links by click and Option-F without advancing', async ({ page }) => {

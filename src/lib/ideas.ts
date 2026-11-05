@@ -1,7 +1,8 @@
 import { parseNoteBlocksFromClipboard, type ParsedNoteClipboardItem } from './noteClipboard'
-import { createPlanItem, escapeHTML, htmlToPlainText, linkifyExternalURLs, sanitizeInlineHTML } from './planner'
+import { shiftISODate } from './goals'
+import { createPlanItem, escapeHTML, htmlToPlainText, linkifyExternalURLs, sanitizeInlineHTML, todayISO } from './planner'
 import { parseTaskClipboardAsNoteBlocks } from './taskClipboard'
-import type { Goal, Id, IdeaGroup, IdeaGroupKind, IdeaItem, PlanItem } from './types'
+import type { Id, IdeaGroup, IdeaGroupKind, IdeaItem, PlanItem } from './types'
 
 export type IdeaGroupMeta = { kind: IdeaGroupKind; id: Id; label: string; key: string }
 
@@ -91,29 +92,34 @@ export function findIdea(groups: IdeaGroup[], itemId: Id): { group: IdeaGroup; i
 
 export const IDEA_SORT_QUESTION = 'Is this worth the time and attention it would cost, compared to other uses of that time?'
 
-// ---- Review goal -----------------------------------------------------------
+// ---- Scheduled reviews ---------------------------------------------------
 
-export const IDEAS_URL = 'balance://ideas'
-export const IDEA_REVIEW_URL = 'balance://ideas/review'
-export const IDEA_REVIEW_GOAL_ID = 'goal_idea_review'
-export const IDEA_REVIEW_GOAL_NAME = 'Filter Genuinely Worth Doing'
-export const IDEA_REVIEW_GOAL_CADENCE_DAYS = 7
+export type ScheduledIdeaReviewKind = 'genuine' | 'possible'
+export const IDEA_REVIEW_SCHEDULE: readonly { kind: ScheduledIdeaReviewKind; days: number }[] = [
+  { kind: 'genuine', days: 10 },
+  { kind: 'possible', days: 45 },
+]
 
-// Returns true when the review goal still has to be seeded into this database.
-export function needsIdeaReviewGoal(goals: Pick<Goal, 'id'>[]): boolean {
-  return !goals.some((goal) => goal.id === IDEA_REVIEW_GOAL_ID)
+export type DueIdeaReview = { kind: ScheduledIdeaReviewKind; days: number; items: IdeaItem[] }
+
+function bucketedDay(item: IdeaItem): string {
+  const time = item.bucketedAt ? Date.parse(item.bucketedAt) : NaN
+  return Number.isFinite(time) ? todayISO(new Date(time)) : ''
 }
 
-export function ideaReviewGoalNameHtml(): string {
-  return `<a href="${IDEA_REVIEW_URL}">${escapeHTML(IDEA_REVIEW_GOAL_NAME)}</a>`
-}
-
-// A hue far from the ones already in use, so the seeded goal stands apart.
-export function ideaReviewGoalHue(goals: Pick<Goal, 'hue'>[]): number {
-  const candidates = [275, 35, 155, 215, 335, 95]
-  const used = goals.map((goal) => goal.hue)
-  const distance = (hue: number) => Math.min(360, ...used.map((other) => Math.min(Math.abs(hue - other), 360 - Math.abs(hue - other))))
-  return candidates.reduce((best, hue) => distance(hue) > distance(best) ? hue : best, candidates[0]!)
+// Every sort decision restamps bucketedAt, so a group's oldest stamp marks its
+// last review. A review is due that many days later and covers every idea
+// placed before the due day; ideas sorted in since then wait for the next one.
+export function dueIdeaReviews(groups: IdeaGroup[], today = todayISO()): DueIdeaReview[] {
+  return IDEA_REVIEW_SCHEDULE.flatMap(({ kind, days }) => {
+    const items = ideaGroupItems(groups, kind)
+    if (items.length === 0) return []
+    const stampDays = items.map(bucketedDay)
+    const oldest = [...stampDays].sort()[0]!
+    const dueDay = oldest ? shiftISODate(oldest, days) : today
+    if (today < dueDay) return []
+    return [{ kind, days, items: items.filter((_, index) => stampDays[index]! < dueDay) }]
+  })
 }
 
 // ---- Import ----------------------------------------------------------------

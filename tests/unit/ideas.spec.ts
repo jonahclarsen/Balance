@@ -2,15 +2,14 @@ import { expect, test } from '@playwright/test'
 import {
   ideaUnlockDelay,
   ideaGroupKindForKey,
-  ideaReviewGoalHue,
+  dueIdeaReviews,
   isIdeaTrashExpired,
-  needsIdeaReviewGoal,
   parseIdeaImportText,
   IDEA_GROUPS,
-  IDEA_REVIEW_GOAL_ID,
   IDEA_TRASH_RETENTION_MS,
 } from '../../src/lib/ideas'
 import { createPlanItem } from '../../src/lib/planner'
+import type { IdeaGroup, IdeaGroupKind } from '../../src/lib/types'
 
 test('groups have unique move keys and a fixed order', () => {
   expect(IDEA_GROUPS.map((group) => group.kind)).toEqual(['proposition', 'genuine', 'possible', 'afterlife', 'trash'])
@@ -53,10 +52,34 @@ test('plain-text import splits bullets and lines, nesting by indentation', () =>
   expect(parseIdeaImportText('\n  \n')).toEqual([])
 })
 
-test('the review goal seeds once and picks a hue away from existing goals', () => {
-  expect(needsIdeaReviewGoal([])).toBe(true)
-  expect(needsIdeaReviewGoal([{ id: IDEA_REVIEW_GOAL_ID }])).toBe(false)
-  expect(ideaReviewGoalHue([])).toBe(275)
-  const hue = ideaReviewGoalHue([{ hue: 275 }, { hue: 280 }, { hue: 270 }])
-  expect(Math.abs(hue - 275)).toBeGreaterThan(30)
+function idea(text: string, bucketedAt?: string) {
+  return { ...createPlanItem(text), ...(bucketedAt ? { bucketedAt } : {}) }
+}
+
+function ideaGroups(items: Partial<Record<IdeaGroupKind, ReturnType<typeof idea>[]>>): IdeaGroup[] {
+  return Object.entries(items).map(([kind, groupItems]) => ({ id: kind, kind: kind as IdeaGroupKind, items: groupItems! }))
+}
+
+const due = (groups: IdeaGroup[], today: string) =>
+  dueIdeaReviews(groups, today).map(({ kind, items }) => [kind, items.map((item) => item.text)])
+
+test('Genuinely reviews come every 10 days and Possibly every 45, covering ideas placed before the due day', () => {
+  // Noon local time, clear of the 5 a.m. day boundary.
+  const groups = ideaGroups({
+    genuine: [idea('Synthetic old', '2026-10-01T12:00:00'), idea('Synthetic newer', '2026-10-10T12:00:00'), idea('Synthetic fresh', '2026-10-11T12:00:00')],
+    possible: [idea('Synthetic maybe', '2026-10-01T12:00:00')],
+    afterlife: [idea('Synthetic gone', '2026-01-01T12:00:00')],
+  })
+  expect(due(groups, '2026-10-10')).toEqual([])
+  expect(due(groups, '2026-10-11')).toEqual([['genuine', ['Synthetic old', 'Synthetic newer']]])
+  expect(due(groups, '2026-11-15')).toEqual([
+    ['genuine', ['Synthetic old', 'Synthetic newer']],
+    ['possible', ['Synthetic maybe']],
+  ])
+})
+
+test('undated ideas are due for review at once and empty groups never are', () => {
+  expect(due(ideaGroups({ genuine: [idea('Synthetic undated'), idea('Synthetic today', '2026-10-11T12:00:00')] }), '2026-10-11'))
+    .toEqual([['genuine', ['Synthetic undated']]])
+  expect(due(ideaGroups({ genuine: [], possible: [] }), '2027-01-01')).toEqual([])
 })

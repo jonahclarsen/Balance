@@ -7706,6 +7706,28 @@ textarea.note-title {
   max-height: 46dvh;
 }
 
+.idea-sort-intro {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding-block: 32px 8px;
+  text-align: center;
+}
+
+.idea-sort-intro strong {
+  font-size: 28px;
+  line-height: 1.2;
+}
+
+.idea-sort-intro span {
+  color: var(--muted);
+}
+
+.idea-sort-intro button {
+  margin-top: 16px;
+}
+
 .idea-sort-question {
   margin: 0;
   font-size: 15px;

@@ -33,10 +33,13 @@
   // the note an Add to new note created.
   export let onRestore: (snapshots: IdeaSnapshot[], noteId: Id | null) => void
   export let onFinish: (completed: boolean) => void
+  // Scheduled reviews open on a summary page before the first card.
+  export let intro: { days: number } | undefined = undefined
 
   type Step = 'question' | 'yes' | 'no'
 
   let index = 0
+  let introOpen = Boolean(intro)
   let step: Step = 'question'
   let editing = false
   let editHTML = ''
@@ -69,6 +72,10 @@
   function resetCard(_index: number) {
     step = 'question'
     editing = false
+  }
+
+  function startSorting() {
+    introOpen = false
   }
 
   function answer(next: 'yes' | 'no') {
@@ -214,6 +221,15 @@
 
   function handleKeydown(event: KeyboardEvent) {
     if (!active || event.metaKey || event.ctrlKey || event.repeat) return
+    if (introOpen) {
+      if (event.altKey) return
+      if (event.key === 'Enter') startSorting()
+      else if (event.key === 'Escape') onFinish(false)
+      else return
+      event.preventDefault()
+      event.stopPropagation()
+      return
+    }
     if (event.altKey) {
       if (!event.shiftKey && event.code === 'KeyF' && !editing && current &&
           openRenderedLinkFromShortcut(renderIdeaHTML(current), onOpenLink)) {
@@ -274,6 +290,13 @@
   closeOnEscape={false}
   onClose={() => onFinish(false)}
 >
+  {#if intro && introOpen}
+    <div class="idea-sort-intro">
+      <strong>{queue.length} {queue.length === 1 ? 'idea' : 'ideas'}</strong>
+      <span>Every {intro.days} days</span>
+      <button class="primary" type="button" on:click={startSorting}>Start (Enter)</button>
+    </div>
+  {:else}
   <div class="paste-review">
     <ProgressBar done={sorted} {total} label="Ideas sorted" />
     <div class="paste-review-list" aria-label="Idea being sorted">
@@ -371,4 +394,5 @@
 
     <p class="paste-review-hint">{sorted}/{total} sorted</p>
   </div>
+  {/if}
 </OverlayModal>
