@@ -204,6 +204,8 @@
 
   .day-quiz kbd {
     padding: 1px 6px;
+    font-family: inherit;
+    line-height: 1.4;
     border: 1px solid var(--line-strong);
     border-radius: 4px;
     font-size: 12px;
