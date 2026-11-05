@@ -7,6 +7,7 @@
 
 /* Begin PBXBuildFile section */
 		BA1000000000000000000001 /* BalanceWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA1000000000000000000011 /* BalanceWidget.swift */; };
+		BA1000000000000000000002 /* widget-fonts in Resources */ = {isa = PBXBuildFile; fileRef = BA1000000000000000000015 /* widget-fonts */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -14,6 +15,7 @@
 		BA1000000000000000000012 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		BA1000000000000000000013 /* BalanceWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BalanceWidget.entitlements; sourceTree = "<group>"; };
 		BA1000000000000000000014 /* BalanceWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BalanceWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		BA1000000000000000000015 /* widget-fonts */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "widget-fonts"; path = "../widget-fonts"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -30,6 +32,7 @@
 			isa = PBXGroup;
 			children = (
 				BA1000000000000000000032 /* BalanceWidget */,
+				BA1000000000000000000015 /* widget-fonts */,
 				BA1000000000000000000033 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -100,7 +103,9 @@
 		BA1000000000000000000023 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
-			files = ();
+			files = (
+				BA1000000000000000000002 /* widget-fonts in Resources */,
+			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */

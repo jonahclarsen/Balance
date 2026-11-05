@@ -1,5 +1,6 @@
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+import { crc32, deflateSync } from 'node:zlib'
 
 const root = process.argv[2] ?? 'src-tauri/gen/android/app/src/main'
 const activityPath =
@@ -561,6 +562,122 @@ const darkWidgetThemes = [
 
 const alphaColor = (hex, alpha) => `#${alpha}${hex.slice(1)}`
 
+// Retro themes draw the widget as a window from their operating system, like
+// the macOS widget. Tahoma can't be redistributed, so XP uses Android's sans.
+const widgetFontFiles = [
+  'balance_chicago',
+  'balance_geneva',
+  'balance_ms_sans',
+  'balance_ms_sans_bold',
+  'balance_selawik',
+  'balance_selawik_bold',
+]
+const retroWindows = {
+  windowsxp: () => ({
+    corners: 8,
+    controlRadius: 0,
+    clientInset: 4,
+    captionInk: '#FFFFFF',
+    captionShadow: '#0F1089',
+    captionPaddingStart: 12,
+    markerFace: ['#DCDCD7', '#FFFFFF'],
+    markerBorder: '#1D5281',
+    progressRadius: 3,
+    progressBlocks: ['#ACEDAD', '#7BE47D', '#4CDA50', '#2ED330', '#42D845', '#76E275', '#8FE791'],
+    fonts: { caption: 'sans-serif-medium', status: 'sans-serif', eyebrow: 'sans-serif-medium', title: 'sans-serif-medium', body: 'sans-serif', time: 'sans-serif' },
+    sizes: { caption: 15, status: 13, eyebrow: 10, title: 16, body: 13, time: 10, marker: 13 },
+  }),
+  windowsvista: (dark) => ({
+    corners: 8,
+    controlRadius: 2,
+    clientInset: 5,
+    glass: dark ? ['#3B6179', '#1A3544', '#162E3D'] : ['#EEFAFF', '#75A8C2', '#5893AC'],
+    captionGlow: dark ? '#071821' : '#FFFFFF',
+    captionPaddingStart: 12,
+    markerFace: ['#D4D4D4', '#F6F6F6'],
+    markerBorder: '#8E8F8F',
+    progressRadius: 2,
+    fonts: { caption: '@font/balance_selawik', status: '@font/balance_selawik', eyebrow: '@font/balance_selawik_bold', title: '@font/balance_selawik_bold', body: '@font/balance_selawik', time: '@font/balance_selawik' },
+    sizes: { caption: 16, status: 14, eyebrow: 10, title: 16, body: 14, time: 11, marker: 13 },
+  }),
+  windows98: (dark) => ({
+    corners: 0,
+    controlRadius: 0,
+    clientInset: 0,
+    desktopInset: 7,
+    windowPadding: 3,
+    desktop: dark ? '#003B3B' : '#008080',
+    bevel: [dark ? '#737373' : '#FFFFFF', '#000000'],
+    captionInk: '#FFFFFF',
+    captionPaddingStart: 6,
+    captionGradient: ['#000080', '#1084D0'],
+    progressRadius: 0,
+    progressBlocks: 'accent',
+    fonts: { caption: '@font/balance_ms_sans_bold', status: '@font/balance_ms_sans', eyebrow: '@font/balance_ms_sans_bold', title: '@font/balance_ms_sans_bold', body: '@font/balance_ms_sans', time: '@font/balance_ms_sans' },
+    sizes: { caption: 13, status: 13, eyebrow: 11, title: 14, body: 13, time: 11, marker: 13 },
+  }),
+  system1: (dark) => ({
+    corners: 0,
+    controlRadius: 0,
+    clientInset: 0,
+    desktopInset: 7,
+    windowPadding: 1,
+    dither: dark ? ['#101010', '#505050'] : ['#000000', '#FFFFFF'],
+    pinstripes: true,
+    captionPaddingStart: 6,
+    progressRadius: 0,
+    fonts: { caption: '@font/balance_chicago', status: '@font/balance_chicago', eyebrow: '@font/balance_chicago', title: '@font/balance_chicago', body: '@font/balance_geneva', time: '@font/balance_geneva' },
+    sizes: { caption: 16, status: 16, eyebrow: 12, title: 16, body: 16, time: 14, marker: 12 },
+  }),
+}
+const withRetroWindow = (theme, dark) => ({ ...theme, window: retroWindows[theme.id]?.(dark) })
+
+const fontName = (theme, role, fallback) => theme.window?.fonts[role] ?? fallback
+const textSize = (theme, role, fallback) => theme.window?.sizes[role] ?? fallback
+const fontAttribute = (theme, role) =>
+  theme.window ? `\n        android:fontFamily="${theme.window.fonts[role]}"` : ''
+const captionInk = (theme) => theme.window?.captionInk ?? theme.ink
+
+function pngTile(width, height, pixel) {
+  const chunk = (type, data) => {
+    const body = Buffer.concat([Buffer.from(type, 'latin1'), data])
+    const length = Buffer.alloc(4)
+    length.writeUInt32BE(data.length)
+    const checksum = Buffer.alloc(4)
+    checksum.writeUInt32BE(crc32(body))
+    return Buffer.concat([length, body, checksum])
+  }
+  const header = Buffer.alloc(13)
+  header.writeUInt32BE(width, 0)
+  header.writeUInt32BE(height, 4)
+  header.set([8, 6, 0, 0, 0], 8)
+  const raw = Buffer.alloc((width * 4 + 1) * height)
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const color = pixel(x, y)
+      if (!color) continue
+      const offset = y * (width * 4 + 1) + 1 + x * 4
+      raw.writeUInt32BE(Number.parseInt(`${color.slice(1)}FF`, 16), offset)
+    }
+  }
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', header),
+    chunk('IDAT', deflateSync(raw)),
+    chunk('IEND', Buffer.alloc(0)),
+  ])
+}
+
+// Physical-pixel tiles: 6px is about 2dp on a typical phone.
+const ditherTile = ([first, second]) =>
+  pngTile(12, 12, (x, y) => ((Math.floor(x / 6) + Math.floor(y / 6)) % 2 ? second : first))
+const pinstripeTile = (theme) =>
+  pngTile(4, 15, (_x, y) => (y >= 6 && y < 9 ? theme.ink : theme.paper))
+function progressBlockTile(theme) {
+  const colors = theme.window.progressBlocks === 'accent' ? [theme.accent] : theme.window.progressBlocks
+  return pngTile(30, 33, (x, y) => (x < 24 ? colors[Math.floor((y / 33) * colors.length)] : null))
+}
+
 function taskRows(theme) {
   const preview = [
     'Plan the day around what matters most',
@@ -593,8 +710,8 @@ function taskRows(theme) {
         android:paddingTop="5dp"${visibility}>
 
         <ImageView
-            android:layout_width="11dp"
-            android:layout_height="11dp"
+            android:layout_width="${textSize(theme, 'marker', 11)}dp"
+            android:layout_height="${textSize(theme, 'marker', 11)}dp"
             android:layout_marginEnd="8dp"
             android:contentDescription="@null"
             android:importantForAccessibility="no"
@@ -606,18 +723,20 @@ function taskRows(theme) {
             android:layout_height="wrap_content"
             android:layout_marginEnd="6dp"
             android:background="@drawable/balance_widget_${theme.id}_time_pill${timePillVariant}"
-            android:fontFamily="sans-serif"
+            android:fontFamily="${fontName(theme, 'time', 'sans-serif')}"
             android:maxLines="1"
             android:paddingBottom="2dp"
             android:paddingEnd="6dp"
             android:paddingStart="6dp"
             android:paddingTop="2dp"
             android:textColor="${theme.timePillInk ?? theme.paper}"
-            android:textSize="9sp"${time} />
+            android:textSize="${textSize(theme, 'time', 9)}sp"${time} />
 
         <TextView
             android:id="@+id/widget_item_${item}"
-            style="@style/BalanceWidgetItem"
+            style="@style/BalanceWidgetItem"${theme.window ? `
+            android:fontFamily="${theme.window.fonts.body}"
+            android:textSize="${theme.window.sizes.body}sp"` : ''}
             android:textColor="${theme.ink}"${text} />
     </LinearLayout>`
   }).join('\n')
@@ -648,15 +767,221 @@ function projectRows(theme) {
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
                         android:ellipsize="end"
-                        android:fontFamily="sans-serif-medium"
+                        android:fontFamily="${fontName(theme, 'body', 'sans-serif-medium')}"
                         android:maxLines="1"
                         android:textColor="${theme.ink}"
-                        android:textSize="12sp" />
+                        android:textSize="${textSize(theme, 'body', 12)}sp" />
                 </LinearLayout>`
   }).join('\n')
 }
 
+function situateRow(theme) {
+  return `<LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+        ${[1,2,3].map(index => `<TextView android:id="@+id/widget_situate_${index}" android:background="@drawable/balance_widget_${theme.id}_pill" android:layout_marginEnd="6dp" android:layout_width="wrap_content" android:layout_height="wrap_content" android:minHeight="48dp" android:gravity="center" android:paddingHorizontal="8dp" android:textSize="12sp" android:textColor="${theme.accent}" android:visibility="gone" />`).join('\n')}
+    </LinearLayout>`
+}
+
+function planBody(theme) {
+  const block = theme.window ? 12 : 8
+  const inset = theme.window ? 0 : 2
+  return `<TextView
+        android:id="@+id/widget_reminder"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="9dp"
+        android:ellipsize="end"${fontAttribute(theme, 'body')}
+        android:maxLines="2"
+        android:text="This shouldn’t be aspirational"
+        android:textColor="${theme.muted}"
+        android:textSize="${textSize(theme, 'body', 12)}sp" />
+
+    <FrameLayout
+        android:id="@+id/widget_progress_glow"
+        android:layout_width="match_parent"
+        android:layout_height="${block}dp"
+        android:layout_marginTop="6dp"
+        android:background="@drawable/balance_widget_${theme.id}_progress_glow"
+        android:padding="${inset}dp">
+        <ProgressBar
+            android:id="@+id/widget_progress_bar"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:indeterminate="false"
+            android:progress="33"
+            android:progressDrawable="@drawable/balance_widget_${theme.id}_progress" />
+    </FrameLayout>
+
+    <TextView
+        android:id="@+id/widget_all_done"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="9dp"
+        android:fontFamily="${fontName(theme, 'title', 'sans-serif-medium')}"
+        android:text="✓  All done"
+        android:textColor="${theme.doneAccent ?? theme.accent}"
+        android:textSize="14sp"
+        android:visibility="gone" />
+
+    <LinearLayout
+        android:id="@+id/widget_task_surface"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="9dp"
+        android:background="@drawable/balance_widget_${theme.id}_task_surface"
+        android:orientation="vertical"
+        android:paddingEnd="10dp"
+        android:paddingStart="10dp">
+
+${taskRows(theme)}
+    </LinearLayout>`
+}
+
+function retroHomeLayout(theme) {
+  const win = theme.window
+  const inset = win.desktopInset ?? 0
+  const shadow = win.captionShadow
+    ? `
+            android:shadowColor="${win.captionShadow}"
+            android:shadowDx="1"
+            android:shadowDy="1"
+            android:shadowRadius="1"`
+    : win.captionGlow
+      ? `
+            android:shadowColor="${win.captionGlow}"
+            android:shadowRadius="8"`
+      : ''
+  const knockout = win.pinstripes ? `\n            android:background="${theme.paper}"` : ''
+  const spacer = `<TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1" />`
+  return `<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/balance_widget_${theme.id}_background"
+    android:clickable="true"
+    android:padding="${inset}dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/balance_widget_${theme.id}_window"
+        android:orientation="vertical"
+        android:padding="${win.windowPadding ?? 0}dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="36dp"
+        android:background="@drawable/balance_widget_${theme.id}_caption"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingEnd="48dp"
+        android:paddingStart="${win.captionPaddingStart}dp">
+        ${win.pinstripes ? spacer : ''}
+        <TextView
+            android:id="@+id/widget_brand"
+            android:layout_width="${win.pinstripes ? 'wrap_content' : '0dp'}"
+            android:layout_height="wrap_content"${win.pinstripes ? '' : '\n            android:layout_weight="1"'}${knockout}
+            android:fontFamily="${win.fonts.caption}"
+            android:maxLines="1"
+            android:paddingEnd="6dp"
+            android:paddingStart="${win.pinstripes ? 6 : 0}dp"${shadow}
+            android:text="Balance"
+            android:textColor="${captionInk(theme)}"
+            android:textSize="${win.sizes.caption}sp" />
+        ${win.pinstripes ? spacer : ''}
+        <TextView
+            android:id="@+id/widget_progress"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"${knockout}
+            android:fontFamily="${win.fonts.status}"
+            android:gravity="center"
+            android:maxLines="1"
+            android:paddingEnd="4dp"
+            android:paddingStart="4dp"${shadow}
+            android:text="2/6"
+            android:textColor="${captionInk(theme)}"
+            android:textSize="${win.sizes.status}sp" />
+    </LinearLayout>
+
+    ${win.pinstripes ? `<TextView
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="${theme.ink}" />` : ''}
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginBottom="${win.clientInset}dp"
+        android:layout_marginEnd="${win.clientInset}dp"
+        android:layout_marginStart="${win.clientInset}dp"
+        android:layout_weight="1"
+        android:background="@drawable/balance_widget_${theme.id}_face"
+        android:orientation="vertical"
+        android:padding="12dp">
+
+    <LinearLayout
+        android:id="@+id/widget_projects"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:visibility="gone">
+${projectRows(theme)}
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/widget_date"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:fontFamily="${win.fonts.eyebrow}"
+        android:letterSpacing="0.08"
+        android:text="TODAY"
+        android:textColor="${theme.accent}"
+        android:textSize="${win.sizes.eyebrow}sp" />
+
+    <TextView
+        android:id="@+id/widget_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:ellipsize="end"
+        android:fontFamily="${win.fonts.title}"
+        android:maxLines="2"
+        android:text="Today’s plan"
+        android:textColor="${theme.ink}"
+        android:textSize="${win.sizes.title}sp" />
+
+    ${situateRow(theme)}
+
+    ${planBody(theme)}
+    </LinearLayout>
+    </LinearLayout>
+
+    <FrameLayout
+        android:id="@+id/widget_refresh_touch_target"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="top|end"
+        android:contentDescription="Sync and refresh Balance widget">
+        <ImageView
+            android:id="@+id/widget_refresh"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_gravity="top|end"
+            android:background="@drawable/balance_widget_${theme.id}_refresh_background"
+            android:contentDescription="@null"
+            android:importantForAccessibility="no"
+            android:padding="9dp"
+            android:src="@drawable/balance_widget_${theme.id}_refresh_arrow" />
+    </FrameLayout>
+</FrameLayout>
+`
+}
+
 function homeLayout(theme) {
+  if (theme.window) return retroHomeLayout(theme)
   return `<?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
@@ -754,61 +1079,9 @@ ${projectRows(theme)}
         </FrameLayout>
     </LinearLayout>
 
-    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
-        ${[1,2,3].map(index => `<TextView android:id="@+id/widget_situate_${index}" android:background="@drawable/balance_widget_${theme.id}_pill" android:layout_marginEnd="6dp" android:layout_width="wrap_content" android:layout_height="wrap_content" android:minHeight="48dp" android:gravity="center" android:paddingHorizontal="8dp" android:textSize="12sp" android:textColor="${theme.accent}" android:visibility="gone" />`).join('\n')}
-    </LinearLayout>
+    ${situateRow(theme)}
 
-    <TextView
-        android:id="@+id/widget_reminder"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="9dp"
-        android:ellipsize="end"
-        android:maxLines="2"
-        android:text="This shouldn’t be aspirational"
-        android:textColor="${theme.muted}"
-        android:textSize="12sp" />
-
-    <FrameLayout
-        android:id="@+id/widget_progress_glow"
-        android:layout_width="match_parent"
-        android:layout_height="8dp"
-        android:layout_marginTop="6dp"
-        android:background="@drawable/balance_widget_${theme.id}_progress_glow"
-        android:padding="2dp">
-        <ProgressBar
-            android:id="@+id/widget_progress_bar"
-            style="?android:attr/progressBarStyleHorizontal"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:indeterminate="false"
-            android:progress="33"
-            android:progressDrawable="@drawable/balance_widget_${theme.id}_progress" />
-    </FrameLayout>
-
-    <TextView
-        android:id="@+id/widget_all_done"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="9dp"
-        android:fontFamily="sans-serif-medium"
-        android:text="✓  All done"
-        android:textColor="${theme.doneAccent ?? theme.accent}"
-        android:textSize="14sp"
-        android:visibility="gone" />
-
-    <LinearLayout
-        android:id="@+id/widget_task_surface"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="9dp"
-        android:background="@drawable/balance_widget_${theme.id}_task_surface"
-        android:orientation="vertical"
-        android:paddingEnd="10dp"
-        android:paddingStart="10dp">
-
-${taskRows(theme)}
-    </LinearLayout>
+    ${planBody(theme)}
 </LinearLayout>
 `
 }
@@ -830,7 +1103,108 @@ const styles = `<?xml version="1.0" encoding="utf-8"?>
 </resources>
 `
 
+const shapeFile = (body, shape = 'rectangle') => `<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="${shape}">
+    ${body}
+</shape>
+`
+const transparentShape = shapeFile('<solid android:color="@android:color/transparent" />')
+
+function retroBackground(theme) {
+  const win = theme.window
+  if (win.dither) {
+    return `<?xml version="1.0" encoding="utf-8"?>
+<bitmap xmlns:android="http://schemas.android.com/apk/res/android"
+    android:src="@drawable/balance_widget_${theme.id}_dither"
+    android:tileMode="repeat" />
+`
+  }
+  const fill = win.glass
+    ? `<gradient android:angle="315" android:startColor="${win.glass[0]}" android:centerColor="${win.glass[1]}" android:endColor="${win.glass[2]}" />`
+    : `<solid android:color="${win.desktop ?? '#0055EA'}" />`
+  return shapeFile(`${fill}
+    <corners android:radius="${win.corners}dp" />`)
+}
+
+function retroWindowSurface(theme) {
+  const win = theme.window
+  if (win.bevel) {
+    return `<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item><shape><solid android:color="${win.bevel[1]}" /></shape></item>
+    <item android:bottom="1dp" android:right="1dp"><shape><solid android:color="${win.bevel[0]}" /></shape></item>
+    <item android:bottom="1dp" android:left="1dp" android:right="1dp" android:top="1dp"><shape><solid android:color="${theme.surface}" /></shape></item>
+</layer-list>
+`
+  }
+  if (win.pinstripes) {
+    return shapeFile(`<solid android:color="${theme.surface}" />
+    <stroke android:width="1dp" android:color="${theme.ink}" />`)
+  }
+  return transparentShape
+}
+
+function retroCaption(theme) {
+  const win = theme.window
+  if (win.pinstripes) {
+    return `<?xml version="1.0" encoding="utf-8"?>
+<bitmap xmlns:android="http://schemas.android.com/apk/res/android"
+    android:src="@drawable/balance_widget_${theme.id}_pinstripes"
+    android:tileMode="repeat" />
+`
+  }
+  if (win.captionGradient) {
+    return shapeFile(`<gradient android:angle="0" android:startColor="${win.captionGradient[0]}" android:endColor="${win.captionGradient[1]}" />`)
+  }
+  if (win.glass) {
+    return shapeFile(`<gradient android:angle="270" android:startColor="#44FFFFFF" android:endColor="#00FFFFFF" />
+    <corners android:topLeftRadius="${win.corners}dp" android:topRightRadius="${win.corners}dp" />`)
+  }
+  return `<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape>
+            <gradient android:angle="270" android:centerY="0.1" android:startColor="#0997FF" android:centerColor="#0050EE" android:endColor="#0066FF" />
+            <corners android:topLeftRadius="${win.corners}dp" android:topRightRadius="${win.corners}dp" />
+        </shape>
+    </item>
+    <item android:gravity="bottom" android:height="1dp"><shape><solid android:color="#003DD7" /></shape></item>
+</layer-list>
+`
+}
+
+function retroFace(theme) {
+  const stroke = theme.window.glass ? `\n    <stroke android:width="1dp" android:color="${theme.line}" />` : ''
+  return shapeFile(`<solid android:color="${theme.surface}" />${stroke}`)
+}
+
+function retroProgress(theme) {
+  const win = theme.window
+  const fill = win.progressBlocks
+    ? `<bitmap android:src="@drawable/balance_widget_${theme.id}_progress_blocks" android:tileModeX="repeat" android:tileModeY="clamp" />`
+    : win.glass
+      ? `<shape><gradient android:angle="270" android:startColor="#CFF5CF" android:centerColor="#2AC92A" android:endColor="#8DEB8D" /></shape>`
+      : `<shape><solid android:color="${theme.ink}" /></shape>`
+  return `<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@android:id/background">
+        <shape android:shape="rectangle">
+            <corners android:radius="${win.progressRadius}dp" />
+            <solid android:color="${theme.paper}" />
+            <stroke android:width="1dp" android:color="${win.pinstripes ? theme.ink : theme.line}" />
+        </shape>
+    </item>
+    <item android:id="@android:id/progress" android:bottom="2dp" android:left="2dp" android:right="2dp" android:top="2dp">
+        <clip>
+            ${fill}
+        </clip>
+    </item>
+</layer-list>
+`
+}
+
 function background(theme) {
+  if (theme.window) return retroBackground(theme)
   const fill = theme.backgroundColors
     ? `<gradient
         android:angle="135"
@@ -852,13 +1226,16 @@ function pill(theme) {
   return `<?xml version="1.0" encoding="utf-8"?>
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
     <solid android:color="${alphaColor(accent, '1F')}" />
-    <corners android:radius="999dp" />
+    <corners android:radius="${theme.window?.controlRadius ?? 999}dp" />
     <stroke android:width="1dp" android:color="${alphaColor(accent, '33')}" />
 </shape>
 `
 }
 
 function refreshBackground(theme) {
+  if (theme.window) {
+    return theme.window.pinstripes ? shapeFile(`<solid android:color="${theme.paper}" />`) : transparentShape
+  }
   return `<?xml version="1.0" encoding="utf-8"?>
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
     <solid android:color="${alphaColor(theme.accent, '1F')}" />
@@ -875,13 +1252,18 @@ function refreshArrow(theme) {
     android:viewportWidth="24"
     android:viewportHeight="24">
     <path
-        android:fillColor="${theme.accent}"
+        android:fillColor="${theme.window ? captionInk(theme) : theme.accent}"
         android:pathData="M12,4V1L8,5l4,4V6c3.31,0 6,2.69 6,6 0,1.01 -0.25,1.97 -0.69,2.8l1.46,1.46C19.54,15.03 20,13.57 20,12c0,-4.42 -3.58,-8 -8,-8zM12,18c-3.31,0 -6,-2.69 -6,-6 0,-1.01 0.25,-1.97 0.69,-2.8L5.23,7.74C4.46,8.97 4,10.43 4,12c0,4.42 3.58,8 8,8v3l4,-4 -4,-4v3z" />
 </vector>
 `
 }
 
 function taskSurface(theme) {
+  if (theme.window) {
+    return shapeFile(`<solid android:color="${theme.paper}" />
+    <corners android:radius="${theme.window.controlRadius}dp" />
+    <stroke android:width="1dp" android:color="${theme.line}" />`)
+  }
   return `<?xml version="1.0" encoding="utf-8"?>
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
     <solid android:color="${theme.surface}" />
@@ -898,12 +1280,22 @@ function timePill(theme, colors) {
   return `<?xml version="1.0" encoding="utf-8"?>
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
     ${fill}
-    <corners android:radius="999dp" />
+    <corners android:radius="${theme.window?.controlRadius ?? 999}dp" />${theme.window ? `
+    <stroke android:width="1dp" android:color="${theme.line}" />` : ''}
 </shape>
 `
 }
 
 function taskCircle(theme) {
+  if (theme.window) {
+    const face = theme.window.markerFace
+      ? `<gradient android:angle="315" android:startColor="${theme.window.markerFace[0]}" android:endColor="${theme.window.markerFace[1]}" />`
+      : `<solid android:color="${theme.paper}" />`
+    const border = theme.window.markerBorder ?? (theme.window.pinstripes ? theme.ink : theme.line)
+    return shapeFile(`<size android:width="${theme.window.sizes.marker}dp" android:height="${theme.window.sizes.marker}dp" />
+    ${face}
+    <stroke android:width="1dp" android:color="${border}" />`)
+  }
   return `<?xml version="1.0" encoding="utf-8"?>
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
     <size android:width="11dp" android:height="11dp" />
@@ -915,7 +1307,7 @@ function taskCircle(theme) {
 
 function projectDot(theme) {
   return `<?xml version="1.0" encoding="utf-8"?>
-<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="${theme.window ? 'rectangle' : 'oval'}">
     <size android:width="7dp" android:height="7dp" />
     <solid android:color="${theme.accent}" />
 </shape>
@@ -923,6 +1315,7 @@ function projectDot(theme) {
 }
 
 function progress(theme) {
+  if (theme.window) return retroProgress(theme)
   const fill = theme.progressColors
     ? `<gradient android:angle="0" android:startColor="${theme.progressColors[0]}" android:centerColor="${theme.progressColors[1]}" android:endColor="${theme.progressColors[2]}" />`
     : `<solid android:color="${theme.progressAccent ?? theme.accent}" />`
@@ -947,6 +1340,7 @@ function progress(theme) {
 }
 
 function progressGlow(theme) {
+  if (theme.window) return transparentShape
   return `<?xml version="1.0" encoding="utf-8"?>
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
     <solid android:color="${alphaColor(theme.progressAccent ?? theme.accent, '1F')}" />
@@ -1027,18 +1421,35 @@ function addThemeFiles(theme, layoutDirectory, drawableDirectory) {
     join(resPath, `${drawableDirectory}/balance_widget_${theme.id}_progress_glow.xml`),
     progressGlow(theme),
   )
+  if (!theme.window) return
+  const drawable = (name) => join(resPath, `${drawableDirectory}/balance_widget_${theme.id}_${name}.xml`)
+  const tile = (name) => join(resPath, `${drawableDirectory}-nodpi/balance_widget_${theme.id}_${name}.png`)
+  files.set(drawable('window'), retroWindowSurface(theme))
+  files.set(drawable('caption'), retroCaption(theme))
+  files.set(drawable('face'), retroFace(theme))
+  if (theme.window.dither) files.set(tile('dither'), ditherTile(theme.window.dither))
+  if (theme.window.pinstripes) files.set(tile('pinstripes'), pinstripeTile(theme))
+  if (theme.window.progressBlocks) files.set(tile('progress_blocks'), progressBlockTile(theme))
 }
 
 for (const theme of widgetThemes) {
-  addThemeFiles(theme, 'layout', 'drawable')
+  addThemeFiles(withRetroWindow(theme, false), 'layout', 'drawable')
 }
 for (const theme of darkWidgetThemes) {
-  addThemeFiles(theme, 'layout-night', 'drawable-night')
+  addThemeFiles(withRetroWindow(theme, true), 'layout-night', 'drawable-night')
 }
 
 for (const [path, content] of files) {
   await mkdir(dirname(path), { recursive: true })
   await writeFile(path, content)
+}
+
+await mkdir(join(resPath, 'font'), { recursive: true })
+for (const name of widgetFontFiles) {
+  await copyFile(
+    join(import.meta.dirname, '../../src-tauri/widget-fonts', `${name}.ttf`),
+    join(resPath, `font/${name}.ttf`),
+  )
 }
 
 for (const path of [

@@ -26,6 +26,8 @@
   <string>$(CURRENT_PROJECT_VERSION)</string>
   <key>LSMinimumSystemVersion</key>
   <string>13.0</string>
+  <key>ATSApplicationFontsPath</key>
+  <string>widget-fonts</string>
   <key>NSExtension</key>
   <dict>
     <key>NSExtensionPointIdentifier</key>

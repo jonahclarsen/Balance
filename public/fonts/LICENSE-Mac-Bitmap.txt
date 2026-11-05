@@ -4,6 +4,7 @@ Author releases, licensed Creative Commons Attribution:
 https://www.pentacom.jp/pentacom/bitfontmaker2/gallery/?id=3780
 https://www.pentacom.jp/pentacom/bitfontmaker2/gallery/?id=3809
 Unmodified WOFF2 builds from https://github.com/sakofchit/system.css/tree/main/fonts
+src-tauri/widget-fonts holds the same fonts converted to TrueType for native widgets.
 
 Monaco — Jamie Place (FontBlast)
 https://fontstruct.com/fontstructions/show/753435

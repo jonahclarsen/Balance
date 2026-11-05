@@ -86,6 +86,13 @@ truncation. Progress counts cover every non-empty task, including completed
 tasks and descendants; the visible list contains incomplete tasks only. Depth
 comes from the nested `children` tree used by the app itself.
 
+Retro themes (`windows98`, `system1`, `windowsxp`, `windowsvista`) render as a
+window from their operating system rather than the card layout. Fonts live in
+`src-tauri/widget-fonts`, shared by both platforms. `fontDesign` replaces custom
+faces, so never apply `.rounded` to retro text. To check macOS rendering, draw
+`BalanceWidgetView` with synthetic data through SwiftUI's `ImageRenderer`; the
+installed widget shows the user's plan and must not be screenshotted.
+
 Match the app's time behavior:
 
 - Show a label only when both `startMinutes` and `endMinutes` exist and

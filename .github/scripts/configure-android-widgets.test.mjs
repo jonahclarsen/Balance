@@ -350,6 +350,35 @@ class BalanceSyncWorker {
     assert.match(graphiteLayout, /#191918/)
     assert.doesNotMatch(graphiteLayout, /#7355A2/)
 
+    // Retro themes draw a window. The provider sets views by ID, so the window
+    // layouts must keep every ID and only reference resources that are generated.
+    const cardIds = new Set(graphiteLayout.match(/@\+id\/\w+/g))
+    for (const theme of ['windows98', 'system1', 'windowsxp', 'windowsvista']) {
+      for (const [layoutDirectory, drawableDirectory] of [['layout', 'drawable'], ['layout-night', 'drawable-night']]) {
+        const layout = await readFile(join(root, `res/${layoutDirectory}/balance_home_widget_${theme}.xml`), 'utf8')
+        assert.deepEqual(new Set(layout.match(/@\+id\/\w+/g)), cardIds)
+        assert.match(layout, new RegExp(`@drawable/balance_widget_${theme}_caption`))
+        assert.match(
+          layout,
+          /android:id="@\+id\/widget_refresh_touch_target"[\s\S]*?android:layout_width="48dp"[\s\S]*?android:layout_height="48dp"/,
+        )
+        for (const [, name] of layout.matchAll(/@drawable\/(\w+)/g)) {
+          await readFile(join(root, `res/${drawableDirectory}/${name}.xml`), 'utf8')
+        }
+        for (const [, name] of layout.matchAll(/@font\/(\w+)/g)) {
+          assert.ok((await readFile(join(root, `res/font/${name}.ttf`))).length > 0)
+        }
+        const caption = await readFile(join(root, `res/${drawableDirectory}/balance_widget_${theme}_caption.xml`), 'utf8')
+        const progressDrawable = await readFile(join(root, `res/${drawableDirectory}/balance_widget_${theme}_progress.xml`), 'utf8')
+        const backgroundDrawable = await readFile(join(root, `res/${drawableDirectory}/balance_widget_${theme}_background.xml`), 'utf8')
+        for (const [, name] of `${caption}${progressDrawable}${backgroundDrawable}`.matchAll(/@drawable\/(\w+)/g)) {
+          const tile = await readFile(join(root, `res/${drawableDirectory}-nodpi/${name}.png`))
+          assert.equal(tile.subarray(1, 4).toString(), 'PNG')
+        }
+      }
+    }
+    assert.doesNotMatch(graphiteLayout, /@font\//)
+
     for (const theme of ['iridescent', 'forest', 'ocean', 'violet', 'orange', 'earth', 'crimson', 'banana', 'pink', 'midnight', 'graphite', 'windows98', 'system1', 'windowsxp', 'windowsvista']) {
       await readFile(join(root, `res/layout/balance_home_widget_${theme}.xml`), 'utf8')
       await readFile(join(root, `res/drawable/balance_widget_${theme}_progress.xml`), 'utf8')

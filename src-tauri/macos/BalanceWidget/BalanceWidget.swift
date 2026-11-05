@@ -1,3 +1,4 @@
+import CoreText
 import SwiftUI
 import WidgetKit
 import Security
@@ -255,7 +256,10 @@ private struct BalanceWidgetView: View {
     }
 
     private var contentPadding: CGFloat {
-        family == .systemLarge ? 14 : 10
+        if palette.chrome.isWindow {
+            return family == .systemLarge ? 9 : 7
+        }
+        return family == .systemLarge ? 14 : 10
     }
 
     private var contentSpacing: CGFloat {
@@ -280,20 +284,38 @@ private struct BalanceWidgetView: View {
 
     var body: some View {
         Group {
-            if let snapshot = entry.snapshot, snapshotIsCurrent {
-                snapshotView(snapshot)
+            if palette.chrome.isWindow {
+                WidgetWindow(palette: palette, status: windowStatus) {
+                    widgetContent
+                }
+                .ignoringWidgetMargins()
             } else {
-                emptyView(
-                    title: "Today",
-                    message: entry.snapshot == nil
-                        ? "Open Balance to load your plan."
-                        : "Open Balance to refresh today’s plan."
-                )
+                widgetContent
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .balanceWidgetBackground(palette: palette)
         .widgetURL(URL(string: "balance://today"))
+    }
+
+    @ViewBuilder
+    private var widgetContent: some View {
+        if let snapshot = entry.snapshot, snapshotIsCurrent {
+            snapshotView(snapshot)
+        } else {
+            emptyView(
+                title: "Today",
+                message: entry.snapshot == nil
+                    ? "Open Balance to load your plan."
+                    : "Open Balance to refresh today’s plan."
+            )
+        }
+    }
+
+    private var windowStatus: String? {
+        guard let snapshot = entry.snapshot, snapshotIsCurrent,
+              snapshot.hasPlan, !snapshot.unavailable else { return nil }
+        return progressLabel(snapshot)
     }
 
     @ViewBuilder
@@ -321,7 +343,7 @@ private struct BalanceWidgetView: View {
                 .frame(
                     width: geometry.size.width,
                     height: geometry.size.height,
-                    alignment: .center
+                    alignment: palette.chrome.isWindow ? .top : .center
                 )
             }
             .padding(.horizontal, contentPadding)
@@ -331,23 +353,25 @@ private struct BalanceWidgetView: View {
 
     private func snapshotContent(_ snapshot: BalanceSnapshot, itemLimit: Int) -> some View {
         VStack(alignment: .leading, spacing: contentSpacing) {
-            HStack(alignment: .center, spacing: 8) {
-                brand
-                Spacer(minLength: 4)
-                Text(progressLabel(snapshot))
-                    .font(.caption.weight(.bold))
-                    .fontDesign(.rounded)
-                    .foregroundStyle(palette.statusAccent)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(palette.statusAccent.opacity(0.12), in: Capsule())
-                    .overlay(
-                        Capsule().stroke(
-                            palette.statusAccent.opacity(0.2),
-                            lineWidth: 1
+            if !palette.chrome.isWindow {
+                HStack(alignment: .center, spacing: 8) {
+                    brand
+                    Spacer(minLength: 4)
+                    Text(progressLabel(snapshot))
+                        .font(.caption.weight(.bold))
+                        .fontDesign(.rounded)
+                        .foregroundStyle(palette.statusAccent)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(palette.statusAccent.opacity(0.12), in: Capsule())
+                        .overlay(
+                            Capsule().stroke(
+                                palette.statusAccent.opacity(0.2),
+                                lineWidth: 1
+                            )
                         )
-                    )
-                    .accessibilityLabel("\(snapshot.done) of \(snapshot.total) tasks complete")
+                        .accessibilityLabel("\(snapshot.done) of \(snapshot.total) tasks complete")
+                }
             }
 
             activeProjectRows(snapshot)
@@ -356,23 +380,23 @@ private struct BalanceWidgetView: View {
                 HStack(spacing: 5) {
                     ForEach(modes.filter { $0.active }.prefix(3)) { mode in
                         Link(destination: URL(string: "balance://situate?mode=\(mode.id)&widget=1")!) {
-                            Text(mode.name).font(.caption2.weight(.semibold))
+                            Text(mode.name).font(palette.font(.time, fallback: .caption2.weight(.semibold)))
                                 .foregroundStyle(mode.tint ?? palette.ink)
                                 .padding(.horizontal, 8).padding(.vertical, 5)
-                                .background((mode.tint ?? palette.statusAccent).opacity(0.15), in: Capsule())
-                                .overlay(Capsule().stroke((mode.tint ?? palette.statusAccent).opacity(0.45), lineWidth: 1))
+                                .background((mode.tint ?? palette.statusAccent).opacity(0.15), in: palette.controlShape)
+                                .overlay(palette.controlShape.stroke((mode.tint ?? palette.statusAccent).opacity(0.45), lineWidth: 1))
                         }.privacySensitive()
                     }
                 }
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text("TODAY")
-                    .font(.caption2.weight(.bold))
+                    .font(palette.font(.eyebrow, fallback: .caption2.weight(.bold)))
                     .tracking(0.8)
                     .foregroundStyle(palette.accent)
                 Text(snapshot.title.isEmpty ? "Today’s plan" : snapshot.title)
-                    .font(.headline)
-                    .fontDesign(.rounded)
+                    .font(palette.font(.title, fallback: .headline))
+                    .fontDesign(palette.textDesign)
                     .foregroundStyle(palette.ink)
                     .lineLimit(family == .systemSmall ? 1 : 2)
                     .fixedSize(horizontal: false, vertical: true)
@@ -380,7 +404,7 @@ private struct BalanceWidgetView: View {
 
             if family != .systemSmall && !snapshot.reminder.isEmpty {
                 Text(snapshot.reminder)
-                    .font(.caption)
+                    .font(palette.font(.body, fallback: .caption))
                     .foregroundStyle(palette.muted)
                     .lineLimit(family == .systemLarge ? 2 : 1)
                     .fixedSize(horizontal: false, vertical: true)
@@ -389,25 +413,30 @@ private struct BalanceWidgetView: View {
             }
 
             if family == .systemLarge && snapshot.total > 0 {
-                GeometryReader { geometry in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(palette.line.opacity(0.7))
-                        Capsule()
-                            .fill(palette.progressStyle)
-                            .frame(width: geometry.size.width * progress(snapshot))
+                if palette.chrome.isWindow {
+                    WindowProgressBar(palette: palette, value: progress(snapshot))
+                        .accessibilityHidden(true)
+                } else {
+                    GeometryReader { geometry in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(palette.line.opacity(0.7))
+                            Capsule()
+                                .fill(palette.progressStyle)
+                                .frame(width: geometry.size.width * progress(snapshot))
+                        }
                     }
+                    .frame(height: 4)
+                    .shadow(
+                        color: palette.progressAccent.opacity(0.24),
+                        radius: 3
+                    )
+                    .accessibilityHidden(true)
                 }
-                .frame(height: 4)
-                .shadow(
-                    color: palette.progressAccent.opacity(0.24),
-                    radius: 3
-                )
-                .accessibilityHidden(true)
             }
 
             if snapshot.items.isEmpty {
                 Label("All done", systemImage: "checkmark.circle.fill")
-                    .font(.subheadline.weight(.medium))
+                    .font(palette.font(.title, fallback: .subheadline.weight(.medium)))
                     .foregroundStyle(palette.doneAccent)
             } else {
                 VStack(alignment: .leading, spacing: 0) {
@@ -417,12 +446,7 @@ private struct BalanceWidgetView: View {
                                 .overlay(palette.line.opacity(0.75))
                         }
                         HStack(alignment: .center, spacing: 8) {
-                            Circle()
-                                .strokeBorder(
-                                    palette.taskAccent.opacity(0.72),
-                                    lineWidth: 1.5
-                                )
-                                .frame(width: 11, height: 11)
+                            TaskMarker(palette: palette)
                             taskLabel(
                                 item,
                                 time: snapshot.itemTimes?[safe: offset],
@@ -439,11 +463,8 @@ private struct BalanceWidgetView: View {
                     }
                 }
                 .padding(.horizontal, family == .systemLarge ? 10 : 7)
-                .background(palette.surface, in: RoundedRectangle(cornerRadius: 10))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(palette.line.opacity(0.8), lineWidth: 1)
-                )
+                .background(palette.listWell, in: palette.listShape)
+                .overlay(palette.listShape.stroke(palette.line.opacity(palette.chrome.isWindow ? 1 : 0.8), lineWidth: 1))
                 .privacySensitive()
             }
         }
@@ -458,12 +479,12 @@ private struct BalanceWidgetView: View {
                 ForEach(projects) { project in
                     Link(destination: project.url) {
                         HStack(alignment: .center, spacing: 6) {
-                            Circle()
+                            palette.markerShape
                                 .fill(project.tint ?? palette.accent)
                                 .frame(width: 7, height: 7)
                             Text(project.name)
-                                .font(.caption.weight(.medium))
-                                .fontDesign(.rounded)
+                                .font(palette.font(.body, fallback: .caption.weight(.medium)))
+                                .fontDesign(palette.textDesign)
                                 .foregroundStyle(palette.ink)
                                 .lineLimit(1)
                                 .truncationMode(.tail)
@@ -492,20 +513,21 @@ private struct BalanceWidgetView: View {
         HStack(alignment: .center, spacing: 6) {
             if let time, !time.isEmpty {
                 Text(time)
-                    .font(.system(size: 9, weight: .regular, design: .rounded).monospacedDigit())
+                    .font(palette.font(.time, fallback: .system(size: 9, weight: .regular, design: .rounded).monospacedDigit()))
                     .foregroundStyle(palette.timePillInk)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(palette.timePillStyle(at: rowIndex), in: Capsule())
+                    .background(palette.timePillStyle(at: rowIndex), in: palette.controlShape)
+                    .overlay(palette.controlShape.stroke(palette.chrome.isWindow ? palette.line : .clear, lineWidth: 1))
                     .fixedSize(horizontal: true, vertical: false)
             }
             Text(item)
-                .font(family == .systemSmall ? .caption : .subheadline)
+                .font(palette.font(.body, fallback: family == .systemSmall ? .caption : .subheadline))
                 .foregroundColor(palette.ink)
                 .lineLimit(2)
                 .layoutPriority(1)
         }
-        .fontDesign(.rounded)
+        .fontDesign(palette.textDesign)
     }
 
     private var brand: some View {
@@ -523,13 +545,15 @@ private struct BalanceWidgetView: View {
 
     private func emptyView(title: String, message: String, snapshot: BalanceSnapshot? = nil) -> some View {
         VStack(alignment: .leading, spacing: 9) {
-            brand
+            if !palette.chrome.isWindow {
+                brand
+            }
             if let snapshot {
                 activeProjectRows(snapshot)
             }
             HStack {
                 Text(title)
-                    .font(.headline)
+                    .font(palette.font(.title, fallback: .headline))
                     .foregroundStyle(palette.ink)
                 Spacer()
                 Image(systemName: "circle.lefthalf.filled")
@@ -537,7 +561,7 @@ private struct BalanceWidgetView: View {
                     .accessibilityHidden(true)
             }
             Text(message)
-                .font(.subheadline)
+                .font(palette.font(.body, fallback: .subheadline))
                 .foregroundStyle(palette.muted)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -571,6 +595,8 @@ private struct WidgetPalette {
     let timePillGradients: [[Color]]?
     let timePillInk: Color
     let backgroundColors: [Color]?
+    fileprivate(set) var chrome = WidgetChrome.none
+    fileprivate(set) var isDark = false
 
     private init(
         paper: UInt32,
@@ -651,18 +677,77 @@ private struct WidgetPalette {
 
     @ViewBuilder
     var background: some View {
-        if let backgroundColors {
+        switch chrome {
+        case .windowsxp:
+            Color(rgb: 0x0055EA)
+        case .windowsvista:
             LinearGradient(
-                colors: backgroundColors,
+                stops: (isDark
+                    ? [(0x3B6179, 0), (0x1A3544, 0.4), (0x32596E, 0.64), (0x162E3D, 1)]
+                    : [(0xEEFAFF, 0), (0x75A8C2, 0.4), (0xBEDEEA, 0.64), (0x5893AC, 1)]
+                ).map { Gradient.Stop(color: Color(rgb: $0.0), location: $0.1) },
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
-        } else {
-            paper
+        case .windows98:
+            Color(rgb: isDark ? 0x003B3B : 0x008080)
+        case .system1:
+            DitherPattern.image(dark: isDark)
+                .resizable(resizingMode: .tile)
+        case .none:
+            if let backgroundColors {
+                LinearGradient(
+                    colors: backgroundColors,
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            } else {
+                paper
+            }
         }
     }
 
+    /// Retro windows use the dialog face behind the content and a white well
+    /// for the list, the reverse of the other themes.
+    var windowFace: Color { surface }
+    var listWell: Color { chrome.isWindow ? paper : surface }
+
+    var listShape: AnyShape {
+        switch chrome {
+        case .none: return AnyShape(RoundedRectangle(cornerRadius: 10))
+        case .windowsvista: return AnyShape(RoundedRectangle(cornerRadius: 2))
+        default: return AnyShape(Rectangle())
+        }
+    }
+
+    var controlShape: AnyShape {
+        switch chrome {
+        case .none: return AnyShape(Capsule())
+        case .windowsvista: return AnyShape(RoundedRectangle(cornerRadius: 2))
+        default: return AnyShape(Rectangle())
+        }
+    }
+
+    var markerShape: AnyShape {
+        chrome.isWindow ? AnyShape(Rectangle()) : AnyShape(Circle())
+    }
+
+    /// `fontDesign` replaces custom faces, so retro themes must not set it.
+    var textDesign: Font.Design? { chrome.isWindow ? nil : .rounded }
+
+    func font(_ role: WidgetTextRole, fallback: Font) -> Font {
+        guard let face = chrome.face(for: role) else { return fallback }
+        return .custom(face.name, fixedSize: face.size)
+    }
+
     static func resolve(themeId: String?, colorScheme: ColorScheme) -> WidgetPalette {
+        var palette = colors(themeId: themeId, colorScheme: colorScheme)
+        palette.chrome = WidgetChrome(themeId: themeId)
+        palette.isDark = colorScheme == .dark
+        return palette
+    }
+
+    private static func colors(themeId: String?, colorScheme: ColorScheme) -> WidgetPalette {
         // Historical days may reference every shipped theme forever. Never
         // delete a palette case; retire the theme from current selection.
         if colorScheme == .dark {
@@ -781,6 +866,375 @@ private struct WidgetPalette {
     }
 }
 
+private enum WidgetTextRole {
+    case caption, status, eyebrow, title, body, time
+}
+
+/// Retro themes draw the widget as a window from their operating system.
+/// Every other theme keeps the card layout.
+private enum WidgetChrome {
+    case none, windows98, system1, windowsxp, windowsvista
+
+    init(themeId: String?) {
+        switch themeId {
+        case "windows98": self = .windows98
+        case "system1": self = .system1
+        case "windowsxp": self = .windowsxp
+        case "windowsvista": self = .windowsvista
+        default: self = .none
+        }
+    }
+
+    var isWindow: Bool {
+        if case .none = self { return false }
+        return true
+    }
+
+    func face(for role: WidgetTextRole) -> (name: String, size: CGFloat)? {
+        switch self {
+        case .none:
+            return nil
+        case .windowsxp:
+            switch role {
+            case .caption: return ("TrebuchetMS-Bold", 13)
+            case .status: return ("Tahoma", 11)
+            case .eyebrow: return ("Tahoma-Bold", 9)
+            case .title: return ("Tahoma-Bold", 13)
+            case .body: return ("Tahoma", 12)
+            case .time: return ("Tahoma", 10)
+            }
+        case .windowsvista:
+            switch role {
+            case .caption: return ("Selawik-Regular", 14)
+            case .status: return ("Selawik-Regular", 12)
+            case .eyebrow: return ("Selawik-Bold", 10)
+            case .title: return ("Selawik-Bold", 14)
+            case .body: return ("Selawik-Regular", 13)
+            case .time: return ("Selawik-Regular", 11)
+            }
+        case .windows98:
+            switch role {
+            case .caption, .eyebrow, .title: return ("PixelatedMSSansSerif-Bold", 11)
+            default: return ("PixelatedMSSansSerif-Regular", 11)
+            }
+        case .system1:
+            switch role {
+            case .caption, .status, .title: return ("ChiKareGo2", 16)
+            case .eyebrow: return ("ChiKareGo2", 12)
+            case .body, .time: return ("FindersKeepers", 16)
+            }
+        }
+    }
+}
+
+private enum WidgetFonts {
+    /// The Info.plist font path covers the renderer; this covers the extension.
+    static func register() {
+        let urls = Bundle.main.urls(forResourcesWithExtension: "ttf", subdirectory: "widget-fonts") ?? []
+        for url in urls {
+            CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
+        }
+    }
+}
+
+private enum DitherPattern {
+    static func image(dark: Bool) -> Image {
+        // Two-point checks, matching the System 1 desktop in the app.
+        let (first, second): (UInt8, UInt8) = dark ? (0x10, 0x50) : (0x00, 0xFF)
+        let pixels = [first, first, second, second, first, first, second, second,
+                      second, second, first, first, second, second, first, first]
+        let image = pixels.withUnsafeBytes { bytes -> CGImage? in
+            guard let provider = CGDataProvider(data: Data(bytes) as CFData) else { return nil }
+            return CGImage(
+                width: 4, height: 4, bitsPerComponent: 8, bitsPerPixel: 8, bytesPerRow: 4,
+                space: CGColorSpaceCreateDeviceGray(), bitmapInfo: [],
+                provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent
+            )
+        }
+        guard let image else { return Image(systemName: "square.fill") }
+        return Image(decorative: image, scale: 1).interpolation(.none)
+    }
+}
+
+private struct Pinstripes: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        var y = rect.minY + 2
+        while y < rect.maxY {
+            path.addRect(CGRect(x: rect.minX, y: y, width: rect.width, height: 1))
+            y += 5
+        }
+        return path
+    }
+}
+
+private struct ProgressBlocks: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        var x = rect.minX
+        while x < rect.maxX {
+            path.addRect(CGRect(x: x, y: rect.minY, width: min(8, rect.maxX - x), height: rect.height))
+            x += 10
+        }
+        return path
+    }
+}
+
+private extension View {
+    /// One-point edges in the two-tone Windows bevel style.
+    func bevel(topLeading: Color, bottomTrailing: Color) -> some View {
+        overlay(alignment: .top) { topLeading.frame(height: 1) }
+            .overlay(alignment: .leading) { topLeading.frame(width: 1) }
+            .overlay(alignment: .bottom) { bottomTrailing.frame(height: 1) }
+            .overlay(alignment: .trailing) { bottomTrailing.frame(width: 1) }
+    }
+
+    /// The window frame reaches the widget's edges, past the system margins.
+    @ViewBuilder
+    func ignoringWidgetMargins() -> some View {
+        if #available(macOSApplicationExtension 14.0, *) {
+            modifier(IgnoreWidgetMargins())
+        } else {
+            self
+        }
+    }
+}
+
+@available(macOSApplicationExtension 14.0, *)
+private struct IgnoreWidgetMargins: ViewModifier {
+    @Environment(\.widgetContentMargins) private var margins
+
+    func body(content: Content) -> some View {
+        content
+            .padding(.top, -margins.top)
+            .padding(.bottom, -margins.bottom)
+            .padding(.leading, -margins.leading)
+            .padding(.trailing, -margins.trailing)
+    }
+}
+
+private struct WidgetWindow<Content: View>: View {
+    let palette: WidgetPalette
+    let status: String?
+    @ViewBuilder let content: Content
+
+    private var client: some View {
+        content
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(palette.windowFace)
+            .clipped()
+    }
+
+    var body: some View {
+        switch palette.chrome {
+        case .windowsxp:
+            VStack(spacing: 0) {
+                caption
+                client.padding([.horizontal, .bottom], 4)
+            }
+        case .windowsvista:
+            VStack(spacing: 0) {
+                caption
+                client
+                    .overlay(Rectangle().stroke(Color(rgb: 0x173E52).opacity(0.45), lineWidth: 1))
+                    .padding(1)
+                    .overlay(Rectangle().stroke(Color.white.opacity(palette.isDark ? 0.25 : 0.65), lineWidth: 1))
+                    .padding([.horizontal, .bottom], 5)
+            }
+        case .windows98:
+            VStack(spacing: 2) {
+                caption
+                client
+            }
+            .padding(3)
+            .background(palette.windowFace)
+            .bevel(
+                topLeading: Color(rgb: palette.isDark ? 0x737373 : 0xFFFFFF),
+                bottomTrailing: .black
+            )
+            .padding(7)
+        case .system1:
+            VStack(spacing: 0) {
+                caption
+                palette.ink.frame(height: 1)
+                client
+            }
+            .overlay(Rectangle().stroke(palette.ink, lineWidth: 1))
+            .padding(7)
+        case .none:
+            content
+        }
+    }
+
+    @ViewBuilder
+    private var caption: some View {
+        let title = Text("Balance").font(palette.font(.caption, fallback: .headline))
+        let statusText = Text(status ?? "").font(palette.font(.status, fallback: .caption))
+        switch palette.chrome {
+        case .windowsxp:
+            HStack {
+                title.foregroundStyle(.white).shadow(color: Color(rgb: 0x0F1089), radius: 0, x: 1, y: 1)
+                Spacer(minLength: 4)
+                statusText.foregroundStyle(.white)
+            }
+            .padding(.horizontal, 12)
+            .frame(height: 26)
+            .background(
+                LinearGradient(
+                    stops: [
+                        .init(color: Color(rgb: 0x0997FF), location: 0),
+                        .init(color: Color(rgb: 0x0053EE), location: 0.08),
+                        .init(color: Color(rgb: 0x0050EE), location: 0.4),
+                        .init(color: Color(rgb: 0x0066FF), location: 0.88),
+                        .init(color: Color(rgb: 0x005BFF), location: 0.95),
+                        .init(color: Color(rgb: 0x003DD7), location: 1)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+        case .windowsvista:
+            let ink = Color(rgb: palette.isDark ? 0xF1F7FA : 0x102431)
+            let glow = Color(rgb: palette.isDark ? 0x071821 : 0xFFFFFF)
+            HStack {
+                title.foregroundStyle(ink).shadow(color: glow, radius: 4).shadow(color: glow, radius: 7)
+                Spacer(minLength: 4)
+                statusText.foregroundStyle(ink).shadow(color: glow, radius: 4)
+            }
+            .padding(.horizontal, 12)
+            .frame(height: 26)
+        case .windows98:
+            HStack {
+                title.foregroundStyle(.white)
+                Spacer(minLength: 4)
+                statusText.foregroundStyle(.white)
+            }
+            .padding(.horizontal, 4)
+            .frame(height: 18)
+            .background(
+                LinearGradient(colors: [Color(rgb: 0x000080), Color(rgb: 0x1084D0)], startPoint: .leading, endPoint: .trailing)
+            )
+        case .system1:
+            ZStack {
+                palette.paper
+                Pinstripes().fill(palette.ink)
+                title
+                    .foregroundStyle(palette.ink)
+                    .padding(.horizontal, 6)
+                    .background(palette.paper)
+                if status != nil {
+                    HStack {
+                        Spacer(minLength: 0)
+                        statusText
+                            .foregroundStyle(palette.ink)
+                            .padding(.horizontal, 5)
+                            .background(palette.paper)
+                    }
+                    .padding(.trailing, 6)
+                }
+            }
+            .frame(height: 19)
+        case .none:
+            EmptyView()
+        }
+    }
+}
+
+private struct TaskMarker: View {
+    let palette: WidgetPalette
+
+    var body: some View {
+        switch palette.chrome {
+        case .none:
+            Circle()
+                .strokeBorder(palette.taskAccent.opacity(0.72), lineWidth: 1.5)
+                .frame(width: 11, height: 11)
+        case .windowsxp:
+            LinearGradient(colors: [Color(rgb: 0xDCDCD7), .white], startPoint: .topLeading, endPoint: .bottomTrailing)
+                .overlay(Rectangle().strokeBorder(Color(rgb: 0x1D5281), lineWidth: 1))
+                .frame(width: 13, height: 13)
+        case .windowsvista:
+            LinearGradient(
+                stops: [.init(color: Color(rgb: 0xD4D4D4), location: 0), .init(color: Color(rgb: 0xF6F6F6), location: 0.7)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .overlay(Rectangle().inset(by: 1).strokeBorder(Color(rgb: 0xF4F4F4), lineWidth: 1))
+            .overlay(Rectangle().strokeBorder(Color(rgb: 0x8E8F8F), lineWidth: 1))
+            .frame(width: 13, height: 13)
+        case .windows98:
+            palette.paper
+                .bevel(topLeading: Color(rgb: 0x404040), bottomTrailing: Color(rgb: palette.isDark ? 0x737373 : 0xC0C0C0))
+                .frame(width: 13, height: 13)
+        case .system1:
+            palette.paper
+                .overlay(Rectangle().strokeBorder(palette.ink, lineWidth: 1))
+                .frame(width: 12, height: 12)
+        }
+    }
+}
+
+private struct WindowProgressBar: View {
+    let palette: WidgetPalette
+    let value: CGFloat
+
+    var body: some View {
+        GeometryReader { geometry in
+            let filled = max(0, geometry.size.width - 4) * value
+            switch palette.chrome {
+            case .windowsxp:
+                ZStack(alignment: .leading) {
+                    palette.paper
+                    ProgressBlocks()
+                        .fill(LinearGradient(
+                            colors: [0xACEDAD, 0x7BE47D, 0x4CDA50, 0x2ED330, 0x42D845, 0x76E275, 0x8FE791].map(Color.init(rgb:)),
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ))
+                        .frame(width: filled)
+                        .padding(2)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 3))
+                .overlay(RoundedRectangle(cornerRadius: 3).stroke(Color(rgb: 0x686868), lineWidth: 1))
+            case .windowsvista:
+                ZStack(alignment: .leading) {
+                    palette.paper
+                    LinearGradient(
+                        stops: [
+                            .init(color: Color(rgb: 0xCFF5CF), location: 0),
+                            .init(color: Color(rgb: 0x4FDB4F), location: 0.45),
+                            .init(color: Color(rgb: 0x2AC92A), location: 0.5),
+                            .init(color: Color(rgb: 0x8DEB8D), location: 1)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(width: filled)
+                    .padding(1)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 2))
+                .overlay(RoundedRectangle(cornerRadius: 2).stroke(Color(rgb: 0x8E8F8F), lineWidth: 1))
+            case .windows98:
+                ZStack(alignment: .leading) {
+                    palette.paper
+                    ProgressBlocks()
+                        .fill(palette.accent)
+                        .frame(width: filled)
+                        .padding(2)
+                }
+                .bevel(topLeading: Color(rgb: 0x808080), bottomTrailing: Color(rgb: palette.isDark ? 0x737373 : 0xFFFFFF))
+            case .system1, .none:
+                ZStack(alignment: .leading) {
+                    palette.paper
+                    palette.ink.frame(width: filled + 4)
+                }
+                .overlay(Rectangle().strokeBorder(palette.ink, lineWidth: 1))
+            }
+        }
+        .frame(height: 12)
+    }
+}
+
 private extension Color {
     init?(hex: String?) {
         guard let hex, hex.count == 7, hex.hasPrefix("#"),
@@ -823,6 +1277,10 @@ private struct BalanceTodayWidget: Widget {
 
 @main
 private struct BalanceWidgetBundle: WidgetBundle {
+    init() {
+        WidgetFonts.register()
+    }
+
     var body: some Widget {
         BalanceTodayWidget()
     }

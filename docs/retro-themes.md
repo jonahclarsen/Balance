@@ -24,6 +24,10 @@ The public repository includes [Microsoft Selawik 1.01](https://github.com/micro
 
 The dark appearances are adaptations for Balance; those operating systems' default looks were light. Historical theme IDs are permanent, including retired Windows 98. Keep the TypeScript catalog, Rust Random catalog, macOS widget palettes, and Android palette generator aligned.
 
+## Widgets
+
+macOS and Android widgets draw each retro theme as a window: its caption, dialog face, list well, checkbox and progress bar. `src-tauri/widget-fonts` holds the bundled fonts, losslessly converted to TrueType because Android can't load WOFF2; their licenses are in `public/fonts`. macOS uses its own Tahoma and Trebuchet MS for XP. Tahoma can't be redistributed, so Android's XP widget uses the system sans-serif.
+
 ## Asset provenance and visual review
 
 [windows-theme-assets.json](windows-theme-assets.json) records every wallpaper, icon and caption asset, its source, conversion and SHA-256. Original Windows imagery retains Microsoft's rights; the archive describes personal, educational and archival use. The application code license does not relicense this artwork. XP.css and 7.css licenses are included separately. The old vector wallpaper studies have been removed.
