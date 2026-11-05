@@ -11,6 +11,7 @@ const EDIT_COUNT = performanceSize('BALANCE_INTERACTION_PERF_EDITS', 24)
 const GOAL_EDIT_COUNT = performanceSize('BALANCE_INTERACTION_PERF_GOAL_EDITS', 8)
 const IMAX_TOGGLE_COUNT = performanceSize('BALANCE_IMAX_PERF_TOGGLES', 10)
 const GOAL_SCROLL_FRAME_COUNT = performanceSize('BALANCE_GOAL_SCROLL_FRAMES', 120)
+const COLOR_SCHEME = process.env.BALANCE_INTERACTION_PERF_COLOR_SCHEME ?? 'light'
 const THEME_ID = process.env.BALANCE_INTERACTION_PERF_THEME ?? 'iridescent'
 const IRIDESCENT_MOTION_PROFILE = process.env.BALANCE_INTERACTION_PERF_IRIDESCENT_MOTION ?? 'full'
 const CLICK_COUNT = performanceSize('BALANCE_INTERACTION_PERF_CLICKS', 12)
@@ -167,7 +168,7 @@ function summarizeDurations(values: number[]) {
 
 async function installSyntheticWorkspace(page: Page) {
   await page.addInitScript(
-    ({ planCount, itemsPerPlan, listCount, itemsPerList, goalCount, operationCount, activeDate, themeId, surface }) => {
+    ({ planCount, itemsPerPlan, listCount, itemsPerList, goalCount, operationCount, activeDate, themeId, surface, colorScheme }) => {
       const planDate = (index: number) => {
         if (index === planCount - 1) return activeDate
         const date = new Date(`${activeDate}T12:00:00Z`)
@@ -260,6 +261,7 @@ async function installSyntheticWorkspace(page: Page) {
       localStorage.setItem('balance:deviceAppearance.v1', JSON.stringify({
         version: 1,
         themeId,
+        colorScheme,
         randomThemeStartDate: '',
         doneTintColor: '',
         checkboxColor: '',
@@ -286,6 +288,7 @@ async function installSyntheticWorkspace(page: Page) {
       operationCount: EXISTING_OPERATION_COUNT,
       activeDate: ACTIVE_DATE,
       themeId: THEME_ID,
+      colorScheme: COLOR_SCHEME,
       surface: SURFACE,
     },
   )
@@ -600,6 +603,7 @@ test('profiles common typing and backspacing paths', async ({ page }, testInfo) 
       goals: GOAL_COUNT,
       existingOperations: EXISTING_OPERATION_COUNT,
       themeId: THEME_ID,
+      colorScheme: COLOR_SCHEME,
       appliedThemeId: motionAnimations.appliedThemeId,
       iridescentMotionProfile: IRIDESCENT_MOTION_PROFILE,
       motionAnimations,

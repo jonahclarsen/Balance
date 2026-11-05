@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { appendFileSync, cpSync, mkdirSync, writeFileSync } from 'node:fs'
+import { appendFileSync, cpSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 const out = resolve('artifacts/retro-profile')
@@ -18,6 +18,14 @@ if (env.BALANCE_INTERACTION_PERF_RELEASE === '1') {
     if (result.status !== 0) throw new Error(`Build failed for ${variant.revision}`)
   }
 }
+function appearance(dir) {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = resolve(dir, entry.name)
+    if (entry.isDirectory()) { const found = appearance(path); if (found) return found }
+    else if (entry.name.startsWith('appearance-') && entry.name.endsWith('.png')) return path
+  }
+}
+const screenshots = new Map()
 let failed = false
 for (let round = 0; round < rounds; round++) {
   const order = round % 2 ? [...experiments].reverse() : experiments
@@ -33,6 +41,15 @@ for (let round = 0; round < rounds; round++) {
     cpSync(resolve(variant.cwd, 'artifacts/playwright-interaction-performance'), `${out}/${label}-attachments`, { recursive: true })
     const line = log.split('\n').find(line => line.startsWith('INTERACTION_PERF '))
     if (result.status !== 0 || !line) { console.log(log); failed = true; continue }
+    const imagePath = appearance(`${out}/${label}-attachments`)
+    if (!imagePath) throw new Error('Missing appearance screenshot')
+    const pairKey = `${experiment}-${round}`
+    const held = screenshots.get(pairKey)
+    if (held) {
+      const identical = readFileSync(held).equals(readFileSync(imagePath))
+      appendFileSync(`${out}/appearance-comparisons.jsonl`, JSON.stringify({ experiment, round: round + 1, identical }) + '\n')
+      if (!identical) console.log(`APPEARANCE_MISMATCH ${pairKey}`)
+    } else screenshots.set(pairKey, imagePath)
     const row = { revision: variant.revision, round: round + 1, ...JSON.parse(line.slice('INTERACTION_PERF '.length)) }
     appendFileSync(`${out}/results.jsonl`, JSON.stringify(row) + '\n')
     console.log(JSON.stringify(row))

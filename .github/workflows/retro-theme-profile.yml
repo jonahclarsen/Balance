@@ -2,6 +2,11 @@ name: Explore retro theme performance
 on:
   workflow_dispatch:
     inputs:
+      color_scheme:
+        description: Appearance to measure
+        default: light
+        type: choice
+        options: [light, dark]
       themes:
         description: JSON array of theme IDs
         default: '["graphite","windows98","system1","windowsxp","windowsvista"]'
@@ -43,6 +48,7 @@ jobs:
       ROUNDS: ${{ inputs.rounds }}
       BALANCE_INTERACTION_PERF_RELEASE: '1'
       BALANCE_INTERACTION_PERF_PROFILE_ONLY: '1'
+      BALANCE_INTERACTION_PERF_COLOR_SCHEME: ${{ inputs.color_scheme }}
       BALANCE_INTERACTION_PERF_THEME: ${{ matrix.theme }}
       BALANCE_INTERACTION_PERF_PLANS: ${{ matrix.size == 'decade' && '3650' || '365' }}
       BALANCE_INTERACTION_PERF_ITEMS_PER_PLAN: ${{ matrix.size == 'dense' && '1000' || matrix.size == 'decade' && '50' || '20' }}
