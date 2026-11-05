@@ -2600,18 +2600,12 @@ body.mobile-checkbox-dragging {
 }
 
 /* IMAX adds macOS title-bar clearance, so briefly preserve the button's old
-   hit target without pulling the visible control out of alignment. */
+   hit target without pulling the visible control out of alignment. Opacity
+   keeps it invisible whatever a theme paints on buttons. */
 .imax-click-handoff {
   position: fixed;
   z-index: 40;
-  border: 0;
-  background: transparent;
-  padding: 0;
-}
-
-.imax-click-handoff:hover {
-  border-color: transparent;
-  background: transparent;
+  opacity: 0;
 }
 
 .imax-exit-control {

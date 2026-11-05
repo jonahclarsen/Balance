@@ -165,3 +165,30 @@ test('Mac System 1 typography and selection readability across the app', async (
     await page.keyboard.press('Escape')
   }
 })
+
+for (const themeId of ['system1', 'windowsxp', 'windowsvista']) {
+  test(`${themeId} paints nothing for the IMAX click handoff`, async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'desktop', 'The click handoff is macOS desktop only')
+    await page.addInitScript(() => Object.defineProperty(navigator, 'platform', { get: () => 'MacIntel' }))
+    await page.goto('/')
+    await page.evaluate(themeId => {
+      localStorage.clear()
+      localStorage.setItem('balance:deviceAppearance.v1', JSON.stringify({ version: 1, themeId, colorScheme: 'light' }))
+    }, themeId)
+    await page.reload()
+    await expect(page.locator('html')).toHaveAttribute('data-theme', themeId)
+
+    const button = await page.getByRole('region', { name: 'Daily plan' }).getByRole('button', { name: 'Enter IMAX mode' }).boundingBox()
+    if (!button) throw new Error('IMAX button has no box')
+    await page.mouse.click(button.x + button.width / 2, button.y + button.height / 2)
+
+    const handoff = page.locator('.imax-click-handoff')
+    await expect(handoff).toHaveCount(1)
+    const box = await handoff.boundingBox()
+    if (!box) throw new Error('Click handoff has no box')
+    const clip = { x: box.x - 2, y: box.y - 2, width: box.width + 4, height: box.height + 4 }
+    const shown = await page.screenshot({ animations: 'disabled', clip })
+    await handoff.evaluate(element => { (element as HTMLElement).style.visibility = 'hidden' })
+    expect(shown.equals(await page.screenshot({ animations: 'disabled', clip }))).toBe(true)
+  })
+}
