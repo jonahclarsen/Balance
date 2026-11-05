@@ -87,6 +87,9 @@
   .project-text { display: flex; flex: 1; flex-direction: column; min-width: 0; }
   .project-name, .project-description { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .project-name { font-size: 15px; }
+  @media (max-width: 760px) {
+    .project-name { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; white-space: normal; overflow-wrap: anywhere; }
+  }
   .project-description { color: var(--muted); font-size: 13px; }
   .project-description.found { white-space: pre-line; overflow-wrap: anywhere; }
   /* Keep the dot where it sits beside the one-line preview, centered on two empty
