@@ -482,8 +482,14 @@ test('note style menu stays visible inside the note scroller and viewport', asyn
   await placeCaretAtEnd(firstEditor)
   await pressNoteKey(firstEditor, 'Enter')
   const slashEditor = page.locator('.note-text').nth(1)
-  await workspace.evaluate((element) => element.scrollTo({ top: element.scrollHeight }))
-  await page.getByLabel('Bottom writing space').fill('0')
+  // The writing-space control only shows at the bottom, and a settling note can
+  // undo a single scroll there, so repeat it until the control appears.
+  const spacing = page.getByLabel('Bottom writing space')
+  await expect(async () => {
+    await workspace.evaluate((element) => element.scrollTo({ top: element.scrollHeight }))
+    await expect(spacing).toBeVisible({ timeout: 1000 })
+  }).toPass()
+  await spacing.fill('0')
   await workspace.evaluate((element) => element.scrollTo({ top: element.scrollHeight }))
   await slashEditor.fill('/')
 
