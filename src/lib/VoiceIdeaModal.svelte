@@ -3,9 +3,9 @@
   import OverlayModal from './OverlayModal.svelte'
   import VoiceWaveform from './VoiceWaveform.svelte'
   import { autoGrow } from './autoGrow'
-  import { escapeHTML } from './planner'
+  import { escapeHTML, htmlToPlainTextWithBreaks } from './planner'
   import { IDEA_GROUPS, IDEA_UNLOCK_MS } from './ideas'
-  import { alignTranscript, formatClipDuration, timeRangeForSelection, tokenAtTime, type TimedToken } from './voiceClips'
+  import { alignTranscript, formatClipDuration, isTimed, timeRangeForSelection, tokenAtTime, type TimedToken } from './voiceClips'
   import { decodeClip } from './voiceRecorder'
   import { canTranscribe, transcriptionStatus } from './voiceTranscription'
   import type { IdeaGroupKind, IdeaItem, VoiceClip } from './types'
@@ -23,7 +23,10 @@
   const targets = IDEA_GROUPS.filter((group) => group.kind !== 'proposition')
   const openedAt = Date.now()
 
-  let text = idea.text
+  // Line breaks live in the html; the plain text drops them.
+  const textOf = (item: IdeaItem) => item.html ? htmlToPlainTextWithBreaks(item.html) : item.text
+  let savedText = textOf(idea)
+  let text = savedText
   let input: HTMLTextAreaElement
   let waveform: VoiceWaveform
   let playhead = 0
@@ -39,19 +42,29 @@
   let unlockTick = 0
   const unlockTimers = targets.map((target) => window.setTimeout(() => { unlockTick += 1 }, IDEA_UNLOCK_MS[target.kind]))
 
-  // A transcript arriving while open replaces the still-empty draft.
-  $: if (!text && idea.text) text = idea.text
+  // A transcript arriving while open lands in the draft unless it has unsaved edits.
+  $: adoptSavedText(textOf(idea))
   $: tokens = alignTranscript(text, clip.transcript?.words ?? [], durationSeconds)
   $: spoken = clip.transcript ? tokenAtTime(tokens, playhead) : null
+  // Also offered when the transcript never made it into the text.
+  $: needsTranscript = clip.transcript
+    ? Boolean(clip.transcript.text.trim()) && !tokens.some(isTimed)
+    : canTranscribe
   $: transcribing = $transcriptionStatus.state !== 'idle'
 
   function locked(kind: IdeaGroupKind, _tick: number) {
     return Date.now() < openedAt + IDEA_UNLOCK_MS[kind]
   }
 
+  function adoptSavedText(next: string) {
+    if (next === savedText) return
+    if (text.trim() === savedText.trim()) text = next
+    savedText = next
+  }
+
   function edit() {
     const trimmed = text.trim()
-    onEdit(trimmed, escapeHTML(trimmed))
+    onEdit(trimmed, escapeHTML(trimmed).replace(/\n/g, '<br>'))
   }
 
   async function ensureAudio() {
@@ -186,7 +199,7 @@
       {#if playing}❚❚{:else}▶{/if}
     </button>
     <span class="voice-idea-time">{formatClipDuration(playhead * 1000)} / {formatClipDuration(clip.durationMs)}</span>
-    {#if !clip.transcript && canTranscribe}
+    {#if needsTranscript}
       <button type="button" class="voice-idea-transcribe" disabled={transcribing} on:click={onTranscribe}>
         {#if $transcriptionStatus.state === 'downloading'}Downloading {Math.round($transcriptionStatus.fraction * 100)}%{:else if transcribing}Transcribing…{:else}Transcribe{/if}
       </button>

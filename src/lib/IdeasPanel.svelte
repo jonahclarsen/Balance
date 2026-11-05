@@ -217,19 +217,6 @@
     openClipId = null
   }
 
-  // Lines the chip up under its idea's text, whatever the row's controls.
-  function alignWithText(node: HTMLElement) {
-    const align = () => {
-      const text = node.previousElementSibling?.querySelector('[data-plan-text-input]')
-      const parent = node.parentElement
-      if (text && parent) node.style.marginLeft = `${text.getBoundingClientRect().left - parent.getBoundingClientRect().left}px`
-    }
-    const observer = new ResizeObserver(align)
-    if (node.parentElement) observer.observe(node.parentElement)
-    align()
-    return { destroy: () => observer.disconnect() }
-  }
-
   async function addItem(groupId: Id) {
     const itemId = plannerStore.addRootIdeaItem(groupId)
     await tick()
@@ -357,24 +344,26 @@
             hideTime
             collapsible
             placeholder={clip ? 'Voice idea' : undefined}
-          />
-          {#if clip}
-            <button
-              use:alignWithText
-              type="button"
-              class="voice-clip-chip"
-              data-voice-clip={clip.id}
-              aria-label={`Voice idea, ${formatClipDuration(clip.durationMs)}`}
-              on:click={() => { openClipId = clip.id }}
-            >
-              <svg viewBox={`0 0 ${Math.min(48, clip.peaks.length)} 16`} preserveAspectRatio="none" aria-hidden="true">
-                {#each Array.from({ length: Math.min(48, clip.peaks.length) }, (_, index) => clip.peaks[Math.floor((index * clip.peaks.length) / Math.min(48, clip.peaks.length))] ?? 0) as peak, index}
-                  <rect x={index + 0.15} width="0.7" y={8 - Math.max(0.6, (peak / 255) * 8)} height={Math.max(1.2, (peak / 255) * 16)} />
-                {/each}
-              </svg>
-              <span>{formatClipDuration(clip.durationMs)}</span>
-            </button>
-          {/if}
+          >
+            <svelte:fragment slot="trailing">
+              {#if clip}
+                <button
+                  type="button"
+                  class="voice-clip-chip"
+                  data-voice-clip={clip.id}
+                  aria-label={`Voice idea, ${formatClipDuration(clip.durationMs)}`}
+                  on:click={() => { openClipId = clip.id }}
+                >
+                  <svg viewBox={`0 0 ${Math.min(48, clip.peaks.length)} 16`} preserveAspectRatio="none" aria-hidden="true">
+                    {#each Array.from({ length: Math.min(48, clip.peaks.length) }, (_, index) => clip.peaks[Math.floor((index * clip.peaks.length) / Math.min(48, clip.peaks.length))] ?? 0) as peak, index}
+                      <rect x={index + 0.15} width="0.7" y={8 - Math.max(0.6, (peak / 255) * 8)} height={Math.max(1.2, (peak / 255) * 16)} />
+                    {/each}
+                  </svg>
+                  <span>{formatClipDuration(clip.durationMs)}</span>
+                </button>
+              {/if}
+            </svelte:fragment>
+          </PlanItemEditor>
         {/each}
         {#if activeGroup !== 'proposition'}
           <button class="add-row" type="button" on:click={() => { void addItem(groupsByKind[activeGroup].id) }}>+ Add item</button>
@@ -405,7 +394,7 @@
       idea={openIdea.item}
       onEdit={(text, html) => { if (openIdea) plannerStore.patchIdeaItem(openIdea.group.id, openIdea.item.id, { text, html }) }}
       onMove={moveOpenIdea}
-      onTranscribe={() => { if (openClip) transcribe([openClip]) }}
+      onTranscribe={() => { if (openClip?.transcript) plannerStore.applyVoiceTranscript(openClip.id, openClip.transcript); else if (openClip) transcribe([openClip]) }}
       onClose={() => { openClipId = null }}
     />
   {/key}
@@ -489,7 +478,7 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    margin: 0 0 6px;
+    flex: none;
     padding: 2px 8px;
     border-radius: 999px;
     color: var(--accent);

@@ -1096,6 +1096,8 @@
       </div>
   {/if}
 
+  <slot name="trailing" />
+
   {#if mobile && !locked}
     <div class="mobile-task-actions" bind:this={mobileTaskActions}>
       {#if mobileSelectionMode}

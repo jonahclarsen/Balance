@@ -2563,19 +2563,22 @@ function createPlannerStore() {
       return item.id
     },
 
-    // Fills an untouched idea with the transcript; typed text is left alone.
+    // Puts the transcript in its idea, on a new line below any typed text.
     applyVoiceTranscript(clipId: Id, transcript: NonNullable<VoiceClip['transcript']>) {
       commitEntities('transcribe_voice_idea', { clipId }, (state) => {
         const clip = state.voiceClips.find((candidate) => candidate.id === clipId)
         if (!clip) return state
         const voiceClips = state.voiceClips.map((candidate) => candidate === clip ? { ...clip, transcript } : candidate)
         const found = findIdea(state.ideaBuckets, clip.ideaId)
-        if (!found || found.item.text.trim() || !transcript.text.trim()) return { ...state, voiceClips }
-        const text = transcript.text.trim()
+        const spoken = transcript.text.trim()
+        if (!found || !spoken || found.item.text.includes(spoken)) return { ...state, voiceClips }
+        const typed = found.item.text.trim()
         return {
           ...updateIdeaGroupById(state, found.group.id, (group) => ({
             ...group,
-            items: updatePlanItem(group.items, clip.ideaId, (item) => ({ ...item, text, html: escapeHTML(text) })),
+            items: updatePlanItem(group.items, clip.ideaId, (item) => typed
+              ? { ...item, text: `${item.text.trimEnd()}\n${spoken}`, html: `${item.html.replace(/(?:<br>|\s)+$/, '')}<br>${escapeHTML(spoken)}` }
+              : { ...item, text: spoken, html: escapeHTML(spoken) }),
           })),
           voiceClips,
         }

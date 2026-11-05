@@ -272,3 +272,34 @@ test('the transcript and waveform follow each other', async ({ page }, testInfo)
   expect(after.voiceClips).toEqual([])
   expect(after.ideaBuckets.find((group: any) => group.kind === 'trash').items[0].id).toBe(ideaId)
 })
+
+test('a transcript goes below text typed on its idea', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Store behavior is covered on desktop')
+  await open(page)
+  const transcript = { text: 'Synthetic spoken idea.', words: [
+    { text: 'Synthetic', start: 0, end: 0.4 }, { text: 'spoken', start: 0.4, end: 0.8 }, { text: 'idea.', start: 0.8, end: 1.2 },
+  ], model: 'test', transcribedAt: '2026-10-27T00:00:00Z' }
+  const ideaId = await storeCall(page, "return plannerStore.addVoiceIdea({ dataURL: 'data:audio/webm;base64,', durationMs: 1200, peaks: [10, 200, 90] })")
+  const groupId = (await state(page)).ideaBuckets.find((group: any) => group.kind === 'proposition').id
+  const clipId = (await state(page)).voiceClips[0].id
+  const idea = async () => (await state(page)).ideaBuckets.find((group: any) => group.id === groupId).items[0]
+  await storeCall(page, "plannerStore.patchIdeaItem(arg.groupId, arg.ideaId, { text: 'Typed first', html: 'Typed first' })", { groupId, ideaId })
+
+  // The clip sits inside its idea's row.
+  await expect(proposition(page).locator('.plan-row .voice-clip-chip')).toBeVisible()
+
+  await storeCall(page, 'plannerStore.applyVoiceTranscript(arg.clipId, arg.transcript)', { clipId, transcript })
+  expect(await idea()).toMatchObject({ text: 'Typed first\nSynthetic spoken idea.', html: 'Typed first<br>Synthetic spoken idea.' })
+  // Applying it again doesn't duplicate it.
+  await storeCall(page, 'plannerStore.applyVoiceTranscript(arg.clipId, arg.transcript)', { clipId, transcript })
+  expect((await idea()).text).toBe('Typed first\nSynthetic spoken idea.')
+
+  // A transcript missing from the text can be added back from the dialog.
+  await storeCall(page, "plannerStore.patchIdeaItem(arg.groupId, arg.ideaId, { text: 'Typed only', html: 'Typed only' })", { groupId, ideaId })
+  await proposition(page).locator('.voice-clip-chip').click()
+  const dialog = page.getByRole('dialog', { name: 'Voice idea' })
+  await dialog.getByRole('button', { name: 'Transcribe', exact: true }).click()
+  await expect(dialog.getByRole('textbox', { name: 'Idea text' })).toHaveValue('Typed only\nSynthetic spoken idea.')
+  await expect(dialog.getByRole('button', { name: 'Transcribe', exact: true })).toBeHidden()
+  expect((await idea()).text).toBe('Typed only\nSynthetic spoken idea.')
+})

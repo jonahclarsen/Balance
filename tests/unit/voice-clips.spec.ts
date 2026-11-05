@@ -63,3 +63,20 @@ test('only untranscribed clips hold their ideas back from sorting', () => {
   const transcribed = stateWith('proposition', { transcript: { text: 'Synthetic', words: [], model: 'test', transcribedAt: '2026-10-27T00:00:00Z' } })
   expect(awaitingTranscription(transcribed.voiceClips).size).toBe(0)
 })
+
+test('lines typed before transcribing stay untimed', () => {
+  // The typed line shares "to" with the transcript but must not claim it.
+  const text = 'Typed note to self\nRemember to buy oat milk.'
+  const tokens = alignTranscript(text, words, 2)
+  expect(tokens.slice(0, 4).every((token) => Number.isNaN(token.start))).toBe(true)
+  expect(tokens.slice(4).map((token) => [token.start, token.end])).toEqual(words.map((word) => [word.start, word.end]))
+  expect(timeRangeForSelection(tokens, 0, 5)).toBeNull()
+  expect(timeRangeForSelection(tokens, 0, text.indexOf('buy'))).toEqual({ start: 0, end: 0.4 })
+  expect(tokenAtTime(tokens, 0)).toMatchObject({ from: text.indexOf('Remember') })
+})
+
+test('text unrelated to the transcript has no timing', () => {
+  const tokens = alignTranscript('Something I typed myself', words, 2)
+  expect(tokens.some((token) => !Number.isNaN(token.start))).toBe(false)
+  expect(tokenAtTime(tokens, 1)).toBeNull()
+})
