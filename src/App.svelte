@@ -71,6 +71,7 @@
   import RichTextEditor from './lib/RichTextEditor.svelte'
   import NavIcon from './lib/NavIcon.svelte'
   import WindowCaption from './lib/WindowCaption.svelte'
+  import ControlPanelTasks from './lib/ControlPanelTasks.svelte'
   import SearchModal from './lib/SearchModal.svelte'
   import KeyboardShortcutsModal from './lib/KeyboardShortcutsModal.svelte'
   import ThemeTaskPreview from './lib/ThemeTaskPreview.svelte'
@@ -8441,7 +8442,8 @@ return rows`
       </header>
 
       <div class="settings-panel">
-        <section class="settings-section">
+        <ControlPanelTasks />
+        <section class="settings-section" data-cp="theme">
           <div>
             <h3>Color theme</h3>
             <p>Pick a theme based on your mood. Each theme adapts to the appearance selected below.</p>
@@ -8491,7 +8493,7 @@ return rows`
           </div>
         </section>
 
-        <section class="settings-section">
+        <section class="settings-section" data-cp="appearance">
           <div>
             <h3>Appearance</h3>
             <p>Choose how Balance looks on this device.</p>
@@ -8533,7 +8535,7 @@ return rows`
           </div>
         </section>
 
-        <section class="settings-section">
+        <section class="settings-section" data-cp="messages">
           <div>
             <h3>Opening messages</h3>
             <p>
@@ -8559,7 +8561,7 @@ return rows`
         </section>
 
         {#if isMac && !isMobile && isTauri()}
-          <section class="settings-section">
+          <section class="settings-section" data-cp="widget">
             <div>
               <h3>Widget visibility</h3>
               <p>
@@ -8589,7 +8591,7 @@ return rows`
 
         <SyncPanel />
 
-        <section class="settings-section">
+        <section class="settings-section" data-cp="completed">
           <div>
             <h3>Completed item colors</h3>
             <p>Fine-tune the checkbox and checked-row colors, or keep them matched to your theme.</p>
@@ -8654,7 +8656,7 @@ return rows`
         />
 
         {#if isMac && !isMobile}
-          <section class="settings-section">
+          <section class="settings-section" data-cp="key">
             <div>
               <h3>Database encryption key</h3>
               <p>
@@ -8682,7 +8684,7 @@ return rows`
           </section>
         {/if}
 
-        <section class="settings-section">
+        <section class="settings-section" data-cp="recovery">
           <div>
             <h3>Recovery &amp; diagnostics</h3>
             {#if isTauri()}
@@ -8719,7 +8721,7 @@ return rows`
           {#if freezeReportStatus}<p class="export-status" role="status">{freezeReportStatus}</p>{/if}
         {/if}
 
-        <section class="settings-section">
+        <section class="settings-section" data-cp="export">
           <div>
             <h3>Manual export</h3>
             <p>Save a portable copy of your plans, templates, goals, and operation log.</p>
@@ -8753,7 +8755,7 @@ return rows`
           {/if}
         </section>
 
-        <section class="settings-section">
+        <section class="settings-section" data-cp="folder">
           <div>
             <h3>Export folder</h3>
             {#if isTauri()}
@@ -8788,7 +8790,7 @@ return rows`
         </section>
 
         {#if buildInfo}
-          <section class="settings-section">
+          <section class="settings-section" data-cp="about">
             <div>
               <h3>About</h3>
               <p>The version and source commit this build came from.</p>

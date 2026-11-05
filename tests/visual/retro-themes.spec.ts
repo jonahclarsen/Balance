@@ -80,15 +80,28 @@ for (const [id, name] of [['system1', 'Mac System 1'], ['windowsxp', 'Windows XP
         await expect(search.locator('.search-result').first()).toBeVisible()
         await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`${id}-${scheme}-search.png`) })
         await search.getByRole('button', { name: 'Close', exact: true }).click()
-        // Every rendered sidebar icon must resolve to a real, decodable asset.
+        // Every rendered sidebar icon and every piece of Start menu and Control
+        // Panel artwork the stylesheets reference must resolve to a decodable image.
         const iconURLs = await page.locator(`.sidebar .${id === 'windowsxp' ? 'xp' : 'vista'}-icon`).evaluateAll(nodes => nodes.map(n => n.getAttribute('href')!))
-        for (const url of new Set(iconURLs)) {
+        const artURLs = await page.evaluate(() => [...document.styleSheets].flatMap(sheet => {
+          try { return [...sheet.cssRules].map(rule => rule.cssText) } catch { return [] }
+        }).flatMap(text => [...text.matchAll(/url\(['"]?(\/themes\/windows(?:xp|vista)\/[^'")]+)['"]?\)/g)].map(match => match[1])))
+        expect(artURLs.length).toBeGreaterThan(40)
+        for (const url of new Set([...iconURLs, ...artURLs])) {
           expect(await page.evaluate(async src => {
             const image = new Image(); image.src = src
             await image.decode(); return image.naturalWidth > 0
           }, url)).toBe(true)
         }
       }
+    }
+    if (id !== 'system1' && !isMobile) {
+      // Settings is Control Panel: its task pane lists the sections and jumps to them.
+      await openView(page, 'Settings')
+      const tasks = page.getByRole('complementary', { name: 'Settings sections' })
+      await tasks.getByRole('button', { name: 'Export folder', exact: true }).click()
+      await expect(page.locator('[data-cp="folder"] h3')).toBeInViewport()
+      await openView(page, 'Today')
     }
     const checkbox = page.locator('.plan-row .check:not(:checked)').first()
     const itemId = await checkbox.evaluate(el => el.closest('[data-plan-item-id]')?.getAttribute('data-plan-item-id'))

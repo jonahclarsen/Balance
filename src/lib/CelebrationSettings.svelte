@@ -41,7 +41,7 @@
   }
 </script>
 
-<section class="settings-section celebration-settings" aria-labelledby="celebration-settings-title">
+<section class="settings-section celebration-settings" data-cp="celebration" aria-labelledby="celebration-settings-title">
   <h3 id="celebration-settings-title">
     <button
       type="button"

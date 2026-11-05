@@ -285,94 +285,10 @@
   ],
   "assets": [
     {
-      "path": "public/themes/windowsxp/icons/next.png",
-      "source": "Windows XP SP3 shell32.dll icon 290, from https://archive.org/download/win-xpprosp-3-en/WinXPPROSP3_EN.iso",
-      "method": "16px frame decoded with winres.py icons",
-      "sha256": "9063425997081c45838ad8cf9bd2a990405e497e0010e1f2d2becb31d358a89e"
-    },
-    {
-      "path": "public/themes/windowsxp/icons/today.png",
-      "source": "Windows XP SP3 shell32.dll icon 326, from https://archive.org/download/win-xpprosp-3-en/WinXPPROSP3_EN.iso",
-      "method": "16px frame decoded with winres.py icons",
-      "sha256": "e29d1e331cfa5fab80f4d34de2c6af8e18c633124339ddf87c94c516da3048d5"
-    },
-    {
-      "path": "public/themes/windowsxp/icons/templates.png",
-      "source": "Windows XP SP3 shell32.dll icon 20, from https://archive.org/download/win-xpprosp-3-en/WinXPPROSP3_EN.iso",
-      "method": "16px frame decoded with winres.py icons",
-      "sha256": "9926c3cae981d9a6ce55d5025141fb9646d1fcc7bfcb65327480077f0a485830"
-    },
-    {
-      "path": "public/themes/windowsxp/icons/listTemplates.png",
-      "source": "Windows XP SP3 shell32.dll icon 238, from https://archive.org/download/win-xpprosp-3-en/WinXPPROSP3_EN.iso",
-      "method": "16px frame decoded with winres.py icons",
-      "sha256": "684c1718888397dc63c9860cf89534e8d54a40b57240c9e6b6b89719888bbc46"
-    },
-    {
-      "path": "public/themes/windowsxp/icons/lists.png",
-      "source": "Windows XP SP3 shell32.dll icon 253, from https://archive.org/download/win-xpprosp-3-en/WinXPPROSP3_EN.iso",
-      "method": "16px frame decoded with winres.py icons",
-      "sha256": "581f8b40418fad3332f8ddad0086873a1cf24c1e348029a9a40cdcb9268fe5b0"
-    },
-    {
-      "path": "public/themes/windowsxp/icons/metrics.png",
-      "source": "Windows XP SP3 shell32.dll icon 24, from https://archive.org/download/win-xpprosp-3-en/WinXPPROSP3_EN.iso",
-      "method": "16px frame decoded with winres.py icons",
-      "sha256": "efc2da1f3c56303c83a6de823ea693a90c3a6c7ec393c390e6c145ba44c12b6b"
-    },
-    {
-      "path": "public/themes/windowsxp/icons/goals.png",
-      "source": "Windows XP SP3 shell32.dll icon 44, from https://archive.org/download/win-xpprosp-3-en/WinXPPROSP3_EN.iso",
-      "method": "16px frame decoded with winres.py icons",
-      "sha256": "c346e3c720a530e113c6b4450f4a441568be234ddf707f5599f53435cf64451e"
-    },
-    {
-      "path": "public/themes/windowsxp/icons/projects.png",
-      "source": "Windows XP SP3 shell32.dll icon 4, from https://archive.org/download/win-xpprosp-3-en/WinXPPROSP3_EN.iso",
-      "method": "16px frame decoded with winres.py icons",
-      "sha256": "ecae1cd8d74b8bc328beb3bc780d5db589f780cfde0a3843ca2546c1d68d4b0b"
-    },
-    {
-      "path": "public/themes/windowsxp/icons/prioritize.png",
-      "source": "Windows XP SP3 shell32.dll icon 1005, from https://archive.org/download/win-xpprosp-3-en/WinXPPROSP3_EN.iso",
-      "method": "16px frame decoded with winres.py icons",
-      "sha256": "40852c47ced89f69bdf0b4a1b9b1ab077fb0680c24d1b5f30572dadd436699a1"
-    },
-    {
-      "path": "public/themes/windowsxp/icons/settings.png",
-      "source": "Windows XP SP3 shell32.dll icon 137, from https://archive.org/download/win-xpprosp-3-en/WinXPPROSP3_EN.iso",
-      "method": "16px frame decoded with winres.py icons",
-      "sha256": "825ec53811caa5d1fc51e96a812653a2cea65fa72e5cab059669f4a03718ecef"
-    },
-    {
-      "path": "public/themes/windowsxp/icons/notes.png",
-      "source": "Windows XP SP3 notepad.exe icon 2, from https://archive.org/download/win-xpprosp-3-en/WinXPPROSP3_EN.iso",
-      "method": "16px frame decoded with winres.py icons",
-      "sha256": "b26f5fb5a32e041f4fc4ca4508020a30fe414b3e0ff8d9a23150f5b5e95fb441"
-    },
-    {
       "path": "public/themes/windowsxp/icons/clock.png",
       "source": "Windows XP SP3 timedate.cpl icon 200, from https://archive.org/download/win-xpprosp-3-en/WinXPPROSP3_EN.iso",
       "method": "16px frame decoded with winres.py icons",
       "sha256": "8fd42e48763f432fbfec05f4e3f85ad308da89e5b0af6b5cdd798db3a3ee1285"
-    },
-    {
-      "path": "public/themes/windowsxp/icons/ideas.png",
-      "source": "https://raw.githubusercontent.com/ShizukuIchi/winXP/master/src/assets/windowsIcons/119%2816x16%29.png",
-      "method": "Unmodified original Windows icon image; selected by visual inspection",
-      "sha256": "5cbda0014c55bf39f4b7e8705caf1cc651e2267dcc84a1deddcf7c26a50de0f7"
-    },
-    {
-      "path": "public/themes/windowsxp/icons/situate.png",
-      "source": "https://raw.githubusercontent.com/ShizukuIchi/winXP/master/src/assets/windowsIcons/214%2816x16%29.png",
-      "method": "Unmodified original Windows icon image; selected by visual inspection",
-      "sha256": "8a7e148134b3502b07e37e2cc17fe2d8df4f7683dc2cf699a864d7398a14ccd6"
-    },
-    {
-      "path": "public/themes/windowsvista/icons/next.png",
-      "source": "Windows Vista RTM imageres.dll icon 116, from https://archive.org/download/windows-vista-business-x-86-vl/Windows%20Vista%20Business%20X86%20VL.iso",
-      "method": "16px frame decoded with winres.py icons",
-      "sha256": "58f6c64b592046f6265a417afd03c3a76b80b64447b449ad84bbdbd016b6cccc"
     },
     {
       "path": "public/themes/windowsvista/icons/templates.png",
@@ -381,76 +297,10 @@
       "sha256": "7af35426b7fbcb8cbc5e89e4532f7b845ff2a8c007e0e44470df1ab09629dca1"
     },
     {
-      "path": "public/themes/windowsvista/icons/listTemplates.png",
-      "source": "Windows Vista RTM imageres.dll icon 19, from https://archive.org/download/windows-vista-business-x-86-vl/Windows%20Vista%20Business%20X86%20VL.iso",
-      "method": "16px frame decoded with winres.py icons",
-      "sha256": "528942e42b8b29f3cfe064e021fd66e9df502046b6815d38c8cdd72a31254cdc"
-    },
-    {
-      "path": "public/themes/windowsvista/icons/lists.png",
-      "source": "Windows Vista RTM imageres.dll icon 121, from https://archive.org/download/windows-vista-business-x-86-vl/Windows%20Vista%20Business%20X86%20VL.iso",
-      "method": "16px frame decoded with winres.py icons",
-      "sha256": "bf6b2ba0df52b3ecef1b5aa99c2bfdff08b67b6b28eb86610900e1c5168e7244"
-    },
-    {
-      "path": "public/themes/windowsvista/icons/metrics.png",
-      "source": "Windows Vista RTM imageres.dll icon 99, from https://archive.org/download/windows-vista-business-x-86-vl/Windows%20Vista%20Business%20X86%20VL.iso",
-      "method": "16px frame decoded with winres.py icons",
-      "sha256": "a6274d9695f628bb0ae6d55b2dea6eb8e2fbbfa9a3ff09cbf5ab014e968b9db1"
-    },
-    {
-      "path": "public/themes/windowsvista/icons/goals.png",
-      "source": "Windows Vista RTM imageres.dll icon 14, from https://archive.org/download/windows-vista-business-x-86-vl/Windows%20Vista%20Business%20X86%20VL.iso",
-      "method": "16px frame decoded with winres.py icons",
-      "sha256": "6a794db841f2d84b379ef03c32cb51a0475784be55d9903fe7962ff9070c3ac8"
-    },
-    {
-      "path": "public/themes/windowsvista/icons/projects.png",
-      "source": "Windows Vista RTM imageres.dll icon 3, from https://archive.org/download/windows-vista-business-x-86-vl/Windows%20Vista%20Business%20X86%20VL.iso",
-      "method": "16px frame decoded with winres.py icons",
-      "sha256": "5a29fbe3b7601abb2c81e3baf94b4a4e338427717fcc693941e4726c66d05d7f"
-    },
-    {
-      "path": "public/themes/windowsvista/icons/prioritize.png",
-      "source": "Windows Vista RTM imageres.dll icon 115, from https://archive.org/download/windows-vista-business-x-86-vl/Windows%20Vista%20Business%20X86%20VL.iso",
-      "method": "16px frame decoded with winres.py icons",
-      "sha256": "f460e6f1b4a9a468673231f316732de1e89ee5dd26d954c683fd61fe78bb6479"
-    },
-    {
-      "path": "public/themes/windowsvista/icons/settings.png",
-      "source": "Windows Vista RTM imageres.dll icon 114, from https://archive.org/download/windows-vista-business-x-86-vl/Windows%20Vista%20Business%20X86%20VL.iso",
-      "method": "16px frame decoded with winres.py icons",
-      "sha256": "9a38ecf957bac411f19083c384baee71de6958c8720cde7fa81a0e6b17b03908"
-    },
-    {
-      "path": "public/themes/windowsvista/icons/today.png",
-      "source": "Windows Vista RTM timedate.cpl icon 50, from https://archive.org/download/windows-vista-business-x-86-vl/Windows%20Vista%20Business%20X86%20VL.iso",
-      "method": "16px frame decoded with winres.py icons",
-      "sha256": "109f57df0edcb55bc5467b7d6966a1dc1b4ad4bea154554016d55a1c1c2284cd"
-    },
-    {
       "path": "public/themes/windowsvista/icons/clock.png",
       "source": "Windows Vista RTM timedate.cpl icon 50, from https://archive.org/download/windows-vista-business-x-86-vl/Windows%20Vista%20Business%20X86%20VL.iso",
       "method": "16px frame decoded with winres.py icons",
       "sha256": "109f57df0edcb55bc5467b7d6966a1dc1b4ad4bea154554016d55a1c1c2284cd"
-    },
-    {
-      "path": "public/themes/windowsvista/icons/notes.png",
-      "source": "Windows Vista RTM notepad.exe icon 2, from https://archive.org/download/windows-vista-business-x-86-vl/Windows%20Vista%20Business%20X86%20VL.iso",
-      "method": "16px frame decoded with winres.py icons",
-      "sha256": "17488a1b1fca9a0f36fa1e1c04fcb9755ae80236b65f742c4f3d31516284fbbf"
-    },
-    {
-      "path": "public/themes/windowsvista/icons/ideas.png",
-      "source": "Windows Vista RTM wscui.cpl icon 5005, from https://archive.org/download/windows-vista-business-x-86-vl/Windows%20Vista%20Business%20X86%20VL.iso",
-      "method": "16px frame decoded with winres.py icons",
-      "sha256": "285ccef477950ce49f730b490845c3058472356fa8743fd650a1a96f62b82c69"
-    },
-    {
-      "path": "public/themes/windowsvista/icons/situate.png",
-      "source": "Windows Vista RTM wscui.cpl icon 5000, from https://archive.org/download/windows-vista-business-x-86-vl/Windows%20Vista%20Business%20X86%20VL.iso",
-      "method": "16px frame decoded with winres.py icons",
-      "sha256": "4c02578f3eb0fcaf06306ca1c9af6c145c1c1056aeb4c20c3f0dc268c0cccda8"
     },
     {
       "path": "public/themes/windowsxp/bliss.png",
@@ -481,6 +331,792 @@
       "source": "public/themes/windowsvista/aurora.jpg",
       "method": "Downscaled to 1280 x 800 JPEG (quality 85) with sips for the macOS widget; no redrawing",
       "sha256": "faba156b3a3bc55cebe41aa2d45cf01db1dd2b8e3c67831b39aaa6bb9d8b4c46"
+    },
+    {
+      "path": "public/themes/windowsxp/startmenu/user-pane.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/LUNA.MS_ (luna.msstyles) bitmap BLUE_STARTUSERPANEL_BMP",
+      "method": "Lossless DIB to PNG; magenta keyed to transparency as the theme declares Transparent=True",
+      "sha256": "0b9b89b6b5113d078e1d4c3d4db72d80853691647082c0eaaf536f63043c7fea"
+    },
+    {
+      "path": "public/themes/windowsxp/startmenu/user-tile.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/LUNA.MS_ (luna.msstyles) bitmap BLUE_USERTILEBACKGROUND_BMP",
+      "method": "Lossless DIB to PNG conversion",
+      "sha256": "691a932e2233f8bff36047dfc6388d2539fa0fda21267d12c3931279148c1b1a"
+    },
+    {
+      "path": "public/themes/windowsxp/startmenu/programs.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/LUNA.MS_ (luna.msstyles) bitmap BLUE_STARTPANELMFUBACKGROUND_BMP",
+      "method": "Lossless DIB to PNG conversion",
+      "sha256": "c9b2c9d74425f05335281abe40ac7389cf37cc5cc53ad2e06055e9b0f51b9780"
+    },
+    {
+      "path": "public/themes/windowsxp/startmenu/programs-separator.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/LUNA.MS_ (luna.msstyles) bitmap BLUE_STARTPROGRAMSSEPARATOR_BMP",
+      "method": "Lossless DIB to PNG conversion",
+      "sha256": "cf04dfe4bb71b18771b35c32a514372d387de318d3a149f965ddd5b794778664"
+    },
+    {
+      "path": "public/themes/windowsxp/startmenu/places.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/LUNA.MS_ (luna.msstyles) bitmap BLUE_STARTPANELPLACESBACKGROUND_BMP",
+      "method": "Lossless DIB to PNG conversion",
+      "sha256": "712ca35e25846581e3c24a5d3ef31daf91de7499af35302272f8d4247099b23a"
+    },
+    {
+      "path": "public/themes/windowsxp/startmenu/places-separator.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/LUNA.MS_ (luna.msstyles) bitmap BLUE_STARTPLACESSEPARATOR_BMP",
+      "method": "Lossless DIB to PNG conversion",
+      "sha256": "f3e684e9e059b3c6de76dd96215fb8e379b0bb9a23ec36e19e781d6d9c57e2f1"
+    },
+    {
+      "path": "public/themes/windowsxp/startmenu/arrow.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/LUNA.MS_ (luna.msstyles) bitmap BLUE_STARTPANELMOREPROGARROW_BMP",
+      "method": "Lossless DIB to PNG conversion",
+      "sha256": "c5a51d4b00501dab1a6cf15427d516548ad5fb4b3593fa3caa96bf09e5cac36e"
+    },
+    {
+      "path": "public/themes/windowsxp/startmenu/arrow-hot.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/LUNA.MS_ (luna.msstyles) bitmap BLUE_STARTPANELMOREPROGARROWHOT_BMP",
+      "method": "Lossless DIB to PNG conversion",
+      "sha256": "f17be25d19d3676ed602edccd0823032ff993e629f9ef35f6e6da324cac47a4c"
+    },
+    {
+      "path": "public/themes/windowsxp/startmenu/logoff.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/LUNA.MS_ (luna.msstyles) bitmap BLUE_STARTPANELLOGOFFBACKGROUND_BMP",
+      "method": "Lossless DIB to PNG conversion",
+      "sha256": "db6cc29f7333edcc337f5c6805d8a0b3fe58dd5cefad37b2cd2b0b7e76f07429"
+    },
+    {
+      "path": "public/themes/windowsxp/startmenu/user-picture.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/CHESS.BM_ (default user account picture chess.bmp)",
+      "method": "Lossless DIB to PNG conversion",
+      "sha256": "9d956752afe1d9f3f5976b7ca96b95fc6c822e95d3df1b6af627e68274b679a4"
+    },
+    {
+      "path": "public/themes/windowsxp/controlpanel/watermark.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/BLUE_SS.DL_ (Luna Blue shellstyle.dll) bitmap 25",
+      "method": "Lossless DIB to PNG conversion",
+      "sha256": "06f516d26e6ef6edf853be7233804f773cf8c21b052fa55129da40a93fa6c33c"
+    },
+    {
+      "path": "public/themes/windowsxp/icons/large/today.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/TIMEDATE.CP_ (timedate.cpl) icon group 200",
+      "method": "Native 32px ICO frame, exported without scaling",
+      "sha256": "e144ea944700149174c5361fb8351079b4d686737e918cc84cf855bcf1a67fae"
+    },
+    {
+      "path": "public/themes/windowsxp/icons/today.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/TIMEDATE.CP_ (timedate.cpl) icon group 200",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "56c19a0194cee82aae2154cd981aeda3557791eba26ed1b3f4f18835c8e1eb67"
+    },
+    {
+      "path": "public/themes/windowsxp/icons/large/next.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/TOURSTRT.EX_ (tourstrt.exe) icon group 100",
+      "method": "Native 32px ICO frame, exported without scaling",
+      "sha256": "4aa8db1780292433e99fe01694734b429a122bb45d93b213a8991d4eafbe136d"
+    },
+    {
+      "path": "public/themes/windowsxp/icons/next.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/TOURSTRT.EX_ (tourstrt.exe) icon group 100",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "e45d90251fa21530e3e0c153da013a53f6fa9f0fda94c17b0be5156eb3271b6f"
+    },
+    {
+      "path": "public/themes/windowsxp/icons/large/templates.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/MSTASK.DL_ (mstask.dll) icon group 274",
+      "method": "Native 32px ICO frame, exported without scaling",
+      "sha256": "77823b2bbf64105dc3209d2bf8e7586610036a38eb327769772e764362f47ff7"
+    },
+    {
+      "path": "public/themes/windowsxp/icons/templates.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/MSTASK.DL_ (mstask.dll) icon group 274",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "7e35177fef4e85e1a879b2de9bd54d72ca36f22d20919cb7711d506a72f30cf3"
+    },
+    {
+      "path": "public/themes/windowsxp/icons/large/listTemplates.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/SHELL32.DL_ (shell32.dll) icon group 152",
+      "method": "Native 32px ICO frame, exported without scaling",
+      "sha256": "218e08282f0c6446b24a11574ca9ced897f57da308721cfb67205444edcb3c95"
+    },
+    {
+      "path": "public/themes/windowsxp/icons/listTemplates.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/SHELL32.DL_ (shell32.dll) icon group 152",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "987fea942af5111714a02c0f2bc342faa11cfe901c61ed1e20680f4bca59438d"
+    },
+    {
+      "path": "public/themes/windowsxp/icons/large/lists.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/SHELL32.DL_ (shell32.dll) icon group 21",
+      "method": "Native 32px ICO frame, exported without scaling",
+      "sha256": "b33ddb2f1ceb67634f2634fde6a53b22e41b3aa3cbd015c24626b89857b84636"
+    },
+    {
+      "path": "public/themes/windowsxp/icons/lists.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/SHELL32.DL_ (shell32.dll) icon group 21",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "7cff64e4c263e915698fa494656f959e73342bb14f3ba60c97915700105e6067"
+    },
+    {
+      "path": "public/themes/windowsxp/icons/large/notes.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/NOTEPAD.EX_ (notepad.exe) icon group 2",
+      "method": "Native 32px ICO frame, exported without scaling",
+      "sha256": "51709a3c017ee8d93784b61efe131cfee23009ef77bf21a57c0c4f2f9ddd31a7"
+    },
+    {
+      "path": "public/themes/windowsxp/icons/notes.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/NOTEPAD.EX_ (notepad.exe) icon group 2",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "b25bb195847c4dba439e47b295393f9753ebcb1127177df9d3768fa634995518"
+    },
+    {
+      "path": "public/themes/windowsxp/icons/large/metrics.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/SHELL32.DL_ (shell32.dll) icon group 24",
+      "method": "Native 32px ICO frame, exported without scaling",
+      "sha256": "ffa68cab9c58c4972c163190e47e5a6e340e371f61910827ab7974e36eb2ec79"
+    },
+    {
+      "path": "public/themes/windowsxp/icons/metrics.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/SHELL32.DL_ (shell32.dll) icon group 24",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "790c4c30d075118eca9ceae22695d178fc2b2b2482b65eaac2665652dceac6e2"
+    },
+    {
+      "path": "public/themes/windowsxp/icons/large/goals.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/SHELL32.DL_ (shell32.dll) icon group 44",
+      "method": "Native 32px ICO frame, exported without scaling",
+      "sha256": "4e8e845dc714aac34eb2a25cfb44e3272cd10c0cabf017cdca1bd580ad4946bf"
+    },
+    {
+      "path": "public/themes/windowsxp/icons/goals.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/SHELL32.DL_ (shell32.dll) icon group 44",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "e824042e92f296eee9fc60703a0b499326d1fa8ec71e0bd0ee85f2ee5838fa28"
+    },
+    {
+      "path": "public/themes/windowsxp/icons/large/projects.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/SHELL32.DL_ (shell32.dll) icon group 4",
+      "method": "Native 32px ICO frame, exported without scaling",
+      "sha256": "dfadff047ac1e45d4334eac750311c21cba882e0878eadacb035331cd6b8e9e1"
+    },
+    {
+      "path": "public/themes/windowsxp/icons/projects.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/SHELL32.DL_ (shell32.dll) icon group 4",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "217e924da20c03a631a0664b1e2fc6326a82111e3f29e993e82a801ea3f3d001"
+    },
+    {
+      "path": "public/themes/windowsxp/icons/large/prioritize.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/SYSDM.CP_ (sysdm.cpl) icon group 1",
+      "method": "Native 32px ICO frame, exported without scaling",
+      "sha256": "18490001ec62b678659ecd52cb4ee801244efb446c52695668edb4d60db3353c"
+    },
+    {
+      "path": "public/themes/windowsxp/icons/prioritize.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/SYSDM.CP_ (sysdm.cpl) icon group 1",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "fc7bf9bef2ac9e2b96ab6388bd38666b3f4ebc7b7108a7c74f6e5ef593160f26"
+    },
+    {
+      "path": "public/themes/windowsxp/icons/large/ideas.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/MSPAINT.EX_ (mspaint.exe) icon group 2",
+      "method": "Native 32px ICO frame, exported without scaling",
+      "sha256": "0d9ba501069a11b312722868d3c2b457935f653051ad3124a485f2fb1aa7ff80"
+    },
+    {
+      "path": "public/themes/windowsxp/icons/ideas.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/MSPAINT.EX_ (mspaint.exe) icon group 2",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "ccfb909e83069344d86e902a5044bcf6f81d90306ef81b5260adf42547333147"
+    },
+    {
+      "path": "public/themes/windowsxp/icons/large/situate.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/WSCUI.CP_ (wscui.cpl) icon group 200",
+      "method": "Native 32px ICO frame, exported without scaling",
+      "sha256": "2330e0415efa72effae99b4bcd05b34a39eec23775115c12346d26d83992884a"
+    },
+    {
+      "path": "public/themes/windowsxp/icons/situate.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/WSCUI.CP_ (wscui.cpl) icon group 200",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "453e3f0b78728c9790cbdd6750ed30b6535cda8503286589344d8ea786c00ca6"
+    },
+    {
+      "path": "public/themes/windowsxp/icons/large/settings.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/SHELL32.DL_ (shell32.dll) icon group 137",
+      "method": "Native 32px ICO frame, exported without scaling",
+      "sha256": "2e131c165081a3b7587981f5c07a8bd8cc3443cbcecfe03404dcaea11e333d15"
+    },
+    {
+      "path": "public/themes/windowsxp/icons/settings.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/SHELL32.DL_ (shell32.dll) icon group 137",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "8ad012565d47084377420db13210f6515b37a4c2501ce8088a7c86cdc18bd828"
+    },
+    {
+      "path": "public/themes/windowsxp/icons/settings-24.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/SHELL32.DL_ (shell32.dll) icon group 137",
+      "method": "Native 24px ICO frame, exported without scaling",
+      "sha256": "17c547a11dbca5fc9fb28bfedfd514af9f19f192597f01a4dd7412daa4bd228b"
+    },
+    {
+      "path": "public/themes/windowsxp/icons/search-24.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/SHELL32.DL_ (shell32.dll) icon group 23",
+      "method": "Native 24px ICO frame, exported without scaling",
+      "sha256": "11592b53a66cc104892835dcef8a5aaf82994be10e17cc65496610c26198aa0b"
+    },
+    {
+      "path": "public/themes/windowsxp/icons/run-24.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/SHELL32.DL_ (shell32.dll) icon group 25",
+      "method": "Native 24px ICO frame, exported without scaling",
+      "sha256": "4957bcaba73c2b958e681899b55f4d205aed49b4ab020a292aef6856d82e8c1f"
+    },
+    {
+      "path": "public/themes/windowsxp/controlpanel/control-panel-32.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/SHELL32.DL_ (shell32.dll) icon group 137",
+      "method": "Native 32px ICO frame, exported without scaling",
+      "sha256": "2e131c165081a3b7587981f5c07a8bd8cc3443cbcecfe03404dcaea11e333d15"
+    },
+    {
+      "path": "public/themes/windowsxp/controlpanel/control-panel-16.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/SHELL32.DL_ (shell32.dll) icon group 137",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "8ad012565d47084377420db13210f6515b37a4c2501ce8088a7c86cdc18bd828"
+    },
+    {
+      "path": "public/themes/windowsxp/controlpanel/theme-32.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/SHELL32.DL_ (shell32.dll) icon group 270",
+      "method": "Native 32px ICO frame, exported without scaling",
+      "sha256": "f2be92b8f605e40912b23f5a109b26f1d9d4895b53d834b281f3a36042ce8753"
+    },
+    {
+      "path": "public/themes/windowsxp/controlpanel/theme-16.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/SHELL32.DL_ (shell32.dll) icon group 270",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "6a2b79a5351988df768f6a80689e53b6014b610192360e709addf1700bb396ed"
+    },
+    {
+      "path": "public/themes/windowsxp/controlpanel/appearance-32.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/DESK.CP_ (desk.cpl) icon group 100",
+      "method": "Native 32px ICO frame, exported without scaling",
+      "sha256": "9fc688e3c4a11914046ff611ef1bb4afb7bbe5393c7543ea31ec590b6bee01b7"
+    },
+    {
+      "path": "public/themes/windowsxp/controlpanel/appearance-16.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/DESK.CP_ (desk.cpl) icon group 100",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "4c7e15a91622720729965d8f8f64af4fb23a8399590b67b4524ccb4e28c3161d"
+    },
+    {
+      "path": "public/themes/windowsxp/controlpanel/messages-32.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/SHELL32.DL_ (shell32.dll) icon group 1001",
+      "method": "Native 32px ICO frame, exported without scaling",
+      "sha256": "20a5d813a90bd2ebc913fc183e0d279945b1dff28fd1c8edf9d025602c3d341c"
+    },
+    {
+      "path": "public/themes/windowsxp/controlpanel/messages-16.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/SHELL32.DL_ (shell32.dll) icon group 1001",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "62f15a2cddac82799da04c4a32c4cb594a4f01a539c813305e8a2ecbeef0ab5a"
+    },
+    {
+      "path": "public/themes/windowsxp/controlpanel/widget-32.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/SHELL32.DL_ (shell32.dll) icon group 35",
+      "method": "Native 32px ICO frame, exported without scaling",
+      "sha256": "44b4ea2e2ebac42f4eec7a4f351ab3fc3496e23e0a6d1c624416e63d6ae9d3db"
+    },
+    {
+      "path": "public/themes/windowsxp/controlpanel/widget-16.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/SHELL32.DL_ (shell32.dll) icon group 35",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "d0e1b8ca1831761dac4aae374cdb2db4ee92d6bcee19c66cb3ef1f8bf4bd755f"
+    },
+    {
+      "path": "public/themes/windowsxp/controlpanel/sync-32.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/SYNCUI.DL_ (syncui.dll) icon group 120",
+      "method": "Native 32px ICO frame, exported without scaling",
+      "sha256": "c4b70403b7135d8508e495a3a575eeea2f79ca374cd9133a10fb147b7ad1f250"
+    },
+    {
+      "path": "public/themes/windowsxp/controlpanel/sync-16.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/SYNCUI.DL_ (syncui.dll) icon group 120",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "adef390411422b616a1c64fbdc5fd680efdc7cd85147d27211d0618ed5f0063b"
+    },
+    {
+      "path": "public/themes/windowsxp/controlpanel/completed-32.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/MSPAINT.EX_ (mspaint.exe) icon group 2",
+      "method": "Native 32px ICO frame, exported without scaling",
+      "sha256": "0d9ba501069a11b312722868d3c2b457935f653051ad3124a485f2fb1aa7ff80"
+    },
+    {
+      "path": "public/themes/windowsxp/controlpanel/completed-16.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/MSPAINT.EX_ (mspaint.exe) icon group 2",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "ccfb909e83069344d86e902a5044bcf6f81d90306ef81b5260adf42547333147"
+    },
+    {
+      "path": "public/themes/windowsxp/controlpanel/celebration-32.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/DESK.CP_ (desk.cpl) icon group 40",
+      "method": "Native 32px ICO frame, exported without scaling",
+      "sha256": "9fc688e3c4a11914046ff611ef1bb4afb7bbe5393c7543ea31ec590b6bee01b7"
+    },
+    {
+      "path": "public/themes/windowsxp/controlpanel/celebration-16.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/DESK.CP_ (desk.cpl) icon group 40",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "4c7e15a91622720729965d8f8f64af4fb23a8399590b67b4524ccb4e28c3161d"
+    },
+    {
+      "path": "public/themes/windowsxp/controlpanel/key-32.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/SHELL32.DL_ (shell32.dll) icon group 45",
+      "method": "Native 32px ICO frame, exported without scaling",
+      "sha256": "e561ca9f6a070ff86bb359edcbf9c6286775807ddf3f6bf9b65952ac6eef4e31"
+    },
+    {
+      "path": "public/themes/windowsxp/controlpanel/key-16.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/SHELL32.DL_ (shell32.dll) icon group 45",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "29fd2a2ba7bbcbb51f21b8e824fc390ff2684b608e18e8215bd5d327d5773eca"
+    },
+    {
+      "path": "public/themes/windowsxp/controlpanel/recovery-32.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/NTBACKUP.EX_ (ntbackup.exe) icon group 101",
+      "method": "Native 32px ICO frame, exported without scaling",
+      "sha256": "ea0f9b5015724943b404b72d5b89d111765260b86f28585d696eccad72432852"
+    },
+    {
+      "path": "public/themes/windowsxp/controlpanel/recovery-16.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/NTBACKUP.EX_ (ntbackup.exe) icon group 101",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "0a9bb33af9c9f86fc729607f99bc854f3931a98a2883bb601c91e3b411e7ecc8"
+    },
+    {
+      "path": "public/themes/windowsxp/controlpanel/export-32.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/SHELL32.DL_ (shell32.dll) icon group 7",
+      "method": "Native 32px ICO frame, exported without scaling",
+      "sha256": "5c463f5876c41114944c21372e9e19d07367ab55b55ed649bdfe94c14b22fa02"
+    },
+    {
+      "path": "public/themes/windowsxp/controlpanel/export-16.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/SHELL32.DL_ (shell32.dll) icon group 7",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "3c2e4bc11bc3c6c15ae0adddb35a8c4c809bfa76c7a7751f2e184132f9b4ff39"
+    },
+    {
+      "path": "public/themes/windowsxp/controlpanel/folder-32.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/SHELL32.DL_ (shell32.dll) icon group 235",
+      "method": "Native 32px ICO frame, exported without scaling",
+      "sha256": "1366982be016843031b84e38370f1d2ad34dbb2b04bd1c3eb9f2529a7f3bc040"
+    },
+    {
+      "path": "public/themes/windowsxp/controlpanel/folder-16.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/SHELL32.DL_ (shell32.dll) icon group 235",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "c0e70002d1f4b99794ef9a5645df1d8ff4c8a3005739a5bd0626301549be0c1b"
+    },
+    {
+      "path": "public/themes/windowsxp/controlpanel/about-32.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/MSINFO32.EX_ (msinfo32.exe) icon group 128",
+      "method": "Native 32px ICO frame, exported without scaling",
+      "sha256": "a7310945ac75bab0c77cb8234ade4861b6469930751bdd9e4154b0de1a5aec28"
+    },
+    {
+      "path": "public/themes/windowsxp/controlpanel/about-16.png",
+      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/MSINFO32.EX_ (msinfo32.exe) icon group 128",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "ccd9466b82d27deb41daec97fb2bc41af7e39a51f6022a707b09d6ae43554684"
+    },
+    {
+      "path": "public/themes/windowsvista/startmenu/panel-top.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/Resources/Themes/Aero/aero.msstyles IMAGE 717, StartPanelComposited::StartPanel part 4 (program list)",
+      "method": "Crop of the white panel edge (x 7-19, y 7-359) without the outer glass margin; premultiplied alpha converted to straight",
+      "sha256": "4d88c30f5754b1be27f8a06ca6c477b5f1ab4c51dfcfb981e2eb700037f51868"
+    },
+    {
+      "path": "public/themes/windowsvista/startmenu/panel-bottom.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/Resources/Themes/Aero/aero.msstyles IMAGE 714, StartPanelComposited::StartPanel part 2 (All Programs row)",
+      "method": "Crop of the white panel edge (x 7-19, y 0-22) without the outer glass margin; premultiplied alpha converted to straight",
+      "sha256": "62de663c9861738dddd9f80826141ea6a25e479bb69fb3dc7dacc306dd1fd60e"
+    },
+    {
+      "path": "public/themes/windowsvista/startmenu/places.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/Resources/Themes/Aero/aero.msstyles IMAGE 715, StartPanelComposited::StartPanel part 6 (places list)",
+      "method": "Premultiplied alpha converted to straight; otherwise unmodified",
+      "sha256": "3e46834bed4064a7836d93c340225cb721302d8ebcf30832294277fa35e609b9"
+    },
+    {
+      "path": "public/themes/windowsvista/startmenu/programs-separator.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/Resources/Themes/Aero/aero.msstyles IMAGE 720, StartPanelComposited::StartPanel part 5 (program list separator)",
+      "method": "Premultiplied alpha converted to straight; otherwise unmodified",
+      "sha256": "de07d0ba3058e0d00a08626cfbba5174882408745a4d89fcbd183f70541a3414"
+    },
+    {
+      "path": "public/themes/windowsvista/startmenu/places-separator.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/Resources/Themes/Aero/aero.msstyles IMAGE 716, StartPanelComposited::StartPanel part 7 (places separator)",
+      "method": "Premultiplied alpha converted to straight; otherwise unmodified",
+      "sha256": "efcd83faf669ba541964630baafc4f4c9fca26f55c6ac0c7e422a76af3996f19"
+    },
+    {
+      "path": "public/themes/windowsvista/startmenu/place-hot.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/Resources/Themes/Aero/aero.msstyles IMAGE 617, StartMenuPlaceListComposited::ListView item hot",
+      "method": "Premultiplied alpha converted to straight; otherwise unmodified",
+      "sha256": "717f0a84e43b8be47583f865e3c4a6ebc727f1fd6b53114a1203bad4624aa597"
+    },
+    {
+      "path": "public/themes/windowsvista/startmenu/place-selected.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/Resources/Themes/Aero/aero.msstyles IMAGE 616, StartMenuPlaceListComposited::ListView item selected",
+      "method": "Premultiplied alpha converted to straight; otherwise unmodified",
+      "sha256": "6347f9ee5c37a3030214d13c59cf466cc7fde9d51d97843b89bc220eecc382d2"
+    },
+    {
+      "path": "public/themes/windowsvista/startmenu/program-hot.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/Resources/Themes/Aero/aero.msstyles IMAGE 762, StartMenuComposited::ListView item (8 vertical frames)",
+      "method": "Crop of frame 2 of 8; premultiplied alpha converted to straight",
+      "sha256": "662d92e24f1311fc6fb467db17015e2604fb83c49824899009bd4b49c67f1434"
+    },
+    {
+      "path": "public/themes/windowsvista/startmenu/program-selected.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/Resources/Themes/Aero/aero.msstyles IMAGE 762, StartMenuComposited::ListView item (8 vertical frames)",
+      "method": "Crop of frame 3 of 8; premultiplied alpha converted to straight",
+      "sha256": "96292b22d973a25155f0bd9ac7a6837524ef9f2d8c311864eb178ef9a3862079"
+    },
+    {
+      "path": "public/themes/windowsvista/startmenu/search.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/Resources/Themes/Aero/aero.msstyles IMAGE 756, SearchBox part 1 (4 vertical frames)",
+      "method": "Crop of frame 1 of 4; premultiplied alpha converted to straight",
+      "sha256": "0df114b1fd523c4073f749a686193d8afc8197e8253632dce900f5d406f72f43"
+    },
+    {
+      "path": "public/themes/windowsvista/startmenu/search-hot.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/Resources/Themes/Aero/aero.msstyles IMAGE 756, SearchBox part 1 (4 vertical frames)",
+      "method": "Crop of frame 2 of 4; premultiplied alpha converted to straight",
+      "sha256": "75613a870d761d7c4a66eabaca9340fb18ce665c0657a2ed294cb9a3ee788530"
+    },
+    {
+      "path": "public/themes/windowsvista/startmenu/search-focus.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/Resources/Themes/Aero/aero.msstyles IMAGE 756, SearchBox part 1 (4 vertical frames)",
+      "method": "Crop of frame 4 of 4; premultiplied alpha converted to straight",
+      "sha256": "94dcc4466237b7d2f6372f292cc773478d9bbe75e55179c4938220d873fc1923"
+    },
+    {
+      "path": "public/themes/windowsvista/startmenu/user-frame.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/explorer.exe PNG resource 7013 (Start menu user picture frame)",
+      "method": "Unmodified PNG resource",
+      "sha256": "9ab0228e1da637086bdf503d0ebc4740bc3c85275f3e15451a6950cff190c369"
+    },
+    {
+      "path": "public/themes/windowsvista/startmenu/user-picture.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, ProgramData/Microsoft/User Account Pictures/Default Pictures/usertile7.bmp",
+      "method": "Lossless BMP to PNG conversion (128 x 128)",
+      "sha256": "7f99dcf4528a0e66955477df9dce2f242b3050e942af46a33370abc415968451"
+    },
+    {
+      "path": "public/themes/windowsvista/controlpanel/navigation-swoosh.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/shell32.dll bitmap 632 (Control Panel navigation pane artwork)",
+      "method": "Lossless DIB to PNG conversion, alpha kept",
+      "sha256": "317f2480315270f8944b2c4b0596ca6a271b29c326146507f2dffff028a0dcbe"
+    },
+    {
+      "path": "public/themes/windowsvista/icons/large/today.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Program Files/Windows Calendar/WinCal.exe icon group 100",
+      "method": "Native 32px ICO frame, exported without scaling",
+      "sha256": "aa9f3d660c514f449b739694fa1bd5dfb6dae7ee2b765399f8963da75435a12b"
+    },
+    {
+      "path": "public/themes/windowsvista/icons/today.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Program Files/Windows Calendar/WinCal.exe icon group 100",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "a608f0ada399d053ddc3d60d06e86b3acfdb2abf81329c581ec416065ce281c6"
+    },
+    {
+      "path": "public/themes/windowsvista/icons/large/next.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/shell32.dll icon group 246",
+      "method": "Native 32px ICO frame, exported without scaling",
+      "sha256": "371b91bc9ea03d9753a0ace1d59ec1a1eaf2515dfb855cddc3e20df2ab9efac1"
+    },
+    {
+      "path": "public/themes/windowsvista/icons/next.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/shell32.dll icon group 246",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "3e59951a3dd5fc4aa8bbbf96014daac54da6eeeaf677948e9a9f5e581f2cd4c1"
+    },
+    {
+      "path": "public/themes/windowsvista/icons/large/templates.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/timedate.cpl icon group 201",
+      "method": "Native 32px ICO frame, exported without scaling",
+      "sha256": "72ef9a8bfc3dafc4a1d58f3626617a7acf0890ede52759f697858ee04adfcf6f"
+    },
+    {
+      "path": "public/themes/windowsvista/icons/large/listTemplates.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/imageres.dll icon group 165",
+      "method": "Native 32px ICO frame, exported without scaling",
+      "sha256": "8cc7e6ed4949c2ab494465137e7824ba3ee80bd768ab7cd20baf2e79782fedce"
+    },
+    {
+      "path": "public/themes/windowsvista/icons/listTemplates.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/imageres.dll icon group 165",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "87cd022b6a49ed9845aeaa498996fc7a5bc0c3f0909e4cdb6ee12590635bac2c"
+    },
+    {
+      "path": "public/themes/windowsvista/icons/large/lists.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/shell32.dll icon group 21",
+      "method": "Native 32px ICO frame, exported without scaling",
+      "sha256": "00f5acae74bfe6ece1cc65b37cda5097d6bc08ca60cc77d10d8e1c014b3d92f8"
+    },
+    {
+      "path": "public/themes/windowsvista/icons/lists.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/shell32.dll icon group 21",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "e9ef4b9dbfe2d93288a1c3bffb6be3fded38e230cfc460c499f81c135017fa05"
+    },
+    {
+      "path": "public/themes/windowsvista/icons/large/notes.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/notepad.exe icon group 2",
+      "method": "Native 32px ICO frame, exported without scaling",
+      "sha256": "f70f341aad45a682b245a7123b17a2b15cc3ff25ff92eb7d5965fee1f377c2b0"
+    },
+    {
+      "path": "public/themes/windowsvista/icons/notes.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/notepad.exe icon group 2",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "e5699e147531ac6bd2de2064a850d68a4662cd71fe8cd8c48117e543dc7cc00a"
+    },
+    {
+      "path": "public/themes/windowsvista/icons/large/metrics.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/imageres.dll icon group 99",
+      "method": "Native 32px ICO frame, exported without scaling",
+      "sha256": "138abaf851373aab7a45fa96595abf9e25a0e4b7e38eb17b3b6326f789df4dc4"
+    },
+    {
+      "path": "public/themes/windowsvista/icons/metrics.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/imageres.dll icon group 99",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "b0dec020af615b395de69613307bd03986356bfff742295075ad599943f22e2f"
+    },
+    {
+      "path": "public/themes/windowsvista/icons/large/goals.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/imageres.dll icon group 115",
+      "method": "Native 32px ICO frame, exported without scaling",
+      "sha256": "5d4c62e1a99f14e8ee7cc3622c49cbc54f4e75c91db5fa34cee90849b4d5ab7b"
+    },
+    {
+      "path": "public/themes/windowsvista/icons/goals.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/imageres.dll icon group 115",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "1affa3ee4fa410d340749f9183c5ad4568ac8843b3988ddedb9a7980e57d1f33"
+    },
+    {
+      "path": "public/themes/windowsvista/icons/large/projects.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/imageres.dll icon group 4",
+      "method": "Native 32px ICO frame, exported without scaling",
+      "sha256": "c7fab75b9f51eadbc6cab7abe2d09d73faa6086b640dc4f93ed36311498a946e"
+    },
+    {
+      "path": "public/themes/windowsvista/icons/projects.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/imageres.dll icon group 4",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "99658d5e6514d0b5fbaed9b71089d9ca388ae806857f0fd69ac17e7bfb73a153"
+    },
+    {
+      "path": "public/themes/windowsvista/icons/large/prioritize.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Program Files/Windows Calendar/WinCal.exe icon group 117",
+      "method": "Native 32px ICO frame, exported without scaling",
+      "sha256": "c258435b7e1d358ad85327598791894556425e74b1d5d9824702f33d5a7094aa"
+    },
+    {
+      "path": "public/themes/windowsvista/icons/prioritize.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Program Files/Windows Calendar/WinCal.exe icon group 117",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "f5416b5f7eb73677b77244a731854f484847bbd8835204e01c0a672cb5acc7e3"
+    },
+    {
+      "path": "public/themes/windowsvista/icons/large/ideas.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/wscui.cpl icon group 5005",
+      "method": "Native 32px ICO frame, exported without scaling",
+      "sha256": "1a748c540742ae17e35a813f4bf3b99b7fbe4a649378c2cda68bafd04f34ce34"
+    },
+    {
+      "path": "public/themes/windowsvista/icons/ideas.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/wscui.cpl icon group 5005",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "32e75d664be01b0f5ea34932e1b7b3d8fc510ff32717f36a3f29595c2b10c275"
+    },
+    {
+      "path": "public/themes/windowsvista/icons/large/situate.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/wscui.cpl icon group 5000",
+      "method": "Native 32px ICO frame, exported without scaling",
+      "sha256": "28b5d44907320aa3bcdc4ce9b1decea3254609c49de8df87ea2eb4af1658a101"
+    },
+    {
+      "path": "public/themes/windowsvista/icons/situate.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/wscui.cpl icon group 5000",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "cef01f828d92ce55270113ac9110797956ffdedeedd2214f73e08ada6993d381"
+    },
+    {
+      "path": "public/themes/windowsvista/icons/large/settings.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/shell32.dll icon group 137",
+      "method": "Native 32px ICO frame, exported without scaling",
+      "sha256": "b49c567efeaff9285da43799c43a88c9dac00154901bb96dee36bedc91cfcc7c"
+    },
+    {
+      "path": "public/themes/windowsvista/icons/settings.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/shell32.dll icon group 137",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "5242d7cd9dd19092d90a1c543f1cda60078ef67ba1da2caf23b0e8d84c8dd97c"
+    },
+    {
+      "path": "public/themes/windowsvista/controlpanel/theme-48.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/themecpl.dll icon group 1",
+      "method": "Native 48px ICO frame, exported without scaling",
+      "sha256": "a252154b5aa786fd08d6a8055c00d1802b9d43ff1a69390444a57b2f56e24a06"
+    },
+    {
+      "path": "public/themes/windowsvista/controlpanel/theme-16.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/themecpl.dll icon group 1",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "3125f617a4288ef5d99ed9bf1f023fc985d629ca263f0bc37419741552523395"
+    },
+    {
+      "path": "public/themes/windowsvista/controlpanel/appearance-48.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/themecpl.dll icon group 6",
+      "method": "Native 48px ICO frame, exported without scaling",
+      "sha256": "b0f04f3b4e56185bc935a24a90fd160442b48a46bb94912a5e5468521855f600"
+    },
+    {
+      "path": "public/themes/windowsvista/controlpanel/appearance-16.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/themecpl.dll icon group 6",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "fbb055f7a5d403ff9ed8110e2d5e58dc725860ba2f6f6bb2a03ec7269bb289a7"
+    },
+    {
+      "path": "public/themes/windowsvista/controlpanel/messages-48.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/oobefldr.dll icon group 0",
+      "method": "Native 48px ICO frame, exported without scaling",
+      "sha256": "287d7711107ab2cdc4f3191ce2d4f48afbecd91be2fd0d17b8bfb004e5480f3e"
+    },
+    {
+      "path": "public/themes/windowsvista/controlpanel/messages-16.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/oobefldr.dll icon group 0",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "db5c0474b4d3ac7b7d768ca6dd5877306b40c2de7255bb499667af11071e99fb"
+    },
+    {
+      "path": "public/themes/windowsvista/controlpanel/widget-48.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Program Files/Windows Sidebar/sidebar.exe icon group 100",
+      "method": "Native 48px ICO frame, exported without scaling",
+      "sha256": "83b319aff199fcbd9aa19c34743c8ea0ea09b7516a6e29b13ccbaec49d593d17"
+    },
+    {
+      "path": "public/themes/windowsvista/controlpanel/widget-16.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Program Files/Windows Sidebar/sidebar.exe icon group 100",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "7f36c6c70b0825a331346cfda40319fe10b6f1c89162e87e3c29e4fc26ac6601"
+    },
+    {
+      "path": "public/themes/windowsvista/controlpanel/sync-48.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/mobsync.exe icon group 1",
+      "method": "Native 48px ICO frame, exported without scaling",
+      "sha256": "dba2ef71d3754d2b284eaa469956b4f8ebaf10a14a4392c4dee462d1bfef28ba"
+    },
+    {
+      "path": "public/themes/windowsvista/controlpanel/sync-16.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/mobsync.exe icon group 1",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "80a46407d75e6bb14ceb98278c2e5a64aad74a8515b4760a33ee4e3eeeb47714"
+    },
+    {
+      "path": "public/themes/windowsvista/controlpanel/completed-48.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/SyncCenter.dll icon group 1213",
+      "method": "Native 48px ICO frame, exported without scaling",
+      "sha256": "21b6b90180588588e4a69ed621b65829bebfc103997b6b83295fa2b54d61c5c3"
+    },
+    {
+      "path": "public/themes/windowsvista/controlpanel/completed-16.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/SyncCenter.dll icon group 1213",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "7667d1b33e28d7bf41946ae7e724706cf32e7d62fb0e0d0ca37f836fa289e190"
+    },
+    {
+      "path": "public/themes/windowsvista/controlpanel/celebration-48.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/themecpl.dll icon group 3",
+      "method": "Native 48px ICO frame, exported without scaling",
+      "sha256": "f2d50c171ce6c053dc16684ae84af4ed3b7ca2e3584022020a16bef9885a0578"
+    },
+    {
+      "path": "public/themes/windowsvista/controlpanel/celebration-16.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/themecpl.dll icon group 3",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "330e34c3a088585f19c94c4685d0efc17b1c972f8b85e410c8968ed6cb2ea77c"
+    },
+    {
+      "path": "public/themes/windowsvista/controlpanel/key-48.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/imageres.dll icon group 82",
+      "method": "Native 48px ICO frame, exported without scaling",
+      "sha256": "7dfea293dace6ac120c344dbed49e8f9d9995e0b0332c684afd9ef800cf20d63"
+    },
+    {
+      "path": "public/themes/windowsvista/controlpanel/key-16.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/imageres.dll icon group 82",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "3e745167d3975829c080cd48af0a1b14cdc774a0e2e277676bdd015df66aaeb8"
+    },
+    {
+      "path": "public/themes/windowsvista/controlpanel/recovery-48.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/sdclt.exe icon group 5500",
+      "method": "Native 48px ICO frame, exported without scaling",
+      "sha256": "e471f1570adcd7078f4249ed488958ac728754744ae5441e3bf0350402e18f7c"
+    },
+    {
+      "path": "public/themes/windowsvista/controlpanel/recovery-16.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/sdclt.exe icon group 5500",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "d8767e8425265c8cef253d7b790d1c3cce94a74b0756665bfde47bfc86acaa57"
+    },
+    {
+      "path": "public/themes/windowsvista/controlpanel/export-48.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/imageres.dll icon group 29",
+      "method": "Native 48px ICO frame, exported without scaling",
+      "sha256": "82b97aac1079088908a2e895243e25c94ee5f371b40e9643937de9f85015d519"
+    },
+    {
+      "path": "public/themes/windowsvista/controlpanel/export-16.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/imageres.dll icon group 29",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "ad2ad15b5ae7ecc4bcd0cfde09693b6a6be4874a85ce4cbba1ed1a2e99147d56"
+    },
+    {
+      "path": "public/themes/windowsvista/controlpanel/folder-48.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/imageres.dll icon group 112",
+      "method": "Native 48px ICO frame, exported without scaling",
+      "sha256": "cc671153f5d85ddc3a303328d332f5fd7c630c1d00bf9b2c364aaca6b3a6fa92"
+    },
+    {
+      "path": "public/themes/windowsvista/controlpanel/folder-16.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/imageres.dll icon group 112",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "924d6938f6fdbaa128df4e7e362bd2e7bf2c58fce7c3852a9bcb41f57cce2ef8"
+    },
+    {
+      "path": "public/themes/windowsvista/controlpanel/about-48.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/msinfo32.exe icon group 10002",
+      "method": "Native 48px ICO frame, exported without scaling",
+      "sha256": "bb41b2b8602fb926f91725ec4db02835ed52d95515316ea86963b903de5d6359"
+    },
+    {
+      "path": "public/themes/windowsvista/controlpanel/about-16.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/msinfo32.exe icon group 10002",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "4c76d733959d2cfff1d401e7cf0a0403c6c69b8287f91368385e41228eb64949"
+    },
+    {
+      "path": "public/themes/windowsvista/startmenu/search-glyph.png",
+      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/imageres.dll icon group 177",
+      "method": "Native 16px ICO frame, exported without scaling",
+      "sha256": "f3688606b85c5cb6cedfb64bf0ec4dcf5e69b7e24b4942ce48c39f010de0c734"
     }
   ]
 }

@@ -329,7 +329,7 @@
 
 </script>
 
-<section class="settings-section sync-panel">
+<section class="settings-section sync-panel" data-cp="sync">
   <div>
     <h3>Sync across your devices</h3>
     <p>Keep your planner in sync over the internet. Your data stays end-to-end encrypted.</p>
