@@ -1,77 +1,360 @@
 {
   "notice": "Microsoft artwork remains the property of Microsoft and its respective rights holders. Archive sources describe archival, educational and personal use. These files are not relicensed under the application code license.",
+  "groups": [
+    {
+      "directory": "public/themes/windowsxp/ui",
+      "source": "Windows XP SP3 (5.1.2600.5512): I386/LUNA.MS_ and I386/BLUE_SS.DL_ in https://archive.org/download/win-xpprosp-3-en/WinXPPROSP3_EN.iso",
+      "method": "Bitmaps dumped with scripts/windows-theme-assets/peres.py, sliced by slice-xp.sh with the BLUE prefix; caption, scroll and combo glyphs composited over their bevels as Windows drew them",
+      "files": {
+        "button-default.png": "bd1b0b321390f63627b642f601d0a8b4aac1f513154921a783ff0eede69938fd",
+        "button-disabled.png": "420f3822f7b60161004cec67633a45d9071b52d4bdace9a338c7eaf26d1744f9",
+        "button-hot.png": "0fe4dfc5157ad895e84bd19b2cc9f98b12360a80881d46803c1ad685c96455ec",
+        "button-normal.png": "0cb5585492c217c99f0e0bd5400f1f68da28183219361b8cfdb45d4cd4b35e30",
+        "button-pressed.png": "4f8dde700ae7381df09ad1b0c8de4fab4747ef336e49e717d32fe12b9d7e69ed",
+        "caption-close.png": "095cfe23a5be82c3c8e19b0bacaefe761c935be5ccd9f79fd4cfc6033998c52b",
+        "caption-inactive.png": "390369ad90e399830b944ada816dce7e7bcb15b8c4f3f39e93d8766e8f539ce7",
+        "caption-max.png": "49f0b8a379db8ffac0450270e00ab0d588fb657876dd148c3475d7ab095beeb5",
+        "caption-min.png": "efabb256635628a2e98ffe79fed017db5905140715010129394cb9b305415bdc",
+        "caption-restore.png": "c64f1e04c05a2df4319e252b75f9b7cce25e4acfbec36c1ace986ea62d0303ff",
+        "caption-small.png": "4d7273d4b4b044ae2a9ffbc468d622a85c5b643e60ecd00aee8110a7d95d03e2",
+        "caption.png": "1eb9b514383db5b1936c107b0b9cb272675bff0000638507c8444e87e34d7eff",
+        "check.png": "1dc3b62080816872dd05834d6f11b4cbb89a37a23a4326e60f536b82e3b13220",
+        "combo.png": "ddd075f0516d0206e9bdf2ea68001c9ddd235a973b227218022dbceca2bb96a2",
+        "frame.png": "966d86e214ed747211f1840d88add92a7667c2221f106e897a4fb88691623d98",
+        "gripper.png": "5d761a204798ef68d97b260d4e9324bdf6d43fd0f822784afc7d9cfaaa461866",
+        "groupbox.png": "f2e71474240748577e7d88e913f17ac30bb90048461cc54ec790f441512f8447",
+        "header-hot.png": "c536466fc5d9fad4ce2a74c2472312e56d50ec2af14d37cd1ee4a26e2c5605b0",
+        "header-normal.png": "117fbf005e354be9d633d213f110e5293e759db98a1c41b2eac7a5fe3b968f38",
+        "header-pressed.png": "b4aefcfe4caa00bd8b173db602e2828bfcdb0aac66551bfb64f2977ec1ae45eb",
+        "pane-collapse.png": "58fdbe4ba8df56cdf9e2445ea1eac57706c67fc28ff8e5c952a2f8738dcc4be7",
+        "pane-head-special.png": "1a77281cbe80d7663ac799a9fc42f472e21683eb3d71cc8cba610f2e65f9d315",
+        "pane-head.png": "6c07a701fecaf2c3971ba0fd86deab4c654afdc9d1e2ee8ecdc17a087bcb75db",
+        "pane-special-collapse.png": "1c25858c7fba2834e0114379fd0469191afaadc85fb09948cc57371a58ad581f",
+        "progress-chunk.png": "aa66e3f288818c4f0bdf59d756b77d0a9f612f4badc1daace40a40e82e62634c",
+        "progress-track.png": "d87dce98b060bb02373cf790fbe11aa5f28061d4909db75de6378858cc26f491",
+        "radio.png": "eb3da340135e6ddf0480b06b61ffd1a0bc10c985f663dd4283b1f8b0b370fdfd",
+        "scroll-down.png": "b96ef43b9c7b28dff6677d95a14bf82b767c5b90ae0d05a7d99452ab04d1d44b",
+        "scroll-fill-h-hot.png": "149cf0ba585cc83eb290967e5410d4ca9bc8d8e47af336039b76a8aac4a2e8c9",
+        "scroll-fill-h-normal.png": "d969623087f6f54087f5de9d49aefb779b9842def45be873f8d0e6a24e27682f",
+        "scroll-fill-h-pressed.png": "80ed3efede8396b723f4e541221a2d42129805ac4d9e31bbde505efbb17f0257",
+        "scroll-fill-v-hot.png": "149cf0ba585cc83eb290967e5410d4ca9bc8d8e47af336039b76a8aac4a2e8c9",
+        "scroll-fill-v-normal.png": "d969623087f6f54087f5de9d49aefb779b9842def45be873f8d0e6a24e27682f",
+        "scroll-fill-v-pressed.png": "ee65e78fa8c93960fb09e13cfec8ea36d10233463f98ada167fe9d1c174a31d2",
+        "scroll-grip-h-hot.png": "1ea28a83ae439f04b9bb815cac0d5e4642c3f1d2c12e6644d529698e673798f8",
+        "scroll-grip-h-normal.png": "fc04087563f2a63a66f5a2b4c92484a41930c29439db9cb208f3b05e4a158b5d",
+        "scroll-grip-h-pressed.png": "c0fa81d32119bdecf1893858618223d61953864b43265d38a7a52faa2cd2153c",
+        "scroll-grip-v-hot.png": "7ce169935c32e8367ccaf5f85635af7f7657567365d35a1ec3c07505357bec96",
+        "scroll-grip-v-normal.png": "e4ca4562708356b867a3d2180565edb937385498213fc525f30ef3258d8d335d",
+        "scroll-grip-v-pressed.png": "b6ea1957b24fd99b3c994bc12b3be7500ab808df95e4e5ea865fc90a4449fb92",
+        "scroll-left.png": "83ff228ce23d8c0d9f193bc39c8f89accc2f5ed5e776a1673323828d56bd3df6",
+        "scroll-right.png": "622878931d93520f3281e6c69afd776c5992e67fe76921db207fab5c70489c08",
+        "scroll-thumb-h-hot.png": "8528bbe449a81a46a42e198ce7b17a86b9a6de19eb6b0c804908ed0d082b29c3",
+        "scroll-thumb-h-normal.png": "b3c817c4b10df82f6853bb4a4a3805737bf94cd114ead04b9a9fc859f35b9859",
+        "scroll-thumb-h-pressed.png": "f91ce32109467ac233ab7fde8010b848a73c53c3d8eec388b72f76db51eb20e2",
+        "scroll-thumb-v-hot.png": "fe1129330c87f8fb2e67a9a582072d06cabecafff150a4b45cce383fab5f5d1d",
+        "scroll-thumb-v-normal.png": "accfdf56d2d625cba5e61bf27842f94768b103d066543898897a32b0ead768dd",
+        "scroll-thumb-v-pressed.png": "7da40e80403bb856b09b4737821259a06e7fc439c53ed46986f676298068e1a2",
+        "scroll-track-h.png": "c3739d9465193d91a16503cd970d5ce65e21d931180d5860f3581eadd4cb12ab",
+        "scroll-track-v.png": "23dbe90826a9df2ae28383ab1417815acfe112c0290d4787c538809053c0bead",
+        "scroll-up.png": "97ae98d3c6cc7e1fe723a44a340d909e39ad8d9f843924c660bbd43c1c627a6e",
+        "slider-thumb.png": "0a83cf6a4778481b967e0cd66ef10fe9cb643f2c6333eacc33889bc7e8ac194b",
+        "slider-track.png": "4a52906b976c946c0f0749de2026a872829177a15db24762a1bfdbdce5e78512",
+        "tab-hot.png": "2df20fdfe5f5cc90084a2c00972a4d35f0664f0edd3e47386c79c76e9fa67ec9",
+        "tab-normal.png": "a826f8b06cb155ae4850bece7b95547706db11740cf03399c45148b5829e7458",
+        "tab-selected.png": "0ab2eb193e7a63993e03b9fbbbc4901200d616f9c952cebdcd9d2569fee01aff",
+        "toolbar-checked.png": "4dde995fa65e529eae773d9dfba1676b5c675e91e5dc0fcab3da66f396240b8c",
+        "toolbar-hot.png": "679d56e54555a020e56c1dcc912a4c8926e64428cff380936fa58fcaaf9618a5",
+        "toolbar-pressed.png": "b49b181c60b2f84201248aff366b417d50097af388093fac5795b1a0b3eeec56",
+        "tree.png": "c164f8cfa6e14fff072c0754395f2d64cd0c086a4ce25df6ce3a89c1b9859423"
+      }
+    },
+    {
+      "directory": "public/themes/windowsxp/ui-noir",
+      "source": "Royale Noir (DARKROYALE in royale_noir.msstyles, metal_ss.dll): https://archive.org/download/windows-xp-ms-signed-themes/Windows%20XP%20MS-Signed%20Themes.zip",
+      "method": "Same slicer with the DARKROYALE prefix",
+      "files": {
+        "button-default.png": "e6ff321bf881ec4a5bacb02fd82edd3537b22b03baeb5d0b3e820965f12ba61c",
+        "button-disabled.png": "ce042175a5a3c644b78353f1772164b8fa2ba7e879a3d437b7d15ca6fac83bea",
+        "button-hot.png": "7f005e9e1819e87b8bc6f5a2e681e1d5e9c149389d32de135fb6ac1c09e5a5d0",
+        "button-normal.png": "5eea7299da9b2c21bf8d111bd61b50278b998e84407b39a09e948fd3b398da15",
+        "button-pressed.png": "f5e0ccb9931245282498a2457a6b62324ce5a2ada513d350518133bb67717ae1",
+        "caption-close.png": "0a5fd8dc69b2eb173f90af485e226e9ff4a8f7b9deb360855cde01bc802540d7",
+        "caption-inactive.png": "3d37d2b73fcabc4fad7b2c38aaeb56b0594b38a66c189dc84d25f95f38c64401",
+        "caption-max.png": "d3832f4317da91990281d9ef2f7f45753dbdc1c330fe9bb2b8d2e87e2408a09c",
+        "caption-min.png": "3d9ded67291828e291b1a55b5d0c6fc4696c92940b8d3a071d2f2390505e4568",
+        "caption-restore.png": "c28c6d261c3a20400898dae2be01934c12ecd88981ba7ed415cbfd33b323c020",
+        "caption-small.png": "2ccd95e8484cd2eff39570d9cd9d0a79eb5c92917d185897d7d7ebfa20dc0a7f",
+        "caption.png": "8e25dc93259b1768e0edf692f9d9f12a443e4ae881ad89579d7f322a9f473287",
+        "check.png": "2b6f824cd6510807a44f12d362ab73fbb3ce44358a6c2dae41323b89625ee9b9",
+        "combo.png": "0f994311636b2c700de7dba304ef35cbff5e1d0da4b1fedbeb9a6fd8fbc3da5c",
+        "frame.png": "42c1a9c521803e9f3100392770e26248e81b559d613fb64015b1bd2d6c162898",
+        "groupbox.png": "4739851350b647e3b561a13529fc4663af3c03d7a8c2f484598b32ec5f9279a2",
+        "header-hot.png": "25dbb31f7ec75ee5535fbb543a46d831d6f8e978bbb2ee1eda75e34ca6a41dff",
+        "header-normal.png": "bfd1a648dcd4aa39e2bacdadad7c74a3cf8017c56c2fe470acfe2d0dd0af075d",
+        "header-pressed.png": "13c653e3ace8903b2ab7139f6c2cef1bf3592d625ebb7b1cb5dc62fc9dcc50c6",
+        "pane-collapse.png": "df51b2ea6f50048263cfeadf156e1975da19b2cce2358ac3c90ca31105dfaca9",
+        "pane-head-special.png": "528d1957b9c6c04f6ea7f5c9e1627dcae6d1f3e1480fa85fe4896085383136d4",
+        "pane-head.png": "5a3a19781e2b71ed67f1a32fa4687a3da2d4a5f4a033cdf5c158978feeea7c24",
+        "pane-special-collapse.png": "df51b2ea6f50048263cfeadf156e1975da19b2cce2358ac3c90ca31105dfaca9",
+        "progress-chunk.png": "3d5127405a8e132fa8afc1dd751aba7d463f0e238c44906f70bcc12e6315b04a",
+        "progress-track.png": "485ece1f28e963aa43a38369a2565051fcb628bd6a5f3dc946d69bb51f58f29b",
+        "radio.png": "c909e8906650d44f3ada95ef864a1382f147bff9f020395f1b5efdf5d7d007dc",
+        "scroll-down.png": "65405fd61e728c2b0c96a761b2cf2d98b293c16b104b5c3e95604cf55a893a26",
+        "scroll-fill-h-hot.png": "ceffec5be4ac53e78fd4dc862a9ecfff8d6d337295df2719d7df7a381340ac4d",
+        "scroll-fill-h-normal.png": "1cb48b01b227410b6682bf1e54f3b093fb19c600da5aa2f2cd165984e3913272",
+        "scroll-fill-h-pressed.png": "9593bfbf7bd502efa18bdb3fc850d649c205d00410eaae4d8ed4fb2e4d18bd9e",
+        "scroll-fill-v-hot.png": "ceffec5be4ac53e78fd4dc862a9ecfff8d6d337295df2719d7df7a381340ac4d",
+        "scroll-fill-v-normal.png": "1cb48b01b227410b6682bf1e54f3b093fb19c600da5aa2f2cd165984e3913272",
+        "scroll-fill-v-pressed.png": "9593bfbf7bd502efa18bdb3fc850d649c205d00410eaae4d8ed4fb2e4d18bd9e",
+        "scroll-grip-h-hot.png": "7d67700e04771eb0a2176475da638c99cafe5eadc5f2e534fbe264b162a20bc9",
+        "scroll-grip-h-normal.png": "7d67700e04771eb0a2176475da638c99cafe5eadc5f2e534fbe264b162a20bc9",
+        "scroll-grip-h-pressed.png": "7d67700e04771eb0a2176475da638c99cafe5eadc5f2e534fbe264b162a20bc9",
+        "scroll-grip-v-hot.png": "baa43dd27e5b635b2261878fe9f9e4e2d1ddd0777f93266d838f658202d12868",
+        "scroll-grip-v-normal.png": "baa43dd27e5b635b2261878fe9f9e4e2d1ddd0777f93266d838f658202d12868",
+        "scroll-grip-v-pressed.png": "baa43dd27e5b635b2261878fe9f9e4e2d1ddd0777f93266d838f658202d12868",
+        "scroll-left.png": "3e0b02d8ec84ebca47415e09438322d9cfda57e21ca14c33b7275716cfc2b3b0",
+        "scroll-right.png": "ccbe4191bcf1b62ec9236bc96c41fa5c0ab186983d4dca4c8d18875a631b9e2e",
+        "scroll-thumb-h-hot.png": "712e7285f863d650a57e91ac0bbe4c7207b7d13edcedfe3008935bfdb2fbf664",
+        "scroll-thumb-h-normal.png": "82afe9417ac13d19d385a656652e941df9c1305154363d360428885129b83c5d",
+        "scroll-thumb-h-pressed.png": "47cb6396e29568ef5da305be092187958cb9fc36a3b8e12585e8e19c8c041b8b",
+        "scroll-thumb-v-hot.png": "b59a90d2294358ade5ab41bc059c87ff648d5a1999ca3e07614dfeb84c91a256",
+        "scroll-thumb-v-normal.png": "219d223e549baab40d107a92e86f89faa69edf33494ac18e1bacf36c8e6bcb19",
+        "scroll-thumb-v-pressed.png": "dda006f24fe77a83db2c58f6e0becce3a9166b100c28b8721104154b811090d0",
+        "scroll-track-h.png": "e3183fce10be867219950ccc86c352c9a48df4c2638a9b058cd32aaa9d761c57",
+        "scroll-track-v.png": "37eddf9f6364f9bb25070a656b7eda6ce44d61064649dc8f3e963a006f240b77",
+        "scroll-up.png": "8ddde4068ae7d57a474f8e3c78c60c69eff80900fe40a9a0de52e99b438f138b",
+        "slider-thumb.png": "de1d5b9e9cfc16d3cf98b316498175ba18364d7589b97b8328c522336bade70f",
+        "slider-track.png": "a8281cc232ad03056f7e44fcea1971c1eef98699a62629de88cd6503aba4a995",
+        "tab-hot.png": "ab294c08ed8065fd01f578318e3aa9736ea57c5cf8e7a2e6537314e0e2b64b3b",
+        "tab-normal.png": "8e15a059a585493052710da46984d2889c658d9251f402dc4ca6939826cbaff8",
+        "tab-selected.png": "aac9c5b3f3816a2ac331b2a4b2da4b10b425d78c0851b9ef21341c0f4e0fb93f",
+        "toolbar-checked.png": "f5de5f4edb3b001fd0eae377acfdc599a6de21573c7a6d1f09fa8cfcd40e6b5e",
+        "toolbar-hot.png": "f3b2d8e31592384b2b577e9193f32dcbdfc8d0c05a30b902f07cda872e8461db",
+        "toolbar-pressed.png": "6452fccf67de7c53a3298870dec8b960e21d498cf8d5b73b3350c9dafcf8b07a",
+        "tree.png": "0411fd2d6274db1642dc194f4ea1c8ee077e0148aa6c054dd507609b80696a47"
+      }
+    },
+    {
+      "directory": "public/themes/windowsxp/cursors",
+      "source": "Windows XP SP3 user32.dll cursor resources, I386/USER32.DL_ in https://archive.org/download/win-xpprosp-3-en/WinXPPROSP3_EN.iso",
+      "method": "Decoded with winres.py pecursor; @2x is a nearest-neighbor double",
+      "files": {
+        "arrow.png": "87244598966d4425873eea825b765fbbe6d8d3ebb4a4a45d05ee23e0ede43830",
+        "arrow@2x.png": "abdd70a4b5f633744ca6018d1e5c51b01494d38613bf9d21bf7eb54f776f30dc",
+        "cross.png": "5204849f0e84817a850e9f2dcf9d52f132bb8b844092ef83de0aea909097ab04",
+        "cross@2x.png": "590585514dd4d560e0d3ac4ca21cf980bf737273bd4891244d0103fe8f6691a3",
+        "hand.png": "d20cd266669a728eeddcb492bd45161bf253d57dd6b0478eabc3a5cd404647ef",
+        "hand@2x.png": "e2c35c10c18c435e6d4d8c09789023ba69aedc71a06bd3c4b6739398e0dedd8b",
+        "move.png": "04397c10f9ccba625f3b157f018b90d42c20593e33574053776dfac2b05bf33e",
+        "move@2x.png": "fb7494e9cb1acf6dbd88d3c85e2bf0ca6225e5e4d21d24773678f0bf42a90920",
+        "nesw.png": "87244598966d4425873eea825b765fbbe6d8d3ebb4a4a45d05ee23e0ede43830",
+        "nesw@2x.png": "571debefeefcea717e3d5ad6b18a7c9ae25549b0630735f16a923734f81891d2",
+        "nesw@2x@2x.png": "9e1f08c4f3f7afa787e85df33e4bdc1da207f89a20e1bd2f5105cddb479187f0",
+        "no.png": "dd6ac65973165937c4dc69967701163640296e11850cf3e59ffd6400377ac767",
+        "no@2x.png": "bb91416953e6e0690f600201682c9b3e1a85886dfd5f9d52f699fd06900b628f",
+        "ns.png": "384dea76bbd7e5e3489ee255e86e92765e097bb029e937c9f1da0dfb1a9d5dec",
+        "ns@2x.png": "620ef09da1be9427c83413137149227c79fc107959e2159775e5fbdef5200d83",
+        "text.png": "ba249e97429269c0de1cda7038bfe1dcd5f259fe58b41c4be4cc6e441d3fbdda",
+        "text@2x.png": "ea57563a65bf5cebfdd5bffeb3e9310d8bc21bf620c5d1b6a12cc308c53d75cf"
+      }
+    },
+    {
+      "directory": "public/themes/windowsvista/ui",
+      "source": "Windows Vista RTM (6.0.6000.16386): Windows/Resources/Themes/Aero/aero.msstyles in sources/install.wim of https://archive.org/download/windows-vista-business-x-86-vl/Windows%20Vista%20Business%20X86%20VL.iso",
+      "method": "PNG resources dumped with peres.py, sliced by slice-vista.sh; premultiplied alpha converted to straight",
+      "files": {
+        "button-default.png": "16de329b7d852ec6e76ff3cc23a1a7eebf6a11bdf3ddb9b4b26224ecb333736f",
+        "button-disabled.png": "ab1eb0337ce81684e4d40ed4358b9fb4cc31a987385eddd6c0fa93ea3b698140",
+        "button-hot.png": "30d09b7872d233469525e47020126885f01f3bff9f928c0e9cb5aad0c375922e",
+        "button-normal.png": "02fe5cd0f80f3063c2d51a2b6ab105f27bee48d2b3a02680fc271f90210527c7",
+        "button-pressed.png": "0ed88cf96ec40cffdb6167d21027d3aac24f2328e0db5b2ebc8d73e50d8ebfcd",
+        "caption-close-disabled.png": "9c8349674d5447c0865c7f1fccd7a32d710f845a095e59b6bfed0404e7d3def6",
+        "caption-close-hot.png": "bde8763fea694f217d70f51ac7faaeebb1ddd8285d507c9b1b2dea5855d43614",
+        "caption-close-normal.png": "a263a7505280d66117aadf35bf09fb6f503524b07feee6227eb65cd2bb134136",
+        "caption-close-pressed.png": "5593c2d8d22530a8dce4e40b4faaea7ff4307253c24b7179f9fe6aff06be021b",
+        "caption-max-disabled.png": "f06a7db0cf1001d0b3f72360ea932a9fe5b58a103ae59e9ad59beeae6d3661b4",
+        "caption-max-hot.png": "54f03498074754a1e559029196ac034bec563876e0476318ad3a8e9f7ddb6260",
+        "caption-max-normal.png": "754f50a1cae9df0dba77fd5a749a701718002770ce63fccd52939a3a69f3a12b",
+        "caption-max-pressed.png": "8c0e2dbfc172ae1a422e7f7056a6a691f6087f956a40afd8194afb803abc7b50",
+        "caption-min-disabled.png": "f06a7db0cf1001d0b3f72360ea932a9fe5b58a103ae59e9ad59beeae6d3661b4",
+        "caption-min-hot.png": "54f03498074754a1e559029196ac034bec563876e0476318ad3a8e9f7ddb6260",
+        "caption-min-normal.png": "754f50a1cae9df0dba77fd5a749a701718002770ce63fccd52939a3a69f3a12b",
+        "caption-min-pressed.png": "8c0e2dbfc172ae1a422e7f7056a6a691f6087f956a40afd8194afb803abc7b50",
+        "check.png": "e06b95c0824accdb187f991c3af7a95c438571ecf7425b577094a6525bd59d5e",
+        "combo-fill-hot.png": "eb433490bb4fd3a3f0e607696f48fcdaacba1c68c96fee8476a37fdf36c6d5cd",
+        "combo-fill-normal.png": "71af793c199778c63f45ed8e9eff844e0094e22bd7eca1d575d8068c3587ecbe",
+        "combo-fill-pressed.png": "1f9025ef33c60e02d2473d9f62170d70f40c0254c8989a8f3f5ae75583c16c31",
+        "combo-glyph.png": "0f9b2f29584a8995cea02e4b1d62c4e38ca5f2109a5ca5f7048890c6700295ea",
+        "combo-hot.png": "d3480128183b5587ca9a48c6bf8b272eaf14f0c7b2d6baba44d43c6a42e56d0f",
+        "combo-normal.png": "d85c4765c7e952b1d9751258200dbe41a82acc074b142bbc4fb2061262b16f28",
+        "combo-pressed.png": "a69965f35bf7e7549548448069757aed5207f7284d38ae70ed1e5914b6db36e8",
+        "command-bg.png": "22693a6651a28a69881975dbf2067e81030af4906dafae5393e7048cae310cb3",
+        "command-hot.png": "442b791106f15a78583a22932ba9f4359d17b19bdb2b42c1ee17e3e774ec51b6",
+        "command-pressed.png": "1f26e8d27cda5122a5e843d1fdebc45203ff84051644c40c9dfcf6ec0bf9a13d",
+        "edit-disabled.png": "4183cbd7700b6fe44b90c79e9da89f4520f5c118923a8aaa28b3dc7fccbec910",
+        "edit-focus.png": "162a973e47f92a7d3368cf2b39e16980c1de7babe64661bda954028d89b346a7",
+        "edit-hot.png": "c808cddba0d8a9a53ebe769f8ed45e80cf3619c67e2fd805664c0d70eb7b1589",
+        "edit-normal.png": "238c04b0ff92d1c06e847eb040e22cf93c310bb18fbbaccf086ea2f7bfddf393",
+        "glyph-close-normal.png": "eab8ba2d8f29952479d66454490deec790dd8f06f1da14ad8955843be00c2c3d",
+        "glyph-max-normal.png": "53b7a532b037eb6fbbd508afc256705cf76805e196014150f24046b2006d1868",
+        "glyph-min-normal.png": "3d99ed15692b6b030e6f97e5bf1632b81bfb9c49caa05397f88a209a926c87d0",
+        "glyph-restore-normal.png": "d96881461dd34bf63d1c3b1d8e179606e1595aa76d151b2b14afa20d8a7d8445",
+        "gripper.png": "c88b9116b3c590e0a1d21de64082da47eb3afadaea9544832b1a301ae0c92e92",
+        "groupbox.png": "2e7c4894e2bf46936692d16d483e5bcd9d71ed52fb271afc79c1738ad51246cc",
+        "header-hot.png": "bbf39a00e1ff1e7ffbada4de6ea75a86138b6f5c7cc1fde80339a6530a41761a",
+        "header-normal.png": "f8d6eb80e7c6ed41b19d3c2fa9c45301fabfbae811329ad56c2037ab321fd473",
+        "header-pressed.png": "6948f285dc2a9e1fd7fed7fc724d724ced06eb25363cf04b2faebeca789aa502",
+        "menu-gutter.png": "3fc6223ca20dc7c31e0696dd7d5459fd5f4d808da9808b5855e1b7c3f75d2d31",
+        "menu-hot.png": "e5d1575f13651e66daa43fa726517ff4eb1f809fbd781faccdba0a7d4534d274",
+        "progress-fill.png": "86542019f3977719f84c19d9a15f59adb3aa2b1e15e0a2a1cee50fcdb9f5e99d",
+        "progress-track.png": "4fbc01cad4b776fa0025cc4c1c0e46ae56edbca46351dd0866b03ea4ecccd977",
+        "radio.png": "9e44b429f1340a95fbf6b3a4976564f6800d47565f285fc4aece2e857580bfc5",
+        "scroll-down.png": "3b3a87fa1baafb9e7230b3f322880d75e9c19c1dd35bb7b39d96a379804b76cd",
+        "scroll-fill-h-hot.png": "84f412336c12a4f18046cad9c56a0f36933e78a8ce62926a61cf95d71556d9c9",
+        "scroll-fill-h-normal.png": "6254d78c6b7a45f99d32ec092b5c829589fede00a15f3c227ab419b2cc858f7a",
+        "scroll-fill-h-pressed.png": "75d5741cf49d4eace785d32c0919ab0a6bc23d57eaaa10afc27443aaf78b5b16",
+        "scroll-fill-v-hot.png": "84f412336c12a4f18046cad9c56a0f36933e78a8ce62926a61cf95d71556d9c9",
+        "scroll-fill-v-normal.png": "593e49cea716429757bbe74c7bf184b7ca62761225ff85155c994f545528c8bd",
+        "scroll-fill-v-pressed.png": "75d5741cf49d4eace785d32c0919ab0a6bc23d57eaaa10afc27443aaf78b5b16",
+        "scroll-grip-h-hot.png": "1b3aa1d31d944c38f2d91fa113eb37ff9eb8d8b56e69c694b2204c83400acd6a",
+        "scroll-grip-h-normal.png": "d1fc9b248afc7e1279a508df091c38b721c15fd7147d716468141ad7b04b8ca2",
+        "scroll-grip-h-pressed.png": "cd3e4e60dadda562878efed7c48c65b177074875c7e31f35cbd101e612e5bd95",
+        "scroll-grip-v-hot.png": "0bd638c07a91f36a2e649e5d7f6998d650340b6bbc053522f1d700474aa50da0",
+        "scroll-grip-v-normal.png": "9f365c3efe3a7a0a3044064d21dd4b8057fe17fa4635e89edfac61931925c1f2",
+        "scroll-grip-v-pressed.png": "684adfb3a71e178bcff56e86674b9338a3d21fa3b2f6f810ecfb7f320c652828",
+        "scroll-left.png": "5b51d3094060bef7007028a7837acc4e7efc356cd62e9e26219422dfce73917f",
+        "scroll-right.png": "b4ec0525e2080add6c6cf87d38b2e50a4c145f1ce5f51e1d5b383eb94db4b556",
+        "scroll-thumb-h-hot.png": "a179256ee7676f04b4acd912ab6ccd51813886d5ec46f05edb48ec852c4e3948",
+        "scroll-thumb-h-normal.png": "b0b8bf33046a3c819d1053e0ecd07a18c2e0e2d97afae28c900aaf7f482d5ea8",
+        "scroll-thumb-h-pressed.png": "c2f6805a7f0a59cbeecb4f1d4d584c83845495671b5af64131479938ba919761",
+        "scroll-thumb-v-hot.png": "ab2381e93a55e7c0401aaac6e2007d711e9df0757a80c9a6dbc68aec825165a5",
+        "scroll-thumb-v-normal.png": "8eb26300865c941896f21a02d820d6f838c80bf3f7ce680f96c72cd940f2109f",
+        "scroll-thumb-v-pressed.png": "7dfb13f8e8eafe479cb3e208866398b23b2015053765fe96569a600c220d3a9f",
+        "scroll-track-h.png": "2212a45cd053f55491baccfef726c8440c4d803cca36ae78019d6977ebdd4db5",
+        "scroll-track-v.png": "c258846ab08fd80c7aa9ad0e63b8b512fa8daac62c911183b4e98315e0f38deb",
+        "scroll-up.png": "75a64b9c246b42a9622bd9e475ddfc94af16d3bd5cdbb521bcb01beca301eb91",
+        "select-hot.png": "33d5bd8dc2231ff7a3b33abe40f68525214c79dd98597d8333c111544caff876",
+        "select.png": "8ddd85a98a9ef485b9fab2daeb39e17518429cc8c45857faedf22b0d81845d53",
+        "slider-thumb.png": "8e2afbb7c9866d22047330697c7942ce93ad6b05021a72835c4eeb3edc34072b",
+        "slider-track.png": "c567545852ee21b8888321ed3f0390955ff40253caa94ba65dfabb30a422d631",
+        "tab-hot.png": "7c7260fa81bb4e9583661ae32e5813754766b3c9a406d537668a2cf9b03cc760",
+        "tab-normal.png": "b89f38250b8b065084bb5733400c358cbf4ab965c7b1d8a1c52437133c933694",
+        "tab-selected.png": "0d25822263cf36d7cb93c158c42a952ad8f169ea2ad828056262c970f5c16f19",
+        "text-glow.png": "d2f08dcac0e469f6eb9c6d300d227cba7c62579812db6b25140a1fbf07e90d69",
+        "toolbar-checked.png": "1f26e8d27cda5122a5e843d1fdebc45203ff84051644c40c9dfcf6ec0bf9a13d",
+        "toolbar-hot.png": "442b791106f15a78583a22932ba9f4359d17b19bdb2b42c1ee17e3e774ec51b6",
+        "toolbar-pressed.png": "1f26e8d27cda5122a5e843d1fdebc45203ff84051644c40c9dfcf6ec0bf9a13d",
+        "tree-arrow-hot.png": "7dfd7405d434036d9de71262a6c408a90aba4c8f34cb39bde45f994b08866fb2",
+        "tree-arrow.png": "8c0859a76e26daf9fc81ba8ac1c24e61ca486997903cfc1dfa60a013c1cbff0d"
+      }
+    },
+    {
+      "directory": "public/themes/windowsvista/cursors",
+      "source": "Windows Vista RTM Windows/Cursors/aero_*.cur in https://archive.org/download/windows-vista-business-x-86-vl/Windows%20Vista%20Business%20X86%20VL.iso",
+      "method": "Decoded with winres.py cursor; @2x is a nearest-neighbor double",
+      "files": {
+        "arrow.png": "93c20d7f66fbf43fe94c4e19ead78ee9f8374a392d41c2dc352f9851bbd8bc0b",
+        "arrow@2x.png": "d7f485e6aeb4fa6856b5a875f7856a8c4812fe6a9b5419b89ca59ac7fd766f6b",
+        "arrow@2x@2x.png": "56c3831f89536f2bbb87512e299bc1f4ef87d6b1d248f2d6eeaf5c8c6fe87262",
+        "ew.png": "8fdc3af21ab979b3d65909537fb3fd9a339ff3bdc49fd3dd8ebbf52da095bfb2",
+        "ew@2x.png": "a3bf2a88e023918749a983cafea23b2ab33367ed7508c0d3c9fbc3ea075cde77",
+        "ew@2x@2x.png": "ff7d99fb4c7776cd29b3f3c17b12b8811ca492ca7c8bb536c3fe866f9ded4f05",
+        "hand.png": "7acc46ed19459a6229f5a082ade3a1ce386189b4aeb3c05d16555a70fde673cc",
+        "hand@2x.png": "658d83d02ef840821ea38bb633f03f024d82bd662dee411e084055c91b6f6836",
+        "hand@2x@2x.png": "1be573ca1411aceefdc0d9a6b19b4793037c144aef5fab190973290d46e825f0",
+        "help.png": "e231d96bc3db8e6bde7c7f606f0c56fbaf63d20b52ded26dbc169acaebf055d4",
+        "help@2x.png": "bd600c7c86456f641f6f35acadb4a0c5a775000e83415f82720c731e85145260",
+        "help@2x@2x.png": "a3dd58f4cb732837c08956195fe5b25147fa20d27e5e93857ac2be336bc94058",
+        "move.png": "5dd9d0b19f9db3ae1fa62085f768f0d2eac1075ca0f8a9d6c29fde148ce59956",
+        "move@2x.png": "371553de1218abefee7a24f10ec0cf8864eee2b98846fab658901dc2bbe6510f",
+        "move@2x@2x.png": "b7a0f27fe85abbe2d7a3e8669c466fd64d3f79440b10e2f45efc249fa0163a68",
+        "nesw.png": "d84f8f07b80bd31ecb70fa39496cf11108335eaba845801f8d7809844c07fec2",
+        "nesw@2x.png": "3a065ac6f7b8ce52c09fa26fbde18f11262cd308583bcfd8c36f6e509b22eb6c",
+        "nesw@2x@2x.png": "b39c81502706797df1f0c67662e25f4517cdaf8709a47e237f40244ba36662b3",
+        "no.png": "6c3c4aaa46d7bb3328f49bc1fc187d558b8e36d51c6ebe63fad5fbfcc615f254",
+        "no@2x.png": "aeb9664ab37f65afcb1522d4e73e74a6ea4864cb6a47baeb848cbadd7a933618",
+        "no@2x@2x.png": "cafdf6036e2401d31ffd408a3f24fc190c8dfbd69bebf0154d346423c72fb76f",
+        "ns.png": "f292377c0171379526590cad2af89d19063a9c8b817a27aa6379c8c6f5b9916b",
+        "ns@2x.png": "f1264be1cabf48a540c0af746419fdedd8c68750bd8e6aa77bb7d68f1862a151",
+        "ns@2x@2x.png": "72fc6c9a8a6c827d74d3e01e1eb9d50112fe4485cedc2e8568c280098ec7aaa1",
+        "nwse.png": "46eb1ad7a399f8d940bac5b864e01d05a0d2ec981f06c6a64929f68665a65f32",
+        "nwse@2x.png": "d3f7f57e0a30ec4fc052951c84cf285e97242e722932c864c77c4fe00a37c9f4",
+        "nwse@2x@2x.png": "f6b0f6b0b55c1bc21d8f32104cc85afb56c70317b5a1a79d8a6938ca98c80d1f"
+      }
+    }
+  ],
   "assets": [
     {
-      "path": "public/themes/windowsxp/bliss.png",
-      "source": "https://raw.githubusercontent.com/bartekl1/windows-ui-assets/main/Wallpapers/Windows%20XP/Desktop/Bliss.bmp",
-      "method": "Original Windows XP Bliss.bmp, lossless PNG conversion with sips; no redrawing or upscaling",
-      "sha256": "515f17aeefdc99489a167845fed0bf6f720fded082485b498ff4ff5570e31cc6"
-    },
-    {
-      "path": "public/themes/windowsvista/aurora.jpg",
-      "source": "https://raw.githubusercontent.com/bartekl1/windows-ui-assets/main/Wallpapers/Windows%20Vista/Desktop/img36.jpg",
-      "method": "Unmodified original Vista widescreen wallpaper (1920 x 1200)",
-      "sha256": "77fd927332fcec551233871031755589aa1796c9ca424cf3f31b1d155cd61285"
-    },
-    {
       "path": "public/themes/windowsxp/icons/next.png",
-      "source": "https://raw.githubusercontent.com/ShizukuIchi/winXP/master/src/assets/windowsIcons/forward.png",
-      "method": "Unmodified original Windows icon image; selected by visual inspection",
-      "sha256": "becf03ee6422cb3ed713df8e6b71f042aa462ed34c1743e548ace9619c3ed24e"
+      "source": "Windows XP SP3 shell32.dll icon 290, from https://archive.org/download/win-xpprosp-3-en/WinXPPROSP3_EN.iso",
+      "method": "16px frame decoded with winres.py icons",
+      "sha256": "9063425997081c45838ad8cf9bd2a990405e497e0010e1f2d2becb31d358a89e"
     },
     {
       "path": "public/themes/windowsxp/icons/today.png",
-      "source": "https://raw.githubusercontent.com/ShizukuIchi/winXP/master/src/assets/windowsIcons/23%2816x16%29.png",
-      "method": "Unmodified original Windows icon image; selected by visual inspection",
-      "sha256": "4448957607a25b41585543e7da6dbf1d8721919ab0bb7bd25e65f64b5130aba2"
+      "source": "Windows XP SP3 shell32.dll icon 326, from https://archive.org/download/win-xpprosp-3-en/WinXPPROSP3_EN.iso",
+      "method": "16px frame decoded with winres.py icons",
+      "sha256": "e29d1e331cfa5fab80f4d34de2c6af8e18c633124339ddf87c94c516da3048d5"
     },
     {
       "path": "public/themes/windowsxp/icons/templates.png",
-      "source": "https://raw.githubusercontent.com/ShizukuIchi/winXP/master/src/assets/windowsIcons/58%2816x16%29.png",
-      "method": "Unmodified original Windows icon image; selected by visual inspection",
-      "sha256": "c01829eca6568bfc220eecc12982c549065eaa9d8d9ea1ab76cb837915e1d1ad"
+      "source": "Windows XP SP3 shell32.dll icon 20, from https://archive.org/download/win-xpprosp-3-en/WinXPPROSP3_EN.iso",
+      "method": "16px frame decoded with winres.py icons",
+      "sha256": "9926c3cae981d9a6ce55d5025141fb9646d1fcc7bfcb65327480077f0a485830"
     },
     {
       "path": "public/themes/windowsxp/icons/listTemplates.png",
-      "source": "https://raw.githubusercontent.com/ShizukuIchi/winXP/master/src/assets/windowsIcons/153%2816x16%29.png",
-      "method": "Unmodified original Windows icon image; selected by visual inspection",
-      "sha256": "6bc54f389c34b0ba65c0fbdb09339e840a583fea2681731320b63b68210e96af"
+      "source": "Windows XP SP3 shell32.dll icon 238, from https://archive.org/download/win-xpprosp-3-en/WinXPPROSP3_EN.iso",
+      "method": "16px frame decoded with winres.py icons",
+      "sha256": "684c1718888397dc63c9860cf89534e8d54a40b57240c9e6b6b89719888bbc46"
     },
     {
       "path": "public/themes/windowsxp/icons/lists.png",
-      "source": "https://raw.githubusercontent.com/ShizukuIchi/winXP/master/src/assets/windowsIcons/history.png",
-      "method": "Unmodified original Windows icon image; selected by visual inspection",
-      "sha256": "9d2584473f6daa443f5d3cf354d1cba86d6f9cc5440b029a4a60c5898dbd5503"
-    },
-    {
-      "path": "public/themes/windowsxp/icons/notes.png",
-      "source": "https://raw.githubusercontent.com/ShizukuIchi/winXP/master/src/assets/windowsIcons/153%2816x16%29.png",
-      "method": "Unmodified original Windows icon image; selected by visual inspection",
-      "sha256": "6bc54f389c34b0ba65c0fbdb09339e840a583fea2681731320b63b68210e96af"
+      "source": "Windows XP SP3 shell32.dll icon 253, from https://archive.org/download/win-xpprosp-3-en/WinXPPROSP3_EN.iso",
+      "method": "16px frame decoded with winres.py icons",
+      "sha256": "581f8b40418fad3332f8ddad0086873a1cf24c1e348029a9a40cdcb9268fe5b0"
     },
     {
       "path": "public/themes/windowsxp/icons/metrics.png",
-      "source": "https://raw.githubusercontent.com/ShizukuIchi/winXP/master/src/assets/windowsIcons/747%2816x16%29.png",
-      "method": "Unmodified original Windows icon image; selected by visual inspection",
-      "sha256": "081236f36d21a6576a357b8e28675d2c795704359053f1b05e20ca80cd42b423"
+      "source": "Windows XP SP3 shell32.dll icon 24, from https://archive.org/download/win-xpprosp-3-en/WinXPPROSP3_EN.iso",
+      "method": "16px frame decoded with winres.py icons",
+      "sha256": "efc2da1f3c56303c83a6de823ea693a90c3a6c7ec393c390e6c145ba44c12b6b"
     },
     {
       "path": "public/themes/windowsxp/icons/goals.png",
-      "source": "https://raw.githubusercontent.com/ShizukuIchi/winXP/master/src/assets/windowsIcons/887%2816x16%29.png",
-      "method": "Unmodified original Windows icon image; selected by visual inspection",
-      "sha256": "9793670a90c1d7d220df0e1f92caa0c4e14a656a429d3672deee37e9e9f4c3a8"
+      "source": "Windows XP SP3 shell32.dll icon 44, from https://archive.org/download/win-xpprosp-3-en/WinXPPROSP3_EN.iso",
+      "method": "16px frame decoded with winres.py icons",
+      "sha256": "c346e3c720a530e113c6b4450f4a441568be234ddf707f5599f53435cf64451e"
     },
     {
       "path": "public/themes/windowsxp/icons/projects.png",
-      "source": "https://raw.githubusercontent.com/ShizukuIchi/winXP/master/src/assets/windowsIcons/folder.png",
-      "method": "Unmodified original Windows icon image; selected by visual inspection",
-      "sha256": "1b0c7fc94f47f38302c4e1378631b51e35e1d7bd22d03ee4f8239e78dc046c08"
+      "source": "Windows XP SP3 shell32.dll icon 4, from https://archive.org/download/win-xpprosp-3-en/WinXPPROSP3_EN.iso",
+      "method": "16px frame decoded with winres.py icons",
+      "sha256": "ecae1cd8d74b8bc328beb3bc780d5db589f780cfde0a3843ca2546c1d68d4b0b"
     },
     {
       "path": "public/themes/windowsxp/icons/prioritize.png",
-      "source": "https://raw.githubusercontent.com/ShizukuIchi/winXP/master/src/assets/windowsIcons/227%2816x16%29.png",
-      "method": "Unmodified original Windows icon image; selected by visual inspection",
-      "sha256": "60d86a40896cde0b231d0b3ffb4cf2e27c344ac568bd701766b826bbbd16f643"
+      "source": "Windows XP SP3 shell32.dll icon 1005, from https://archive.org/download/win-xpprosp-3-en/WinXPPROSP3_EN.iso",
+      "method": "16px frame decoded with winres.py icons",
+      "sha256": "40852c47ced89f69bdf0b4a1b9b1ab077fb0680c24d1b5f30572dadd436699a1"
+    },
+    {
+      "path": "public/themes/windowsxp/icons/settings.png",
+      "source": "Windows XP SP3 shell32.dll icon 137, from https://archive.org/download/win-xpprosp-3-en/WinXPPROSP3_EN.iso",
+      "method": "16px frame decoded with winres.py icons",
+      "sha256": "825ec53811caa5d1fc51e96a812653a2cea65fa72e5cab059669f4a03718ecef"
+    },
+    {
+      "path": "public/themes/windowsxp/icons/notes.png",
+      "source": "Windows XP SP3 notepad.exe icon 2, from https://archive.org/download/win-xpprosp-3-en/WinXPPROSP3_EN.iso",
+      "method": "16px frame decoded with winres.py icons",
+      "sha256": "b26f5fb5a32e041f4fc4ca4508020a30fe414b3e0ff8d9a23150f5b5e95fb441"
+    },
+    {
+      "path": "public/themes/windowsxp/icons/clock.png",
+      "source": "Windows XP SP3 timedate.cpl icon 200, from https://archive.org/download/win-xpprosp-3-en/WinXPPROSP3_EN.iso",
+      "method": "16px frame decoded with winres.py icons",
+      "sha256": "8fd42e48763f432fbfec05f4e3f85ad308da89e5b0af6b5cdd798db3a3ee1285"
     },
     {
       "path": "public/themes/windowsxp/icons/ideas.png",
@@ -86,106 +369,106 @@
       "sha256": "8a7e148134b3502b07e37e2cc17fe2d8df4f7683dc2cf699a864d7398a14ccd6"
     },
     {
-      "path": "public/themes/windowsxp/icons/settings.png",
-      "source": "https://raw.githubusercontent.com/ShizukuIchi/winXP/master/src/assets/windowsIcons/300%2816x16%29.png",
-      "method": "Unmodified original Windows icon image; selected by visual inspection",
-      "sha256": "471dee8e4715d677eff71db6c197df4f6c6687c1043d888536ee98be996152f7"
+      "path": "public/themes/windowsvista/icons/next.png",
+      "source": "Windows Vista RTM imageres.dll icon 116, from https://archive.org/download/windows-vista-business-x-86-vl/Windows%20Vista%20Business%20X86%20VL.iso",
+      "method": "16px frame decoded with winres.py icons",
+      "sha256": "58f6c64b592046f6265a417afd03c3a76b80b64447b449ad84bbdbd016b6cccc"
     },
     {
-      "path": "public/themes/windowsvista/icons/notepad.png",
-      "source": "https://raw.githubusercontent.com/gsnoopy/react-old-icons/main/PNG/WindowsVistaNotepad.png",
-      "method": "Native 16px ICO frame, exported without scaling by WinVista; SHA256 matches upstream manifest",
-      "sha256": "46b6348b0c130b397284604bd2a24c0a3f3aab1f51a08c42b6c135ad2047c12d"
+      "path": "public/themes/windowsvista/icons/templates.png",
+      "source": "Windows Vista RTM imageres.dll icon 123, from https://archive.org/download/windows-vista-business-x-86-vl/Windows%20Vista%20Business%20X86%20VL.iso",
+      "method": "16px frame decoded with winres.py icons",
+      "sha256": "7af35426b7fbcb8cbc5e89e4532f7b845ff2a8c007e0e44470df1ab09629dca1"
     },
     {
-      "path": "public/themes/windowsvista/icons/desktop.png",
-      "source": "https://raw.githubusercontent.com/bartekl1/windows-ui-assets/main/Icons/Windows%20Vista/ico/imageres.dll/ICON110_1.ico",
-      "method": "Native 16px ICO frame, exported without scaling by WinVista; SHA256 matches upstream manifest",
-      "sha256": "d00a1a12fee6f1b77cf00715061cc228846d2a53d37b75c30479dcb5fe84a75d"
+      "path": "public/themes/windowsvista/icons/listTemplates.png",
+      "source": "Windows Vista RTM imageres.dll icon 19, from https://archive.org/download/windows-vista-business-x-86-vl/Windows%20Vista%20Business%20X86%20VL.iso",
+      "method": "16px frame decoded with winres.py icons",
+      "sha256": "528942e42b8b29f3cfe064e021fd66e9df502046b6815d38c8cdd72a31254cdc"
     },
     {
-      "path": "public/themes/windowsvista/icons/control.png",
-      "source": "https://raw.githubusercontent.com/bartekl1/windows-ui-assets/main/Icons/Windows%20Vista/ico/imageres.dll/ICON27_1.ico",
-      "method": "Native 16px ICO frame, exported without scaling by WinVista; SHA256 matches upstream manifest",
-      "sha256": "d6cf3570103685a8d513221b084846acaf7b8df91192a8d7f580bb3a3d373fc2"
+      "path": "public/themes/windowsvista/icons/lists.png",
+      "source": "Windows Vista RTM imageres.dll icon 121, from https://archive.org/download/windows-vista-business-x-86-vl/Windows%20Vista%20Business%20X86%20VL.iso",
+      "method": "16px frame decoded with winres.py icons",
+      "sha256": "bf6b2ba0df52b3ecef1b5aa99c2bfdff08b67b6b28eb86610900e1c5168e7244"
     },
     {
-      "path": "public/themes/windowsvista/icons/search.png",
-      "source": "https://raw.githubusercontent.com/bartekl1/windows-ui-assets/main/Icons/Windows%20Vista/ico/imageres.dll/ICON18_1.ico",
-      "method": "Native 16px ICO frame, exported without scaling by WinVista; SHA256 matches upstream manifest",
-      "sha256": "ac6fc0742d733f87f91ddffcd633a31ed0a70875876431a033fe0b8260a22e62"
+      "path": "public/themes/windowsvista/icons/metrics.png",
+      "source": "Windows Vista RTM imageres.dll icon 99, from https://archive.org/download/windows-vista-business-x-86-vl/Windows%20Vista%20Business%20X86%20VL.iso",
+      "method": "16px frame decoded with winres.py icons",
+      "sha256": "a6274d9695f628bb0ae6d55b2dea6eb8e2fbbfa9a3ff09cbf5ab014e968b9db1"
     },
     {
-      "path": "public/themes/windowsvista/icons/run.png",
-      "source": "https://raw.githubusercontent.com/bartekl1/windows-ui-assets/main/Icons/Windows%20Vista/ico/imageres.dll/ICON100_1.ico",
-      "method": "Native 16px ICO frame, exported without scaling by WinVista; SHA256 matches upstream manifest",
-      "sha256": "ceba1534cee5ce2e00b32c2b50feca9801e7bacfd7aeb18332fd35fbe507ecbb"
+      "path": "public/themes/windowsvista/icons/goals.png",
+      "source": "Windows Vista RTM imageres.dll icon 14, from https://archive.org/download/windows-vista-business-x-86-vl/Windows%20Vista%20Business%20X86%20VL.iso",
+      "method": "16px frame decoded with winres.py icons",
+      "sha256": "6a794db841f2d84b379ef03c32cb51a0475784be55d9903fe7962ff9070c3ac8"
     },
     {
-      "path": "public/themes/windowsvista/icons/documents.png",
-      "source": "https://raw.githubusercontent.com/bartekl1/windows-ui-assets/main/Icons/Windows%20Vista/ico/imageres.dll/ICON112_1.ico",
-      "method": "Native 16px ICO frame, exported without scaling by WinVista; SHA256 matches upstream manifest",
-      "sha256": "686308b156791188f1cdc934a6982331e42dcb0b00e767dae2080265b4b050bd"
+      "path": "public/themes/windowsvista/icons/projects.png",
+      "source": "Windows Vista RTM imageres.dll icon 3, from https://archive.org/download/windows-vista-business-x-86-vl/Windows%20Vista%20Business%20X86%20VL.iso",
+      "method": "16px frame decoded with winres.py icons",
+      "sha256": "5a29fbe3b7601abb2c81e3baf94b4a4e338427717fcc693941e4726c66d05d7f"
     },
     {
-      "path": "public/themes/windowsvista/icons/folder.png",
-      "source": "https://raw.githubusercontent.com/bartekl1/windows-ui-assets/main/Icons/Windows%20Vista/ico/imageres.dll/ICON3_1.ico",
-      "method": "Native 16px ICO frame, exported without scaling by WinVista; SHA256 matches upstream manifest",
-      "sha256": "2b6021f8a0c17f6e1976264e53576dbfc81cc84c3ee5c9bfa578efcd8206aacf"
+      "path": "public/themes/windowsvista/icons/prioritize.png",
+      "source": "Windows Vista RTM imageres.dll icon 115, from https://archive.org/download/windows-vista-business-x-86-vl/Windows%20Vista%20Business%20X86%20VL.iso",
+      "method": "16px frame decoded with winres.py icons",
+      "sha256": "f460e6f1b4a9a468673231f316732de1e89ee5dd26d954c683fd61fe78bb6479"
     },
     {
-      "path": "public/themes/windowsvista/icons/help.png",
-      "source": "https://raw.githubusercontent.com/bartekl1/windows-ui-assets/main/Icons/Windows%20Vista/ico/imageres.dll/ICON99_1.ico",
-      "method": "Native 16px ICO frame, exported without scaling by WinVista; SHA256 matches upstream manifest",
-      "sha256": "bf146ae050eba73d7e3a46a89651d170990062902ef06adcaacf7ba622cb0371"
+      "path": "public/themes/windowsvista/icons/settings.png",
+      "source": "Windows Vista RTM imageres.dll icon 114, from https://archive.org/download/windows-vista-business-x-86-vl/Windows%20Vista%20Business%20X86%20VL.iso",
+      "method": "16px frame decoded with winres.py icons",
+      "sha256": "9a38ecf957bac411f19083c384baee71de6958c8720cde7fa81a0e6b17b03908"
     },
     {
-      "path": "public/themes/windowsvista/icons/calendar.png",
-      "source": "https://raw.githubusercontent.com/gsnoopy/react-old-icons/main/PNG/WindowsVistaCalendar.png",
-      "method": "Native 16px ICO frame, exported without scaling by WinVista; SHA256 matches upstream manifest",
-      "sha256": "cbb9619df2a7540ec0db348939e93cf9fabcd39c6063e52b7c9c56d5bb94f0d3"
+      "path": "public/themes/windowsvista/icons/today.png",
+      "source": "Windows Vista RTM timedate.cpl icon 50, from https://archive.org/download/windows-vista-business-x-86-vl/Windows%20Vista%20Business%20X86%20VL.iso",
+      "method": "16px frame decoded with winres.py icons",
+      "sha256": "109f57df0edcb55bc5467b7d6966a1dc1b4ad4bea154554016d55a1c1c2284cd"
     },
     {
-      "path": "public/themes/windowsvista/icons/contacts.png",
-      "source": "https://raw.githubusercontent.com/gsnoopy/react-old-icons/main/PNG/WindowsVistaContacts.png",
-      "method": "Native 16px ICO frame, exported without scaling by WinVista; SHA256 matches upstream manifest",
-      "sha256": "2df45cbac6df83d15bc19bcd07fdf790b83c75315ad712ecf91effaa7493ba5e"
+      "path": "public/themes/windowsvista/icons/clock.png",
+      "source": "Windows Vista RTM timedate.cpl icon 50, from https://archive.org/download/windows-vista-business-x-86-vl/Windows%20Vista%20Business%20X86%20VL.iso",
+      "method": "16px frame decoded with winres.py icons",
+      "sha256": "109f57df0edcb55bc5467b7d6966a1dc1b4ad4bea154554016d55a1c1c2284cd"
     },
     {
-      "path": "public/themes/windowsvista/icons/security.png",
-      "source": "https://raw.githubusercontent.com/bartekl1/windows-ui-assets/main/Icons/Windows%20Vista/ico/imageres.dll/ICON78_1.ico",
-      "method": "Native 16px ICO frame, exported without scaling by WinVista; SHA256 matches upstream manifest",
-      "sha256": "18f451d7ad32c81c11845c984960ccc33142bfdce91830e7c002af021288a97b"
+      "path": "public/themes/windowsvista/icons/notes.png",
+      "source": "Windows Vista RTM notepad.exe icon 2, from https://archive.org/download/windows-vista-business-x-86-vl/Windows%20Vista%20Business%20X86%20VL.iso",
+      "method": "16px frame decoded with winres.py icons",
+      "sha256": "17488a1b1fca9a0f36fa1e1c04fcb9755ae80236b65f742c4f3d31516284fbbf"
     },
     {
-      "path": "public/themes/windowsvista/icons/favorites.png",
-      "source": "https://raw.githubusercontent.com/bartekl1/windows-ui-assets/main/Icons/Windows%20Vista/ico/imageres.dll/ICON115_1.ico",
-      "method": "Native 16px ICO frame, exported without scaling by WinVista; SHA256 matches upstream manifest",
-      "sha256": "8895bed8644f76471a94d0ae76594494d0963874029418990077ae2dd0f17ccc"
+      "path": "public/themes/windowsvista/icons/ideas.png",
+      "source": "Windows Vista RTM wscui.cpl icon 5005, from https://archive.org/download/windows-vista-business-x-86-vl/Windows%20Vista%20Business%20X86%20VL.iso",
+      "method": "16px frame decoded with winres.py icons",
+      "sha256": "285ccef477950ce49f730b490845c3058472356fa8743fd650a1a96f62b82c69"
     },
     {
-      "path": "public/themes/windowsxp/close.svg",
-      "source": "https://raw.githubusercontent.com/botoxparty/XP.css/main/themes/XP/icon/close.svg",
-      "method": "XP.css pixel-path Luna caption button artwork; MIT license in public/theme-licenses/XP.css.txt",
-      "sha256": "0f696642f98342f851ebf6f55cb98da1758bc3593ae10e0cdd8491b35085913b"
+      "path": "public/themes/windowsvista/icons/situate.png",
+      "source": "Windows Vista RTM wscui.cpl icon 5000, from https://archive.org/download/windows-vista-business-x-86-vl/Windows%20Vista%20Business%20X86%20VL.iso",
+      "method": "16px frame decoded with winres.py icons",
+      "sha256": "4c02578f3eb0fcaf06306ca1c9af6c145c1c1056aeb4c20c3f0dc268c0cccda8"
     },
     {
-      "path": "public/themes/windowsxp/close-hover.svg",
-      "source": "https://raw.githubusercontent.com/botoxparty/XP.css/main/themes/XP/icon/close-hover.svg",
-      "method": "XP.css pixel-path Luna caption button artwork; MIT license in public/theme-licenses/XP.css.txt",
-      "sha256": "5a04d01978ac24588db251b1c8175c64e5ff27e53716ce15c205b7c33a0e5706"
+      "path": "public/themes/windowsxp/bliss.png",
+      "source": "https://raw.githubusercontent.com/bartekl1/windows-ui-assets/main/Wallpapers/Windows%20XP/Desktop/Bliss.bmp",
+      "method": "Original Windows XP Bliss.bmp, lossless PNG conversion with sips; no redrawing or upscaling",
+      "sha256": "515f17aeefdc99489a167845fed0bf6f720fded082485b498ff4ff5570e31cc6"
     },
     {
-      "path": "public/themes/windowsxp/close-active.svg",
-      "source": "https://raw.githubusercontent.com/botoxparty/XP.css/main/themes/XP/icon/close-active.svg",
-      "method": "XP.css pixel-path Luna caption button artwork; MIT license in public/theme-licenses/XP.css.txt",
-      "sha256": "0848d2b7dee3a08fd0079a909e42f0204935908d4acd120e8c6f2dcf16498b58"
+      "path": "public/themes/windowsvista/aurora.jpg",
+      "source": "https://raw.githubusercontent.com/bartekl1/windows-ui-assets/main/Wallpapers/Windows%20Vista/Desktop/img36.jpg",
+      "method": "Unmodified original Vista widescreen wallpaper (1920 x 1200)",
+      "sha256": "77fd927332fcec551233871031755589aa1796c9ca424cf3f31b1d155cd61285"
     },
     {
-      "path": "public/themes/windowsvista/close.png",
-      "source": "https://raw.githubusercontent.com/khang-nd/7.css/main/gui/icon/close.png",
-      "method": "Aero caption glyph reference; MIT license in public/theme-licenses/7.css.txt; frame and glass recreated in CSS",
-      "sha256": "8af2703d43d218ff1d238799223be1ff7cffd17960c450e59a3d7e54021448a4"
+      "path": "public/themes/windowsvista/aurora-glass.jpg",
+      "source": "public/themes/windowsvista/aurora.jpg",
+      "method": "480px wide, Gaussian blur 7: the static stand-in for live glass blur",
+      "sha256": "95505fa7f2c5cb8eb24967858aff1f973f82a03e8d5f39c9b4bfa3669992a6d2"
     }
   ]
 }

@@ -1,5 +1,7 @@
-/* XP Luna gradients informed by XP.css (license in public/theme-licenses).
-   Vista follows Microsoft's Aero reviewer guide, not Windows 7's flat taskbar.
+/* Windows XP (Luna) and Windows Vista (Aero), drawn from those systems' own visual
+   style bitmaps. Nine-grid margins, frame orders and colors come from luna.msstyles'
+   NORMALBLUE_INI and shellstyle.dll, and aero.msstyles' property table. Provenance is
+   in docs/windows-theme-assets.json; the reasoning is in docs/retro-themes.md.
    No inherited variables or viewport backgrounds animate. */
 @font-face {
   font-family: 'Vista UI';
@@ -16,45 +18,267 @@
   font-display: swap;
 }
 
+/* ---------- Palettes and bitmaps ---------- */
+
 :root[data-theme='windowsxp'] {
   --font-interface: Tahoma, Verdana, sans-serif;
   --font-content: Tahoma, Verdana, sans-serif;
-  --font-mono: 'Courier New', monospace;
+  --font-mono: var(--font-interface);
+  font-size: 11px;
   --app-background: url('/themes/windowsxp/bliss.png') center / cover;
   --paper: #ffffff;
   --paper-strong: #ffffff;
   --ink: #000000;
-  --muted: #454339;
+  --muted: #5e5c50;
   --line: #aca899;
   --line-strong: #716f64;
-  --accent: #0055b8;
-  --accent-strong: #003b82;
+  --accent: #316ac5;
+  --accent-strong: #215dc6;
   --theme-checkbox: #0055b8;
   --theme-done: #347b2a;
   --danger: #a62716;
-  --sidebar: #ece9d8;
-  --active-nav: #d5e4f9;
-  --row-border: #e1dfd5;
-  --drop-inside: #e3edfb;
+  --sidebar: #d6dff7;
+  --active-nav: #c1d2ee;
+  --row-border: #ece9d8;
+  --drop-inside: #c1d2ee;
   --time-border: #7f9db9;
-  --time-bg: #f5f3e9;
-  --time-warn-bg: #fff2c7;
+  --time-bg: #ffffff;
+  --time-warn-bg: #ffffe1;
   --time-warn-ink: #743f00;
-  --focus-ring: #d78500;
-  --shadow: 2px 3px 4px #08285866;
-  --radius-modal: 7px;
-  --modal-backdrop: #071b4355;
-  --xp-face: #ece9d8;
-  --xp-button-top: #ffffff;
-  --xp-button-bottom: #dedbd2;
-  --xp-frame: #0055ea;
-  --xp-caption: linear-gradient(180deg, #0997ff 0%, #0053ee 8%, #0050ee 40%, #0066ff 88%, #005bff 95%, #003dd7 100%);
+  --focus-ring: #000000;
+  --shadow: none;
+  --radius-modal: 0;
+  --modal-backdrop: transparent;
+  --win-face: #ece9d8;
+  --win-link: #215dc6;
+  --win-link-hot: #428eff;
+  --win-gray-text: #a1a192;
+  --win-select: #316ac5;
+  --win-select-text: #ffffff;
+  --win-frame-width: 4px;
+  --win-caption-height: 29px;
+  --win-button: url('/themes/windowsxp/ui/button-normal.png');
+  --win-button-hot: url('/themes/windowsxp/ui/button-hot.png');
+  --win-button-pressed: url('/themes/windowsxp/ui/button-pressed.png');
+  --win-button-disabled: url('/themes/windowsxp/ui/button-disabled.png');
+  --win-button-default: url('/themes/windowsxp/ui/button-default.png');
+  --win-button-slice: 9 8 9 8;
+  --win-button-edge: 9px 8px 9px 8px;
+  --win-toolbar-hot: url('/themes/windowsxp/ui/toolbar-hot.png');
+  --win-toolbar-pressed: url('/themes/windowsxp/ui/toolbar-pressed.png');
+  --win-toolbar-checked: url('/themes/windowsxp/ui/toolbar-checked.png');
+  --win-toolbar-slice: 4;
+  --win-toolbar-edge: 4px;
+  --win-check: url('/themes/windowsxp/ui/check.png');
+  --win-radio: url('/themes/windowsxp/ui/radio.png');
+  --win-groupbox: url('/themes/windowsxp/ui/groupbox.png');
+  --win-groupbox-slice: 4;
+  --win-groupbox-edge: 4px;
+  --win-legend: #0046d5;
+  --win-tab: url('/themes/windowsxp/ui/tab-normal.png');
+  --win-tab-hot: url('/themes/windowsxp/ui/tab-hot.png');
+  --win-tab-selected: url('/themes/windowsxp/ui/tab-selected.png');
+  --win-tab-slice: 6;
+  --win-tab-edge: 6px;
+  --win-header: url('/themes/windowsxp/ui/header-normal.png');
+  --win-header-hot: url('/themes/windowsxp/ui/header-hot.png');
+  --win-header-pressed: url('/themes/windowsxp/ui/header-pressed.png');
+  --win-header-slice: 3 8 4 8;
+  --win-header-edge: 3px 8px 4px 8px;
+  --win-slider-track: url('/themes/windowsxp/ui/slider-track.png');
+  --win-slider-thumb: url('/themes/windowsxp/ui/slider-thumb.png');
+  --win-slider-thumb-height: 21px;
+  --win-thumb-v: url('/themes/windowsxp/ui/scroll-thumb-v-normal.png');
+  --win-grip-v: url('/themes/windowsxp/ui/scroll-grip-v-normal.png');
+  --win-fill-v: url('/themes/windowsxp/ui/scroll-fill-v-normal.png');
+  --win-thumb-v-hot: url('/themes/windowsxp/ui/scroll-thumb-v-hot.png');
+  --win-grip-v-hot: url('/themes/windowsxp/ui/scroll-grip-v-hot.png');
+  --win-fill-v-hot: url('/themes/windowsxp/ui/scroll-fill-v-hot.png');
+  --win-thumb-v-pressed: url('/themes/windowsxp/ui/scroll-thumb-v-pressed.png');
+  --win-grip-v-pressed: url('/themes/windowsxp/ui/scroll-grip-v-pressed.png');
+  --win-fill-v-pressed: url('/themes/windowsxp/ui/scroll-fill-v-pressed.png');
+  --win-thumb-h: url('/themes/windowsxp/ui/scroll-thumb-h-normal.png');
+  --win-grip-h: url('/themes/windowsxp/ui/scroll-grip-h-normal.png');
+  --win-fill-h: url('/themes/windowsxp/ui/scroll-fill-h-normal.png');
+  --win-thumb-h-hot: url('/themes/windowsxp/ui/scroll-thumb-h-hot.png');
+  --win-grip-h-hot: url('/themes/windowsxp/ui/scroll-grip-h-hot.png');
+  --win-fill-h-hot: url('/themes/windowsxp/ui/scroll-fill-h-hot.png');
+  --win-thumb-h-pressed: url('/themes/windowsxp/ui/scroll-thumb-h-pressed.png');
+  --win-grip-h-pressed: url('/themes/windowsxp/ui/scroll-grip-h-pressed.png');
+  --win-fill-h-pressed: url('/themes/windowsxp/ui/scroll-fill-h-pressed.png');
+  --win-thumb-v-slice: 5;
+  --win-thumb-v-edge: 5px;
+  --win-thumb-h-slice: 5;
+  --win-thumb-h-edge: 5px;
+  --win-track-v: url('/themes/windowsxp/ui/scroll-track-v.png');
+  --win-track-h: url('/themes/windowsxp/ui/scroll-track-h.png');
+  --win-arrow-up: url('/themes/windowsxp/ui/scroll-up.png');
+  --win-arrow-down: url('/themes/windowsxp/ui/scroll-down.png');
+  --win-arrow-left: url('/themes/windowsxp/ui/scroll-left.png');
+  --win-arrow-right: url('/themes/windowsxp/ui/scroll-right.png');
+  --win-cursor: -webkit-image-set(url('/themes/windowsxp/cursors/arrow.png') 1x, url('/themes/windowsxp/cursors/arrow@2x.png') 2x) 10 10, default;
+  --win-cursor-text: -webkit-image-set(url('/themes/windowsxp/cursors/text.png') 1x, url('/themes/windowsxp/cursors/text@2x.png') 2x) 10 10, text;
+  --win-cursor-hand: -webkit-image-set(url('/themes/windowsxp/cursors/hand.png') 1x, url('/themes/windowsxp/cursors/hand@2x.png') 2x) 10 10, pointer;
+  --win-cursor-ns: -webkit-image-set(url('/themes/windowsxp/cursors/ns.png') 1x, url('/themes/windowsxp/cursors/ns@2x.png') 2x) 10 10, ns-resize;
+  --win-cursor-move: -webkit-image-set(url('/themes/windowsxp/cursors/move.png') 1x, url('/themes/windowsxp/cursors/move@2x.png') 2x) 10 10, grab;
+  --win-cursor-no: -webkit-image-set(url('/themes/windowsxp/cursors/no.png') 1x, url('/themes/windowsxp/cursors/no@2x.png') 2x) 10 10, not-allowed;
+  --win-cursor-cross: -webkit-image-set(url('/themes/windowsxp/cursors/cross.png') 1x, url('/themes/windowsxp/cursors/cross@2x.png') 2x) 10 10, crosshair;
+  --win-clock-icon: url('/themes/windowsxp/icons/clock.png');
+  --win-tree: url('/themes/windowsxp/ui/tree.png');
+  --win-gripper: url('/themes/windowsxp/ui/gripper.png');
+  --xp-pane: linear-gradient(#7ba2e7, #6375d6);
+  --xp-card-edge: #ffffff;
+  --xp-pane-head-text: #215dc6;
+  --xp-band: var(--xp-toolbar-bg) 0 0 / 100% 100%;
+  --xp-caption: url('/themes/windowsxp/ui/caption.png');
+  --xp-caption-close: url('/themes/windowsxp/ui/caption-close.png');
+  --xp-caption-inactive: url('/themes/windowsxp/ui/caption-inactive.png');
+  --xp-caption-max: url('/themes/windowsxp/ui/caption-max.png');
+  --xp-caption-min: url('/themes/windowsxp/ui/caption-min.png');
+  --xp-caption-restore: url('/themes/windowsxp/ui/caption-restore.png');
+  --xp-caption-small: url('/themes/windowsxp/ui/caption-small.png');
+  --xp-combo: url('/themes/windowsxp/ui/combo.png');
+  --xp-frame: url('/themes/windowsxp/ui/frame.png');
+  --xp-gripper: url('/themes/windowsxp/ui/gripper.png');
+  --xp-pane-collapse: url('/themes/windowsxp/ui/pane-collapse.png');
+  --xp-pane-head: url('/themes/windowsxp/ui/pane-head.png');
+  --xp-pane-head-special: url('/themes/windowsxp/ui/pane-head-special.png');
+  --xp-pane-special-collapse: url('/themes/windowsxp/ui/pane-special-collapse.png');
+  --xp-progress-chunk: url('/themes/windowsxp/ui/progress-chunk.png');
+  --xp-progress-track: url('/themes/windowsxp/ui/progress-track.png');
+  --list-progress-stop-1: #2ed331;
+  --list-progress-stop-2: #2ed331;
+  --list-progress-stop-3: #2ed331;
+  --list-progress-stop-4: #2ed331;
+  --list-progress-stop-5: #2ed331;
+  --list-progress-stop-6: #2ed331;
+  --list-progress-stop-7: #2ed331;
+  --list-progress-stop-8: #2ed331;
 }
 
+:root[data-theme='windowsvista'] {
+  --font-interface: 'Vista UI', sans-serif;
+  --font-content: 'Vista UI', sans-serif;
+  --font-mono: var(--font-interface);
+  font-size: 12px;
+  --app-background: url('/themes/windowsvista/aurora.jpg') center / cover;
+  --paper: #ffffff;
+  --paper-strong: #ffffff;
+  --ink: #000000;
+  --muted: #575757;
+  --line: #d5dfe5;
+  --line-strong: #abadb3;
+  --accent: #3399ff;
+  --accent-strong: #0066cc;
+  --theme-checkbox: #176b98;
+  --theme-done: #277b50;
+  --danger: #a8291e;
+  --sidebar: #f4f8fc;
+  --active-nav: #d9f0fd;
+  --row-border: transparent;
+  --drop-inside: #d9f0fd;
+  --time-border: #abadb3;
+  --time-bg: #ffffff;
+  --time-warn-bg: #ffffe1;
+  --time-warn-ink: #784800;
+  --focus-ring: #000000;
+  --shadow: none;
+  --win-dialog-shadow: 0 7px 24px #0000008c;
+  --radius-modal: 7px;
+  --modal-backdrop: transparent;
+  --win-face: #f0f0f0;
+  --win-link: #0066cc;
+  --win-link-hot: #3399ff;
+  --win-gray-text: #838383;
+  --win-select: #3399ff;
+  --win-select-text: #ffffff;
+  --win-frame-width: 7px;
+  --win-caption-height: 30px;
+  --win-button: url('/themes/windowsvista/ui/button-normal.png');
+  --win-button-hot: url('/themes/windowsvista/ui/button-hot.png');
+  --win-button-pressed: url('/themes/windowsvista/ui/button-pressed.png');
+  --win-button-disabled: url('/themes/windowsvista/ui/button-disabled.png');
+  --win-button-default: url('/themes/windowsvista/ui/button-default.png');
+  --win-button-slice: 4;
+  --win-button-edge: 4px;
+  --win-toolbar-hot: url('/themes/windowsvista/ui/toolbar-hot.png');
+  --win-toolbar-pressed: url('/themes/windowsvista/ui/toolbar-pressed.png');
+  --win-toolbar-checked: url('/themes/windowsvista/ui/toolbar-checked.png');
+  --win-toolbar-slice: 13 3 4 3;
+  --win-toolbar-edge: 13px 3px 4px 3px;
+  --win-check: url('/themes/windowsvista/ui/check.png');
+  --win-radio: url('/themes/windowsvista/ui/radio.png');
+  --win-groupbox: url('/themes/windowsvista/ui/groupbox.png');
+  --win-groupbox-slice: 2 2 3 2;
+  --win-groupbox-edge: 2px 2px 3px 2px;
+  --win-legend: #000000;
+  --win-tab: url('/themes/windowsvista/ui/tab-normal.png');
+  --win-tab-hot: url('/themes/windowsvista/ui/tab-hot.png');
+  --win-tab-selected: url('/themes/windowsvista/ui/tab-selected.png');
+  --win-tab-slice: 13 2 4 2;
+  --win-tab-edge: 13px 2px 4px 2px;
+  --win-header: url('/themes/windowsvista/ui/header-normal.png');
+  --win-header-hot: url('/themes/windowsvista/ui/header-hot.png');
+  --win-header-pressed: url('/themes/windowsvista/ui/header-pressed.png');
+  --win-header-slice: 9 3 14 2;
+  --win-header-edge: 9px 3px 14px 2px;
+  --win-slider-track: url('/themes/windowsvista/ui/slider-track.png');
+  --win-slider-thumb: url('/themes/windowsvista/ui/slider-thumb.png');
+  --win-slider-thumb-height: 19px;
+  --win-thumb-v: url('/themes/windowsvista/ui/scroll-thumb-v-normal.png');
+  --win-grip-v: url('/themes/windowsvista/ui/scroll-grip-v-normal.png');
+  --win-fill-v: url('/themes/windowsvista/ui/scroll-fill-v-normal.png');
+  --win-thumb-v-hot: url('/themes/windowsvista/ui/scroll-thumb-v-hot.png');
+  --win-grip-v-hot: url('/themes/windowsvista/ui/scroll-grip-v-hot.png');
+  --win-fill-v-hot: url('/themes/windowsvista/ui/scroll-fill-v-hot.png');
+  --win-thumb-v-pressed: url('/themes/windowsvista/ui/scroll-thumb-v-pressed.png');
+  --win-grip-v-pressed: url('/themes/windowsvista/ui/scroll-grip-v-pressed.png');
+  --win-fill-v-pressed: url('/themes/windowsvista/ui/scroll-fill-v-pressed.png');
+  --win-thumb-h: url('/themes/windowsvista/ui/scroll-thumb-h-normal.png');
+  --win-grip-h: url('/themes/windowsvista/ui/scroll-grip-h-normal.png');
+  --win-fill-h: url('/themes/windowsvista/ui/scroll-fill-h-normal.png');
+  --win-thumb-h-hot: url('/themes/windowsvista/ui/scroll-thumb-h-hot.png');
+  --win-grip-h-hot: url('/themes/windowsvista/ui/scroll-grip-h-hot.png');
+  --win-fill-h-hot: url('/themes/windowsvista/ui/scroll-fill-h-hot.png');
+  --win-thumb-h-pressed: url('/themes/windowsvista/ui/scroll-thumb-h-pressed.png');
+  --win-grip-h-pressed: url('/themes/windowsvista/ui/scroll-grip-h-pressed.png');
+  --win-fill-h-pressed: url('/themes/windowsvista/ui/scroll-fill-h-pressed.png');
+  --win-thumb-v-slice: 5 8;
+  --win-thumb-v-edge: 5px 8px;
+  --win-thumb-h-slice: 8 8 8 11;
+  --win-thumb-h-edge: 8px 8px 8px 11px;
+  --win-track-v: url('/themes/windowsvista/ui/scroll-track-v.png');
+  --win-track-h: url('/themes/windowsvista/ui/scroll-track-h.png');
+  --win-arrow-up: url('/themes/windowsvista/ui/scroll-up.png');
+  --win-arrow-down: url('/themes/windowsvista/ui/scroll-down.png');
+  --win-arrow-left: url('/themes/windowsvista/ui/scroll-left.png');
+  --win-arrow-right: url('/themes/windowsvista/ui/scroll-right.png');
+  --win-cursor: -webkit-image-set(url('/themes/windowsvista/cursors/arrow.png') 1x, url('/themes/windowsvista/cursors/arrow@2x.png') 2x) 0 0, default;
+  --win-cursor-text: text;
+  --win-cursor-hand: -webkit-image-set(url('/themes/windowsvista/cursors/hand.png') 1x, url('/themes/windowsvista/cursors/hand@2x.png') 2x) 5 0, pointer;
+  --win-cursor-ns: -webkit-image-set(url('/themes/windowsvista/cursors/ns.png') 1x, url('/themes/windowsvista/cursors/ns@2x.png') 2x) 15 15, ns-resize;
+  --win-cursor-move: -webkit-image-set(url('/themes/windowsvista/cursors/move.png') 1x, url('/themes/windowsvista/cursors/move@2x.png') 2x) 15 15, grab;
+  --win-cursor-no: -webkit-image-set(url('/themes/windowsvista/cursors/no.png') 1x, url('/themes/windowsvista/cursors/no@2x.png') 2x) 16 16, not-allowed;
+  --win-cursor-cross: crosshair;
+  --win-clock-icon: url('/themes/windowsvista/icons/clock.png');
+  --win-tree: url('/themes/windowsvista/ui/tree-arrow.png');
+  --win-gripper: url('/themes/windowsvista/ui/gripper.png');
+  --list-progress-stop-1: #06b025;
+  --list-progress-stop-2: #06b025;
+  --list-progress-stop-3: #06b025;
+  --list-progress-stop-4: #06b025;
+  --list-progress-stop-5: #06b025;
+  --list-progress-stop-6: #06b025;
+  --list-progress-stop-7: #06b025;
+  --list-progress-stop-8: #06b025;
+}
+
+/* Neither system had a dark mode. XP's dark appearance wears Microsoft's own black
+   Royale Noir chrome; both only darken Balance's content surfaces. */
 :root[data-color-scheme='dark'][data-theme='windowsxp'] {
   --app-background: linear-gradient(#03102099, #03102099), url('/themes/windowsxp/bliss.png') center / cover;
   --paper: #202631;
-  --paper-strong: #303846;
+  --paper-strong: #2a3240;
   --ink: #f4f4ef;
   --muted: #c1c7d2;
   --line: #727e91;
@@ -65,53 +289,81 @@
   --theme-done: #9acb82;
   --danger: #ffafa2;
   --sidebar: #283349;
-  --active-nav: #29476e;
-  --row-border: #445168;
+  --active-nav: #316ac5;
+  --row-border: #38424f;
   --drop-inside: #29476e;
   --time-border: #727e91;
-  --time-bg: #303846;
+  --time-bg: #2a3240;
   --time-warn-bg: #4b3b20;
   --time-warn-ink: #ffe4a1;
-  --focus-ring: #ffce70;
-  --shadow: 2px 3px 4px #00000088;
-  --xp-face: #303846;
-  --xp-button-top: #46536a;
-  --xp-button-bottom: #283143;
-}
-
-:root[data-theme='windowsvista'] {
-  --font-interface: 'Vista UI', sans-serif;
-  --font-content: 'Vista UI', sans-serif;
-  --font-mono: Consolas, 'Courier New', monospace;
-  --app-background: url('/themes/windowsvista/aurora.jpg') center / cover;
-  --paper: #ffffff;
-  --paper-strong: #eff7fb;
-  --ink: #14232d;
-  --muted: #455e6d;
-  --line: #7e9dad;
-  --line-strong: #4d768d;
-  --accent: #176b98;
-  --accent-strong: #174f70;
-  --theme-checkbox: #176b98;
-  --theme-done: #277b50;
-  --danger: #a8291e;
-  --sidebar: #d9eaf2;
-  --active-nav: #d9edf8;
-  --row-border: #dce6ec;
-  --drop-inside: #d9edf8;
-  --time-border: #8caabd;
-  --time-bg: #e4f1f9;
-  --time-warn-bg: #fff2c9;
-  --time-warn-ink: #784800;
-  --focus-ring: #1b85bb;
-  --shadow: 0 4px 18px #071b3680;
-  --radius-modal: 7px;
-  --modal-backdrop: #09192466;
-  --aero-glass: linear-gradient(125deg, #eefaff9c, #75a8c285 40%, #bedeea9c 64%, #5893acb8);
-  --aero-button: linear-gradient(#ffffff, #f0f5f8 48%, #e1eaf0 49%, #f6fbfe);
-  --aero-button-hover: linear-gradient(#f5fcff, #d9f0ff 48%, #b5e1fa 49%, #e2f5ff);
-  --aero-caption-ink: #102431;
-  --aero-caption-glow: #ffffff;
+  --focus-ring: #ffffff;
+  --win-face: #303846;
+  --win-link: #a9c9ff;
+  --win-link-hot: #d3e3ff;
+  --win-legend: #a9c9ff;
+  --xp-pane: linear-gradient(#1b2a3d, #101a26);
+  --xp-card-edge: #2a4d8f;
+  --xp-pane-head-text: #d9e1f6;
+  --xp-band: linear-gradient(#333d4c, #272f3c);
+  --win-button: url('/themes/windowsxp/ui-noir/button-normal.png');
+  --win-button-hot: url('/themes/windowsxp/ui-noir/button-hot.png');
+  --win-button-pressed: url('/themes/windowsxp/ui-noir/button-pressed.png');
+  --win-button-disabled: url('/themes/windowsxp/ui-noir/button-disabled.png');
+  --win-button-default: url('/themes/windowsxp/ui-noir/button-default.png');
+  --win-toolbar-hot: url('/themes/windowsxp/ui-noir/toolbar-hot.png');
+  --win-toolbar-pressed: url('/themes/windowsxp/ui-noir/toolbar-pressed.png');
+  --win-toolbar-checked: url('/themes/windowsxp/ui-noir/toolbar-checked.png');
+  --win-check: url('/themes/windowsxp/ui-noir/check.png');
+  --win-radio: url('/themes/windowsxp/ui-noir/radio.png');
+  --win-groupbox: url('/themes/windowsxp/ui-noir/groupbox.png');
+  --win-tab: url('/themes/windowsxp/ui-noir/tab-normal.png');
+  --win-tab-hot: url('/themes/windowsxp/ui-noir/tab-hot.png');
+  --win-tab-selected: url('/themes/windowsxp/ui-noir/tab-selected.png');
+  --win-header: url('/themes/windowsxp/ui-noir/header-normal.png');
+  --win-header-hot: url('/themes/windowsxp/ui-noir/header-hot.png');
+  --win-header-pressed: url('/themes/windowsxp/ui-noir/header-pressed.png');
+  --win-slider-track: url('/themes/windowsxp/ui-noir/slider-track.png');
+  --win-slider-thumb: url('/themes/windowsxp/ui-noir/slider-thumb.png');
+  --win-thumb-v: url('/themes/windowsxp/ui-noir/scroll-thumb-v-normal.png');
+  --win-grip-v: url('/themes/windowsxp/ui-noir/scroll-grip-v-normal.png');
+  --win-fill-v: url('/themes/windowsxp/ui-noir/scroll-fill-v-normal.png');
+  --win-thumb-v-hot: url('/themes/windowsxp/ui-noir/scroll-thumb-v-hot.png');
+  --win-grip-v-hot: url('/themes/windowsxp/ui-noir/scroll-grip-v-hot.png');
+  --win-fill-v-hot: url('/themes/windowsxp/ui-noir/scroll-fill-v-hot.png');
+  --win-thumb-v-pressed: url('/themes/windowsxp/ui-noir/scroll-thumb-v-pressed.png');
+  --win-grip-v-pressed: url('/themes/windowsxp/ui-noir/scroll-grip-v-pressed.png');
+  --win-fill-v-pressed: url('/themes/windowsxp/ui-noir/scroll-fill-v-pressed.png');
+  --win-thumb-h: url('/themes/windowsxp/ui-noir/scroll-thumb-h-normal.png');
+  --win-grip-h: url('/themes/windowsxp/ui-noir/scroll-grip-h-normal.png');
+  --win-fill-h: url('/themes/windowsxp/ui-noir/scroll-fill-h-normal.png');
+  --win-thumb-h-hot: url('/themes/windowsxp/ui-noir/scroll-thumb-h-hot.png');
+  --win-grip-h-hot: url('/themes/windowsxp/ui-noir/scroll-grip-h-hot.png');
+  --win-fill-h-hot: url('/themes/windowsxp/ui-noir/scroll-fill-h-hot.png');
+  --win-thumb-h-pressed: url('/themes/windowsxp/ui-noir/scroll-thumb-h-pressed.png');
+  --win-grip-h-pressed: url('/themes/windowsxp/ui-noir/scroll-grip-h-pressed.png');
+  --win-fill-h-pressed: url('/themes/windowsxp/ui-noir/scroll-fill-h-pressed.png');
+  --win-track-v: url('/themes/windowsxp/ui-noir/scroll-track-v.png');
+  --win-track-h: url('/themes/windowsxp/ui-noir/scroll-track-h.png');
+  --win-arrow-up: url('/themes/windowsxp/ui-noir/scroll-up.png');
+  --win-arrow-down: url('/themes/windowsxp/ui-noir/scroll-down.png');
+  --win-arrow-left: url('/themes/windowsxp/ui-noir/scroll-left.png');
+  --win-arrow-right: url('/themes/windowsxp/ui-noir/scroll-right.png');
+  --win-tree: url('/themes/windowsxp/ui-noir/tree.png');
+  --xp-caption: url('/themes/windowsxp/ui-noir/caption.png');
+  --xp-caption-close: url('/themes/windowsxp/ui-noir/caption-close.png');
+  --xp-caption-inactive: url('/themes/windowsxp/ui-noir/caption-inactive.png');
+  --xp-caption-max: url('/themes/windowsxp/ui-noir/caption-max.png');
+  --xp-caption-min: url('/themes/windowsxp/ui-noir/caption-min.png');
+  --xp-caption-restore: url('/themes/windowsxp/ui-noir/caption-restore.png');
+  --xp-caption-small: url('/themes/windowsxp/ui-noir/caption-small.png');
+  --xp-combo: url('/themes/windowsxp/ui-noir/combo.png');
+  --xp-frame: url('/themes/windowsxp/ui-noir/frame.png');
+  --xp-pane-collapse: url('/themes/windowsxp/ui-noir/pane-collapse.png');
+  --xp-pane-head: url('/themes/windowsxp/ui-noir/pane-head.png');
+  --xp-pane-head-special: url('/themes/windowsxp/ui-noir/pane-head-special.png');
+  --xp-pane-special-collapse: url('/themes/windowsxp/ui-noir/pane-special-collapse.png');
+  --xp-progress-chunk: url('/themes/windowsxp/ui-noir/progress-chunk.png');
+  --xp-progress-track: url('/themes/windowsxp/ui-noir/progress-track.png');
 }
 
 :root[data-color-scheme='dark'][data-theme='windowsvista'] {
@@ -120,186 +372,393 @@
   --paper-strong: #20343e;
   --ink: #f1f7fa;
   --muted: #bed0d9;
-  --line: #658b9e;
-  --line-strong: #9dbaca;
+  --line: #40606f;
+  --line-strong: #658b9e;
   --accent: #99d9fa;
   --accent-strong: #c5ecff;
   --theme-checkbox: #99d9fa;
   --theme-done: #94dab0;
   --danger: #ffb6a8;
-  --sidebar: #20343e;
+  --sidebar: #1c2c35;
   --active-nav: #24475a;
-  --row-border: #3d5867;
+  --row-border: transparent;
   --drop-inside: #24475a;
   --time-border: #658b9e;
   --time-bg: #203e4f;
   --time-warn-bg: #493d24;
   --time-warn-ink: #ffe7b0;
-  --focus-ring: #99d9fa;
-  --shadow: 0 4px 18px #00000099;
-  --aero-glass: linear-gradient(125deg, #3b6179e8, #1a3544e8 40%, #32596ee8 64%, #162e3de8);
-  --aero-button: linear-gradient(#435e6e, #314957 48%, #233b49 49%, #385363);
-  --aero-button-hover: linear-gradient(#526f82, #3c6077 48%, #274f68 49%, #426b83);
-  --aero-caption-ink: #f1f7fa;
-  --aero-caption-glow: #071821;
+  --focus-ring: #ffffff;
+  --win-face: #20343e;
+  --win-link: #99d9fa;
+  --win-link-hot: #c5ecff;
+  --win-legend: #c5ecff;
 }
 
-:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) :is(.sidebar-brand-heading h1, .database-loading-brand, .mobile-app-title strong) {
-  font-family: var(--font-interface);
-  font-size: 20px;
+/* ---------- Everything that follows is shared unless a theme is named ---------- */
+
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) ::selection {
+  background: var(--win-select);
+  color: var(--win-select-text);
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) a,
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .path-link {
+  color: var(--win-link);
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) a:hover,
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .path-link:hover {
+  color: var(--win-link-hot);
+  text-decoration: underline;
+}
+
+/* Windows had sentence-case labels, never tracked capitals. */
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) :is(.eyebrow, .field-label, .color-control-label, .day-quiz-progress, .generation-template-field, .goal-create-panel label > span, .goal-card-fields .goal-field > span, .goal-recent-history-header > span, .metric-progress, .rail-chip-archived, .search-group-toggle, .shortcut-group h4, label > span) {
   letter-spacing: 0;
-}
-:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) {
-  --list-progress-stop-1: #25822b;
-  --list-progress-stop-2: #4fa53d;
-  --list-progress-stop-3: #7ac853;
-  --list-progress-stop-4: #99dc6c;
-  --list-progress-stop-5: #70c94a;
-  --list-progress-stop-6: #57b935;
-  --list-progress-stop-7: #3d9c2d;
-  --list-progress-stop-8: #25822b;
+  text-transform: none;
 }
 
-:root[data-theme='windowsxp'] .sidebar {
-  background: linear-gradient(#f3f7ff, var(--sidebar) 180px);
-  border-right: 2px solid #245edb;
-}
-:root[data-color-scheme='dark'][data-theme='windowsxp'] .sidebar {
-  background: linear-gradient(#243b62, var(--sidebar) 180px);
-}
-:root[data-theme='windowsxp'] :is(.page-header) {
-  border: 1px solid #0831d9;
-  border-bottom: 2px solid #003dd7;
-  border-radius: 7px 7px 0 0;
-  background: var(--xp-caption);
-  box-shadow: inset 1px 1px #67b4ff, inset -1px 0 #001ea0;
-  padding: 9px 12px;
-  color: #ffffff;
-  text-shadow: 1px 1px #0f1089;
-}
-:root[data-theme='windowsxp'] :is(.page-header h2, .page-header .day-pane-heading > h2, .page-header .daily-reminder-button) {
-  font-family: 'Trebuchet MS', Tahoma, sans-serif;
-  color: #ffffff;
-  font-size: 18px;
-  font-weight: 700;
-}
-:root[data-theme='windowsxp'] :is(.list-panel, .template-panel, .settings-panel, .notes-workspace) {
-  border: 3px solid var(--xp-frame);
-  border-radius: 3px;
-  box-shadow: inset 1px 1px #c5ddff, var(--shadow);
-}
-:root[data-theme='windowsxp'] button:where(:not(.ghost):not(.check):not(.time-part):not(.daily-reminder-button):not(.quiet):not(.plan-goal-badge):not(.select-handle):not(.drag-handle):not(.nav-child):not(.search-result):not(.search-section-header)) {
-  border-radius: 3px;
-  border: 1px solid #003c74;
-  background: linear-gradient(var(--xp-button-top), var(--xp-face) 86%, var(--xp-button-bottom));
-  box-shadow: inset 1px 1px #ffffff66;
-}
-:root[data-theme='windowsxp'] button:where(:not(.ghost):not(.check):not(.time-part):not(.daily-reminder-button):not(.quiet):not(.plan-goal-badge):not(.select-handle):not(.drag-handle):not(.nav-child):not(.search-result):not(.search-section-header)):hover {
-  box-shadow: inset 0 0 0 2px #e9ad47;
-}
-:root[data-theme='windowsxp'] button:where(:not(.ghost):not(.check):not(.time-part):not(.daily-reminder-button):not(.quiet):not(.plan-goal-badge):not(.select-handle):not(.drag-handle):not(.nav-child):not(.search-result):not(.search-section-header)):active {
-  background: linear-gradient(var(--xp-button-bottom), var(--xp-face));
-  box-shadow: inset 1px 1px #6e6b6266;
-}
-:root[data-theme='windowsxp'] :is(button.primary, .generate-day-button) {
-  border-color: #003c74;
-  color: var(--ink);
-  background: linear-gradient(var(--xp-button-top), var(--xp-face) 86%, var(--xp-button-bottom));
-  box-shadow: inset 0 0 0 1px #fff, inset 0 0 0 2px #a5c4ed;
-  text-shadow: none;
-}
-:root[data-theme='windowsxp'] .sidebar nav button.active {
-  background: var(--xp-caption);
-  color: #ffffff;
-  border-color: #003c74;
-}
-:root[data-theme='windowsxp'] .sidebar nav button.active .nav-shortcut { color: inherit; }
-:root[data-theme='windowsxp'] :is(input:not([type='checkbox']), select, .rich-text-field) {
-  border: 1px solid #7f9db9;
+/* Square corners and no soft shadows on Balance's own cards and controls. */
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) :is(.active-project-gate, .alert-action, .app-error-banner, .chart-card, .chart-tooltip, .chip, .choice, .choice button, .color-picker, .completed-list-card, .database-load-error, .devices button, .document-find, .done-tint-preview, .export-panel div, .extension-alert, .goal-copy-button, .goal-name-input, .goal-history-name small.goal-lapse, .goal-recent-day-tooltip, .goal-state, .goals-to-review, .goals-to-review .add-to-today, .goals-to-review .review-goal, .history-notice, .history-range input, .image-tools, .link-copy-status, .list-archived-banner, .list-item-archive, .list-trim-nudge, .menu, .menu button, .metric-card, .metric-question-prompt, .mobile-selection-toggle, .mobile-task-menu, .mobile-time-end-side, .mobile-time-start-side, .navigation-link-status, .next-task-card, .next-task-row, .next-task-time, .note-format-toolbar, .note-new-shortcut, .note-title, .note-trash-notice, .notes-sidebar, .paste-review-card, .paste-review-edit, .path-row, .prioritize-add, .prioritize-next, .prioritize-number, .prioritize-past button, .prioritize-start, .priority-delete, .priority-list, .priority-list li, .priority-text, .priority-text-edit, .probability-input, .qr-scan-cancel, .range-switcher, .recovery-json, .recovery-key, .recovery-panel-status, .recovery-row, .situate-pill, .sync-card, .sync-choice, .sync-code, .targets-panel, .time-end-side, .time-start-side, .viewer-close, .voice-clip-chip, .voice-idea-play, .voice-idea-text textarea, .voice-record-button.voice-record-button, .widget-privacy-control, div.project-card, kbd) {
   border-radius: 0;
 }
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) :is(.chart-tooltip, .metric-card, .next-task-card, .notes-sidebar, .prioritize-number, .goal-recent-day-tooltip) {
+  box-shadow: none;
+}
 
-:root[data-theme='windowsvista'] .sidebar {
-  background: var(--aero-glass);
-  backdrop-filter: blur(12px);
-  border-right: 1px solid #ffffff88;
-  box-shadow: inset -1px 0 #173e5277;
+/* The mouse pointers, on desktop. Buttons keep the arrow, as they did on Windows. */
+@media (hover: hover) and (pointer: fine) {
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) {
+    cursor: var(--win-cursor);
+  }
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) :is(button, select, label, summary, input[type='checkbox'], input[type='radio'], input[type='range'], .check-target) {
+    cursor: var(--win-cursor);
+  }
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) :is(a, .path-link, [data-balance-link] a) {
+    cursor: var(--win-cursor-hand);
+  }
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) :is(input:not([type='checkbox'], [type='radio'], [type='range']), textarea, [contenteditable='true'], .rich-text-field, .item-text, .item-text-display, .template-text, .note-text) {
+    cursor: var(--win-cursor-text);
+  }
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) :is(button, input):disabled {
+    cursor: var(--win-cursor-no);
+  }
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) :is(.drag-handle, .drag-handle:active) {
+    cursor: var(--win-cursor-move);
+  }
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .time-part {
+    cursor: var(--win-cursor-ns);
+  }
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .select-handle {
+    cursor: var(--win-cursor-cross);
+  }
+
+  /* The systems' 17px scrollbars. Parts are selected without a :root prefix because
+     Chromium drops :vertical and :horizontal in a selector with a combinator, so the
+     bitmaps arrive through variables. Parts do nothing in other themes, where the
+     ::-webkit-scrollbar rule that turns custom scrollbars on doesn't match. macOS
+     browsers never draw scrollbar buttons, so the arrows are painted on the bar. */
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) :is(.list-template-tabs, .template-rail) {
+    scrollbar-width: auto;
+  }
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) ::-webkit-scrollbar {
+    width: 17px;
+    height: 17px;
+    image-rendering: pixelated;
+  }
+  ::-webkit-scrollbar:vertical {
+    background: var(--win-arrow-up) top no-repeat, var(--win-arrow-down) bottom no-repeat, var(--win-track-v) 0 0 / 17px 100%;
+  }
+  ::-webkit-scrollbar:horizontal {
+    background: var(--win-arrow-left) left no-repeat, var(--win-arrow-right) right no-repeat, var(--win-track-h) 0 0 / 100% 17px;
+  }
+  ::-webkit-scrollbar-track:vertical {
+    margin-block: 17px;
+  }
+  ::-webkit-scrollbar-track:horizontal {
+    margin-inline: 17px;
+  }
+  ::-webkit-scrollbar-thumb {
+    border: 5px solid transparent;
+    image-rendering: pixelated;
+  }
+  ::-webkit-scrollbar-thumb:vertical {
+    border-image: var(--win-thumb-v) var(--win-thumb-v-slice) / var(--win-thumb-v-edge) stretch;
+    background: var(--win-grip-v) center no-repeat, var(--win-fill-v) 0 0 / 100% 100%;
+  }
+  ::-webkit-scrollbar-thumb:vertical:hover {
+    border-image-source: var(--win-thumb-v-hot);
+    background: var(--win-grip-v-hot) center no-repeat, var(--win-fill-v-hot) 0 0 / 100% 100%;
+  }
+  ::-webkit-scrollbar-thumb:vertical:active {
+    border-image-source: var(--win-thumb-v-pressed);
+    background: var(--win-grip-v-pressed) center no-repeat, var(--win-fill-v-pressed) 0 0 / 100% 100%;
+  }
+  ::-webkit-scrollbar-thumb:horizontal {
+    border-image: var(--win-thumb-h) var(--win-thumb-h-slice) / var(--win-thumb-h-edge) stretch;
+    background: var(--win-grip-h) center no-repeat, var(--win-fill-h) 0 0 / 100% 100%;
+  }
+  ::-webkit-scrollbar-thumb:horizontal:hover {
+    border-image-source: var(--win-thumb-h-hot);
+    background: var(--win-grip-h-hot) center no-repeat, var(--win-fill-h-hot) 0 0 / 100% 100%;
+  }
+  ::-webkit-scrollbar-thumb:horizontal:active {
+    border-image-source: var(--win-thumb-h-pressed);
+    background: var(--win-grip-h-pressed) center no-repeat, var(--win-fill-h-pressed) 0 0 / 100% 100%;
+  }
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) ::-webkit-scrollbar-corner {
+    background: var(--win-face);
+  }
 }
-:root[data-theme='windowsvista'] :is(.page-header) {
-  background: var(--aero-glass);
-  backdrop-filter: blur(12px);
-  border: 1px solid #ffffffaa;
-  border-radius: 7px 7px 0 0;
-  box-shadow: 0 0 0 1px #18374899, inset 0 1px #ffffffaa;
-  color: var(--aero-caption-ink);
-  padding: 10px 14px;
+
+/* ---------- Push buttons: the real nine-grid bevels ---------- */
+
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) button:where(:not(.ghost, .check, .time-part, .daily-reminder-button, .quiet, .plan-goal-badge, .select-handle, .drag-handle, .search-result, .search-section-header, .caption-button, .overlay-caption-close, .note-card, .rail-chip, .swatch, .path-link, .menu-toggle, .notes-back-link, .situate-pill, .theme-option-select, .color-scheme-option, .idea-group-card, .goal-date-head, .goal-day-cell, .goal-recent-day, .imax-click-handoff, .whole-row-selection-target, .search-result-target, .children-toggle, .day-template-option, .mobile-menu-button, .mobile-search-button, .mobile-drawer-backdrop, .primary-nav button, .sidebar-active-projects button, .note-format-group button, .segmented button, .link-context-menu button, .page-header button, .goal-history-toolbar button)) {
+  border: 1px solid transparent;
+  border-radius: 0;
+  border-image: var(--win-button) var(--win-button-slice) fill / var(--win-button-edge) stretch;
+  background: none;
+  box-shadow: none;
+  color: #000;
+  text-shadow: none;
+  image-rendering: pixelated;
+  transition: none;
 }
-:root[data-theme='windowsvista'] :is(.page-header h2, .page-header .day-pane-heading > h2, .page-header .daily-reminder-button) {
-  font-family: var(--font-interface);
-  font-size: 19px;
-  font-weight: 400;
-  color: var(--aero-caption-ink);
-  text-shadow: 0 0 4px var(--aero-caption-glow), 0 0 9px var(--aero-caption-glow), 0 0 14px var(--aero-caption-glow);
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) button:where(:not(.ghost, .check, .time-part, .daily-reminder-button, .quiet, .plan-goal-badge, .select-handle, .drag-handle, .search-result, .search-section-header, .caption-button, .overlay-caption-close, .note-card, .rail-chip, .swatch, .path-link, .menu-toggle, .notes-back-link, .situate-pill, .theme-option-select, .color-scheme-option, .idea-group-card, .goal-date-head, .goal-day-cell, .goal-recent-day, .imax-click-handoff, .whole-row-selection-target, .search-result-target, .children-toggle, .day-template-option, .mobile-menu-button, .mobile-search-button, .mobile-drawer-backdrop, .primary-nav button, .sidebar-active-projects button, .note-format-group button, .segmented button, .link-context-menu button, .page-header button, .goal-history-toolbar button)):hover:not(:disabled) {
+  border-color: transparent;
+  border-image-source: var(--win-button-hot);
+  background: none;
+  box-shadow: none;
+  color: #000;
 }
-:root[data-theme='windowsvista'] :is(.list-panel, .template-panel, .settings-panel, .notes-workspace) {
-  border: 5px solid color-mix(in srgb, var(--line) 64%, transparent);
-  border-radius: 6px;
-  box-shadow: 0 0 0 1px #0c2d4388, inset 0 0 0 1px #ffffffaa, var(--shadow);
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) button:where(:not(.ghost, .check, .time-part, .daily-reminder-button, .quiet, .plan-goal-badge, .select-handle, .drag-handle, .search-result, .search-section-header, .caption-button, .overlay-caption-close, .note-card, .rail-chip, .swatch, .path-link, .menu-toggle, .notes-back-link, .situate-pill, .theme-option-select, .color-scheme-option, .idea-group-card, .goal-date-head, .goal-day-cell, .goal-recent-day, .imax-click-handoff, .whole-row-selection-target, .search-result-target, .children-toggle, .day-template-option, .mobile-menu-button, .mobile-search-button, .mobile-drawer-backdrop, .primary-nav button, .sidebar-active-projects button, .note-format-group button, .segmented button, .link-context-menu button, .page-header button, .goal-history-toolbar button)):active:not(:disabled) {
+  border-image-source: var(--win-button-pressed);
 }
-:root[data-theme='windowsvista'] button:where(:not(.ghost):not(.check):not(.time-part):not(.daily-reminder-button):not(.quiet):not(.plan-goal-badge):not(.select-handle):not(.drag-handle):not(.nav-child):not(.search-result):not(.search-section-header)) {
-  border: 1px solid var(--line-strong);
-  border-radius: 3px;
-  background: var(--aero-button);
-  box-shadow: inset 0 0 0 1px #ffffff88;
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) button:where(:not(.ghost, .check, .time-part, .daily-reminder-button, .quiet, .plan-goal-badge, .select-handle, .drag-handle, .search-result, .search-section-header, .caption-button, .overlay-caption-close, .note-card, .rail-chip, .swatch, .path-link, .menu-toggle, .notes-back-link, .situate-pill, .theme-option-select, .color-scheme-option, .idea-group-card, .goal-date-head, .goal-day-cell, .goal-recent-day, .imax-click-handoff, .whole-row-selection-target, .search-result-target, .children-toggle, .day-template-option, .mobile-menu-button, .mobile-search-button, .mobile-drawer-backdrop, .primary-nav button, .sidebar-active-projects button, .note-format-group button, .segmented button, .link-context-menu button, .page-header button, .goal-history-toolbar button)):disabled {
+  border-image-source: var(--win-button-disabled);
+  color: var(--win-gray-text);
+  opacity: 1;
 }
-:root[data-theme='windowsvista'] button:where(:not(.ghost):not(.check):not(.time-part):not(.daily-reminder-button):not(.quiet):not(.plan-goal-badge):not(.select-handle):not(.drag-handle):not(.nav-child):not(.search-result):not(.search-section-header)):hover {
-  background: var(--aero-button-hover);
-  border-color: var(--accent);
-  box-shadow: inset 0 0 0 1px #ffffffaa, 0 0 4px #58c8f366;
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) button:where(:not(.ghost, .check, .time-part, .daily-reminder-button, .quiet, .plan-goal-badge, .select-handle, .drag-handle, .search-result, .search-section-header, .caption-button, .overlay-caption-close, .note-card, .rail-chip, .swatch, .path-link, .menu-toggle, .notes-back-link, .situate-pill, .theme-option-select, .color-scheme-option, .idea-group-card, .goal-date-head, .goal-day-cell, .goal-recent-day, .imax-click-handoff, .whole-row-selection-target, .search-result-target, .children-toggle, .day-template-option, .mobile-menu-button, .mobile-search-button, .mobile-drawer-backdrop, .primary-nav button, .sidebar-active-projects button, .note-format-group button, .segmented button, .link-context-menu button, .page-header button, .goal-history-toolbar button)):focus-visible {
+  border-image-source: var(--win-button-default);
+  outline: 1px dotted #000;
+  outline-offset: -4px;
 }
-:root[data-theme='windowsvista'] button:where(:not(.ghost):not(.check):not(.time-part):not(.daily-reminder-button):not(.quiet):not(.plan-goal-badge):not(.select-handle):not(.drag-handle):not(.nav-child):not(.search-result):not(.search-section-header)):active {
-  box-shadow: inset 0 1px 3px #163e5877;
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) :is(button.primary, .generate-day-button):not(:disabled, :hover, :active, .page-header *) {
+  border-image-source: var(--win-button-default);
+  color: #000;
+  text-shadow: none;
 }
-:root[data-theme='windowsvista'] button.primary {
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) button .nav-shortcut {
+  color: #5e5c50;
+}
+
+/* Flat toolbar buttons that only show a bevel under the pointer. */
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) button:where(.ghost, .icon-button.quiet:not(.children-toggle, .overlay-caption-close), .note-format-group button, .segmented button, .notes-back-link, .goal-history-toolbar button) {
+  border: 1px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
   color: var(--ink);
-  box-shadow: inset 0 0 0 1px #ffffffaa, inset 0 0 0 2px #50c6f4;
+  image-rendering: pixelated;
+  transition: none;
 }
-:root[data-theme='windowsvista'] .sidebar nav button.active {
-  background: var(--aero-button-hover);
-  border-color: var(--line-strong);
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) button:where(.ghost, .icon-button.quiet:not(.children-toggle, .overlay-caption-close), .note-format-group button, .segmented button, .notes-back-link, .goal-history-toolbar button):hover:not(:disabled),
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) button:where(.note-format-group button, .goal-history-toolbar button):focus-visible {
+  border-color: transparent;
+  border-image: var(--win-toolbar-hot) var(--win-toolbar-slice) fill / var(--win-toolbar-edge) stretch;
+  background: transparent;
+  color: #000;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) button:where(.ghost, .icon-button.quiet:not(.children-toggle, .overlay-caption-close), .note-format-group button, .segmented button, .notes-back-link, .goal-history-toolbar button):active:not(:disabled) {
+  border-image: var(--win-toolbar-pressed) var(--win-toolbar-slice) fill / var(--win-toolbar-edge) stretch;
+  color: #000;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) button:where(.note-format-group button, .segmented button).active {
+  border-color: transparent;
+  border-image: var(--win-toolbar-checked) var(--win-toolbar-slice) fill / var(--win-toolbar-edge) stretch;
+  background: transparent;
+  color: #000;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .segmented {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+}
+
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .next-task-row .check {
+  align-self: center;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .note-format-toolbar {
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: var(--win-face);
+  box-shadow: none;
+}
+:root[data-theme='windowsxp'] .note-format-toolbar {
+  background: var(--xp-band);
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .note-format-group {
+  border-right: 0;
+}
+
+/* ---------- Check boxes, radio buttons, sliders ---------- */
+
+@media (forced-colors: none) {
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) :is(input[type='checkbox'], input[type='radio']) {
+    -webkit-appearance: none;
+    appearance: none;
+    --note-check-size: 13px;
+    --frame: 0;
+    flex: 0 0 auto;
+    /* The bitmaps are 13px; a larger box would show the neighboring frames. */
+    width: 13px !important;
+    height: 13px !important;
+    border: 0;
+    border-radius: 0;
+    background: var(--win-check) 0 calc(var(--frame) * -13px) no-repeat;
+    box-shadow: none;
+    image-rendering: pixelated;
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) input[type='radio'] { background-image: var(--win-radio); }
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) :is(input[type='checkbox'], input[type='radio']):hover { --frame: 1; }
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) :is(input[type='checkbox'], input[type='radio']):active { --frame: 2; }
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) :is(input[type='checkbox'], input[type='radio']):disabled { --frame: 3; }
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) :is(input[type='checkbox'], input[type='radio']):is(:checked, .mobile-checkbox-drag-preview *) { --frame: 4; }
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) :is(input[type='checkbox'], input[type='radio']):checked:hover { --frame: 5; }
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) :is(input[type='checkbox'], input[type='radio']):checked:active { --frame: 6; }
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) :is(input[type='checkbox'], input[type='radio']):checked:disabled { --frame: 7; }
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) input[type='checkbox']:indeterminate { --frame: 8; }
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) input[type='checkbox']:indeterminate:hover { --frame: 9; }
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) :is(input[type='checkbox'], input[type='radio']):focus {
+    outline: none;
+  }
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) :is(input[type='checkbox'], input[type='radio']):focus-visible {
+    outline: 1px dotted var(--ink);
+    outline-offset: 1px;
+  }
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .lexical-note-editor {
+    --note-check-size: 13px;
+  }
+}
+
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .probability-slider :is(.track) {
+  height: 5px;
+  border-radius: 0;
+  border: 2px solid transparent;
+  border-image: var(--win-slider-track) 2 fill / 2px stretch;
+  background: none;
+  image-rendering: pixelated;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .probability-slider .fill {
+  display: none;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .probability-slider .thumb {
+  width: 11px;
+  height: var(--win-slider-thumb-height);
+  border: 0;
+  border-radius: 0;
+  background: var(--win-slider-thumb) 0 0 no-repeat;
+  box-shadow: none;
+  image-rendering: pixelated;
+}
+
+/* ---------- Text fields ---------- */
+
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) :is(input:not([type='checkbox'], [type='radio'], [type='range']), textarea, select, .rich-text-field, .item-text, .template-text, .title-input, .goal-rules-editor) {
+  border-radius: 0;
+  box-shadow: none;
+  outline: none;
+  transition: none;
+}
+:root[data-theme='windowsxp'] :is(input:not([type='checkbox'], [type='radio'], [type='range']), textarea, select, .rich-text-field, .goal-rules-editor) {
+  border: 1px solid #7f9db9;
+}
+:root[data-theme='windowsxp'] :is(input:not([type='checkbox'], [type='radio'], [type='range']), textarea, .rich-text-field, .goal-rules-editor):is(:hover, :focus, :focus-within) {
+  border-color: #7f9db9;
+  box-shadow: none;
+}
+:root[data-theme='windowsxp'] :is(input, textarea, select):disabled {
+  border-color: #c9c7ba;
+  background: #ebebe4;
+  color: var(--win-gray-text);
+}
+:root[data-theme='windowsvista'] :is(input:not([type='checkbox'], [type='radio'], [type='range']), textarea, .rich-text-field, .goal-rules-editor) {
+  border: 1px solid transparent;
+  border-image: url('/themes/windowsvista/ui/edit-normal.png') 2 / 2px stretch;
+  background-color: var(--paper);
+  color: var(--ink);
+  image-rendering: pixelated;
+}
+:root[data-theme='windowsvista'] :is(input:not([type='checkbox'], [type='radio'], [type='range']), textarea, .rich-text-field, .goal-rules-editor):hover {
+  border-color: transparent;
+  border-image-source: url('/themes/windowsvista/ui/edit-hot.png');
+  box-shadow: none;
+}
+:root[data-theme='windowsvista'] :is(input:not([type='checkbox'], [type='radio'], [type='range']), textarea, .rich-text-field, .goal-rules-editor):is(:focus, :focus-within) {
+  border-color: transparent;
+  border-image-source: url('/themes/windowsvista/ui/edit-focus.png');
+  box-shadow: none;
+}
+:root[data-theme='windowsvista'] :is(input, textarea):disabled {
+  border-image-source: url('/themes/windowsvista/ui/edit-disabled.png');
+  color: var(--win-gray-text);
+}
+/* A note's title and an editing task row are bare until they hold the caret. */
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .note-title:not(:focus) {
+  border-color: transparent;
+  border-image: none;
+  background: transparent;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) :is(.plan-row, .template-main) :is(.rich-text-field, .item-text):not(:focus, :focus-within) {
+  border-color: transparent;
+  border-image: none;
+  background: transparent;
+}
+
+/* Drop-down lists with the systems' own arrow. */
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) select {
+  -webkit-appearance: none;
+  appearance: none;
+  min-height: 21px;
+  padding-block: 1px;
+  padding-left: 4px;
+  padding-right: 20px;
+  image-rendering: pixelated;
+}
+:root[data-theme='windowsxp'] select {
+  background: #fff var(--xp-combo) right 0 top 0 no-repeat;
+  color: #000;
+}
+:root[data-theme='windowsxp'] select:hover { background-position: right 0 top -19px; }
+:root[data-theme='windowsxp'] select:active { background-position: right 0 top -38px; }
+:root[data-theme='windowsxp'] select:disabled { background-color: #ebebe4; background-position: right 0 top -57px; }
+:root[data-theme='windowsvista'] select {
+  border: 2px solid transparent;
+  border-image: url('/themes/windowsvista/ui/combo-normal.png') 4 5 4 5 / 4px 5px 4px 5px stretch;
+  background: url('/themes/windowsvista/ui/combo-glyph.png') right 2px center no-repeat, url('/themes/windowsvista/ui/combo-fill-normal.png') 0 0 / 100% 100%;
+  color: #000;
+}
+:root[data-theme='windowsvista'] select:hover {
+  border-image-source: url('/themes/windowsvista/ui/combo-hot.png');
+  background: url('/themes/windowsvista/ui/combo-glyph.png') right 2px center no-repeat, url('/themes/windowsvista/ui/combo-fill-hot.png') 0 0 / 100% 100%;
+}
+:root[data-theme='windowsvista'] select:active {
+  border-image-source: url('/themes/windowsvista/ui/combo-pressed.png');
+  background: url('/themes/windowsvista/ui/combo-glyph.png') right 2px center no-repeat, url('/themes/windowsvista/ui/combo-fill-pressed.png') 0 0 / 100% 100%;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) select option {
+  background: var(--paper);
   color: var(--ink);
 }
-:root[data-theme='windowsvista'] .sidebar nav button.active .nav-shortcut { color: inherit; }
-:root[data-theme='windowsvista'] :is(input:not([type='checkbox']), select, .rich-text-field) {
-  border-radius: 2px;
-  box-shadow: inset 0 1px 2px #143b531f;
-}
 
-/* The original caption/UI faces and point-size hierarchy, independently of
-   Balance's user-selected window zoom. Content gets a little more reading room. */
-:root[data-theme='windowsxp'] { font-size: 11px; --font-mono: var(--font-interface); }
-:root[data-theme='windowsvista'] { font-size: 12px; --font-mono: var(--font-interface); }
-:root[data-theme='windowsxp'] .sidebar { font-size: 11px; }
-:root[data-theme='windowsvista'] .sidebar { font-size: 12px; }
-:root[data-theme='windowsxp'] :is(.page-header h2, .page-header .day-pane-heading > h2, .page-header .daily-reminder-button, .sidebar-brand-heading h1) {
-  font-family: 'Trebuchet MS', Tahoma, sans-serif;
-  font-size: 13px;
-}
-:root[data-theme='windowsvista'] :is(.page-header h2, .page-header .day-pane-heading > h2, .page-header .daily-reminder-button) { font-size: 12px; }
-:root[data-theme='windowsvista'] .sidebar-brand-heading h1 { font-size: 14px; }
-:root[data-theme='windowsxp'] :is(.item-text, .item-text-display, .template-text, .note-text) { font-size: 13px; }
-:root[data-theme='windowsvista'] :is(.item-text, .item-text-display, .template-text, .note-text) { font-size: 14px; }
+/* ---------- Window: one frame around the whole app, the desktop showing outside ---------- */
 
-:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) :is(.rail-chip.active, .goal-date-head.viewed) {
-  background: var(--active-nav);
-  color: var(--accent-strong);
-  box-shadow: inset 0 2px var(--accent);
+.window-caption {
+  display: none;
 }
-:root[data-theme='windowsvista'] .sidebar {
-  background: var(--aero-glass), var(--sidebar);
-}
-
-/* Native 16px icon frames, rather than recolored modern line drawings. */
 :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .nav-icon {
   width: 16px;
   height: 16px;
@@ -312,103 +771,1061 @@
 :root[data-theme='windowsxp'] .nav-icon .xp-icon,
 :root[data-theme='windowsvista'] .nav-icon .vista-icon { display: block; }
 
-/* A desktop remains visible around the opaque document window. */
-:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .workspace {
-  margin: 12px;
-  background: var(--paper);
-  border: 1px solid var(--line-strong);
-  box-shadow: 0 2px 8px #0005;
-  padding: 16px;
-}
-:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .overlay-backdrop {
-  background: #00000018;
-  backdrop-filter: none;
+@media (min-width: 761px) {
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']),
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) body {
+    overflow: hidden;
+  }
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .app-shell {
+    --app-default-zoom: 1;
+    grid-template-rows: var(--win-caption-height) minmax(0, 1fr);
+    width: auto;
+    height: calc(100vh - 12px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    min-height: 0;
+    margin: 4px 8px 8px;
+    padding: 0 var(--win-frame-width) var(--win-frame-width);
+  }
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .app-shell > :is(.sidebar, .content-shell) {
+    height: auto;
+    min-height: 0;
+  }
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .window-caption {
+    position: relative;
+    z-index: 30;
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+    height: var(--win-caption-height);
+    margin-inline: calc(0px - var(--win-frame-width));
+    user-select: none;
+    -webkit-user-select: none;
+    image-rendering: pixelated;
+  }
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .macos-titlebar-overlay .window-caption {
+    padding-left: 76px;
+  }
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .macos-titlebar-overlay .sidebar {
+    padding-top: 12px;
+  }
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .macos-titlebar-overlay.sidebar-hidden .workspace {
+    padding-top: 12px;
+  }
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .macos-titlebar-drag-region {
+    z-index: 1;
+    width: 0;
+  }
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .window-caption-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .window-caption-buttons {
+    display: flex;
+    flex: none;
+    margin-left: auto;
+  }
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .caption-button {
+    flex: none;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    opacity: 1;
+    transition: none;
+  }
+
+  /* Page titles moved up to the caption. A band with nothing else in it goes too. */
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .page-header > :is(h2:first-child, div:first-child:not(.day-pane-heading):has(> h2:only-child)) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .page-header:has(> h2:only-child, > div:only-child:not(.day-pane-heading) > h2:only-child) {
+    display: none;
+  }
 }
 
-/* Luna's frame is three differently colored pixel edges, not a flat blue border.
-   The caption is part of that frame; the dialog face begins below it. */
-:root[data-theme='windowsxp'] .overlay-card {
-  padding: 0 3px 3px;
+/* ---------- The client area ---------- */
+
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .content-shell {
+  background: var(--paper);
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .workspace {
+  --tree-sticky-base: -12px;
+  --list-template-rail-top: -12px;
+  border-inline-width: 0;
+  background: var(--paper);
+  padding: 12px 14px;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .workspace.list-template-workspace {
+  --tree-sticky-base: calc(var(--list-template-rail-top) + 56px);
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .workspace.before-current-day-workspace { border-right-width: 6px; }
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .workspace.after-current-day-workspace { border-left-width: 6px; }
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) :is(.list-panel, .template-panel, .settings-panel, .notes-workspace, .empty-state, .export-panel) {
   border: 0;
-  border-radius: 8px 8px 0 0;
-  background: #0855dd;
-  box-shadow: inset -1px -1px #00138c, inset 1px 1px #0831d9,
-    inset -2px -2px #001ea0, inset 2px 2px #166aee,
-    inset -3px -3px #003bda, inset 3px 3px #0855dd, 3px 4px 7px #0006;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) :is(.sidebar-brand-heading h1, .database-loading-brand, .mobile-app-title strong) {
+  font-family: var(--font-interface);
+  letter-spacing: 0;
+}
+
+/* The page's own controls are a toolbar band across the top of the client area. */
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .page-header {
+  margin: -12px -14px 10px;
+  min-height: 31px;
+  padding: 2px 10px 2px 14px;
+  gap: 4px;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) :is(.page-header h2, .page-header .day-pane-heading > h2, .page-header .daily-reminder-button) {
+  font-family: var(--font-interface);
+  letter-spacing: 0;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .page-header button {
+  min-height: 25px;
+  border: 1px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 2px 8px;
+  image-rendering: pixelated;
+  transition: none;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .page-header button:focus-visible {
+  outline: 1px dotted currentcolor;
+  outline-offset: -4px;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .page-header .date-nav-button {
+  width: 25px;
+  height: 25px;
+  padding: 0;
+  font-size: 13px;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .projects-panel {
+  max-width: none;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .page-header .imax-button {
+  width: 52px;
+  padding: 0 4px;
+  color: inherit;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .page-header :is(input, select) {
+  height: 21px;
+  min-height: 21px;
+  padding-block: 1px;
+  font-size: inherit;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .overlay-body kbd {
+  border-radius: 0;
+}
+
+/* ---------- Task rows ---------- */
+
+@media (min-width: 761px) {
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) :is(.plan-row, .template-main) {
+    min-height: 26px;
+  }
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) :is(.drag-handle, .check-target) {
+    height: 24px;
+  }
+  /* Edit-box height, as a time field was. */
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .time-part {
+    padding-block: 2px;
+  }
+  /* The caption's Restore button replaces IMAX's floating exit. */
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .app-shell:has(> .window-caption) .imax-exit-control {
+    display: none;
+  }
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) :is(.item-text, .item-text-display, .template-text) {
+  font-size: 12px;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .drag-handle {
+  border-color: transparent;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .drag-handle:is(:hover, .dragging) {
+  border-color: transparent;
+  background: transparent;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .handle-dots {
+  width: 6px;
+  height: 16px;
+  background: var(--win-gripper) center repeat-y;
+  image-rendering: pixelated;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .time-range {
+  border-radius: 0;
+  color: var(--ink);
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) :is(.mobile-time-summary) {
+  border-radius: 0;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .alarm-clock-icon {
+  width: 16px;
+  height: 16px;
+  background: var(--win-clock-icon) center no-repeat;
+  image-rendering: pixelated;
+}
+/* Every untimed row has one, so it waits in gray until it is wanted. */
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .add-time:not(:hover, :focus-visible) .alarm-clock-icon {
+  filter: grayscale(1);
+  opacity: 0.55;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .alarm-clock-icon > * {
+  display: none;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .plan-goal-badge {
+  border-radius: 0;
+  font-weight: 400;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .icon-button:not(.quiet, .overlay-caption-close, .children-toggle) {
+  border-radius: 0;
+}
+/* The real expand glyphs. */
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .children-toggle {
+  border: 0;
+  border-radius: 0;
+  background: var(--win-tree) center 0 no-repeat;
+  box-shadow: none;
+  padding: 0;
+  image-rendering: pixelated;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .icon-button.quiet.children-toggle:hover {
+  border-color: transparent;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .children-toggle-chevron {
+  visibility: hidden;
+}
+:root[data-theme='windowsxp'] .children-toggle {
+  width: 9px;
+  min-width: 9px;
+  height: 9px;
+  min-height: 9px;
+  background-position: 0 -9px;
+}
+:root[data-theme='windowsxp'] .children-toggle.collapsed {
+  background-position: 0 0;
+}
+:root[data-theme='windowsvista'] .children-toggle {
+  width: 16px;
+  min-width: 16px;
+  height: 16px;
+  min-height: 16px;
+  background-position: 0 -16px;
+}
+:root[data-theme='windowsvista'] .children-toggle.collapsed {
+  background-position: 0 0;
+}
+:root[data-theme='windowsvista'] .children-toggle:hover {
+  background-image: url('/themes/windowsvista/ui/tree-arrow-hot.png');
+}
+:root[data-theme='windowsxp'] .children {
+  border-left-style: dotted;
+  border-left-color: #808080;
+}
+:root[data-theme='windowsvista'] .children {
+  border-left-color: transparent;
+}
+
+/* ---------- Tabs ---------- */
+
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) :is(.rail-chip, .note-version-tab) {
+  border: 1px solid transparent;
+  border-radius: 0;
+  border-image: var(--win-tab) var(--win-tab-slice) fill / var(--win-tab-edge) stretch;
+  background: none;
+  box-shadow: none;
+  color: #000;
+  padding: 3px 10px;
+  image-rendering: pixelated;
+  transition: none;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) :is(.rail-chip, .note-version-tab):hover {
+  border-color: transparent;
+  border-image-source: var(--win-tab-hot);
+  color: #000;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) :is(.rail-chip.active, .note-version-tab.active) {
+  border-color: transparent;
+  border-image-source: var(--win-tab-selected);
+  background: none;
+  box-shadow: none;
+  color: #000;
+  font-weight: 400;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .rail-chip.dashed-edge {
+  border-style: solid;
+}
+
+/* ---------- Group boxes, cards and lists ---------- */
+
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .settings-panel {
+  display: grid;
+  gap: 18px;
+  padding-top: 8px;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) :is(.settings-section, .settings-section + .settings-section, .goal-card, .goal-create-panel) {
+  border: 4px solid transparent;
+  border-radius: 0;
+  border-image: var(--win-groupbox) var(--win-groupbox-slice) fill / var(--win-groupbox-edge) stretch;
+  background: none;
+  box-shadow: none;
+  padding: 8px 8px 8px;
+  image-rendering: pixelated;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .settings-section {
+  position: relative;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .settings-section > div:first-child > h3:first-child {
+  position: absolute;
+  top: -11px;
+  left: 4px;
+  margin: 0;
+  padding: 0 3px;
+  background: var(--paper);
+  color: var(--win-legend);
+  font-family: var(--font-interface);
+  font-size: inherit;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+/* List items select the way Explorer does. Luna fills flat; Aero uses its frames. */
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) :is(.theme-option, .color-scheme-option, .note-card, .day-template-option, .idea-group-card) {
+  border: 1px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  transition: none;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .theme-selected-mark {
+  border-radius: 0;
+}
+:root[data-theme='windowsxp'] :is(.theme-option, .color-scheme-option, .note-card, .day-template-option, .idea-group-card):hover {
+  border-color: transparent;
+  background: #e8eefa;
+}
+:root[data-theme='windowsxp'] :is(.theme-option.active, .color-scheme-option.active, .note-card.active, .note-card.selected, .day-template-option.selected, .idea-group-card.active),
+:root[data-theme='windowsxp'] :is(.theme-option.active, .color-scheme-option.active, .note-card.active, .note-card.selected, .day-template-option.selected, .idea-group-card.active):hover {
+  border-color: transparent;
+  background: var(--win-select);
+  box-shadow: none;
+  color: var(--win-select-text);
+}
+:root[data-theme='windowsxp'] :is(.theme-option.active, .color-scheme-option.active, .note-card.active, .note-card.selected, .day-template-option.selected, .idea-group-card.active) :is(strong, small, span, p) {
+  color: inherit;
+}
+:root[data-theme='windowsvista'] :is(.theme-option, .color-scheme-option, .note-card, .day-template-option, .idea-group-card):hover {
+  border-color: transparent;
+  border-image: url('/themes/windowsvista/ui/select-hot.png') 3 fill / 3px stretch;
+  background: transparent;
+}
+:root[data-theme='windowsvista'] :is(.theme-option.active, .color-scheme-option.active, .note-card.active, .note-card.selected, .day-template-option.selected, .idea-group-card.active),
+:root[data-theme='windowsvista'] :is(.theme-option.active, .color-scheme-option.active, .note-card.active, .note-card.selected, .day-template-option.selected, .idea-group-card.active):hover {
+  border-color: transparent;
+  border-image: url('/themes/windowsvista/ui/select.png') 3 fill / 3px stretch;
+  background: transparent;
+  box-shadow: none;
+  color: #000;
+}
+:root[data-theme='windowsvista'] :is(.theme-option.active, .color-scheme-option.active, .note-card.active, .note-card.selected, .day-template-option.selected, .idea-group-card.active) :is(strong, small, span, p) {
+  color: inherit;
+}
+
+/* The real selection on a task row, and Today's checked row. Checked rows keep
+   Balance's green or the color chosen in Settings, drawn in each system's shape:
+   Luna's task-pane fade and Aero's Explorer selection frame. */
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) {
+  --win-done: var(--done-color, var(--theme-done));
+}
+:root[data-theme='windowsxp'] {
+  --win-done-row: linear-gradient(90deg, color-mix(in srgb, var(--win-done) 5%, var(--paper)) 0, color-mix(in srgb, var(--win-done) 24%, var(--paper)) 100%);
+}
+:root[data-theme='windowsvista'] {
+  --win-done-row:
+    linear-gradient(color-mix(in srgb, #fff 62%, transparent) 0 1px, transparent 1px),
+    linear-gradient(color-mix(in srgb, var(--win-done) 5%, var(--paper)), color-mix(in srgb, var(--win-done) 22%, var(--paper)));
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) :is(.plan-row.done, .plan-row.mobile-checkbox-drag-preview):not(.selected, .drop-inside, .goal-drop-target) {
+  background: var(--win-done-row);
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .plan-row.sticky-parent:is(.done, .mobile-checkbox-drag-preview):not(.selected, .drop-inside, .goal-drop-target) {
+  --tree-sticky-tint: var(--win-done-row);
+  background-image: var(--win-done-row), linear-gradient(var(--paper), var(--paper));
+}
+:root[data-theme='windowsvista'] .plan-row {
+  border-radius: 3px;
+}
+:root[data-theme='windowsvista'] :is(.plan-row.done, .plan-row.mobile-checkbox-drag-preview):not(.selected, .drop-before, .drop-after, .drop-inside, .goal-drop-target) {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--win-done) 38%, var(--paper));
+}
+:root[data-theme='windowsxp'] :is(.plan-row.selected, .template-main.selected) {
+  background: var(--win-select);
+  box-shadow: none;
+  color: var(--win-select-text);
+}
+:root[data-theme='windowsxp'] :is(.plan-row.selected, .template-main.selected) :is(.item-text, .item-text-display, .template-text) {
+  color: var(--win-select-text);
+}
+:root[data-theme='windowsxp'] :is(.plan-row.sticky-parent.selected, .template-main.sticky-parent.selected) {
+  --tree-sticky-tint: linear-gradient(var(--win-select), var(--win-select));
+}
+:root[data-theme='windowsvista'] :is(.plan-row.selected, .template-main.selected) {
+  background: linear-gradient(#f4fbfe, #c5eafc);
+  box-shadow: inset 0 0 0 1px #9adffe;
+}
+:root[data-theme='windowsvista'] :is(.plan-row.sticky-parent.selected, .template-main.sticky-parent.selected) {
+  --tree-sticky-tint: linear-gradient(#f4fbfe, #c5eafc);
+}
+
+/* ---------- Progress ---------- */
+
+:root[data-theme='windowsxp'] .list-progress {
+  height: 13px;
+  border: 3px solid transparent;
+  border-radius: 0;
+  border-image: var(--xp-progress-track) 3 4 3 4 fill / 3px 4px 3px 4px stretch;
+  background: none;
+  box-shadow: none;
+  image-rendering: pixelated;
+}
+:root[data-theme='windowsxp'] .list-progress-fill {
+  border-radius: 0;
+  background: repeating-linear-gradient(90deg, transparent 0 6px, #fff 6px 8px), var(--xp-progress-chunk) 0 0 / 100% 100%;
+}
+:root[data-theme='windowsvista'] .list-progress {
+  height: 14px;
+  border: 2px solid transparent;
+  border-radius: 0;
+  border-image: url('/themes/windowsvista/ui/progress-track.png') 7 9 6 9 fill / 7px 9px 6px 9px stretch;
+  background: none;
+  box-shadow: none;
+  image-rendering: pixelated;
+}
+:root[data-theme='windowsvista'] .list-progress-fill {
+  border-radius: 0;
+  background: url('/themes/windowsvista/ui/progress-fill.png') 0 0 / 100% 100%;
+}
+
+/* ---------- Goal Rhythm: a list view with real column headers ---------- */
+
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .goal-history-panel {
+  box-shadow: none;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .goal-date-head {
+  border: 1px solid transparent;
+  border-radius: 0;
+  border-image: var(--win-header) var(--win-header-slice) fill / var(--win-header-edge) stretch;
+  background: none;
+  box-shadow: none;
+  color: #000;
+  image-rendering: pixelated;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .goal-date-head:is(:hover, :focus-visible) {
+  border-color: transparent;
+  border-image-source: var(--win-header-hot);
+  background: none;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .goal-date-head.viewed {
+  border-image-source: var(--win-header-pressed);
+  background: none;
+  box-shadow: none;
+  color: #000;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .goal-date-head.today :is(span, strong) {
+  color: #0046d5;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) :is(.goal-day-cell, .goal-day-cell.segment-start, .goal-day-cell.segment-end, .goal-day-cell.segment-start.segment-end, .goal-recent-day) {
+  border-radius: 0;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) :is(.goal-cell-mark, .goal-cell-mark.open) {
+  border-radius: 0;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .goal-viewed-day-marker {
+  border-style: dotted;
+  border-radius: 0;
+}
+
+/* ---------- Menus ---------- */
+
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .link-context-menu {
+  border-radius: 0;
+  padding: 2px;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .link-context-menu button {
+  border-radius: 0;
+  padding: 3px 18px;
+  font-size: inherit;
+}
+:root[data-theme='windowsxp'] .link-context-menu {
+  border: 1px solid #aca899;
+  background: #fff;
+  box-shadow: 2px 2px 3px #00000080;
+}
+:root[data-theme='windowsxp'] .link-context-menu button {
+  color: #000;
+}
+:root[data-theme='windowsxp'] .link-context-menu button:is(:hover, :focus-visible) {
+  background: var(--win-select);
+  color: #fff;
+  outline: none;
+}
+:root[data-theme='windowsvista'] .link-context-menu {
+  border: 1px solid #979797;
+  background: #f0f0f0 url('/themes/windowsvista/ui/menu-gutter.png') 22px 0 repeat-y;
+  box-shadow: 3px 3px 3px #00000060;
+}
+:root[data-theme='windowsvista'] .link-context-menu button {
+  color: #000;
+  padding-left: 30px;
+}
+:root[data-theme='windowsvista'] .link-context-menu button:is(:hover, :focus-visible) {
+  border: 1px solid transparent;
+  border-image: url('/themes/windowsvista/ui/menu-hot.png') 4 fill / 4px stretch;
+  background: transparent;
+  outline: none;
+}
+
+/* ---------- Dialogs ---------- */
+
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .overlay-backdrop {
+  background: var(--modal-backdrop);
+  backdrop-filter: none;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .overlay-card:not(:has(> .overlay-header)) > .overlay-body {
+  margin-top: var(--win-caption-height);
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .overlay-caption-close:disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .overlay-caption-close:focus-visible {
+  outline: 1px dotted white;
+  outline-offset: -4px;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .overlay-caption-close > svg {
+  opacity: 0;
+}
+
+/* ---------- Windows XP ---------- */
+
+:root[data-theme='windowsxp'] .sidebar {
+  background: var(--xp-pane);
+  border-right: 0;
+  color: #fff;
+  font-size: 11px;
+  gap: 12px;
+  padding: 12px;
+}
+:root[data-theme='windowsxp'] :is(.page-header h2, .page-header .day-pane-heading > h2, .page-header .daily-reminder-button) {
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 700;
+}
+:root[data-theme='windowsxp'] .page-header {
+  background: var(--xp-gripper) 4px 0 repeat-y, var(--xp-band);
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+}
+:root[data-theme='windowsxp'] .page-header button {
+  color: var(--ink);
+}
+:root[data-theme='windowsxp'] .page-header button:hover:not(:disabled) {
+  border-color: transparent;
+  border-image: var(--win-toolbar-hot) 4 fill / 4px stretch;
+  background: transparent;
+  color: #000;
+}
+:root[data-theme='windowsxp'] .page-header button:active:not(:disabled) {
+  border-image: var(--win-toolbar-pressed) 4 fill / 4px stretch;
+}
+
+/* Explorer's task pane: white-edged cards under shellstyle.dll's own header strips. */
+:root[data-theme='windowsxp'] :is(.sidebar-brand, .primary-nav, .sidebar-footer) {
+  position: relative;
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--xp-card-edge);
+  border-top: 0;
+  background: var(--sidebar);
+  color: var(--win-link);
+  margin: 0;
+  margin-top: 21px;
+  padding: 7px 8px;
+}
+:root[data-theme='windowsxp'] :is(.primary-nav, .sidebar-footer)::before {
+  position: absolute;
+  top: -21px;
+  left: -1px;
+  right: -1px;
+  height: 21px;
+  border-image: var(--xp-pane-head) 2 106 0 3 fill / 2px 106px 0 3px stretch;
+  color: var(--xp-pane-head-text);
+  font-weight: 700;
+  line-height: 21px;
+  padding-left: 10px;
+  image-rendering: pixelated;
+}
+:root[data-theme='windowsxp'] :is(.primary-nav, .sidebar-footer)::after,
+:root[data-theme='windowsxp'] .sidebar-brand::after {
+  content: "";
+  position: absolute;
+  top: -22px;
+  right: 0;
+  width: 21px;
+  height: 23px;
+  background: var(--xp-pane-collapse) center no-repeat;
+  pointer-events: none;
+  image-rendering: pixelated;
+}
+:root[data-theme='windowsxp'] .sidebar-brand::after {
+  background-image: var(--xp-pane-special-collapse);
+}
+:root[data-theme='windowsxp'] .primary-nav::before { content: "Places"; }
+:root[data-theme='windowsxp'] .sidebar-footer::before { content: "Details"; }
+:root[data-theme='windowsxp'] .sidebar-brand-heading {
+  position: absolute;
+  top: -21px;
+  left: -1px;
+  right: -1px;
+  display: flex;
+  align-items: center;
+  height: 21px;
+  border-image: var(--xp-pane-head-special) 2 106 0 3 fill / 2px 106px 0 3px stretch;
+  padding: 0 24px 0 10px;
+  image-rendering: pixelated;
+}
+:root[data-theme='windowsxp'] .sidebar-brand-heading h1 {
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+:root[data-theme='windowsxp'] .sidebar-brand p.muted {
+  color: var(--win-link);
+  margin: 0;
+}
+:root[data-theme='windowsxp'] .sidebar .tiny {
+  color: var(--win-link);
+}
+:root[data-theme='windowsxp'] .sidebar-active-projects {
+  margin-top: 4px;
+}
+:root[data-theme='windowsxp'] :is(.sidebar-active-projects button, .primary-nav button) {
+  min-height: 0;
+  border: 1px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--win-link);
+  font-size: 11px;
+  font-weight: 400;
+  padding: 2px 3px;
+  transition: none;
+}
+:root[data-theme='windowsxp'] :is(.sidebar-active-projects button, .primary-nav button):hover {
+  border-color: transparent;
+  background: transparent;
+  color: var(--win-link-hot);
+  text-decoration: underline;
+}
+:root[data-theme='windowsxp'] .primary-nav button.active,
+:root[data-theme='windowsxp'] .primary-nav button.active:hover {
+  border-color: transparent;
+  background: var(--win-select);
+  color: #fff;
+  text-decoration: none;
+}
+:root[data-theme='windowsxp'] .primary-nav .nav-child {
+  border-left: 0;
+  border-radius: 0;
+  font-size: 11px;
+}
+:root[data-theme='windowsxp'] .sidebar .nav-shortcut {
+  color: inherit;
+  font-size: 10px;
+  font-weight: 400;
+  opacity: 0.6;
+}
+:root[data-theme='windowsxp'] .sidebar-quick-actions {
+  margin: 0;
+}
+:root[data-theme='windowsxp'] .sidebar-footer {
+  margin-top: auto;
+}
+:root[data-theme='windowsxp'] .generation-template-field {
+  color: var(--ink);
+  font-weight: 400;
+}
+
+@media (min-width: 761px) {
+  :root[data-theme='windowsxp'] .app-shell::after {
+    content: "";
+    position: absolute;
+    z-index: 29;
+    inset: var(--win-caption-height) 0 0 0;
+    border-style: solid;
+    border-width: 0 4px 4px;
+    border-image: var(--xp-frame) 0 4 4 4 / 0 4px 4px 4px stretch;
+    pointer-events: none;
+    image-rendering: pixelated;
+  }
+  :root[data-theme='windowsxp'] .window-caption {
+    border-image: var(--xp-caption) 9 35 17 28 fill / 9px 35px 17px 28px stretch;
+    padding: 1px 5px 0 8px;
+    color: #fff;
+    font: 700 13px 'Trebuchet MS', Tahoma, sans-serif;
+    text-shadow: 1px 1px #0f1089;
+  }
+  :root[data-theme='windowsxp'] .window-caption.inactive {
+    border-image-source: var(--xp-caption-inactive);
+    color: #d8e4f8;
+    text-shadow: none;
+  }
+  :root[data-theme='windowsxp'] .window-caption-buttons {
+    gap: 2px;
+  }
+  :root[data-theme='windowsxp'] .caption-button {
+    width: 21px;
+    height: 21px;
+    background: var(--xp-caption-max) 0 0 no-repeat;
+    image-rendering: pixelated;
+  }
+  :root[data-theme='windowsxp'] .caption-min { background-image: var(--xp-caption-min); }
+  :root[data-theme='windowsxp'] .caption-max.restore { background-image: var(--xp-caption-restore); }
+  :root[data-theme='windowsxp'] .caption-close { background-image: var(--xp-caption-close); }
+  :root[data-theme='windowsxp'] .caption-button:hover:not(:disabled) { background-position: 0 -21px; }
+  :root[data-theme='windowsxp'] .caption-button:active:not(:disabled) { background-position: 0 -42px; }
+  :root[data-theme='windowsxp'] .caption-button:disabled { background-position: 0 -63px; opacity: 1; }
+  :root[data-theme='windowsxp'] .caption-button:focus-visible { outline: 1px dotted #fff; outline-offset: -4px; }
+}
+
+:root[data-theme='windowsxp'] .goal-history-toolbar {
+  background: var(--xp-band);
+  border-bottom: 1px solid var(--line);
+  min-height: 29px;
+  padding: 2px 8px;
+}
+
+:root[data-theme='windowsxp'] .overlay-card {
+  padding: 0 4px 4px;
+  border: 0;
+  border-radius: 0;
+  background: var(--win-face);
+  box-shadow: none;
+}
+:root[data-theme='windowsxp'] .overlay-card::after {
+  content: "";
+  position: absolute;
+  z-index: 3;
+  inset: 29px 0 0 0;
+  border-style: solid;
+  border-width: 0 4px 4px;
+  border-image: var(--xp-frame) 0 4 4 4 / 0 4px 4px 4px stretch;
+  pointer-events: none;
+  image-rendering: pixelated;
+}
+:root[data-theme='windowsxp'] .overlay-card:not(:has(> .overlay-header))::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 29px;
+  border-image: var(--xp-caption) 9 35 17 28 fill / 9px 35px 17px 28px stretch;
+  image-rendering: pixelated;
 }
 :root[data-theme='windowsxp'] .overlay-header {
   position: relative;
   flex: none;
-  min-height: 30px;
-  margin: 0 -3px;
-  padding: 3px 5px 3px 8px;
+  min-height: 29px;
+  margin: 0 -4px;
+  padding: 1px 5px 0 8px;
   gap: 8px;
-  background: var(--xp-caption);
-  border: 1px solid #0831d9;
-  border-right-color: #001ea0;
-  border-bottom: 0;
-  border-radius: 8px 8px 0 0;
-  box-shadow: inset 0 1px #6bb4ff;
-  color: white;
+  border: 0;
+  border-image: var(--xp-caption) 9 35 17 28 fill / 9px 35px 17px 28px stretch;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: #fff;
+  image-rendering: pixelated;
 }
 :root[data-theme='windowsxp'] .overlay-header h3 {
-  font: bold 13px 'Trebuchet MS', Tahoma, sans-serif;
+  color: #fff;
+  font: 700 13px 'Trebuchet MS', Tahoma, sans-serif;
+  letter-spacing: 0;
   line-height: 18px;
-  color: white;
   text-shadow: 1px 1px #0f1089;
 }
-:root[data-theme='windowsxp'] .overlay-eyebrow { color: #fff; font: 11px Tahoma, sans-serif; }
+:root[data-theme='windowsxp'] .overlay-eyebrow {
+  color: #fff;
+  font: 11px Tahoma, sans-serif;
+}
 :root[data-theme='windowsxp'] .overlay-body {
-  background: var(--xp-face);
-  color: var(--ink);
+  background: var(--win-face);
   border: 0;
   box-shadow: none;
+  color: var(--ink);
 }
-:root[data-theme='windowsxp'] .overlay-card:not(:has(> .overlay-header)) > .overlay-body { margin-top: 30px; }
 :root[data-theme='windowsxp'] .overlay-caption-close {
   flex: 0 0 21px;
   width: 21px;
-  height: 21px;
   min-width: 21px;
+  height: 21px;
   min-height: 21px;
   padding: 0;
   border: 0;
-  border-radius: 3px;
+  border-radius: 0;
+  background: var(--xp-caption-close) 0 0 no-repeat;
   box-shadow: none;
   opacity: 1;
-  background: url('/themes/windowsxp/close.svg') center / 21px 21px no-repeat;
   image-rendering: pixelated;
 }
 :root[data-theme='windowsxp'] .overlay-caption-close:hover {
-  background-image: url('/themes/windowsxp/close-hover.svg');
+  background: var(--xp-caption-close) 0 -21px no-repeat;
   box-shadow: none;
 }
 :root[data-theme='windowsxp'] .overlay-caption-close:active {
-  background-image: url('/themes/windowsxp/close-active.svg');
+  background: var(--xp-caption-close) 0 -42px no-repeat;
   box-shadow: none;
 }
-:root[data-theme='windowsxp'] .overlay-caption-close > svg { opacity: 0; }
-:root[data-theme='windowsxp'] .overlay-floating-close { top: 5px; right: 5px; }
+:root[data-theme='windowsxp'] .overlay-floating-close { top: 4px; right: 5px; }
 :root[data-theme='windowsxp'] .overlay-floating-close.left { left: 5px; right: auto; }
 
-/* Aero glass surrounds the content on every side. Reflection belongs to the
-   frame, while the inset client area stays opaque and readable. */
+:root[data-theme='windowsxp'] .mobile-app-header {
+  border-image: var(--xp-caption-small) 9 37 8 24 fill / 9px 37px 8px 24px stretch;
+  background: none;
+  color: #fff;
+}
+
+/* ---------- Windows Vista ---------- */
+
+/* Explorer's navigation pane: opaque, pale, blue links, Aero's selection frames. */
+:root[data-theme='windowsvista'] .sidebar {
+  background: linear-gradient(#fafcfe, var(--sidebar));
+  border-right: 1px solid #d6e5f5;
+  gap: 14px;
+  padding: 12px 8px;
+}
+:root[data-color-scheme='dark'][data-theme='windowsvista'] .sidebar {
+  background: var(--sidebar);
+  border-right-color: #40606f;
+}
+:root[data-theme='windowsvista'] .sidebar-brand {
+  padding-inline: 6px;
+}
+/* Main instructions: Segoe UI 12pt in the UX guide's #003399. */
+:root[data-theme='windowsvista'] .sidebar-brand-heading h1 {
+  color: #003399;
+  font-size: 16px;
+  font-weight: 400;
+}
+:root[data-color-scheme='dark'][data-theme='windowsvista'] .sidebar-brand-heading h1 {
+  color: #99d9fa;
+}
+:root[data-theme='windowsvista'] :is(.sidebar-active-projects button, .primary-nav button) {
+  min-height: 0;
+  border: 1px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--win-link);
+  font-size: 12px;
+  font-weight: 400;
+  padding: 2px 6px;
+  image-rendering: pixelated;
+  transition: none;
+}
+:root[data-theme='windowsvista'] :is(.sidebar-active-projects button, .primary-nav button):hover {
+  border-color: transparent;
+  border-image: url('/themes/windowsvista/ui/select-hot.png') 3 fill / 3px stretch;
+  background: transparent;
+  color: var(--win-link);
+}
+:root[data-theme='windowsvista'] .primary-nav button.active,
+:root[data-theme='windowsvista'] .primary-nav button.active:hover {
+  border-color: transparent;
+  border-image: url('/themes/windowsvista/ui/select.png') 3 fill / 3px stretch;
+  background: transparent;
+  color: #000;
+}
+:root[data-color-scheme='dark'][data-theme='windowsvista'] .primary-nav button.active,
+:root[data-color-scheme='dark'][data-theme='windowsvista'] .primary-nav button.active:hover {
+  color: #000;
+}
+:root[data-theme='windowsvista'] .primary-nav .nav-child {
+  border-left: 0;
+  border-radius: 0;
+  font-size: 12px;
+}
+:root[data-theme='windowsvista'] .sidebar .nav-shortcut {
+  color: inherit;
+  font-size: 11px;
+  font-weight: 400;
+  opacity: 0.55;
+}
+
+/* Explorer's command bar: the gloss bitmap over the deep teal it composited on. */
+:root[data-theme='windowsvista'] .page-header {
+  background: url('/themes/windowsvista/ui/command-bg.png') 0 0 / 1px 100% repeat-x, linear-gradient(#134f6d, #083248);
+  color: #fff;
+}
+:root[data-theme='windowsvista'] :is(.page-header h2, .page-header .day-pane-heading > h2, .page-header .daily-reminder-button) {
+  color: #fff;
+  font-size: 12px;
+  font-weight: 400;
+  text-shadow: 0 1px 1px #00000080;
+}
+:root[data-theme='windowsvista'] .page-header button {
+  color: #fff;
+  text-shadow: 0 1px 1px #00000080;
+}
+:root[data-theme='windowsvista'] .page-header .imax-logo {
+  color: #fff;
+}
+:root[data-theme='windowsvista'] .page-header button:hover:not(:disabled) {
+  border-color: transparent;
+  border-image: url('/themes/windowsvista/ui/command-hot.png') 13 3 6 3 fill / 13px 3px 6px 3px stretch;
+  background: transparent;
+  color: #fff;
+}
+:root[data-theme='windowsvista'] .page-header button:active:not(:disabled) {
+  border-image: url('/themes/windowsvista/ui/command-pressed.png') 13 3 6 3 fill / 13px 3px 6px 3px stretch;
+}
+:root[data-theme='windowsvista'] .goal-history-toolbar {
+  background: linear-gradient(#fbfdfe, #e8f1f7);
+  border-bottom: 1px solid #d5dfe5;
+  min-height: 29px;
+  padding: 2px 8px;
+}
+:root[data-color-scheme='dark'][data-theme='windowsvista'] .goal-history-toolbar {
+  background: linear-gradient(#28404c, #1c2c35);
+  border-bottom-color: #40606f;
+}
+
+/* Glass stays static: the wallpaper's blur is pre-rendered, so nothing inside the
+   window has to recomposite a live backdrop-filter while it scrolls or types. */
+@media (min-width: 761px) {
+  :root[data-theme='windowsvista'] .app-shell {
+    border-radius: 7px;
+    background:
+      linear-gradient(112deg, #ffffff66 0, #ffffff14 18%, #ffffff4d 19%, #ffffff0a 34%, #ffffff00 48%, #ffffff29 49%, #ffffff0a 62%, #ffffff00 74%),
+      linear-gradient(#b4d6f2a6, #7fb3e08c),
+      url('/themes/windowsvista/aurora-glass.jpg') center / cover fixed;
+    box-shadow: 0 0 0 1px #00000099, inset 0 0 0 1px #ffffff80, 0 6px 22px #00000080;
+  }
+  :root[data-color-scheme='dark'][data-theme='windowsvista'] .app-shell {
+    background:
+      linear-gradient(112deg, #ffffff33 0, #ffffff0a 18%, #ffffff26 19%, #ffffff05 34%, #ffffff00 48%, #ffffff14 49%, #ffffff05 62%, #ffffff00 74%),
+      linear-gradient(#1c3a4fcc, #122736d9),
+      url('/themes/windowsvista/aurora-glass.jpg') center / cover fixed;
+  }
+  :root[data-theme='windowsvista'] .app-shell > :is(.sidebar, .content-shell) {
+    outline: 1px solid #00000066;
+  }
+  :root[data-theme='windowsvista'] .window-caption {
+    padding: 0 0 0 8px;
+    color: #000;
+    font: 400 12px var(--font-interface);
+    align-items: flex-start;
+    border-radius: 7px 7px 0 0;
+  }
+  :root[data-color-scheme='dark'][data-theme='windowsvista'] .window-caption {
+    color: #000;
+  }
+  :root[data-theme='windowsvista'] .window-caption .nav-icon {
+    margin-top: 7px;
+  }
+  /* The msstyles' own text-glow nine-grid, which DWM drew behind caption text. */
+  :root[data-theme='windowsvista'] .window-caption-title {
+    margin-top: 4px;
+    border: 3px solid transparent;
+    border-image: url('/themes/windowsvista/ui/text-glow.png') 10 fill / 10px / 3px stretch;
+    padding: 0 3px;
+    line-height: 16px;
+  }
+  :root[data-theme='windowsvista'] .window-caption.inactive {
+    color: #3a3a3a;
+  }
+  :root[data-theme='windowsvista'] .window-caption-buttons {
+    margin-right: 6px;
+  }
+  :root[data-theme='windowsvista'] .caption-button {
+    position: relative;
+    width: 26px;
+    height: 19px;
+    border: 1px solid transparent;
+    border-top-width: 0;
+    border-image: url('/themes/windowsvista/ui/caption-max-normal.png') 7 2 7 2 fill / 7px 2px 7px 2px stretch;
+    background: none;
+    image-rendering: pixelated;
+  }
+  :root[data-theme='windowsvista'] .caption-button::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: url('/themes/windowsvista/ui/glyph-max-normal.png') center no-repeat;
+  }
+  :root[data-theme='windowsvista'] .caption-min {
+    border-image-source: url('/themes/windowsvista/ui/caption-min-normal.png');
+  }
+  :root[data-theme='windowsvista'] .caption-min::after {
+    background-image: url('/themes/windowsvista/ui/glyph-min-normal.png');
+  }
+  :root[data-theme='windowsvista'] .caption-max.restore::after {
+    background-image: url('/themes/windowsvista/ui/glyph-restore-normal.png');
+  }
+  :root[data-theme='windowsvista'] .caption-close {
+    width: 45px;
+    border-image-source: url('/themes/windowsvista/ui/caption-close-normal.png');
+  }
+  :root[data-theme='windowsvista'] .caption-close::after {
+    background-image: url('/themes/windowsvista/ui/glyph-close-normal.png');
+  }
+  :root[data-theme='windowsvista'] .caption-min:hover:not(:disabled) { border-image-source: url('/themes/windowsvista/ui/caption-min-hot.png'); }
+  :root[data-theme='windowsvista'] .caption-max:hover:not(:disabled) { border-image-source: url('/themes/windowsvista/ui/caption-max-hot.png'); }
+  :root[data-theme='windowsvista'] .caption-close:hover:not(:disabled) { border-image-source: url('/themes/windowsvista/ui/caption-close-hot.png'); }
+  :root[data-theme='windowsvista'] .caption-min:active:not(:disabled) { border-image-source: url('/themes/windowsvista/ui/caption-min-pressed.png'); }
+  :root[data-theme='windowsvista'] .caption-max:active:not(:disabled) { border-image-source: url('/themes/windowsvista/ui/caption-max-pressed.png'); }
+  :root[data-theme='windowsvista'] .caption-close:active:not(:disabled) { border-image-source: url('/themes/windowsvista/ui/caption-close-pressed.png'); }
+  :root[data-theme='windowsvista'] .caption-min:disabled { border-image-source: url('/themes/windowsvista/ui/caption-min-disabled.png'); opacity: 1; }
+  :root[data-theme='windowsvista'] .caption-max:disabled { border-image-source: url('/themes/windowsvista/ui/caption-max-disabled.png'); opacity: 1; }
+  :root[data-theme='windowsvista'] .caption-close:disabled { border-image-source: url('/themes/windowsvista/ui/caption-close-disabled.png'); opacity: 1; }
+  :root[data-theme='windowsvista'] .caption-button:disabled::after { opacity: 0.45; }
+  :root[data-theme='windowsvista'] .caption-button:focus-visible { outline: 1px dotted #000; outline-offset: -3px; }
+}
+
+/* Dialogs keep live glass: they are short-lived and sit above the window. */
 :root[data-theme='windowsvista'] .overlay-card {
-  padding: 0 6px 6px;
-  border: 1px solid #263c4dcc;
+  padding: 0 7px 7px;
+  border: 1px solid #000000a6;
   border-radius: 7px;
   background:
-    linear-gradient(115deg, #ffffff88 0%, #ffffff11 20%, #ffffff55 26%, transparent 27% 52%, #ffffff33 53% 61%, transparent 62%),
-    linear-gradient(90deg, #a8c7db99, #6d93ac99 45%, #b8d6e399);
+    linear-gradient(112deg, #ffffff73 0, #ffffff14 18%, #ffffff59 19%, #ffffff0a 34%, #ffffff00 48%, #ffffff2e 49%, #ffffff0a 62%, #ffffff00 74%),
+    linear-gradient(#b4d6f2b3, #7fb3e099);
   backdrop-filter: blur(8px) saturate(1.25);
-  box-shadow: inset 0 0 0 1px #ffffffb3, 0 7px 24px #0008, 0 1px 4px #0006;
+  box-shadow: inset 0 0 0 1px #ffffff80, var(--win-dialog-shadow);
 }
 :root[data-theme='windowsvista'] .overlay-header {
   position: relative;
   flex: none;
   min-height: 30px;
   margin: 0;
-  padding: 5px 54px 5px 2px;
+  padding: 4px 54px 3px 0;
   gap: 8px;
   border: 0;
   border-radius: 0;
@@ -418,185 +1835,82 @@
   color: #000;
 }
 :root[data-theme='windowsvista'] .overlay-header h3 {
+  width: fit-content;
+  border: 3px solid transparent;
+  border-image: url('/themes/windowsvista/ui/text-glow.png') 10 fill / 10px / 3px stretch;
   color: #000;
-  font: 400 12px 'Vista UI', sans-serif;
-  line-height: 20px;
-  text-shadow: 0 0 3px white, 0 0 6px white, 0 0 9px white, 0 0 12px white;
+  font: 400 12px var(--font-interface);
+  letter-spacing: 0;
+  line-height: 16px;
 }
-:root[data-theme='windowsvista'] .overlay-eyebrow { color: #18232c; text-shadow: 0 0 5px white; }
+:root[data-theme='windowsvista'] .overlay-eyebrow {
+  color: #000;
+}
 :root[data-theme='windowsvista'] .overlay-body {
   background: var(--paper);
-  border: 1px solid #526575;
-  box-shadow: 0 0 0 1px #ffffffa6;
+  border: 1px solid #00000080;
+  box-shadow: 0 0 0 1px #ffffff66;
+  color: var(--ink);
 }
-:root[data-theme='windowsvista'] .overlay-card:not(:has(> .overlay-header)) > .overlay-body { margin-top: 30px; }
 :root[data-theme='windowsvista'] .overlay-caption-close {
   position: absolute;
   top: 0;
   right: 0;
-  width: 47px;
-  min-width: 47px;
+  width: 45px;
+  min-width: 45px;
   height: 19px;
   min-height: 19px;
   padding: 0;
-  border: 1px solid #5f2924;
-  border-top: 0;
-  border-radius: 0 0 4px 4px;
-  color: #fff;
-  opacity: 1;
-  background: linear-gradient(#f1c5bf, #d8897b 45%, #b33822 50%, #c4492e 85%, #d77960);
-  box-shadow: inset 0 0 0 1px #ffffff88, 0 1px 0 #ffffff88;
-}
-:root[data-theme='windowsvista'] .overlay-caption-close:hover {
-  background: radial-gradient(ellipse at bottom, #ffbc5d, transparent 70%), linear-gradient(#ffd0bf, #ed7658 45%, #ce2606 50%, #d84913);
-  box-shadow: inset 0 0 0 1px #ffffff99, 0 0 7px 3px #f55b3299;
-}
-:root[data-theme='windowsvista'] .overlay-caption-close:active {
-  background: linear-gradient(#b46659, #933421 45%, #6f1609 50%, #ae3519);
-  box-shadow: inset 0 0 0 1px #ffffff55;
-}
-:root[data-theme='windowsvista'] .overlay-caption-close > svg {
-  width: 12px;
-  height: 12px;
-  stroke-width: 2.5;
-  filter: drop-shadow(0 1px 1px #581800);
-}
-:root[data-theme='windowsvista'] .overlay-floating-close { right: 6px; top: 1px; }
-:root[data-theme='windowsvista'] .overlay-floating-close.left { left: 6px; right: auto; }
-:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .overlay-caption-close:disabled { opacity: .5; pointer-events: none; }
-:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .overlay-caption-close:focus-visible { outline: 1px dotted white; outline-offset: -4px; }
-@media (max-width: 760px) {
-  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .workspace { margin: 4px; padding: 8px; }
-}
-
-:root[data-theme='windowsvista'] .overlay-caption-close {
-  background-image: url('/themes/windowsvista/close.png'), linear-gradient(#f1c5bf, #d8897b 45%, #b33822 50%, #c4492e 85%, #d77960);
-  background-position: center;
-  background-repeat: no-repeat;
-}
-:root[data-theme='windowsvista'] .overlay-caption-close:hover {
-  background-image: url('/themes/windowsvista/close.png'), radial-gradient(ellipse at bottom, #ffbc5d, transparent 70%), linear-gradient(#ffd0bf, #ed7658 45%, #ce2606 50%, #d84913);
-}
-:root[data-theme='windowsvista'] .overlay-caption-close:active {
-  background-image: url('/themes/windowsvista/close.png'), linear-gradient(#b46659, #933421 45%, #6f1609 50%, #ae3519);
-}
-:root[data-theme='windowsvista'] .overlay-caption-close > svg { opacity: 0; }
-/* Explorer navigation is a list, not a stack of push buttons. */
-:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .sidebar nav button {
   border: 1px solid transparent;
-  border-radius: 2px;
+  border-top-width: 0;
+  border-radius: 0;
+  border-image: url('/themes/windowsvista/ui/caption-close-normal.png') 7 2 7 2 fill / 7px 2px 7px 2px stretch;
+  background: none;
   box-shadow: none;
-  background: transparent;
-  padding-top: 6px;
-  padding-bottom: 6px;
+  opacity: 1;
+  image-rendering: pixelated;
 }
-:root[data-theme='windowsxp'] .sidebar nav button:hover {
-  background: #e8effa;
-  color: #000;
-  border-color: #b6c8e5;
-  box-shadow: none;
+:root[data-theme='windowsvista'] .overlay-caption-close::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: url('/themes/windowsvista/ui/glyph-close-normal.png') center no-repeat;
 }
-:root[data-theme='windowsxp'] .sidebar nav button.active {
-  background: #316ac5;
-  color: #fff;
-  border-color: #316ac5;
-}
-:root[data-theme='windowsvista'] .sidebar nav button:hover {
-  background: linear-gradient(#f5fbffb3, #c3e4f399);
-  border-color: #ffffff99;
-  box-shadow: inset 0 0 0 1px #ffffff66;
-}
-:root[data-theme='windowsvista'] .sidebar nav button.active {
-  background: linear-gradient(#eef9ff, #c6e8fa);
-  color: #14232d;
-  border-color: #6ca7ca;
-  box-shadow: inset 0 0 0 1px #fff;
-}
-:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .drag-handle {
-  background: transparent;
+:root[data-theme='windowsvista'] .overlay-caption-close:hover {
   border-color: transparent;
+  border-image-source: url('/themes/windowsvista/ui/caption-close-hot.png');
+  background: none;
   box-shadow: none;
 }
-:root[data-color-scheme='dark'][data-theme='windowsxp'] .sidebar nav button:hover { background: #29476e; color: #fff; }
-:root[data-color-scheme='dark'][data-theme='windowsvista'] .sidebar nav button:hover { color: #14232d; }
+:root[data-theme='windowsvista'] .overlay-caption-close:active {
+  border-image-source: url('/themes/windowsvista/ui/caption-close-pressed.png');
+  background: none;
+  box-shadow: none;
+}
+:root[data-theme='windowsvista'] .overlay-floating-close { right: 7px; top: 0; }
+:root[data-theme='windowsvista'] .overlay-floating-close.left { left: 7px; right: auto; }
 
-/* The native 13px controls in every state, kept in both appearances because
-   these systems drew them the same on any surface. XP values and mark come from
-   XP.css, Vista values from 7.css; see docs/retro-themes.md. */
-@media (forced-colors: none) {
-  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) input[type='checkbox'] {
-    -webkit-appearance: none;
-    appearance: none;
-    --note-check-size: 13px;
-    flex: 0 0 auto;
-    width: 13px;
-    height: 13px;
-    border: 1px solid var(--check-border);
-    border-radius: 0;
-    background: var(--check-mark, none) center / 11px 11px no-repeat, var(--check-face);
-    box-shadow: var(--check-shadow, none);
-    opacity: 1;
-    transform: none;
-  }
-  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) input[type='checkbox']:focus {
-    outline: none;
-  }
-  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) input[type='checkbox']:focus-visible {
-    outline: 1px dotted var(--ink);
-    outline-offset: 1px;
-  }
-  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .lexical-note-editor {
-    --note-check-size: 13px;
-  }
+:root[data-theme='windowsvista'] .mobile-app-header {
+  background: url('/themes/windowsvista/ui/command-bg.png') 0 0 / 1px 100% repeat-x, linear-gradient(#134f6d, #083248);
+  color: #fff;
+}
 
-  :root[data-theme='windowsxp'] input[type='checkbox'] {
-    --check-border: #1d5281;
-    --check-face: linear-gradient(135deg, #dcdcd7, #fff);
-  }
-  :root[data-theme='windowsxp'] input[type='checkbox']:is(:checked, .mobile-checkbox-drag-preview *) {
-    --check-mark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 -.5 11 11' shape-rendering='crispEdges'%3E%3Cpath stroke='%2322a122' d='M8 2h1M7 3h2M2 4h1M6 4h3M2 5h2M5 5h3M2 6h5M3 7h3M4 8h1'/%3E%3C/svg%3E");
-  }
-  :root[data-theme='windowsxp'] input[type='checkbox']:hover {
-    --check-shadow: inset -2px -2px #f8b636, inset 2px 2px #fedf9c;
-  }
-  :root[data-theme='windowsxp'] input[type='checkbox']:active {
-    --check-face: linear-gradient(135deg, #b0b0a7, #e3e1d2);
-    --check-shadow: none;
-  }
-  :root[data-theme='windowsxp'] input[type='checkbox']:disabled {
-    --check-border: #cac8bb;
-    --check-face: linear-gradient(#fff, #fff);
-    --check-shadow: none;
-  }
-  :root[data-theme='windowsxp'] input[type='checkbox']:checked:disabled {
-    --check-mark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 -.5 11 11' shape-rendering='crispEdges'%3E%3Cpath stroke='%23cac8bb' d='M8 2h1M7 3h2M2 4h1M6 4h3M2 5h2M5 5h3M2 6h5M3 7h3M4 8h1'/%3E%3C/svg%3E");
-  }
+/* Both phone headers are dark bands, so their title and buttons are white. */
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .mobile-app-header :is(.mobile-app-title, .mobile-app-title strong, button) {
+  color: #fff;
+}
+:root[data-theme='windowsxp'] .mobile-app-header .mobile-app-title strong {
+  font: 700 13px 'Trebuchet MS', Tahoma, sans-serif;
+  text-shadow: 1px 1px #0f1089;
+}
 
-  :root[data-theme='windowsvista'] input[type='checkbox'] {
-    --check-border: #8e8f8f;
-    --check-face: linear-gradient(135deg, #d4d4d4, #f6f6f6 70%);
-    --check-shadow: inset 0 0 0 1px #f4f4f4, inset 1px 1px 0 1px #aeaeae, inset -1px -1px 0 1px #ddd;
-    transition: border-color 0.2s, box-shadow 0.2s;
+@media (max-width: 760px) {
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .workspace {
+    padding: 8px;
+    --tree-sticky-base: var(--mobile-header-height, 0px);
+    --list-template-rail-top: var(--mobile-header-height, 0px);
   }
-  :root[data-theme='windowsvista'] input[type='checkbox']:is(:checked, .mobile-checkbox-drag-preview *) {
-    --check-mark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 -.5 11 11' shape-rendering='crispEdges'%3E%3Cpath stroke='%23a9b6d3' d='M7 2h1M6 3h1M5 4h1M3 4h1M4 5h1M3 7h1M5 7h1M4 8h1'/%3E%3Cpath stroke='%234a5f97' d='M8 2h1M7 3h2M6 4h2M2 4h1M5 5h2M2 5h2M3 6h3M4 7h1'/%3E%3C/svg%3E");
-  }
-  :root[data-theme='windowsvista'] input[type='checkbox']:hover {
-    --check-border: #3c7fb1;
-    --check-face: linear-gradient(135deg, #b1dffd, #e9f7fe 70%);
-    --check-shadow: inset 0 0 0 1px #def9fa, inset 1px 1px 0 1px #79c6f9, inset -1px -1px 0 1px #c6e9fc;
-  }
-  :root[data-theme='windowsvista'] input[type='checkbox']:active {
-    --check-border: #2c628b;
-    --check-face: linear-gradient(135deg, #8dd0f9, #d4eefb 70%);
-    --check-shadow: inset 0 0 0 1px #c5e7f9, inset 1px 1px 0 1px #5eb0e8, inset -1px -1px 0 1px #a7dcf8;
-  }
-  :root[data-theme='windowsvista'] input[type='checkbox']:disabled {
-    --check-border: #b1b1b1;
-    --check-face: linear-gradient(135deg, #f0f0f0, #fbfbfb);
-    --check-shadow: none;
-  }
-  :root[data-theme='windowsvista'] input[type='checkbox']:checked:disabled {
-    --check-mark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 -.5 11 11' shape-rendering='crispEdges'%3E%3Cpath stroke='%23bfbfbf' d='M8 2h1M7 3h2M6 4h2M2 4h1M5 5h2M2 5h2M3 6h3M4 7h1'/%3E%3C/svg%3E");
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .page-header {
+    margin: -8px -8px 8px;
   }
 }
