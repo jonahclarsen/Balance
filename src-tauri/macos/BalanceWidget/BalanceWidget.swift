@@ -678,17 +678,8 @@ private struct WidgetPalette {
     @ViewBuilder
     var background: some View {
         switch chrome {
-        case .windowsxp:
-            Color(rgb: 0x0055EA)
-        case .windowsvista:
-            LinearGradient(
-                stops: (isDark
-                    ? [(0x3B6179, 0), (0x1A3544, 0.4), (0x32596E, 0.64), (0x162E3D, 1)]
-                    : [(0xEEFAFF, 0), (0x75A8C2, 0.4), (0xBEDEEA, 0.64), (0x5893AC, 1)]
-                ).map { Gradient.Stop(color: Color(rgb: $0.0), location: $0.1) },
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+        case .windowsxp, .windowsvista:
+            WallpaperView(palette: self)
         case .windows98:
             Color(rgb: isDark ? 0x003B3B : 0x008080)
         case .system1:
@@ -1013,6 +1004,55 @@ private struct IgnoreWidgetMargins: ViewModifier {
     }
 }
 
+/// Original Bliss and Aurora wallpapers, downscaled for the widget. See
+/// docs/windows-theme-assets.json for their provenance.
+private enum Wallpapers {
+    static let bliss = load("bliss")
+    static let aurora = load("aurora")
+
+    private static func load(_ name: String) -> NSImage? {
+        Bundle.main.url(forResource: name, withExtension: "jpg", subdirectory: "Wallpapers")
+            .flatMap(NSImage.init(contentsOf:))
+    }
+}
+
+private struct WallpaperView: View {
+    let palette: WidgetPalette
+
+    var body: some View {
+        let xp = palette.chrome == .windowsxp
+        GeometryReader { geometry in
+            if let image = xp ? Wallpapers.bliss : Wallpapers.aurora {
+                Image(nsImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: geometry.size.width, height: geometry.size.height)
+                    .clipped()
+            } else {
+                Color(rgb: xp ? 0x3A6EA5 : 0x1D4E63)
+            }
+        }
+        // The app dims the same wallpapers in dark mode.
+        .overlay(palette.isDark ? Color(rgb: xp ? 0x031020 : 0x07141B).opacity(xp ? 0.6 : 0.4) : .clear)
+    }
+}
+
+private struct TopRoundedRectangle: Shape {
+    let radius: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + radius))
+        path.addArc(tangent1End: CGPoint(x: rect.minX, y: rect.minY), tangent2End: CGPoint(x: rect.minX + radius, y: rect.minY), radius: radius)
+        path.addLine(to: CGPoint(x: rect.maxX - radius, y: rect.minY))
+        path.addArc(tangent1End: CGPoint(x: rect.maxX, y: rect.minY), tangent2End: CGPoint(x: rect.maxX, y: rect.minY + radius), radius: radius)
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        path.closeSubpath()
+        return path
+    }
+}
+
 private struct WidgetWindow<Content: View>: View {
     let palette: WidgetPalette
     let status: String?
@@ -1025,14 +1065,37 @@ private struct WidgetWindow<Content: View>: View {
             .clipped()
     }
 
+    /// macOS clips every widget to its own rounded rectangle. Insetting the
+    /// window by more than that rounding keeps the window's real corners and
+    /// leaves the clipped corners to the desktop behind it.
+    static var desktopInset: CGFloat { 7 }
+
+    private var vistaGlass: LinearGradient {
+        let stops: [(UInt32, Double, Double)] = palette.isDark
+            ? [(0x3B6179, 0.91, 0), (0x1A3544, 0.91, 0.4), (0x32596E, 0.91, 0.64), (0x162E3D, 0.91, 1)]
+            : [(0xEEFAFF, 0.61, 0), (0x75A8C2, 0.52, 0.4), (0xBEDEEA, 0.61, 0.64), (0x5893AC, 0.72, 1)]
+        return LinearGradient(
+            stops: stops.map { Gradient.Stop(color: Color(rgb: $0.0).opacity($0.1), location: $0.2) },
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
     var body: some View {
         switch palette.chrome {
         case .windowsxp:
+            let shape = TopRoundedRectangle(radius: 8)
             VStack(spacing: 0) {
                 caption
-                client.padding([.horizontal, .bottom], 4)
+                client.padding([.horizontal, .bottom], 3)
             }
+            .background(Color(rgb: 0x0055EA))
+            .clipShape(shape)
+            .compositingGroup()
+            .shadow(color: Color(rgb: 0x082858).opacity(0.4), radius: 2, x: 2, y: 3)
+            .padding(Self.desktopInset)
         case .windowsvista:
+            let shape = RoundedRectangle(cornerRadius: 7)
             VStack(spacing: 0) {
                 caption
                 client
@@ -1041,6 +1104,21 @@ private struct WidgetWindow<Content: View>: View {
                     .overlay(Rectangle().stroke(Color.white.opacity(palette.isDark ? 0.25 : 0.65), lineWidth: 1))
                     .padding([.horizontal, .bottom], 5)
             }
+            .background {
+                // The same wallpaper as the desktop, blurred behind the glass.
+                ZStack {
+                    WallpaperView(palette: palette)
+                        .padding(-Self.desktopInset)
+                        .blur(radius: 6, opaque: true)
+                    vistaGlass
+                }
+            }
+            .clipShape(shape)
+            .overlay(shape.inset(by: 1).stroke(Color.white.opacity(0.7), lineWidth: 1))
+            .overlay(shape.stroke(Color(rgb: 0x263C4D).opacity(0.8), lineWidth: 1))
+            .compositingGroup()
+            .shadow(color: .black.opacity(0.45), radius: 6, y: 3)
+            .padding(Self.desktopInset)
         case .windows98:
             VStack(spacing: 2) {
                 caption
@@ -1052,7 +1130,7 @@ private struct WidgetWindow<Content: View>: View {
                 topLeading: Color(rgb: palette.isDark ? 0x737373 : 0xFFFFFF),
                 bottomTrailing: .black
             )
-            .padding(7)
+            .padding(Self.desktopInset)
         case .system1:
             VStack(spacing: 0) {
                 caption
@@ -1060,7 +1138,7 @@ private struct WidgetWindow<Content: View>: View {
                 client
             }
             .overlay(Rectangle().stroke(palette.ink, lineWidth: 1))
-            .padding(7)
+            .padding(Self.desktopInset)
         case .none:
             content
         }
@@ -1077,7 +1155,7 @@ private struct WidgetWindow<Content: View>: View {
                 Spacer(minLength: 4)
                 statusText.foregroundStyle(.white)
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, 8)
             .frame(height: 26)
             .background(
                 LinearGradient(
@@ -1101,7 +1179,7 @@ private struct WidgetWindow<Content: View>: View {
                 Spacer(minLength: 4)
                 statusText.foregroundStyle(ink).shadow(color: glow, radius: 4)
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, 9)
             .frame(height: 26)
         case .windows98:
             HStack {

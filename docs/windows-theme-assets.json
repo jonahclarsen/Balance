@@ -469,6 +469,18 @@
       "source": "public/themes/windowsvista/aurora.jpg",
       "method": "480px wide, Gaussian blur 7: the static stand-in for live glass blur",
       "sha256": "95505fa7f2c5cb8eb24967858aff1f973f82a03e8d5f39c9b4bfa3669992a6d2"
+    },
+    {
+      "path": "src-tauri/macos/BalanceWidget/Wallpapers/bliss.jpg",
+      "source": "public/themes/windowsxp/bliss.png",
+      "method": "JPEG (quality 85) of the 800 x 600 original with sips for the macOS widget; same pixel size, no redrawing",
+      "sha256": "17eba59c3a5297a1412d7e3c4dcf3349db69d75fab3c88e91f61356ece251564"
+    },
+    {
+      "path": "src-tauri/macos/BalanceWidget/Wallpapers/aurora.jpg",
+      "source": "public/themes/windowsvista/aurora.jpg",
+      "method": "Downscaled to 1280 x 800 JPEG (quality 85) with sips for the macOS widget; no redrawing",
+      "sha256": "faba156b3a3bc55cebe41aa2d45cf01db1dd2b8e3c67831b39aaa6bb9d8b4c46"
     }
   ]
 }

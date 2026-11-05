@@ -34,6 +34,8 @@ Historical theme IDs are permanent, including retired Windows 98. Keep the TypeS
 
 macOS and Android widgets draw each retro theme as a window: its caption, dialog face, list well, checkbox and progress bar. `src-tauri/widget-fonts` holds the bundled fonts, losslessly converted to TrueType because Android can't load WOFF2; their licenses are in `public/fonts`. macOS uses its own Tahoma and Trebuchet MS for XP. Tahoma can't be redistributed, so Android's XP widget uses the system sans-serif.
 
+macOS clips every widget to its own large rounded rectangle, and apps can't change that shape. The windows are therefore inset on their desktop (Bliss, Aurora, the dither or teal), so the clip falls on the desktop and each window keeps its own corners: XP's rounded top, Vista's small radius, square Windows 98 and System 1. The widget copies of Bliss and Aurora are recorded in `windows-theme-assets.json`. Android launchers don't clip these widgets, so there the window is the whole widget.
+
 ## Asset provenance and visual review
 
 [windows-theme-assets.json](windows-theme-assets.json) records every wallpaper, icon, cursor and control bitmap, its source, conversion and SHA-256. Original Windows imagery retains Microsoft's rights; the archive sources describe personal, educational and archival use. The application code license does not relicense this artwork. `scripts/windows-theme-assets/` holds the extraction and slicing scripts, which only read those files as data.

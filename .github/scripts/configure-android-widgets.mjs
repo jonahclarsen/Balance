@@ -563,7 +563,9 @@ const darkWidgetThemes = [
 const alphaColor = (hex, alpha) => `#${alpha}${hex.slice(1)}`
 
 // Retro themes draw the widget as a window from their operating system, like
-// the macOS widget. Tahoma can't be redistributed, so XP uses Android's sans.
+// the macOS widget. Launchers don't clip these widgets, so the window itself is
+// the widget's shape and needs no desktop around it as on macOS. Tahoma can't
+// be redistributed, so XP uses Android's sans.
 const widgetFontFiles = [
   'balance_chicago',
   'balance_geneva',
@@ -574,7 +576,9 @@ const widgetFontFiles = [
 ]
 const retroWindows = {
   windowsxp: () => ({
+    frame: '#0055EA',
     corners: 8,
+    bottomCorners: 0,
     controlRadius: 0,
     clientInset: 4,
     captionInk: '#FFFFFF',
@@ -588,7 +592,7 @@ const retroWindows = {
     sizes: { caption: 15, status: 13, eyebrow: 10, title: 16, body: 13, time: 10, marker: 13 },
   }),
   windowsvista: (dark) => ({
-    corners: 8,
+    corners: 7,
     controlRadius: 2,
     clientInset: 5,
     glass: dark ? ['#3B6179', '#1A3544', '#162E3D'] : ['#EEFAFF', '#75A8C2', '#5893AC'],
@@ -604,9 +608,7 @@ const retroWindows = {
     corners: 0,
     controlRadius: 0,
     clientInset: 0,
-    desktopInset: 7,
     windowPadding: 3,
-    desktop: dark ? '#003B3B' : '#008080',
     bevel: [dark ? '#737373' : '#FFFFFF', '#000000'],
     captionInk: '#FFFFFF',
     captionPaddingStart: 6,
@@ -616,13 +618,11 @@ const retroWindows = {
     fonts: { caption: '@font/balance_ms_sans_bold', status: '@font/balance_ms_sans', eyebrow: '@font/balance_ms_sans_bold', title: '@font/balance_ms_sans_bold', body: '@font/balance_ms_sans', time: '@font/balance_ms_sans' },
     sizes: { caption: 13, status: 13, eyebrow: 11, title: 14, body: 13, time: 11, marker: 13 },
   }),
-  system1: (dark) => ({
+  system1: () => ({
     corners: 0,
     controlRadius: 0,
     clientInset: 0,
-    desktopInset: 7,
     windowPadding: 1,
-    dither: dark ? ['#101010', '#505050'] : ['#000000', '#FFFFFF'],
     pinstripes: true,
     captionPaddingStart: 6,
     progressRadius: 0,
@@ -668,9 +668,7 @@ function pngTile(width, height, pixel) {
   ])
 }
 
-// Physical-pixel tiles: 6px is about 2dp on a typical phone.
-const ditherTile = ([first, second]) =>
-  pngTile(12, 12, (x, y) => ((Math.floor(x / 6) + Math.floor(y / 6)) % 2 ? second : first))
+// Physical-pixel tiles: 15px is about 5dp on a typical phone.
 const pinstripeTile = (theme) =>
   pngTile(4, 15, (_x, y) => (y >= 6 && y < 9 ? theme.ink : theme.paper))
 function progressBlockTile(theme) {
@@ -839,7 +837,6 @@ ${taskRows(theme)}
 
 function retroHomeLayout(theme) {
   const win = theme.window
-  const inset = win.desktopInset ?? 0
   const shadow = win.captionShadow
     ? `
             android:shadowColor="${win.captionShadow}"
@@ -862,8 +859,7 @@ function retroHomeLayout(theme) {
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/balance_widget_${theme.id}_background"
-    android:clickable="true"
-    android:padding="${inset}dp">
+    android:clickable="true">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -1112,18 +1108,14 @@ const transparentShape = shapeFile('<solid android:color="@android:color/transpa
 
 function retroBackground(theme) {
   const win = theme.window
-  if (win.dither) {
-    return `<?xml version="1.0" encoding="utf-8"?>
-<bitmap xmlns:android="http://schemas.android.com/apk/res/android"
-    android:src="@drawable/balance_widget_${theme.id}_dither"
-    android:tileMode="repeat" />
-`
-  }
+  // Windows 98 and System 1 draw their square frame on the window surface.
+  if (!win.glass && !win.frame) return transparentShape
   const fill = win.glass
     ? `<gradient android:angle="315" android:startColor="${win.glass[0]}" android:centerColor="${win.glass[1]}" android:endColor="${win.glass[2]}" />`
-    : `<solid android:color="${win.desktop ?? '#0055EA'}" />`
+    : `<solid android:color="${win.frame}" />`
+  const bottom = win.bottomCorners ?? win.corners
   return shapeFile(`${fill}
-    <corners android:radius="${win.corners}dp" />`)
+    <corners android:topLeftRadius="${win.corners}dp" android:topRightRadius="${win.corners}dp" android:bottomLeftRadius="${bottom}dp" android:bottomRightRadius="${bottom}dp" />`)
 }
 
 function retroWindowSurface(theme) {
@@ -1427,7 +1419,6 @@ function addThemeFiles(theme, layoutDirectory, drawableDirectory) {
   files.set(drawable('window'), retroWindowSurface(theme))
   files.set(drawable('caption'), retroCaption(theme))
   files.set(drawable('face'), retroFace(theme))
-  if (theme.window.dither) files.set(tile('dither'), ditherTile(theme.window.dither))
   if (theme.window.pinstripes) files.set(tile('pinstripes'), pinstripeTile(theme))
   if (theme.window.progressBlocks) files.set(tile('progress_blocks'), progressBlockTile(theme))
 }
