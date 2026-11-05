@@ -20,7 +20,8 @@ for _ in $(seq 1 50); do
     sleep 2
     continue
   fi
-  if grep -q 'BALANCE_UPDATE_E2E: FAIL\|FATAL EXCEPTION' android-updater-log.txt; then
+  # Play Services crashes on these images; only Balance's own crash counts.
+  if grep -q 'BALANCE_UPDATE_E2E: FAIL' android-updater-log.txt || grep -A1 'FATAL EXCEPTION' android-updater-log.txt | grep -q "Process: $PKG"; then
     cat android-updater-log.txt
     exit 1
   fi

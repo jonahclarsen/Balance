@@ -293,7 +293,7 @@ async function tap(selector, detail, index = 0) {
   const selectorJson = JSON.stringify(selector)
   await recordAction('click', detail, () => client.evaluate(`(() => {
     const elements = [...document.querySelectorAll(${selectorJson})]
-      .filter((element) => element instanceof HTMLElement && !element.hasAttribute('disabled'))
+      .filter((element) => element instanceof HTMLElement && !element.hasAttribute('disabled') && element.getClientRects().length > 0)
     const element = elements[${index}]
     if (!(element instanceof HTMLElement)) throw new Error('No enabled element matched ${selector.replaceAll("'", "\\'")} at index ${index}')
     element.scrollIntoView({ block: 'center', inline: 'center' })
@@ -757,7 +757,7 @@ async function exercisePageFeature(page) {
     if (!hasList) await tap('.empty-state button.primary', 'create first list')
     if (cycle % 4 === 1) await tap('.template-panel-actions .add-row', 'add list item')
     if (cycle % 5 === 0) {
-      await tap('.page-header button.primary', 'open list history')
+      await tap('.page-header .template-panel-actions > button.primary:last-child', 'open list history')
       await tap('.list-history-back', 'return from list history')
     }
     return
@@ -936,7 +936,7 @@ try {
     if (!hasList) await tap('.empty-state button.primary', 'create first list')
     for (cycle = 1; cycle <= listHistoryTransitions; cycle += 1) {
       console.log(`[interaction-stress] list history transition ${cycle}/${listHistoryTransitions}`)
-      await tap('.page-header button.primary', 'open list history')
+      await tap('.page-header .template-panel-actions > button.primary:last-child', 'open list history')
       await tap('.list-history-back', 'return from list history')
     }
     cycle = listHistoryTransitions
