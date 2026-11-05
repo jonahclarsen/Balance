@@ -58,9 +58,21 @@
     if (index > 0) index -= 1
   }
 
+  const mod = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl+'
+
   function handleKeydown(event: KeyboardEvent) {
-    if (!step || event.target instanceof HTMLInputElement || event.altKey || event.ctrlKey || event.metaKey || event.repeat) return
+    if (!step || event.altKey || event.repeat) return
     const key = event.key.toLowerCase()
+    // Cmd/Ctrl+S and +B also work while typing an answer.
+    if (event.metaKey || event.ctrlKey) {
+      if (event.shiftKey) return
+      if (key !== 's' && key !== 'b') return
+      event.preventDefault()
+      if (key === 's') skip()
+      else goBack()
+      return
+    }
+    if (event.target instanceof HTMLInputElement) return
     let handled = true
     if (key === 'b') goBack()
     else if (key === 's') skip()
@@ -113,8 +125,8 @@
     {/if}
 
     <div class="day-quiz-nav">
-      <button type="button" on:click={goBack} disabled={index === 0}>← Back{#if !typed} <kbd>B</kbd>{/if}</button>
-      <button type="button" title="Leave this row to its usual odds" on:click={skip}>Skip{#if !typed} <kbd>S</kbd>{/if} →</button>
+      <button type="button" on:click={goBack} disabled={index === 0}>← Back <kbd>{typed ? mod : ''}B</kbd></button>
+      <button type="button" title="Leave this row to its usual odds" on:click={skip}>Skip <kbd>{typed ? mod : ''}S</kbd> →</button>
     </div>
   {/if}
 </div>

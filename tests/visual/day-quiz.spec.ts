@@ -32,6 +32,29 @@ test('a question with a blank only answer takes a typed answer after the questio
   await expect(page.getByRole('region', { name: 'Daily plan' }).locator('[data-plan-text-input]')).toHaveText(['Focus: snack break'])
 })
 
+test('Cmd+S skips a typed question while its field is focused', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
+  await page.clock.install({ time: NOW })
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  await openView(page, 'Days')
+  await page.getByRole('button', { name: 'New day', exact: true }).last().click()
+  await page.getByRole('button', { name: 'Ask a question when generating the day' }).first().click()
+  await page.keyboard.type('Focus:')
+
+  await generateDay(page)
+  const quiz = page.locator('.day-quiz')
+  const answer = quiz.getByRole('textbox', { name: 'Focus:' })
+  await expect(answer).toBeFocused()
+  await page.keyboard.type('snack break')
+  await page.keyboard.press('ControlOrMeta+s')
+
+  await expect(quiz).toBeHidden()
+  await expect(page.getByRole('region', { name: 'Daily plan' }).getByText('Focus: snack break')).toHaveCount(0)
+})
+
 test('Cmd+Shift+A selects the row from its question field', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
   await page.goto('/')
