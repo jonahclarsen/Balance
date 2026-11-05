@@ -169,12 +169,14 @@ test('Mac System 1 typography and selection readability across the app', async (
 for (const themeId of ['system1', 'windowsxp', 'windowsvista']) {
   test(`${themeId} paints nothing for the IMAX click handoff`, async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== 'desktop', 'The click handoff is macOS desktop only')
+    await page.clock.install({ time: new Date('2026-10-14T14:20:00') })
     await page.addInitScript(() => Object.defineProperty(navigator, 'platform', { get: () => 'MacIntel' }))
     await page.goto('/')
-    await page.evaluate(themeId => {
+    await page.evaluate(({ themeId, state }) => {
       localStorage.clear()
+      localStorage.setItem('balance.appState.v1', JSON.stringify(state))
       localStorage.setItem('balance:deviceAppearance.v1', JSON.stringify({ version: 1, themeId, colorScheme: 'light' }))
-    }, themeId)
+    }, { themeId, state: createScreenshotState('2026-10-14') })
     await page.reload()
     await expect(page.locator('html')).toHaveAttribute('data-theme', themeId)
 

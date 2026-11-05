@@ -9,7 +9,7 @@ on:
         options: [light, dark]
       themes:
         description: JSON array of theme IDs
-        default: '["graphite","windows98","system1","windowsxp","windowsvista"]'
+        default: '["graphite","system1","windowsxp","windowsvista"]'
         type: string
       runners:
         description: JSON array of hosted runner labels
