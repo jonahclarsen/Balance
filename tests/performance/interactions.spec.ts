@@ -470,9 +470,16 @@ async function profileGoalRhythmScroll(page: Page, frameCount = GOAL_SCROLL_FRAM
 test.beforeEach(async ({ page }, testInfo) => {
   test.setTimeout(300_000)
   page.on('pageerror', error => console.log(`PROFILE_PAGE_ERROR ${error.message}`))
-  // Freeze Date only: preserve real rAF/performance timings while keeping
-  // goal reconciliation inside Balance's rolling recalculation window.
-  await page.clock.setFixedTime(new Date(`${ACTIVE_DATE}T12:00:00`))
+  // Playwright's clock also replaces Performance's entry buffer. Freeze Date
+  // alone so native high-resolution timers, marks, rAF and CDP remain intact.
+  await page.addInitScript(date => {
+    const fixed = Date.parse(`${date}T12:00:00`)
+    globalThis.Date = new Proxy(Date, {
+      construct: (target, args) => Reflect.construct(target, args.length ? args : [fixed]),
+      apply: target => new target(fixed).toString(),
+      get: (target, key, receiver) => key === 'now' ? () => fixed : Reflect.get(target, key, receiver),
+    })
+  }, ACTIVE_DATE)
   await installSyntheticWorkspace(page)
   if (testInfo.project.name.includes('6x-cpu')) {
     const session = await page.context().newCDPSession(page)
