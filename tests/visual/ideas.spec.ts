@@ -452,6 +452,15 @@ test('the sorter stays with its page and cuts ideas to Trash and the clipboard',
   await expect(sorter(page)).toBeVisible()
   await expect(sorter(page).locator('.idea-sort-card')).toContainText('Synthetic cut me')
 
+  // The sidebar's shortcuts leave the sorter like its buttons do.
+  await page.keyboard.press('y')
+  await page.keyboard.press('Alt+KeyN')
+  await expect(sorter(page)).toBeHidden()
+  await expect(page.locator('[data-nav-view="notes"]')).toHaveClass(/active/)
+  await page.keyboard.press('Alt+KeyB')
+  await expect(sorter(page)).toBeVisible()
+  await expect(sorter(page).locator('.idea-sort-card')).toContainText('Synthetic cut me')
+
   await page.keyboard.press('y')
   await page.keyboard.press('x')
   await expectIdea(page, 2, 2)

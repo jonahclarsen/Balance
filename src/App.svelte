@@ -4043,6 +4043,61 @@ return rows`
 
   // When you add/remove/change a shortcut here, also update the user-facing
   // reference in src/lib/KeyboardShortcutsModal.svelte (opened with `?`).
+  const sidebarViewByCode: Partial<Record<string, View>> = {
+    KeyX: 'next',
+    KeyD: 'templates',
+    KeyN: 'notes',
+    KeyP: 'projects',
+    KeyR: 'prioritize',
+    KeyB: 'ideas',
+    KeyV: 'metrics',
+    KeyZ: 'situate',
+    KeyS: 'settings',
+  }
+
+  // Alt+letter shortcuts that switch views, like the sidebar buttons.
+  function handleSidebarShortcut(event: KeyboardEvent) {
+    const sidebarView = sidebarViewByCode[event.code]
+    if (sidebarView) {
+      event.preventDefault()
+      if (sidebarView === 'projects') {
+        linkedProjectId = ''
+        projectHistoryNavigationVisible = false
+      }
+      if (sidebarView === 'settings' && view === 'today') captureRenderedPlanSnapshot()
+      switchViewFromShortcut(sidebarView)
+      return true
+    }
+
+    // Alt+L is an intentionally unlisted alias for Alt+E.
+    if (event.code === 'KeyE' || event.code === 'KeyL') {
+      event.preventDefault()
+      openLists()
+      return true
+    }
+
+    if (event.code === 'KeyH') {
+      event.preventDefault()
+      openListHistory()
+      return true
+    }
+
+    if (event.code === 'KeyT') {
+      event.preventDefault()
+      if (view === 'today') void revealTodayNextTask()
+      else switchViewFromShortcut('today')
+      return true
+    }
+
+    if (event.code === 'KeyG') {
+      event.preventDefault()
+      void openGoals()
+      return true
+    }
+
+    return false
+  }
+
   function handleGlobalKeydown(event: KeyboardEvent) {
     if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || event.key === 'Escape') stopKeyboardScroll()
     if (document.querySelector('dialog[data-image-dialog][open]')) return
@@ -4110,8 +4165,12 @@ return rows`
       return
     }
 
-    // The sort modal owns the keyboard while open (its own window listener).
-    if (ideaSortVisible) return
+    // The sort modal owns the keyboard while open (its own window listener),
+    // apart from the sidebar's view shortcuts, which leave it like the buttons do.
+    if (ideaSortVisible) {
+      if (event.altKey && !primaryModifier && !event.shiftKey) handleSidebarShortcut(event)
+      return
+    }
 
     if (event.altKey && !primaryModifier && !event.shiftKey && event.code === 'KeyA') {
       event.preventDefault()
@@ -4271,56 +4330,7 @@ return rows`
         return
       }
 
-      const sidebarViewByCode: Partial<Record<string, View>> = {
-        KeyX: 'next',
-        KeyD: 'templates',
-        KeyN: 'notes',
-        KeyP: 'projects',
-        KeyR: 'prioritize',
-        KeyB: 'ideas',
-        KeyV: 'metrics',
-        KeyZ: 'situate',
-        KeyS: 'settings',
-      }
-      const sidebarView = sidebarViewByCode[event.code]
-
-      if (sidebarView) {
-        event.preventDefault()
-        if (sidebarView === 'projects') {
-          linkedProjectId = ''
-          projectHistoryNavigationVisible = false
-        }
-        if (sidebarView === 'settings' && view === 'today') captureRenderedPlanSnapshot()
-        switchViewFromShortcut(sidebarView)
-        return
-      }
-
-      // Alt+L is an intentionally unlisted alias for Alt+E.
-      if (event.code === 'KeyE' || event.code === 'KeyL') {
-        event.preventDefault()
-        openLists()
-        return
-      }
-
-      if (event.code === 'KeyH') {
-        event.preventDefault()
-        openListHistory()
-        return
-      }
-
-      if (event.code === 'KeyT') {
-        event.preventDefault()
-        if (view === 'today') void revealTodayNextTask()
-        else switchViewFromShortcut('today')
-        return
-      }
-
-      if (event.code === 'KeyG') {
-        event.preventDefault()
-        void openGoals()
-        return
-      }
-
+      if (handleSidebarShortcut(event)) return
     }
 
     if (
