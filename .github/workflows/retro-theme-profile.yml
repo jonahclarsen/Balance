@@ -1,5 +1,8 @@
 name: Explore retro theme performance
 on:
+  push:
+    branches: [perf/retro-theme-profiling]
+    paths: ['.github/workflows/retro-theme-profile.yml']
   workflow_dispatch:
     inputs:
       experiments:
