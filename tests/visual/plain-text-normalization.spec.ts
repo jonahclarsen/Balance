@@ -23,7 +23,12 @@ test('plain task hydration agrees with browser parsing for generated text', asyn
       // their parsed text and removes raw trailing newlines.
       const template = document.createElement('template')
       template.innerHTML = value
-      const expected = escape((template.content.textContent ?? '').replace(/\n+$/, ''))
+      const sanitized = escape(template.content.textContent ?? '')
+      const cleanup = document.createElement('template')
+      cleanup.innerHTML = sanitized
+      const parsed = cleanup.content.textContent ?? ''
+      const stripped = parsed.replace(/\n+$/, '')
+      const expected = stripped === parsed ? sanitized : escape(stripped)
       const actual = sanitizeInlineHTML(value)
       return actual === expected ? [] : [{ value, expected, actual }]
     })

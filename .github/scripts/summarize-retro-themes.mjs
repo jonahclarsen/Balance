@@ -10,7 +10,7 @@ const groups = new Map()
 for (const file of find(directory)) {
   const rows = readFileSync(file, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line))
   for (const row of rows) {
-    const key = `${file}:${row.experiment}`
+    const key = `${file}:${row.revision ?? "candidate"}:${row.experiment}`
     if (!groups.has(key)) groups.set(key, [])
     groups.get(key).push(row)
   }
@@ -18,6 +18,7 @@ for (const file of find(directory)) {
 if (!groups.size) throw new Error('No successful profile measurements')
 const summary = [...groups].map(([key, rows]) => ({
   source: key.slice(0, key.lastIndexOf(':')),
+  revision: rows[0].revision ?? 'candidate',
   experiment: rows[0].experiment,
   theme: rows[0].fixture.themeId,
   tasks: rows[0].fixture.planItems + rows[0].fixture.listItems,
@@ -40,5 +41,5 @@ console.log('| Theme | Tasks | Experiment | Pixels match | Typing ms | p95 ms | 
 console.log('|---|---:|---|---|---:|---:|---:|---:|---:|---:|')
 for (const row of summary) {
   const m = row.metrics
-  console.log(`| ${row.theme} | ${row.tasks} | ${row.experiment} | ${row.visuallyIdentical} | ${m.typingMedianMs?.toFixed(1)} | ${m.typingP95Ms?.toFixed(1)} | ${m.backspaceMedianMs?.toFixed(1)} | ${m.checkboxMedianMs?.toFixed(1)} | ${m.scriptMs?.toFixed(1)} | ${m.styleMs?.toFixed(1)} |`)
+  console.log(`| ${row.theme} | ${row.tasks} | ${row.revision}/${row.experiment} | ${row.visuallyIdentical} | ${m.typingMedianMs?.toFixed(1)} | ${m.typingP95Ms?.toFixed(1)} | ${m.backspaceMedianMs?.toFixed(1)} | ${m.checkboxMedianMs?.toFixed(1)} | ${m.scriptMs?.toFixed(1)} | ${m.styleMs?.toFixed(1)} |`)
 }

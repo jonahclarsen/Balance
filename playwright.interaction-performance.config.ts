@@ -38,7 +38,7 @@ export default defineConfig({
   },
   webServer: {
     command: release
-      ? 'pnpm exec vite build && pnpm exec vite preview --host 127.0.0.1 --port 5124 --strictPort'
+      ? `${process.env.BALANCE_INTERACTION_PERF_PREBUILT === '1' ? '' : 'pnpm exec vite build && '}pnpm exec vite preview --host 127.0.0.1 --port 5124 --strictPort`
       : 'pnpm exec vite --host 127.0.0.1 --port 5124 --strictPort',
     env: { VITE_BALANCE_START_VIEW: 'today', VITE_BALANCE_SKIP_SEED_GOALS: '1' },
     url: 'http://127.0.0.1:5124',

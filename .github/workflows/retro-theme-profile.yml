@@ -1,10 +1,11 @@
 name: Explore retro theme performance
 on:
-  push:
-    branches: [perf/retro-theme-profiling]
-    paths: ['.github/workflows/retro-theme-profile.yml', '.github/scripts/profile-retro-themes.mjs']
   workflow_dispatch:
     inputs:
+      baseline_ref:
+        description: Optional revision for alternating matched comparison
+        default: ''
+        type: string
       experiments:
         description: Comma-separated interventions (baseline always supported)
         default: baseline,sidebar-no-blur,header-no-blur,sidebar-style,sidebar-layout,sidebar-layer,header-layer,panel-style,panel-layout,workspace-style
@@ -41,6 +42,8 @@ jobs:
       BALANCE_INTERACTION_PERF_CLICKS: '8'
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - uses: pnpm/action-setup@v6
         with:
           run_install: false
@@ -50,6 +53,20 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
+      - name: Prepare matched baseline with the same harness
+        if: inputs.baseline_ref != ''
+        env:
+          BASELINE_REF: ${{ inputs.baseline_ref }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$BASELINE_REF"
+          baseline="$RUNNER_TEMP/retro-baseline"
+          git worktree add --detach "$baseline" FETCH_HEAD
+          cp tests/performance/interactions.spec.ts "$baseline/tests/performance/interactions.spec.ts"
+          cp tests/helpers/navigation.ts "$baseline/tests/helpers/navigation.ts"
+          cp playwright.interaction-performance.config.ts "$baseline/playwright.interaction-performance.config.ts"
+          (cd "$baseline" && pnpm install --frozen-lockfile --offline)
+          echo "BASELINE_DIR=$baseline" >> "$GITHUB_ENV"
       - run: node .github/scripts/profile-retro-themes.mjs
       - run: node .github/scripts/summarize-retro-themes.mjs >> "$GITHUB_STEP_SUMMARY"
         if: always()

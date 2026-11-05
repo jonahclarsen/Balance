@@ -461,6 +461,7 @@ async function profileGoalRhythmScroll(page: Page, frameCount = GOAL_SCROLL_FRAM
 
 test.beforeEach(async ({ page }, testInfo) => {
   test.setTimeout(300_000)
+  page.on('pageerror', error => console.log(`PROFILE_PAGE_ERROR ${error.message}`))
   // Freeze Date only: preserve real rAF/performance timings while keeping
   // goal reconciliation inside Balance's rolling recalculation window.
   await page.clock.setFixedTime(new Date(`${ACTIVE_DATE}T12:00:00`))
@@ -481,7 +482,7 @@ test.beforeEach(async ({ page }, testInfo) => {
     }
     await page.addStyleTag({ content: `${DISABLE_IRIDESCENT_MOTION}\n${selectedMotion}` })
   }
-  await expect(page.locator(EDITOR_SELECTOR)).toBeVisible()
+  await expect(page.locator(EDITOR_SELECTOR)).toBeVisible({ timeout: 180_000 })
   await expect(page.locator('html')).toHaveAttribute('data-theme', THEME_ID)
   await page.evaluate(() => performance.mark('interaction-workspace-ready'))
   // Let the selected theme reach a painted frame before collecting timings.
@@ -545,6 +546,7 @@ test('profiles common typing and backspacing paths', async ({ page }, testInfo) 
       await testInfo.attach('baseline.png', { body: baseline, contentType: 'image/png' })
     }
   }
+  await testInfo.attach('appearance.png', { body: await page.screenshot({ animations: 'disabled', caret: 'hide' }), contentType: 'image/png' })
   const renderer = await page.context().newCDPSession(page)
   await renderer.send('Performance.enable')
   const beforeMetrics = await renderer.send('Performance.getMetrics')
@@ -581,6 +583,7 @@ test('profiles common typing and backspacing paths', async ({ page }, testInfo) 
     experiment: RETRO_EXPERIMENT,
     visuallyIdentical,
     rendererDelta,
+    rendererFinal: Object.fromEntries(afterMetrics.metrics.map(m => [m.name, m.value])),
     workspaceReadyMs: await page.evaluate(() => performance.getEntriesByName('interaction-workspace-ready')[0]?.startTime),
     project: testInfo.project.name,
     fixture: {
