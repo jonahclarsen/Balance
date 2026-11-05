@@ -317,7 +317,7 @@
         <!-- A sibling, since inputs can't sit inside the card button; it
              occupies the card's reserved bottom padding. -->
         {#if scheduled}
-          <div class="idea-group-card-cadence"><IdeaReviewCadence kind={scheduled} {groups} label={meta.label} /></div>
+          <div class="idea-group-card-cadence"><IdeaReviewCadence kind={scheduled} {groups} label={meta.label} onTap={() => onSelectGroup(meta.kind)} /></div>
         {/if}
         </div>
       {/each}
@@ -445,11 +445,12 @@
     text-align: left;
   }
   .idea-group-slot { position: relative; }
-  .idea-group-card.scheduled { padding-bottom: 34px; }
+  /* Reserves room for the cadence below the card's text, clear of its middle. */
+  .idea-group-card.scheduled { padding-bottom: 38px; }
   .idea-group-card-cadence {
     position: absolute;
     left: 11px;
-    bottom: 9px;
+    bottom: 8px;
   }
   .idea-group-card:not(.active) {
     border-color: var(--line);

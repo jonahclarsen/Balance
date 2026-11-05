@@ -107,8 +107,7 @@ export function scheduledIdeaReviewDefault(kind: IdeaGroupKind): number | null {
 
 // Whole days from 1 to a year, or null for anything else.
 export function parseIdeaReviewDays(value: unknown): number | null {
-  const days = typeof value === 'number' ? value : Number(String(value).trim())
-  return Number.isInteger(days) && days >= 1 && days <= IDEA_REVIEW_MAX_DAYS ? days : null
+  return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= IDEA_REVIEW_MAX_DAYS ? value : null
 }
 
 export function ideaReviewDays(groups: IdeaGroup[], kind: ScheduledIdeaReviewKind): number {

@@ -1,60 +1,92 @@
 <script lang="ts">
-  import { ideaReviewDays, IDEA_REVIEW_MAX_DAYS, parseIdeaReviewDays, type ScheduledIdeaReviewKind } from './ideas'
+  import { onDestroy } from 'svelte'
+  import { beginHapticDrag, endHapticDrag, vibrateSteps } from './haptics'
+  import { ideaReviewDays, IDEA_REVIEW_MAX_DAYS, type ScheduledIdeaReviewKind } from './ideas'
   import { plannerStore } from './store'
   import type { IdeaGroup } from './types'
 
   export let kind: ScheduledIdeaReviewKind
   export let groups: IdeaGroup[]
   export let label: string
+  // A press that never drags counts as a press on whatever holds the value.
+  export let onTap: (() => void) | undefined = undefined
+
+  // Dragged like Today's times: one day per step of the pointer.
+  const PX_PER_DAY = 8
+  let preview: number | null = null
+  let drag: { originY: number; origin: number; steps: number; moved: boolean } | null = null
 
   $: days = ideaReviewDays(groups, kind)
+  $: shown = preview ?? days
+  $: text = `Every ${shown} ${shown === 1 ? 'day' : 'days'}`
 
-  // Invalid entries snap back to the saved cadence.
-  function commit(input: HTMLInputElement) {
-    const next = parseIdeaReviewDays(input.value)
-    if (next !== null && next !== days) plannerStore.setIdeaReviewDays(kind, next)
-    else input.value = String(days)
+  function clamp(value: number) {
+    return Math.min(IDEA_REVIEW_MAX_DAYS, Math.max(1, value))
   }
 
-  function handleKeydown(event: KeyboardEvent & { currentTarget: HTMLInputElement }) {
-    if (event.key !== 'Enter' && event.key !== 'Escape') return
+  function save(next: number) {
+    if (next !== days) plannerStore.setIdeaReviewDays(kind, next)
+  }
+
+  function begin(event: PointerEvent) {
     event.preventDefault()
-    if (event.key === 'Escape') event.currentTarget.value = String(days)
-    event.currentTarget.blur()
+    ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
+    drag = { originY: event.clientY, origin: days, steps: 0, moved: false }
+    beginHapticDrag()
   }
+
+  function move(event: PointerEvent) {
+    if (!drag) return
+    const steps = Math.round((drag.originY - event.clientY) / PX_PER_DAY)
+    if (steps !== drag.steps) {
+      vibrateSteps(Math.abs(steps - drag.steps))
+      drag.steps = steps
+      drag.moved = true
+    }
+    preview = clamp(drag.origin + steps)
+  }
+
+  function end(event?: PointerEvent) {
+    if (!drag) return
+    const tapped = event?.type === 'pointerup' && !drag.moved
+    drag = null
+    endHapticDrag()
+    if (preview !== null) save(preview)
+    preview = null
+    if (tapped) onTap?.()
+  }
+
+  function key(event: KeyboardEvent) {
+    const delta = event.key === 'ArrowUp' ? 1 : event.key === 'ArrowDown' ? -1 : 0
+    if (!delta) return
+    event.preventDefault()
+    event.stopPropagation()
+    save(clamp(days + delta * (event.shiftKey ? 7 : 1)))
+  }
+
+  onDestroy(() => end())
 </script>
 
-<label class="idea-review-cadence" title="Scheduled review">
-  Every
-  <input
-    type="number"
-    inputmode="numeric"
-    min="1"
-    max={IDEA_REVIEW_MAX_DAYS}
-    step="1"
-    value={days}
+<span class="time-range idea-review-cadence">
+  <button
+    class="time-part"
+    type="button"
+    role="spinbutton"
     aria-label={`${label} review days`}
-    on:change={(event) => commit(event.currentTarget)}
-    on:keydown={handleKeydown}
-  />
-  days
-</label>
+    aria-valuenow={shown}
+    aria-valuemin={1}
+    aria-valuemax={IDEA_REVIEW_MAX_DAYS}
+    aria-valuetext={text}
+    title="Drag up or down, or use the arrow keys"
+    on:pointerdown={begin}
+    on:pointermove={move}
+    on:pointerup={end}
+    on:pointercancel={() => end()}
+    on:keydown={key}
+  >{text}</button>
+</span>
 
 <style>
-  .idea-review-cadence {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    color: var(--muted);
-    font-size: 12px;
-    white-space: nowrap;
-  }
-  .idea-review-cadence input {
-    width: 3.5em;
-    min-height: 0;
-    padding: 1px 4px;
-    font-size: 12px;
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-  }
+  .idea-review-cadence { font-size: 12px; }
+  .idea-review-cadence .time-part { padding: 3px 8px; white-space: nowrap; }
 </style>
