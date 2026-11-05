@@ -4,6 +4,8 @@ import { createScreenshotState } from '../../website/capture/seed'
 
 for (const [id, name] of [['system1', 'Mac System 1'], ['windowsxp', 'Windows XP'], ['windowsvista', 'Windows Vista']] as const) {
   test(`${name} can be selected, survives reload, and stays usable in both appearances`, async ({ page, browserName, isMobile }, testInfo) => {
+    // Dozens of full-page screenshots in both appearances outlast the default budget on CI.
+    test.slow()
     await page.clock.install({ time: new Date('2026-10-14T14:20:00') })
     await page.emulateMedia({ colorScheme: 'light' })
     await page.goto('/')

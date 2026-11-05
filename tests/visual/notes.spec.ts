@@ -1735,9 +1735,12 @@ test('notes save adjustable breathing room and follow the final caret to the bot
     ;(element as HTMLElement).style.removeProperty('--goal-history-height')
   })
 
-  await workspace.evaluate((element) => element.scrollTo({ top: 0 }))
   const spacingControl = page.locator('.note-scroll-space-control')
-  await expect(spacingControl).toHaveCSS('opacity', '0')
+  // The resize above can leave a follow-the-bottom frame pending, which undoes one scroll.
+  await expect(async () => {
+    await workspace.evaluate((element) => element.scrollTo({ top: 0 }))
+    await expect(spacingControl).toHaveCSS('opacity', '0', { timeout: 1000 })
+  }).toPass()
   await expect(spacingControl).toHaveCSS('visibility', 'hidden')
   await expect(spacingControl).toHaveCSS('transition-property', /opacity.*visibility/)
 
