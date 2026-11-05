@@ -474,10 +474,12 @@ test.beforeEach(async ({ page }, testInfo) => {
   // alone so native high-resolution timers, marks, rAF and CDP remain intact.
   await page.addInitScript(date => {
     const fixed = Date.parse(`${date}T12:00:00`)
+    const started = performance.now()
+    const current = () => Math.floor(fixed + performance.now() - started)
     globalThis.Date = new Proxy(Date, {
-      construct: (target, args) => Reflect.construct(target, args.length ? args : [fixed]),
-      apply: target => new target(fixed).toString(),
-      get: (target, key, receiver) => key === 'now' ? () => fixed : Reflect.get(target, key, receiver),
+      construct: (target, args) => Reflect.construct(target, args.length ? args : [current()]),
+      apply: target => new target(current()).toString(),
+      get: (target, key, receiver) => key === 'now' ? current : Reflect.get(target, key, receiver),
     })
   }, ACTIVE_DATE)
   await installSyntheticWorkspace(page)
@@ -594,12 +596,14 @@ test('profiles common typing and backspacing paths', async ({ page }, testInfo) 
   await renderer.detach()
   const before = new Map(beforeMetrics.metrics.map(m => [m.name, m.value]))
   const rendererDelta = Object.fromEntries(afterMetrics.metrics.map(m => [m.name, m.value - (before.get(m.name) ?? 0)]))
+  const workspaceReadyMs = await page.evaluate(() => performance.getEntriesByName('interaction-workspace-ready')[0]?.startTime)
+  expect(workspaceReadyMs, 'Native Performance marks must survive the fixture clock').toBeGreaterThan(0)
   const profile = {
     experiment: RETRO_EXPERIMENT,
     visuallyIdentical,
     rendererDelta,
     rendererFinal: Object.fromEntries(afterMetrics.metrics.map(m => [m.name, m.value])),
-    workspaceReadyMs: await page.evaluate(() => performance.getEntriesByName('interaction-workspace-ready')[0]?.startTime),
+    workspaceReadyMs,
     project: testInfo.project.name,
     fixture: {
       surface: SURFACE,
