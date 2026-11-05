@@ -3,8 +3,9 @@ import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs'
 
 const out = 'artifacts/retro-profile'
 mkdirSync(out, { recursive: true })
-const experiments = (process.env.EXPERIMENTS ?? 'baseline,sidebar-style,sidebar-layout,sidebar-layer,header-layer,panel-style,panel-layout,workspace-style').split(',')
-const rounds = Number(process.env.ROUNDS ?? 3)
+const experiments = (process.env.EXPERIMENTS || 'baseline,sidebar-style,sidebar-layout,sidebar-layer,header-layer,panel-style,panel-layout,workspace-style').split(',')
+const rounds = Number(process.env.ROUNDS || 3)
+if (!Number.isInteger(rounds) || rounds < 1 || rounds > 10) throw new Error('Rounds must be between 1 and 10')
 let failed = false
 for (let round = 0; round < rounds; round++) {
   const order = round % 2 ? [...experiments].reverse() : experiments
