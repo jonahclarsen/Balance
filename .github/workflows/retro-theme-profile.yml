@@ -2,6 +2,18 @@ name: Explore retro theme performance
 on:
   workflow_dispatch:
     inputs:
+      themes:
+        description: JSON array of theme IDs
+        default: '["graphite","windows98","system1","windowsxp","windowsvista"]'
+        type: string
+      runners:
+        description: JSON array of hosted runner labels
+        default: '["ubuntu-24.04","macos-15-intel"]'
+        type: string
+      sizes:
+        description: JSON array of standard, decade, or dense workloads
+        default: '["standard","decade"]'
+        type: string
       baseline_ref:
         description: Optional revision for alternating matched comparison
         default: ''
@@ -21,9 +33,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [ubuntu-24.04, macos-15-intel]
-        theme: [graphite, windows98, system1, windowsxp, windowsvista]
-        size: [standard, decade]
+        runner: ${{ fromJSON(inputs.runners) }}
+        theme: ${{ fromJSON(inputs.themes) }}
+        size: ${{ fromJSON(inputs.sizes) }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     env:
@@ -33,7 +45,7 @@ jobs:
       BALANCE_INTERACTION_PERF_PROFILE_ONLY: '1'
       BALANCE_INTERACTION_PERF_THEME: ${{ matrix.theme }}
       BALANCE_INTERACTION_PERF_PLANS: ${{ matrix.size == 'decade' && '3650' || '365' }}
-      BALANCE_INTERACTION_PERF_ITEMS_PER_PLAN: ${{ matrix.size == 'decade' && '50' || '20' }}
+      BALANCE_INTERACTION_PERF_ITEMS_PER_PLAN: ${{ matrix.size == 'dense' && '1000' || matrix.size == 'decade' && '50' || '20' }}
       BALANCE_INTERACTION_PERF_LISTS: ${{ matrix.size == 'decade' && '1000' || '180' }}
       BALANCE_INTERACTION_PERF_ITEMS_PER_LIST: ${{ matrix.size == 'decade' && '50' || '20' }}
       BALANCE_INTERACTION_PERF_GOALS: ${{ matrix.size == 'decade' && '200' || '80' }}
