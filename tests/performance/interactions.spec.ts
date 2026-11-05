@@ -547,6 +547,8 @@ test('profiles common typing and backspacing paths', async ({ page }, testInfo) 
     expect(motionAnimations.taskListBorder.name).toBe('none')
   }
   await page.evaluate(() => document.fonts.ready)
+  await expect(page.locator('.goal-history-day-row')).toHaveCount(GOAL_COUNT, { timeout: 180_000 })
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
   // Every intervention is checked against the same unmodified page, fonts,
   // data and clock before collecting timings. Keep rejected screenshots.
   let visuallyIdentical = true

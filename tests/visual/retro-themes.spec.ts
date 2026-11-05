@@ -180,9 +180,8 @@ for (const themeId of ['system1', 'windowsxp', 'windowsvista']) {
     await page.reload()
     await expect(page.locator('html')).toHaveAttribute('data-theme', themeId)
 
-    const button = await page.getByRole('region', { name: 'Daily plan' }).getByRole('button', { name: 'Enter IMAX mode' }).boundingBox()
-    if (!button) throw new Error('IMAX button has no box')
-    await page.mouse.click(button.x + button.width / 2, button.y + button.height / 2)
+    await page.evaluate(() => document.fonts.ready)
+    await page.getByRole('region', { name: 'Daily plan' }).getByRole('button', { name: 'Enter IMAX mode' }).click()
 
     const handoff = page.locator('.imax-click-handoff')
     await expect(handoff).toHaveCount(1)
