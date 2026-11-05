@@ -218,7 +218,6 @@
   border: 1px solid #7f9db9;
   border-radius: 0;
 }
-:root[data-theme='windowsxp'] .check { border-radius: 0; border-color: #1c5180; }
 
 :root[data-theme='windowsvista'] .sidebar {
   background: var(--aero-glass);
@@ -274,10 +273,6 @@
 :root[data-theme='windowsvista'] :is(input:not([type='checkbox']), select, .rich-text-field) {
   border-radius: 2px;
   box-shadow: inset 0 1px 2px #143b531f;
-}
-:root[data-theme='windowsvista'] .check { border-radius: 2px; }
-:root[data-color-scheme='dark']:is([data-theme='windowsxp'], [data-theme='windowsvista']) .check:checked {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 12'%3E%3Cpath d='m2 6 3 3 7-7' fill='none' stroke='black' stroke-linecap='round' stroke-linejoin='round' stroke-width='2.4'/%3E%3C/svg%3E");
 }
 
 /* The original caption/UI faces and point-size hierarchy, independently of
@@ -522,16 +517,86 @@
   border-color: transparent;
   box-shadow: none;
 }
-:root[data-theme='windowsxp'] .check {
-  width: 13px;
-  height: 13px;
-  border: 1px solid #1c5180;
-  background: linear-gradient(135deg, #dcdcd7, #fff 75%);
-  box-shadow: inset 1px 1px 1px #c5c5bc;
-}
-:root[data-theme='windowsxp'] .check:checked {
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 13 13' shape-rendering='crispEdges'%3E%3Cpath d='M2 5v3l3 3 6-7V1L5 8Z' fill='%2321a121'/%3E%3C/svg%3E") center / 11px 11px no-repeat, linear-gradient(135deg, #dcdcd7, #fff 75%);
-}
-:root[data-theme='windowsxp'] .check:hover { box-shadow: inset 0 0 0 2px #f8b330; }
 :root[data-color-scheme='dark'][data-theme='windowsxp'] .sidebar nav button:hover { background: #29476e; color: #fff; }
 :root[data-color-scheme='dark'][data-theme='windowsvista'] .sidebar nav button:hover { color: #14232d; }
+
+/* The native 13px controls in every state, kept in both appearances because
+   these systems drew them the same on any surface. XP values and mark come from
+   XP.css, Vista values from 7.css; see docs/retro-themes.md. */
+@media (forced-colors: none) {
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) input[type='checkbox'] {
+    -webkit-appearance: none;
+    appearance: none;
+    --note-check-size: 13px;
+    flex: 0 0 auto;
+    width: 13px;
+    height: 13px;
+    border: 1px solid var(--check-border);
+    border-radius: 0;
+    background: var(--check-mark, none) center / 11px 11px no-repeat, var(--check-face);
+    box-shadow: var(--check-shadow, none);
+    opacity: 1;
+    transform: none;
+  }
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) input[type='checkbox']:focus {
+    outline: none;
+  }
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) input[type='checkbox']:focus-visible {
+    outline: 1px dotted var(--ink);
+    outline-offset: 1px;
+  }
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .lexical-note-editor {
+    --note-check-size: 13px;
+  }
+
+  :root[data-theme='windowsxp'] input[type='checkbox'] {
+    --check-border: #1d5281;
+    --check-face: linear-gradient(135deg, #dcdcd7, #fff);
+  }
+  :root[data-theme='windowsxp'] input[type='checkbox']:is(:checked, .mobile-checkbox-drag-preview *) {
+    --check-mark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 -.5 11 11' shape-rendering='crispEdges'%3E%3Cpath stroke='%2322a122' d='M8 2h1M7 3h2M2 4h1M6 4h3M2 5h2M5 5h3M2 6h5M3 7h3M4 8h1'/%3E%3C/svg%3E");
+  }
+  :root[data-theme='windowsxp'] input[type='checkbox']:hover {
+    --check-shadow: inset -2px -2px #f8b636, inset 2px 2px #fedf9c;
+  }
+  :root[data-theme='windowsxp'] input[type='checkbox']:active {
+    --check-face: linear-gradient(135deg, #b0b0a7, #e3e1d2);
+    --check-shadow: none;
+  }
+  :root[data-theme='windowsxp'] input[type='checkbox']:disabled {
+    --check-border: #cac8bb;
+    --check-face: linear-gradient(#fff, #fff);
+    --check-shadow: none;
+  }
+  :root[data-theme='windowsxp'] input[type='checkbox']:checked:disabled {
+    --check-mark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 -.5 11 11' shape-rendering='crispEdges'%3E%3Cpath stroke='%23cac8bb' d='M8 2h1M7 3h2M2 4h1M6 4h3M2 5h2M5 5h3M2 6h5M3 7h3M4 8h1'/%3E%3C/svg%3E");
+  }
+
+  :root[data-theme='windowsvista'] input[type='checkbox'] {
+    --check-border: #8e8f8f;
+    --check-face: linear-gradient(135deg, #d4d4d4, #f6f6f6 70%);
+    --check-shadow: inset 0 0 0 1px #f4f4f4, inset 1px 1px 0 1px #aeaeae, inset -1px -1px 0 1px #ddd;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  :root[data-theme='windowsvista'] input[type='checkbox']:is(:checked, .mobile-checkbox-drag-preview *) {
+    --check-mark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 -.5 11 11' shape-rendering='crispEdges'%3E%3Cpath stroke='%23a9b6d3' d='M7 2h1M6 3h1M5 4h1M3 4h1M4 5h1M3 7h1M5 7h1M4 8h1'/%3E%3Cpath stroke='%234a5f97' d='M8 2h1M7 3h2M6 4h2M2 4h1M5 5h2M2 5h2M3 6h3M4 7h1'/%3E%3C/svg%3E");
+  }
+  :root[data-theme='windowsvista'] input[type='checkbox']:hover {
+    --check-border: #3c7fb1;
+    --check-face: linear-gradient(135deg, #b1dffd, #e9f7fe 70%);
+    --check-shadow: inset 0 0 0 1px #def9fa, inset 1px 1px 0 1px #79c6f9, inset -1px -1px 0 1px #c6e9fc;
+  }
+  :root[data-theme='windowsvista'] input[type='checkbox']:active {
+    --check-border: #2c628b;
+    --check-face: linear-gradient(135deg, #8dd0f9, #d4eefb 70%);
+    --check-shadow: inset 0 0 0 1px #c5e7f9, inset 1px 1px 0 1px #5eb0e8, inset -1px -1px 0 1px #a7dcf8;
+  }
+  :root[data-theme='windowsvista'] input[type='checkbox']:disabled {
+    --check-border: #b1b1b1;
+    --check-face: linear-gradient(135deg, #f0f0f0, #fbfbfb);
+    --check-shadow: none;
+  }
+  :root[data-theme='windowsvista'] input[type='checkbox']:checked:disabled {
+    --check-mark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 -.5 11 11' shape-rendering='crispEdges'%3E%3Cpath stroke='%23bfbfbf' d='M8 2h1M7 3h2M6 4h2M2 4h1M5 5h2M2 5h2M3 6h3M4 7h1'/%3E%3C/svg%3E");
+  }
+}
