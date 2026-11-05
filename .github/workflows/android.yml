@@ -587,7 +587,7 @@ jobs:
           arch: x86_64
           target: default
           force-avd-creation: false
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          emulator-options: -no-window -gpu lavapipe -noaudio -no-boot-anim
           disable-animations: true
           enable-hw-keyboard: true
           script: timeout --foreground --kill-after=30s 20m node .github/scripts/android-interaction-stress.mjs
@@ -653,7 +653,7 @@ jobs:
           arch: x86_64
           target: default
           force-avd-creation: false
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          emulator-options: -no-window -gpu lavapipe -noaudio -no-boot-anim
           disable-animations: true
           enable-hw-keyboard: true
           script: timeout --foreground --kill-after=30s 15m node .github/scripts/android-interaction-stress.mjs
