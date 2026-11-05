@@ -189,20 +189,23 @@ function imageReferences(value: unknown): ReadonlySet<string> {
   if (!value || typeof value !== 'object') return EMPTY_IMAGE_REFERENCES
   const cached = imageReferenceCache.get(value)
   if (cached) return cached
-  const ids = new Set<string>()
+  // Most planner objects contain no images. Sharing the empty result avoids
+  // retaining a separate empty Set for every item and children array.
+  let ids: Set<string> | undefined
   if (Array.isArray(value)) {
-    for (const child of value) for (const id of imageReferences(child)) ids.add(id)
+    for (const child of value) for (const id of imageReferences(child)) (ids ??= new Set()).add(id)
   } else {
     // Walk fields directly instead of allocating entry pairs and two more
     // arrays for large objects such as the historical theme preferences.
     const record = value as Record<string, unknown>
     for (const key of Object.keys(record)) {
       if (key === 'images' || key === 'operations') continue
-      for (const id of imageReferences(record[key])) ids.add(id)
+      for (const id of imageReferences(record[key])) (ids ??= new Set()).add(id)
     }
   }
-  imageReferenceCache.set(value, ids)
-  return ids
+  const references = ids ?? EMPTY_IMAGE_REFERENCES
+  imageReferenceCache.set(value, references)
+  return references
 }
 const ENTITY_COLLECTIONS = [
   'images',

@@ -34,6 +34,7 @@ const summary = [...groups].map(([key, rows]) => ({
     ['layoutMs', row => row.rendererDelta.LayoutDuration * 1000],
     ['styleMs', row => row.rendererDelta.RecalcStyleDuration * 1000],
     ['workspaceReadyMs', row => row.workspaceReadyMs],
+    ['retainedHeapMiB', row => row.retainedHeapBytes / (1024 * 1024)],
   ].map(([metric, get]) => [metric, median(rows.map(get).filter(Number.isFinite))])),
 }))
 writeFileSync(join(directory, 'summary.json'), JSON.stringify(summary, null, 2) + '\n')

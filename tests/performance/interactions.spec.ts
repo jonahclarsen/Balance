@@ -599,6 +599,10 @@ test('profiles common typing and backspacing paths', async ({ page }, testInfo) 
   writeFileSync(testInfo.outputPath('typing.cpuprofile'), JSON.stringify(cpu))
   await testInfo.attach('typing.cpuprofile', { path: testInfo.outputPath('typing.cpuprofile'), contentType: 'application/json' })
   const afterMetrics = await renderer.send('Performance.getMetrics')
+  // Outside the measured interaction interval: compare retained JS memory,
+  // rather than differences in when each revision happened to collect garbage.
+  await renderer.send('HeapProfiler.collectGarbage')
+  const retainedHeap = await renderer.send('Runtime.getHeapUsage')
   await renderer.detach()
   const before = new Map(beforeMetrics.metrics.map(m => [m.name, m.value]))
   const rendererDelta = Object.fromEntries(afterMetrics.metrics.map(m => [m.name, m.value - (before.get(m.name) ?? 0)]))
@@ -608,6 +612,7 @@ test('profiles common typing and backspacing paths', async ({ page }, testInfo) 
     experiment: RETRO_EXPERIMENT,
     visuallyIdentical,
     rendererDelta,
+    retainedHeapBytes: retainedHeap.usedSize,
     rendererFinal: Object.fromEntries(afterMetrics.metrics.map(m => [m.name, m.value])),
     workspaceReadyMs,
     project: testInfo.project.name,
