@@ -9,7 +9,7 @@
   import { openExternalURL } from './externalLinks'
   import { appendGoalNameToItemText, goalFromDrag, goalLightnessShift, goalMatchesForItem, goalsMatchingItemText, hasGoalDrag } from './goals'
   import { defaultPlanItemTimeRange, formatMinutes, hasActiveTimeRange, isURL, itemLinkFromAnchor, linkifyItemText, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, type ItemLink, type ItemTextSegment, type ItemTimeWarning } from './planner'
-  import { scrollMovedItemsIntoView } from './itemScroll'
+  import { revealCaret, scrollMovedItemsIntoView } from './itemScroll'
   import { focusTaskBelow } from './taskCompletionFocus'
   import RichTextEditor from './RichTextEditor.svelte'
   import TimeRange, { type TimeShiftTarget } from './TimeRange.svelte'
@@ -796,7 +796,12 @@
       // selection on focus and then an intermediate empty selection.
       document.getSelection()?.collapse(target, position === 'start' ? 0 : target.childNodes.length)
     }
-    if (document.activeElement !== target) target.focus()
+    if (document.activeElement === target) {
+      // Programmatic carets don't scroll, so reveal one that landed off screen.
+      revealCaret(target)
+      return
+    }
+    target.focus()
   }
 
   function handleDisplayKeydown(event: KeyboardEvent) {
