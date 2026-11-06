@@ -299,7 +299,7 @@ jobs:
       - name: Verify project reordering after edge scrolling
         run: |
           pnpm exec playwright test tests/visual/projects.spec.ts \
-            --project desktop --grep "dragging a project card to the window edge" --workers 1
+            --project desktop --grep "dragging a project row to the window edge" --workers 1
 
       - name: Upload behavior failure traces
         if: failure()
