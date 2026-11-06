@@ -161,6 +161,7 @@
   import { captureRenderedPlanSnapshot } from './lib/renderedPlanDiagnostics'
   import { openClickedLink, openRenderedLinkFromShortcut } from './lib/externalLinks'
   import { ignoreOpeningPress } from './lib/openingPressGuard'
+  import { setNativeWindowButtonsHidden, watchFullscreen } from './lib/nativeWindow'
   import {
     DEFAULT_COMPLETION_CELEBRATION_ID,
     getCompletionCelebration,
@@ -900,6 +901,17 @@ return rows`
   // XP and Vista draw real bitmaps, which only stay crisp at whole-pixel scales.
   $: windowsChrome = activeTheme.id === 'windowsxp' || activeTheme.id === 'windowsvista'
   $: if (isTauri() && !isMobile) applyDefaultZoom(windowsChrome ? 1 : APP_DEFAULT_ZOOM)
+  // Retro themes draw their own caption in wide windows, with buttons that
+  // replace the traffic lights. Narrow windows keep the native ones.
+  $: captionVariant = isMobile ? null : windowsChrome ? 'windows' as const : activeTheme.id === 'system1' ? 'mac' as const : null
+  let wideWindow = typeof matchMedia === 'function' && matchMedia('(min-width: 761px)').matches
+  let windowFullscreen = false
+  $: drawsWindowButtons = Boolean(captionVariant) && wideWindow
+  // Reapplied on every full-screen change, since macOS rebuilds the title bar then.
+  $: if (isMac && !isMobile) {
+    void windowFullscreen
+    setNativeWindowButtonsHidden(drawsWindowButtons)
+  }
   $: appShellStyle = [
     doneTintColor ? `--done-tint: ${doneTintValue}; --done-color: ${doneTintHex}` : '',
     checkboxColor ? `--checkbox-checked: ${checkboxColorHex}` : '',
@@ -2343,6 +2355,17 @@ return rows`
     importError = ''
     importOverlayOpen = true
   }
+
+  onMount(() => {
+    const wideQuery = matchMedia('(min-width: 761px)')
+    const updateWideWindow = () => { wideWindow = wideQuery.matches }
+    wideQuery.addEventListener('change', updateWideWindow)
+    const stopWatchingFullscreen = isMobile ? () => {} : watchFullscreen(next => { windowFullscreen = next })
+    return () => {
+      wideQuery.removeEventListener('change', updateWideWindow)
+      stopWatchingFullscreen()
+    }
+  })
 
   onMount(() => {
     const stopFreezeDiagnostics = startFreezeDiagnostics()
@@ -6999,14 +7022,10 @@ return rows`
   {#if isMac && !isMobile}
     <div class="macos-titlebar-drag-region" data-tauri-drag-region aria-hidden="true"></div>
   {/if}
-  {#if windowsChrome && !isMobile}
-    <WindowCaption
-      title={WINDOW_CAPTIONS[view].title}
-      icon={WINDOW_CAPTIONS[view].icon}
-      maximized={viewMaximized}
-      canMaximize={viewSupportsImax(view)}
-      onToggleMaximized={(event) => toggleViewMaximized(view, event)}
-    />
+  {#if captionVariant === 'windows'}
+    <WindowCaption variant="windows" title={WINDOW_CAPTIONS[view].title} icon={WINDOW_CAPTIONS[view].icon} fullscreen={windowFullscreen} />
+  {:else if captionVariant === 'mac'}
+    <WindowCaption variant="mac" title="Balance" fullscreen={windowFullscreen} />
   {/if}
 
   {#if maximizeClickHandoff}
@@ -7272,6 +7291,7 @@ return rows`
       class="workspace"
       data-balance-link={view === 'templates' && selectedTemplate ? navigationURL('day-template', selectedTemplate.id) : view === 'listTemplates' && selectedListTemplate ? navigationURL('list-template', selectedListTemplate.id) : view === 'metrics' && selectedMetric ? navigationURL('quiz', selectedMetric.id) : navigationURL('page', view)}
       class:notes-view-workspace={view === 'notes'}
+      class:settings-workspace={view === 'settings'}
       class:list-template-workspace={view === 'templates' || view === 'listTemplates'}
       class:tree-sticky-workspace={view === 'today' || view === 'lists' || view === 'ideas'}
       class:before-current-day-workspace={view === 'today' && displayedPlanDate < currentDay}
@@ -8268,7 +8288,7 @@ return rows`
       </header>
 
       <div class="settings-panel">
-        <ControlPanelTasks />
+        {#if windowsChrome}<ControlPanelTasks />{/if}
         <section class="settings-section" data-cp="theme">
           <div>
             <h3>Color theme</h3>

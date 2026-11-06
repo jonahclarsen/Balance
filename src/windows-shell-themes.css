@@ -2,7 +2,8 @@
    Panel, using the original theme artwork listed in docs/windows-theme-assets.json.
    Border-image slices are each part's own SizingMargins from luna.msstyles or
    aero.msstyles, so every bitmap stretches the way uxtheme stretched it. Colours
-   come from the same theme files. Other themes never show the task pane. */
+   come from the same theme files. Only these themes render the task pane, and
+   only in wide windows. */
 
 .control-panel-tasks {
   display: none;
@@ -711,8 +712,14 @@
 /* ---------- Control Panel ---------- */
 
 @media (min-width: 761px) {
+  /* Control Panel fills the window's client area, its task pane against the frame. */
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .workspace.settings-workspace {
+    padding: 0;
+  }
+
   :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .settings-panel {
     position: relative;
+    min-height: 100%;
     padding-left: calc(var(--cp-pane) + 22px);
   }
 

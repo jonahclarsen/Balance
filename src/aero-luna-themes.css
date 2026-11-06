@@ -775,7 +775,7 @@
   color: var(--ink);
 }
 
-/* ---------- Window: one frame around the whole app, the desktop showing outside ---------- */
+/* ---------- Window: the app window is drawn as an XP or Vista window ---------- */
 
 .window-caption {
   display: none;
@@ -801,9 +801,7 @@
     --app-default-zoom: 1;
     grid-template-rows: var(--win-caption-height) minmax(0, 1fr);
     width: auto;
-    height: calc(100vh - 12px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
     min-height: 0;
-    margin: 4px 8px 8px;
     padding: 0 var(--win-frame-width) var(--win-frame-width);
   }
   :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .app-shell > :is(.sidebar, .content-shell) {
@@ -823,9 +821,6 @@
     user-select: none;
     -webkit-user-select: none;
     image-rendering: pixelated;
-  }
-  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .macos-titlebar-overlay .window-caption {
-    padding-left: 76px;
   }
   :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .macos-titlebar-overlay .sidebar {
     padding-top: 12px;
@@ -1574,12 +1569,11 @@
    window has to recomposite a live backdrop-filter while it scrolls or types. */
 @media (min-width: 761px) {
   :root[data-theme='windowsvista'] .app-shell {
-    border-radius: 7px;
     background:
       linear-gradient(112deg, #ffffff66 0, #ffffff14 18%, #ffffff4d 19%, #ffffff0a 34%, #ffffff00 48%, #ffffff29 49%, #ffffff0a 62%, #ffffff00 74%),
       linear-gradient(#b4d6f2a6, #7fb3e08c),
       url('/themes/windowsvista/aurora-glass.jpg') center / cover fixed;
-    box-shadow: 0 0 0 1px #00000099, inset 0 0 0 1px #ffffff80, 0 6px 22px #00000080;
+    box-shadow: inset 0 0 0 1px #00000099, inset 0 0 0 2px #ffffff80;
   }
   :root[data-color-scheme='dark'][data-theme='windowsvista'] .app-shell {
     background:

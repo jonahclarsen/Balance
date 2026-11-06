@@ -3,7 +3,7 @@
 
   // The XP and Vista themes draw Settings as Control Panel. Its task pane lists
   // every section that is actually rendered, so platform-only sections stay in
-  // sync without a second hand-maintained list. Other themes hide the pane.
+  // sync without a second hand-maintained list. Other themes don't render it.
   type Section = { key: string; label: string; element: HTMLElement }
 
   let pane: HTMLElement
@@ -22,9 +22,9 @@
     if (changed) sections = next
   }
 
+  // Task pane links jumped straight to their target; neither system animated it.
   function open(section: Section) {
-    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches
-    section.element.scrollIntoView({ block: 'start', behavior: reduce ? 'auto' : 'smooth' })
+    section.element.scrollIntoView({ block: 'start', behavior: 'instant' })
   }
 
   onMount(() => {

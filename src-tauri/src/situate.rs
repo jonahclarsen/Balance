@@ -371,7 +371,7 @@ pub(crate) fn open_widget(app: &tauri::AppHandle, raw: &str) -> bool {
                 .hidden_title(true);
             #[cfg(target_os = "macos")]
             if let Ok(window) = builder.build() {
-                let _ = window.clone().run_on_main_thread(move || hide_window_buttons(&window));
+                let _ = window.clone().run_on_main_thread(move || crate::window_buttons::set_hidden(&window, true));
             }
             #[cfg(not(target_os = "macos"))]
             let _ = builder.decorations(false).build();
@@ -470,23 +470,6 @@ pub(crate) fn active() -> bool {
         .get()
         .and_then(|p| read(p).ok().flatten())
         .is_some()
-}
-#[cfg(target_os = "macos")]
-fn hide_window_buttons(window: &tauri::WebviewWindow) {
-    use objc2_app_kit::{NSWindow, NSWindowButton};
-    let Ok(ns_window) = window.ns_window() else {
-        return;
-    };
-    let ns_window = unsafe { &*ns_window.cast::<NSWindow>() };
-    for kind in [
-        NSWindowButton::CloseButton,
-        NSWindowButton::MiniaturizeButton,
-        NSWindowButton::ZoomButton,
-    ] {
-        if let Some(button) = ns_window.standardWindowButton(kind) {
-            button.setHidden(true);
-        }
-    }
 }
 #[cfg(target_os = "macos")]
 fn publish_mac(value: &Value, announce: bool) {

@@ -138,6 +138,7 @@ mod connectivity;
 mod state_changes;
 mod task_notifications;
 mod situate;
+mod window_buttons;
 #[cfg(any(test, target_os = "android", target_os = "macos"))]
 mod widget;
 
@@ -11103,6 +11104,7 @@ pub fn run() {
             typing_profile::typing_profile_finish,
             voice_transcription::transcribe_voice_clips,
             situate::situate_load,
+            window_buttons::set_native_window_buttons_hidden,
             situate::situate_save,
             situate::situate_permissions,
             situate::situate_notifications,

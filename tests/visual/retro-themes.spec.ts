@@ -98,11 +98,27 @@ for (const [id, name] of [['system1', 'Mac System 1'], ['windowsxp', 'Windows XP
       }
     }
     if (id !== 'system1' && !isMobile) {
-      // Settings is Control Panel: its task pane lists the sections and jumps to them.
+      // Settings is Control Panel: its task pane lists the sections and jumps to them, without animating.
       await openView(page, 'Settings')
       const tasks = page.getByRole('complementary', { name: 'Settings sections' })
-      await tasks.getByRole('button', { name: 'Export folder', exact: true }).click()
+      const jumped = await tasks.getByRole('button', { name: 'Export folder', exact: true }).evaluate(button => {
+        (button as HTMLElement).click()
+        return document.querySelector('.workspace')!.scrollTop
+      })
+      expect(jumped).toBeGreaterThan(0)
       await expect(page.locator('[data-cp="folder"] h3')).toBeInViewport()
+      expect(await page.locator('.workspace').evaluate(workspace => workspace.scrollTop)).toBe(jumped)
+      await openView(page, 'Today')
+    }
+    if (id === 'system1') {
+      // Only Control Panel themes have the task pane.
+      await openView(page, 'Settings')
+      await expect(page.locator('.control-panel-tasks')).toHaveCount(0)
+      if (!isMobile) {
+        const caption = page.locator('.window-caption')
+        await expect(caption.locator('.window-caption-title')).toHaveText('Balance')
+        for (const button of ['Close', 'Full Screen']) await expect(caption.getByRole('button', { name: button, exact: true })).toBeDisabled()
+      }
       await openView(page, 'Today')
     }
     const checkbox = page.locator('.plan-row .check:not(:checked)').first()
@@ -209,7 +225,7 @@ for (const themeId of ['system1', 'windowsxp', 'windowsvista']) {
 }
 
 for (const [themeId, name] of [['windowsxp', 'Windows XP'], ['windowsvista', 'Windows Vista']] as const) {
-  test(`${name} window caption drives IMAX and every theme bitmap loads`, async ({ page, isMobile }) => {
+  test(`${name} window caption and IMAX share the window, and every theme bitmap loads`, async ({ page, isMobile }) => {
     test.skip(isMobile, 'The window caption is desktop only')
     test.setTimeout(90_000)
     await page.goto('/')
@@ -224,13 +240,17 @@ for (const [themeId, name] of [['windowsxp', 'Windows XP'], ['windowsvista', 'Wi
     const caption = page.locator('.window-caption')
     await openView(page, 'Today')
     await expect(caption.locator('.window-caption-title')).toHaveText('Today')
-    // A browser has no window to minimize or close.
-    await expect(caption.getByRole('button', { name: 'Minimize' })).toBeDisabled()
-    await expect(caption.getByRole('button', { name: 'Close' })).toBeDisabled()
+    // The caption buttons act on the native window, which a browser doesn't have.
+    for (const button of ['Minimize', 'Maximize', 'Close']) await expect(caption.getByRole('button', { name: button, exact: true })).toBeDisabled()
+    // The window fills the viewport; no desktop shows around it.
+    expect(await page.locator('.app-shell').evaluate(shell => {
+      const box = shell.getBoundingClientRect()
+      return box.left === 0 && box.top === 0 && box.width === innerWidth && box.height === innerHeight
+    })).toBe(true)
     // The header's IMAX button fits its whole logo.
     const enterImax = page.getByRole('region', { name: 'Daily plan' }).getByRole('button', { name: 'Enter IMAX mode' })
     expect(await enterImax.evaluate(button => button.scrollWidth <= button.clientWidth)).toBe(true)
-    await caption.getByRole('button', { name: 'Maximize' }).click()
+    await enterImax.click()
     await expect(page.locator('.app-shell')).toHaveClass(/page-maximized/)
     // IMAX keeps its own exit in view, clear of the caption.
     const exitImax = page.getByRole('button', { name: 'Exit IMAX mode' })
@@ -241,16 +261,8 @@ for (const [themeId, name] of [['windowsxp', 'Windows XP'], ['windowsvista', 'Wi
     expect(exitBox.y).toBeGreaterThanOrEqual(captionBox.y + captionBox.height)
     await exitImax.click()
     await expect(page.locator('.app-shell')).not.toHaveClass(/page-maximized/)
-    await caption.getByRole('button', { name: 'Maximize' }).click()
-    await expect(page.locator('.app-shell')).toHaveClass(/page-maximized/)
-    // On macOS a click handoff covers the spot, so click where a person would.
-    const restore = await caption.getByRole('button', { name: 'Restore' }).boundingBox()
-    if (!restore) throw new Error('Restore button has no box')
-    await page.mouse.click(restore.x + restore.width / 2, restore.y + restore.height / 2)
-    await expect(page.locator('.app-shell')).not.toHaveClass(/page-maximized/)
     await openView(page, 'Settings')
     await expect(caption.locator('.window-caption-title')).toHaveText('Settings')
-    await expect(caption.getByRole('button', { name: 'Maximize' })).toBeDisabled()
 
     // Every bitmap the theme stylesheet names must exist; a missing one only shows as a gap.
     const urls = await page.evaluate(() => {

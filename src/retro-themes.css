@@ -366,3 +366,89 @@
   shape-rendering: crispEdges;
   opacity: 1;
 }
+
+/* The window's title bar: six rules, the title on a clear band, the close box
+   on the left and the zoom box on the right. They replace the traffic lights
+   in wide windows, so narrow ones keep the native buttons and hide this. */
+:root[data-theme='system1'] .window-caption {
+  display: none;
+}
+@media (min-width: 761px) {
+  :root[data-theme='system1'] .app-shell {
+    grid-template-rows: 22px minmax(0, 1fr);
+  }
+  :root[data-theme='system1'] .app-shell > :is(.sidebar, .content-shell) {
+    height: auto;
+    min-height: 0;
+  }
+  :root[data-theme='system1'] .app-shell.macos-titlebar-overlay .sidebar {
+    padding-top: 18px;
+  }
+  :root[data-theme='system1'] .app-shell.macos-titlebar-overlay.sidebar-hidden .workspace {
+    padding-top: 28px;
+  }
+  :root[data-theme='system1'] .macos-titlebar-drag-region {
+    width: 0;
+  }
+  :root[data-theme='system1'] .window-caption {
+    position: relative;
+    z-index: 30;
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 22px;
+    padding: 0 8px;
+    border-bottom: 1px solid var(--ink);
+    background: repeating-linear-gradient(var(--ink) 0 1px, transparent 1px 2px) 1px 5px / calc(100% - 2px) 11px no-repeat, var(--paper);
+    color: var(--ink);
+    font: 16px/20px var(--font-interface);
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  :root[data-theme='system1'] .window-caption.inactive {
+    background: var(--paper);
+  }
+  :root[data-theme='system1'] .window-caption-title {
+    min-width: 0;
+    overflow: hidden;
+    padding: 0 8px;
+    background: var(--paper);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  :root[data-theme='system1'] .window-caption .caption-button {
+    position: relative;
+    flex: none;
+    width: 13px;
+    min-width: 0;
+    height: 13px;
+    min-height: 0;
+    padding: 0;
+    border: 1px solid var(--ink);
+    border-radius: 0;
+    background: var(--paper);
+    box-shadow: 0 0 0 2px var(--paper);
+    opacity: 1;
+    transition: none;
+  }
+  :root[data-theme='system1'] .window-caption .caption-max::after {
+    content: '';
+    position: absolute;
+    top: -1px;
+    left: -1px;
+    width: 7px;
+    height: 7px;
+    border: 1px solid var(--ink);
+  }
+  :root[data-theme='system1'] .window-caption .caption-button:active:not(:disabled) {
+    background: var(--ink);
+  }
+  :root[data-theme='system1'] .window-caption .caption-button:focus-visible {
+    outline: 1px dotted var(--ink);
+    outline-offset: 2px;
+  }
+  :root[data-theme='system1'] .window-caption.inactive .caption-button {
+    visibility: hidden;
+  }
+}
