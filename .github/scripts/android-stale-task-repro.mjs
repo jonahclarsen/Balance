@@ -111,6 +111,15 @@ async function reload() {
   const ready = await waitForDatabaseReady(client)
   assert(!ready.failed, 'Synthetic database failed to open')
   await openToday()
+  // The app saves its open day on every store change, so a change just before
+  // the reload can replace the synthetic date above. Choose it like a user would.
+  await waitFor(() => client.evaluate(`(() => {
+    const input = document.querySelector('.today-date-input')
+    if (!input || input.value === '2026-01-01') return Boolean(input)
+    input.value = '2026-01-01'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    return false
+  })()`), 'the synthetic day to open')
 }
 async function resetJoiner(pairingCode) {
   client?.close()
