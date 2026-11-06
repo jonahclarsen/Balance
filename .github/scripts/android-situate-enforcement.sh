@@ -55,6 +55,20 @@ home_resumed() {
   component=$(adb shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME | tr -d '\r' | tail -n 1)
   resumed "$component"
 }
+launcher_events() { adb logcat -d -s BalanceSituate:I | grep -c "window package=${1%%/*} changes" || true; }
+events_after() { (( $(launcher_events "$1") > $2 )); }
+# Key injection returns before Android handles Home, and the launcher can report
+# its window after a quickly following app start. Wait until the service has seen
+# Home and the launcher has settled, so the next start is the newest event.
+press_home() {
+  local launcher seen
+  launcher=$(adb shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME | tr -d '\r' | tail -n 1)
+  seen=$(launcher_events "$launcher")
+  adb shell input keyevent KEYCODE_HOME
+  wait_for home_resumed
+  wait_for events_after "$launcher" "$seen"
+  sleep 1
+}
 gate_present() {
   adb shell dumpsys window windows | python3 -c '
 import re, sys
@@ -156,8 +170,7 @@ for attempt in $(seq 1 10); do
     wait_for home_resumed
     assert_allowed
   else
-    adb shell input keyevent KEYCODE_HOME
-    wait_for home_resumed
+    press_home
     wait_for gate_absent
   fi
 done
@@ -175,9 +188,7 @@ adb shell settings put secure enabled_accessibility_services null
 assert_allowed
 adb shell settings put secure enabled_accessibility_services "$COMPONENT"
 wait_for service_connected
-adb shell input keyevent KEYCODE_HOME
-# Key injection returns before Home is handled, so a start could land first.
-wait_for home_resumed
+press_home
 adb shell am start -a android.settings.SETTINGS >/dev/null
 wait_for gate_present
 # Never show a stale gate after the last applicable mode is removed.
