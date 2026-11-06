@@ -972,7 +972,7 @@
     padding-block: 2px;
   }
   /* IMAX's floating exit sits in the client area, clear of the caption. */
-  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .app-shell:has(> .window-caption) .imax-exit-control {
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .app-shell .imax-exit-control {
     top: calc(var(--win-caption-height) + 14px);
     right: calc(var(--win-frame-width) + 18px);
   }
