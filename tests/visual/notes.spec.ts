@@ -1841,8 +1841,12 @@ test('notes save adjustable breathing room and follow the final caret to the bot
   await expect.poll(visibleLinesAtMaximum).toBeLessThan(3)
   // The maximum follows the window size rather than a fixed share.
   await page.setViewportSize({ width: 1280, height: 1100 })
-  await workspace.evaluate((element) => element.scrollTo({ top: element.scrollHeight }))
-  await expect.poll(visibleLinesAtMaximum).toBeGreaterThan(1.5)
+  // The space regrows for the taller window after the resize settles, which can
+  // leave an earlier scroll short of the new bottom, so scroll again until it holds.
+  await expect(async () => {
+    await workspace.evaluate((element) => element.scrollTo({ top: element.scrollHeight }))
+    expect(await visibleLinesAtMaximum()).toBeGreaterThan(1.5)
+  }).toPass()
   await expect.poll(visibleLinesAtMaximum).toBeLessThan(3)
 
   await spacingSlider.fill('40')
@@ -1996,6 +2000,8 @@ test('note editing keeps its caret through window blur and refocus', async ({ pa
 
 test('the note bottom holds still and scrolls freely at high writing-space settings', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'the writing-space slider is desktop only')
+  // Thirteen settings, each sampled over twenty frames, outlast the default budget in WebKit.
+  test.slow()
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
