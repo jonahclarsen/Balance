@@ -55,7 +55,7 @@
   import IdeaSortModal from './lib/IdeaSortModal.svelte'
   import { dayTemplateShortcutLetters } from './lib/dayTemplateShortcuts'
   import IdeaImportModal from './lib/IdeaImportModal.svelte'
-  import { dueIdeaReviews, ideaGroupItems, findIdea, IDEA_GROUPS, readActiveIdeaGroup, saveActiveIdeaGroup } from './lib/ideas'
+  import { countIdeas, dueIdeaReviews, ideaGroupItems, findIdea, IDEA_GROUPS, readActiveIdeaGroup, saveActiveIdeaGroup } from './lib/ideas'
   import { awaitingTranscription } from './lib/voiceClips'
   import { IDEA_REVIEW_LABELS, type IdeaReviewKind } from './lib/ideaLinks'
   import { prioritizeReveal } from './lib/prioritize'
@@ -167,10 +167,9 @@
     type CompletionCelebrationId,
   } from './lib/celebrations'
 
-  // Pasting four or more items onto a different day routes through a review queue
-  // so each pasted "thing" can be approved, skipped, or edited before it lands.
+  // Pasting four or more items onto a different day sorts them like new ideas,
+  // one card at a time, with Add to day sending a card to the pasted spot.
   const PASTE_REVIEW_THRESHOLD = 4
-  const PASTE_REVIEW_COOLDOWN_MS = 2000
   const TEMPLATE_REVIEW_COOLDOWN_MS = 2000
   const REVIEW_DISCARD_SWEEP_MS = 420
   const PASTE_MATCH_STYLE_EVENT = 'balance-paste-match-style'
@@ -253,7 +252,7 @@
       !isFormFieldActive() && !isRichTextActive() &&
       !document.activeElement?.closest('[contenteditable="true"]') &&
       !searchOpen && !documentFindOpen && !shortcutsHelpOpen && !mobileDrawerOpen &&
-      !listOverlayVisible && !ideaSortVisible && !metricOverlay && !recoveryPanelOpen && !pasteReview && !templateReview && !celebrationPreview &&
+      !listOverlayVisible && !ideaSortVisible && !metricOverlay && !recoveryPanelOpen && !templateReview && !celebrationPreview &&
       !$databaseLoadPending && !$databaseLoadError && !document.hidden &&
       !document.querySelector('.overlay-backdrop, dialog[open]')
   }
@@ -653,30 +652,6 @@ return rows`
   let androidBackListener: AndroidBackListener | null = null
   let androidBackRegistration: Promise<AndroidBackListener> | null = null
   let androidBackWanted = false
-  // Each pasted node — parent or child — is reviewed on its own, so the queue is a
-  // flat list annotated with the node's original depth. Kept nodes are re-nested from
-  // those depths once the queue empties.
-  type PasteReviewNode = { item: PlanItem; depth: number }
-  let pasteReview: {
-    nodes: PasteReviewNode[]
-    index: number
-    approved: PasteReviewNode[]
-    rejected: number[]
-    targetId: Id | null
-    placement: 'before' | 'after' | 'replace'
-    planId: Id
-    cut: boolean
-  } | null = null
-  let pasteReviewEditing = false
-  let pasteReviewRejecting = false
-  let pasteReviewEditDraft = ''
-  let pasteReviewInput: HTMLTextAreaElement | null = null
-  let pasteReviewList: HTMLDivElement | null = null
-  // Each card enforces a read-cooldown before "Keep"/Enter is armed, so items
-  // can't be blown through without being read. pasteReviewProgress drives the bar.
-  let pasteReviewReady = false
-  let pasteReviewProgress = 0
-  let cancelPasteReviewCooldownFrames: (() => void) | null = null
   // Template review: every row of a day or list template is re-confirmed one at a
   // time. Discarding is instant; keeping waits out the read-cooldown so the template
   // is recommitted to on purpose rather than skimmed through. Discards are applied
@@ -4201,36 +4176,6 @@ return rows`
       return
     }
 
-    if (pasteReview) {
-      if (pasteReviewEditing) {
-        if (event.key === 'Enter') {
-          event.preventDefault()
-          savePasteReviewEdit()
-        } else if (event.key === 'Escape') {
-          event.preventDefault()
-          pasteReviewEditing = false
-        }
-        return
-      }
-
-      if (event.key === 'Enter' || event.key === 'ArrowRight') {
-        event.preventDefault()
-        // Each item must be kept with a fresh press, so holding Enter can't
-        // auto-approve items as their read cooldowns finish.
-        if (!event.repeat) pasteReviewDecide(true)
-      } else if (event.key === 'Backspace' || event.key === 'Delete' || event.key === 'ArrowLeft') {
-        event.preventDefault()
-        pasteReviewDecide(false)
-      } else if (key === 'e' && !primaryModifier) {
-        event.preventDefault()
-        startPasteReviewEdit()
-      } else if (event.key === 'Escape') {
-        event.preventDefault()
-        cancelPasteReview()
-      }
-      return
-    }
-
     if (primaryModifier && !event.altKey && !event.shiftKey && key === 'k') {
       event.preventDefault()
       documentFindOpen = false
@@ -5921,57 +5866,38 @@ return rows`
           : 'after'
     )
 
-    const nodes = flattenPlanItemsForReview(planItemClipboard.items)
-    if (nodes.length >= PASTE_REVIEW_THRESHOLD && planItemClipboard.sourceDate !== destinationPlan.date) {
-      pasteReview = {
-        nodes,
-        index: 0,
-        approved: [],
-        rejected: [],
-        targetId,
-        placement,
-        planId: destinationPlan.id,
-        cut: planItemClipboard.cut,
-      }
-      pasteReviewEditing = false
-      releaseTextEditingFocus()
-      startPasteReviewCooldown()
+    if (countIdeas(planItemClipboard.items) >= PASTE_REVIEW_THRESHOLD && planItemClipboard.sourceDate !== destinationPlan.date) {
+      void sortPastedPlanItems(destinationPlan, planItemClipboard.items, targetId, placement, planItemClipboard.cut)
       return
     }
 
     insertPastedPlanItems(destinationPlan.id, planItemClipboard.items, targetId, placement, planItemClipboard.cut)
   }
 
-  // Walk the pasted forest depth-first into a flat queue, stripping children off each
-  // node and recording how deep it was. Reviewing the flattened list means every child
-  // gets its own keep/skip decision rather than riding along with its parent.
-  function flattenPlanItemsForReview(items: PlanItem[], depth = 0): PasteReviewNode[] {
-    return items.flatMap((item) => [
-      { item: { ...item, children: [] }, depth },
-      ...flattenPlanItemsForReview(item.children, depth + 1),
-    ])
-  }
-
-  // Rebuild a forest from the kept nodes, honoring each node's original depth. A kept
-  // child whose parent was skipped re-attaches to the nearest surviving ancestor (its
-  // new parent), so it stays as deeply indented as the remaining tree allows instead of
-  // being promoted all the way to the top.
-  function buildReviewedForest(nodes: PasteReviewNode[]): PlanItem[] {
-    const roots: PlanItem[] = []
-    const ancestors: { item: PlanItem; depth: number }[] = []
-
-    for (const { item, depth } of nodes) {
-      const node: PlanItem = { ...item, children: [] }
-      while (ancestors.length && ancestors[ancestors.length - 1].depth >= depth) ancestors.pop()
-
-      const parent = ancestors[ancestors.length - 1]
-      if (parent) parent.item.children.push(node)
-      else roots.push(node)
-
-      ancestors.push({ item: node, depth })
-    }
-
-    return roots
+  // The pasted items join Proposition Party and run through the idea sorter.
+  // Add to day reserves a card for this plan; when the sort ends or closes, the
+  // reserved cards land where the paste was aimed, and the rest stay as ideas.
+  async function sortPastedPlanItems(
+    plan: DailyPlan,
+    items: PlanItem[],
+    targetId: Id | null,
+    placement: 'before' | 'after' | 'replace',
+    cut: boolean,
+  ) {
+    releaseTextEditingFocus()
+    const ideaIds = plannerStore.importIdeas(items)
+    if (cut) writePlanItemsToSystemClipboard({ items, cut: false, sourceDate: plan.date })
+    const queue = ideaIds.flatMap((id) => findIdea($plannerStore.ideaBuckets, id)?.item ?? [])
+    // askIdeaSort works bottom-up; reverse so the cards follow the pasted order.
+    await askIdeaSort([...queue].reverse(), 'Sort pasted items', (itemId) => plannerStore.assignIdeaToDay(itemId, plan.date))
+    const reserved = ideaIds.flatMap((id) => {
+      const found = findIdea($plannerStore.ideaBuckets, id)
+      return found && found.group.kind !== 'trash' && found.item.dayAssignmentDate === plan.date ? [found] : []
+    })
+    if (reserved.length === 0) return
+    const kept = reserved.map(({ item: { bucketedAt: _bucketedAt, dayAssignmentDate: _dayAssignmentDate, ...item } }) => item)
+    insertPastedPlanItems(plan.id, kept, targetId, placement, false)
+    for (const { group, item } of reserved) plannerStore.removeIdeaAfterTransfer(group.id, item.id)
   }
 
   // Drives a read-cooldown bar frame by frame and reports progress until the
@@ -5997,14 +5923,6 @@ return rows`
     }
   }
 
-  function startPasteReviewCooldown() {
-    cancelPasteReviewCooldown()
-    cancelPasteReviewCooldownFrames = runReadCooldown(PASTE_REVIEW_COOLDOWN_MS, (progress, ready) => {
-      pasteReviewProgress = progress
-      pasteReviewReady = ready
-    })
-  }
-
   function scrollCurrentReviewItem(list: HTMLDivElement | null) {
     const current = list?.querySelector<HTMLElement>('[aria-current="true"]')
     if (!list || !current) return
@@ -6015,11 +5933,6 @@ return rows`
     const top = list.scrollTop
       + (currentRect.top - listRect.top - listRect.height * 0.3) / effectiveZoom
     list.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
-  }
-
-  function cancelPasteReviewCooldown() {
-    cancelPasteReviewCooldownFrames?.()
-    cancelPasteReviewCooldownFrames = null
   }
 
   function insertPastedPlanItems(
@@ -6046,47 +5959,6 @@ return rows`
     if (cut) {
       writePlanItemsToSystemClipboard({ items, cut: false, sourceDate: plan.date })
     }
-  }
-
-  // keep === true approves the current card, keep === false skips it; either way we
-  // advance to the next card and commit the approved items once the queue is empty.
-  // Keeping is gated on the read-cooldown; skipping is always allowed.
-  async function pasteReviewDecide(keep: boolean) {
-    if (!pasteReview || pasteReviewRejecting) return
-    if (keep && !pasteReviewReady) return
-
-    const review = pasteReview
-    const current = pasteReview.nodes[pasteReview.index]
-    const approved = keep && current ? [...pasteReview.approved, current] : pasteReview.approved
-    if (!keep) {
-      pasteReviewRejecting = true
-      await new Promise((resolve) => window.setTimeout(resolve, 420))
-      pasteReviewRejecting = false
-      if (pasteReview !== review) return
-    }
-    const rejected = keep ? pasteReview.rejected : [...pasteReview.rejected, pasteReview.index]
-    const next = pasteReview.index + 1
-    pasteReviewEditing = false
-
-    if (next >= pasteReview.nodes.length) {
-      const { planId, targetId, placement, cut } = pasteReview
-      cancelPasteReviewCooldown()
-      pasteReview = null
-      if (approved.length > 0) insertPastedPlanItems(planId, buildReviewedForest(approved), targetId, placement, cut)
-      return
-    }
-
-    pasteReview = { ...pasteReview, approved, rejected, index: next }
-    startPasteReviewCooldown()
-    await tick()
-    scrollCurrentReviewItem(pasteReviewList)
-  }
-
-  function cancelPasteReview() {
-    cancelPasteReviewCooldown()
-    pasteReview = null
-    pasteReviewEditing = false
-    pasteReviewRejecting = false
   }
 
   function templateReviewNodesForDay(items: TemplateItem[], depth = 0): TemplateReviewNode[] {
@@ -6122,7 +5994,7 @@ return rows`
   }
 
   function startTemplateReview(kind: TemplateReviewKind, templateId: Id) {
-    if (pasteReview || templateReview) return
+    if (templateReview) return
     const template = kind === 'day'
       ? $plannerStore.templates.find((candidate) => candidate.id === templateId)
       : $plannerStore.listTemplates.find((candidate) => candidate.id === templateId)
@@ -6206,52 +6078,6 @@ return rows`
     cancelTemplateReviewCooldown()
     templateReview = null
     templateReviewSweeping = []
-  }
-
-  function startPasteReviewEdit() {
-    if (!pasteReview) return
-
-    pasteReviewEditDraft = pasteReview.nodes[pasteReview.index]?.item.text ?? ''
-    pasteReviewEditing = true
-    void tick().then(() => pasteReviewInput?.focus())
-  }
-
-  // Grow the paste-review edit field to fit its content so large blocks of text
-  // aren't clipped to a single line — matching how task items expand.
-  function autoGrowPasteReviewEdit(node: HTMLTextAreaElement) {
-    const resize = () => {
-      node.style.height = 'auto'
-      node.style.height = `${node.scrollHeight}px`
-    }
-    resize()
-    node.addEventListener('input', resize)
-    return {
-      destroy() {
-        node.removeEventListener('input', resize)
-      },
-    }
-  }
-
-  function savePasteReviewEdit() {
-    if (!pasteReview) return
-
-    const text = pasteReviewEditDraft.trim()
-    const index = pasteReview.index
-    const nodes = pasteReview.nodes.map((node, i) =>
-      i === index ? { ...node, item: { ...node.item, text, html: escapeHTML(text) } } : node,
-    )
-    pasteReview = { ...pasteReview, nodes }
-    pasteReviewEditing = false
-  }
-
-  function togglePasteReviewDone(done: boolean) {
-    if (!pasteReview) return
-
-    const index = pasteReview.index
-    const nodes = pasteReview.nodes.map((node, i) =>
-      i === index ? { ...node, item: { ...node.item, done } } : node,
-    )
-    pasteReview = { ...pasteReview, nodes }
   }
 
   async function openRecoveryPanel(historyId: string | null = null) {
@@ -9036,100 +8862,6 @@ return rows`
 
 <Celebration bind:this={celebration} />
 <GoalBurst bind:this={goalBurst} />
-
-{#if pasteReview}
-  <OverlayModal
-    title="Review pasted items"
-    cover="viewport"
-    z={100}
-    maxWidth={620}
-    fill
-    closeOnEscape={false}
-    closeTitle="Cancel (Esc)"
-    backdropStyle={appShellStyle}
-    onClose={cancelPasteReview}
-  >
-    <div class="paste-review">
-
-      <div class="paste-review-list" aria-label="Items being pasted" bind:this={pasteReviewList}>
-        {#each pasteReview.nodes as node, nodeIndex (node.item.id)}
-          {@const isCurrent = nodeIndex === pasteReview.index}
-          {@const wasKept = pasteReview.approved.includes(node)}
-          <div
-            class="paste-review-card paste-review-item"
-            class:current={isCurrent}
-            class:kept={wasKept}
-            class:removed={pasteReview.rejected.includes(nodeIndex)}
-            class:rejecting={isCurrent && pasteReviewRejecting}
-            class:done={node.item.done}
-            style:--paste-depth={node.depth}
-            aria-current={isCurrent ? 'true' : undefined}
-          >
-            {#if isCurrent && pasteReviewEditing}
-              <textarea
-                class="paste-review-edit"
-                rows="1"
-                bind:value={pasteReviewEditDraft}
-                bind:this={pasteReviewInput}
-                placeholder="Item text"
-                use:autoGrowPasteReviewEdit
-              ></textarea>
-            {:else}
-              <div class="paste-review-line">
-                <TaskCheckbox
-                  checked={node.item.done}
-                  disabled={!isCurrent}
-                  onChange={(event) => togglePasteReviewDone(event.currentTarget.checked)}
-                />
-                <!-- Render the saved rich text just like a real task so formatting
-                     such as explicit line breaks survives in the review preview. -->
-                <div
-                  class="paste-review-text item-text item-text-display"
-                  class:done={node.item.done}
-                  class:empty={!node.item.text?.trim()}
-                >{@html node.item.text?.trim() ? renderItemDisplayHTML(node.item.html, node.item.text, []) : '(empty item)'}</div>
-              </div>
-            {/if}
-          </div>
-        {/each}
-      </div>
-
-      {#if !pasteReviewEditing}
-        <div
-          class="paste-review-cooldown"
-          class:ready={pasteReviewReady}
-          role="progressbar"
-          aria-label="Read the item before keeping it"
-          aria-valuemin="0"
-          aria-valuemax="100"
-          aria-valuenow={Math.round(pasteReviewProgress * 100)}
-        >
-          <div class="paste-review-cooldown-fill" style="width: {pasteReviewProgress * 100}%"></div>
-        </div>
-      {/if}
-
-      <div class="paste-review-actions">
-        {#if pasteReviewEditing}
-          <button class="primary" type="button" on:click={savePasteReviewEdit}>Save (Enter)</button>
-          <button type="button" on:click={() => (pasteReviewEditing = false)}>Cancel (Esc)</button>
-        {:else}
-          <button type="button" disabled={pasteReviewRejecting} on:click={() => pasteReviewDecide(false)}>Skip (←)</button>
-          <button type="button" on:click={startPasteReviewEdit}>Edit (E)</button>
-          <button
-            class="primary"
-            type="button"
-            disabled={!pasteReviewReady || pasteReviewRejecting}
-            on:click={() => pasteReviewDecide(true)}
-          >
-            {pasteReviewReady ? 'Keep (→ / Enter)' : 'Read it…'}
-          </button>
-        {/if}
-      </div>
-
-      <p class="paste-review-hint">{pasteReview.approved.length}/{pasteReview.nodes.length} kept so far</p>
-    </div>
-  </OverlayModal>
-{/if}
 
 {#if templateReview}
   <OverlayModal

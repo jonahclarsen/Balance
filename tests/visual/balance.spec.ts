@@ -4974,7 +4974,7 @@ test('pasting three items onto a different day bypasses review', async ({ page }
   await expect.poll(async () => topLevelTexts(page)).toEqual([...targetItems, sourceItems[2]])
 })
 
-test('pasting four or more items onto a different day opens a review queue', async ({ page }) => {
+test('pasting four or more items onto a different day sorts them like ideas', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -4982,7 +4982,7 @@ test('pasting four or more items onto a different day opens a review queue', asy
 
   const before = await topLevelTexts(page)
 
-  // Move + Work block (including Work block's two children) is four reviewable items.
+  // Move + Work block (including Work block's two children) is four pasted items.
   await focusInputByValue(page, before[1])
   await page.keyboard.press('Shift+ArrowDown')
   await page.keyboard.press('Meta+C')
@@ -4991,73 +4991,69 @@ test('pasting four or more items onto a different day opens a review queue', asy
   await generateDay(page)
   const targetItems = await topLevelTexts(page)
 
-  // Pasting 4+ items on another day opens the review modal instead of inserting directly.
   await page.keyboard.press('Escape')
   await focusInputByValue(page, targetItems.at(-1) as string)
   await setCaretOffsetInFocusedEditor(page, targetItems.at(-1)!.length)
   await page.keyboard.press('Meta+V')
 
-  await expect(page.getByRole('dialog', { name: 'Review pasted items' })).toBeVisible()
-  await expect(topLevelTexts(page)).resolves.toEqual(targetItems)
-  await expect(page.locator('.paste-review-item')).toHaveCount(4)
-  await expect(page.locator('.paste-review-item.current')).toContainText(before[1])
+  // One card per pasted item, children riding along as its checklist.
+  const sorter = page.getByRole('dialog', { name: 'Sort pasted items' })
+  const card = sorter.locator('.idea-sort-card')
+  await expect(sorter).toBeVisible()
+  await expect(card).toContainText(before[1])
+  await page.keyboard.press('y')
+  await page.keyboard.press('d')
+  await expect(card).toContainText(before[2])
+  await expect(card.locator('.idea-sort-children li')).toHaveCount(2)
 
-  // A short window caps the dialog and scrolls the queue instead of pushing the
-  // review controls off-screen.
-  await page.setViewportSize({ width: 640, height: 420 })
-  // VisualViewport resize events and modal fitting can settle after the
-  // browser acknowledges setViewportSize, especially under mobile emulation.
-  await expect.poll(() => page.getByRole('dialog').evaluate((dialog) => {
-    const list = dialog.querySelector('.paste-review-list') as HTMLElement
-    const actions = dialog.querySelector('.paste-review-actions') as HTMLElement
-    return {
-      dialogFits: dialog.getBoundingClientRect().bottom <= 420,
-      listScrolls: list.scrollHeight > list.clientHeight,
-      actionsFit: actions.getBoundingClientRect().bottom <= 420,
-    }
-  })).toEqual({ dialogFits: true, listScrolls: true, actionsFit: true })
+  // Back undoes the reservation.
+  await page.keyboard.press('b')
+  await expect(card).toContainText(before[1])
+  await page.keyboard.press('y')
+  await page.keyboard.press('d')
+  await expect(card).toContainText(before[2])
+  await page.keyboard.press('n')
+  await page.keyboard.press('t')
 
-  // The "Keep" button only appears (and Enter only fires) once the read-cooldown elapses.
-  const armed = () => page.getByRole('button', { name: 'Keep (→ / Enter)' })
+  await expect(sorter).toBeHidden()
+  await expect.poll(async () => topLevelTexts(page)).toEqual([...targetItems, before[1]])
+})
 
-  // Enter is inert during the cooldown: the queue stays on item 1.
-  await page.keyboard.press('Enter')
-  await expect(page.locator('.paste-review-item').nth(0)).toHaveClass(/\bcurrent\b/)
+test('closing the pasted-item sort keeps the rest in Proposition Party', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await generateDay(page)
 
-  // Keep item 1 once the cooldown arms Enter.
-  await armed().waitFor()
-  await page.keyboard.press('Enter')
-  await expect(page.locator('.paste-review-item').nth(1)).toHaveClass(/\bcurrent\b/)
-  await expect
-    .poll(async () =>
-      page.locator('.paste-review-list').evaluate((list) => {
-        const current = list.querySelector('.paste-review-item.current') as HTMLElement
-        const listBounds = list.getBoundingClientRect()
-        const currentBounds = current.getBoundingClientRect()
-        return currentBounds.top >= listBounds.top && currentBounds.bottom <= listBounds.bottom
-      }),
-    )
-    .toBe(true)
+  const before = await topLevelTexts(page)
+  await focusInputByValue(page, before[1])
+  await page.keyboard.press('Shift+ArrowDown')
+  await page.keyboard.press('Meta+C')
 
-  // Edit item 2's text, then keep it (still gated on the cooldown).
-  await page.keyboard.press('e')
-  const editField = page.getByPlaceholder('Item text')
-  await editField.fill('Edited paste')
-  await page.keyboard.press('Enter')
-  await armed().waitFor()
-  await page.keyboard.press('Enter')
+  await page.keyboard.press('Alt+KeyW')
+  await generateDay(page)
+  const targetItems = await topLevelTexts(page)
+  await page.keyboard.press('Escape')
+  await focusInputByValue(page, targetItems.at(-1) as string)
+  await setCaretOffsetInFocusedEditor(page, targetItems.at(-1)!.length)
+  await page.keyboard.press('Meta+V')
 
-  // Skip is allowed during the cooldown.
-  await expect(page.locator('.paste-review-item').nth(2)).toHaveClass(/\bcurrent\b/)
-  await page.keyboard.press('ArrowLeft')
-  await expect(page.locator('.paste-review-item.rejecting')).toBeVisible()
+  const sorter = page.getByRole('dialog', { name: 'Sort pasted items' })
+  await expect(sorter).toBeVisible()
+  await page.keyboard.press('y')
+  await page.keyboard.press('d')
+  await expect(sorter.locator('.idea-sort-card')).toContainText(before[2])
+  await page.keyboard.press('Escape')
 
-  await expect(page.locator('.paste-review-item').nth(3)).toHaveClass(/\bcurrent\b/)
-  await page.keyboard.press('ArrowLeft')
-
-  // Modal closes and only the kept items (item 1 + edited item 2) are appended.
-  await expect(page.getByRole('dialog')).toHaveCount(0)
-  await expect.poll(async () => topLevelTexts(page)).toEqual([...targetItems, before[1], 'Edited paste'])
+  await expect(sorter).toBeHidden()
+  await expect.poll(async () => topLevelTexts(page)).toEqual([...targetItems, before[1]])
+  await expect.poll(() => page.evaluate(async () => {
+    const path = '/src/lib/store.ts'
+    const { plannerStore } = await import(/* @vite-ignore */ path)
+    let value: any
+    plannerStore.subscribe((state: any) => { value = state })()
+    return value.ideaBuckets.find((group: any) => group.kind === 'proposition')?.items.map((item: any) => item.text)
+  })).toEqual([before[2]])
 })
 
 test('plan item rich text preserves paste formatting and supports shortcuts', async ({ page, browserName }) => {
