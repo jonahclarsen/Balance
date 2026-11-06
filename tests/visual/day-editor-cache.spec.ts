@@ -113,9 +113,11 @@ for (const themeId of ['graphite', 'windowsvista']) {
     await page.keyboard.press('ControlOrMeta+z')
     await expect(editor).toHaveText('Moving task')
     await page.keyboard.press('ControlOrMeta+z')
+    await expect.poll(async () => (await order())[1]).toBe('moving')
     await page.keyboard.press('ControlOrMeta+z')
     await expect.poll(async () => (await order())[0]).toBe('moving')
     await page.keyboard.press('ControlOrMeta+Shift+z')
+    await expect.poll(async () => (await order())[1]).toBe('moving')
     await page.keyboard.press('ControlOrMeta+Shift+z')
     await expect.poll(async () => (await order())[2]).toBe('moving')
     // Skip reseeding on reload so persisted order is tested.

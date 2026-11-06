@@ -790,13 +790,13 @@
   }
 
   function focusTextTarget(target: HTMLDivElement, position: 'start' | 'end' = 'end') {
-    target.focus()
-
-    if (!target.matches('[contenteditable="true"]')) return
-
-    // Replace the caret atomically. Clearing the selection first makes the
-    // browser restyle the document for an intermediate, empty selection.
-    document.getSelection()?.collapse(target, position === 'start' ? 0 : target.childNodes.length)
+    if (target.matches('[contenteditable="true"]')) {
+      // Setting the caret also focuses editable hosts in Chromium and WebKit.
+      // Do it once, before the fallback focus, rather than styling the old
+      // selection on focus and then an intermediate empty selection.
+      document.getSelection()?.collapse(target, position === 'start' ? 0 : target.childNodes.length)
+    }
+    if (document.activeElement !== target) target.focus()
   }
 
   function handleDisplayKeydown(event: KeyboardEvent) {
