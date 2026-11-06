@@ -136,6 +136,7 @@
   // Whether the reader left the note scrolled to its bottom. Read from scroll
   // events only, so an edit that grows the note cannot clear it first.
   let noteRestsAtBottom = false
+  let noteRestTop = 0
   let noteScrollSpacePercent = DEFAULT_NOTE_SCROLL_SPACE_PERCENT
   let noteScrollViewportHeight = 0
   let noteScrollSpaceControlVisible = false
@@ -459,6 +460,7 @@
         scrollEventTarget.addEventListener('scroll', handleScroll, { passive: true })
         resizeObserver.observe(scroller)
         noteRestsAtBottom = isAtNoteBottom(scroller)
+        noteRestTop = scroller.scrollTop
         remeasure = true
         measured = false
       }
@@ -484,10 +486,14 @@
       frame = window.requestAnimationFrame(updateVisibility)
     }
     const handleScroll = () => {
-      noteRestsAtBottom = isAtNoteBottom(scroller)
+      // WebKit also fires scroll when a new line grows the note under a reader
+      // who stayed put; only moving up leaves the bottom.
+      noteRestsAtBottom = isAtNoteBottom(scroller) || (noteRestsAtBottom && scroller.scrollTop >= noteRestTop - 1)
+      noteRestTop = scroller.scrollTop
       scheduleVisibilityUpdate()
     }
     noteRestsAtBottom = isAtNoteBottom(scroller)
+    noteRestTop = scroller.scrollTop
     const resizeObserver = new ResizeObserver(() => {
       remeasure = true
       scheduleVisibilityUpdate()
