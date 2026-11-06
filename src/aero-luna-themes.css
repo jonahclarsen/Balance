@@ -932,11 +932,15 @@
   padding: 0;
   font-size: 13px;
 }
+/* Notes centers its header at full width, which the band's bleed would cut short. */
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .notes-view-workspace > .notes-page-header {
+  width: auto;
+}
 :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .projects-panel {
   max-width: none;
 }
 :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .page-header .imax-button {
-  width: 52px;
+  width: auto;
   padding: 0 4px;
   color: inherit;
 }
@@ -963,9 +967,10 @@
   :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .time-part {
     padding-block: 2px;
   }
-  /* The caption's Restore button replaces IMAX's floating exit. */
+  /* IMAX's floating exit sits in the client area, clear of the caption. */
   :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .app-shell:has(> .window-caption) .imax-exit-control {
-    display: none;
+    top: calc(var(--win-caption-height) + 14px);
+    right: calc(var(--win-frame-width) + 18px);
   }
 }
 :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) :is(.item-text, .item-text-display, .template-text) {
