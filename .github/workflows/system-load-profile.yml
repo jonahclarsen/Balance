@@ -3,12 +3,18 @@ name: Profile desktop interactions under system load
 on:
   workflow_dispatch:
     inputs:
-      runner:
-        description: Runner for matched browser checks (macOS remains the default)
+      verification_only:
+        description: Run behavior checks without a performance comparison
         required: false
-        default: macos-15
+        default: false
+        type: boolean
+      runner:
+        description: Runner for matched browser checks (Intel macOS remains the default)
+        required: false
+        default: macos-15-intel
         type: choice
         options:
+          - macos-15-intel
           - macos-15
           - macos-14
           - ubuntu-24.04
@@ -43,8 +49,9 @@ permissions:
 
 jobs:
   compare:
+    if: ${{ !inputs.verification_only }}
     name: Matched ref/theme comparison under CPU contention
-    runs-on: ${{ inputs.runner || 'macos-15' }}
+    runs-on: ${{ inputs.runner || 'macos-15-intel' }}
     timeout-minutes: 30
     env:
       BALANCE_INTERACTION_PERF_SURFACE: ${{ inputs.surface || 'today' }}
@@ -184,6 +191,8 @@ jobs:
                       metric("idle_frame_interval_ms"; ["profile", "idleFrameIntervals", "medianMs"]),
                       metric("task_focus_paint_ms"; ["profile", "taskFocus", "paint", "medianMs"]),
                       metric("checkbox_paint_ms"; ["profile", "checkboxClick", "paint", "medianMs"]),
+                      metric("keyboard_move_paint_ms"; ["profile", "keyboardMove", "paint", "medianMs"]),
+                      metric("keyboard_move_dispatch_ms"; ["profile", "keyboardMove", "dispatch", "medianMs"]),
                       metric("typing_paint_ms"; ["profile", "typing", "paint", "medianMs"]),
                       metric("backspace_paint_ms"; ["profile", "backspacing", "paint", "medianMs"])
                     ] | from_entries)
@@ -196,11 +205,11 @@ jobs:
                 variants: $variants,
                 candidate_to_baseline_ratio: ($baseline.metrics | to_entries | map({
                   key,
-                  value: (($candidate.metrics[.key] / .value) * 100 | round / 100)
+                  value: (if .value > 0 then (($candidate.metrics[.key] / .value) * 100 | round / 100) else null end)
                 }) | from_entries),
                 candidate_overhead_percent: ($baseline.metrics | to_entries | map({
                   key,
-                  value: (((($candidate.metrics[.key] / .value) - 1) * 1000 | round) / 10)
+                  value: (if .value > 0 then (((($candidate.metrics[.key] / .value) - 1) * 1000 | round) / 10) else null end)
                 }) | from_entries)
               }
           ' "$results")"
@@ -232,7 +241,7 @@ jobs:
 
   verify:
     name: Typecheck, Goal Rhythm, and recent-page behavior
-    runs-on: ${{ inputs.runner || 'macos-15' }}
+    runs-on: ${{ inputs.runner || 'macos-15-intel' }}
     timeout-minutes: 15
 
     steps:
@@ -257,6 +266,11 @@ jobs:
 
       - name: Check source
         run: pnpm check
+
+      - name: Verify held task movement, focus, undo, and persistence
+        run: |
+          pnpm exec playwright test tests/visual/day-editor-cache.spec.ts \
+            --project desktop --project webkit-days --grep "held Alt-arrow" --workers 1
 
       - name: Verify Goal Rhythm scrolling and task-badge interactions
         run: |
@@ -285,7 +299,7 @@ jobs:
       - name: Verify project reordering after edge scrolling
         run: |
           pnpm exec playwright test tests/visual/projects.spec.ts \
-            --project desktop --grep "dragging a project card to the window edge" --workers 1
+            --project desktop --grep "dragging a project row to the window edge" --workers 1
 
       - name: Upload behavior failure traces
         if: failure()

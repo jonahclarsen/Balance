@@ -35,11 +35,15 @@
       attributeFilter: ['hidden', 'aria-hidden', 'inert', 'class', 'style', 'open'],
     })
     window.addEventListener('resize', invalidate)
+    // A class, not a :has() rule on body, which makes Chromium restyle the
+    // whole page whenever a dialog opens or closes.
+    document.documentElement.classList.add('document-find-open')
     // Later, not here: matching can expand text, and that can't be flushed during mount.
     if (hasQuery) scheduleFind(0)
     return () => {
       observer?.disconnect()
       window.removeEventListener('resize', invalidate)
+      document.documentElement.classList.remove('document-find-open')
     }
   })
 
@@ -306,7 +310,7 @@
   /* WebKit paints a highlight on user-select: none text onto the nearest
      selectable text instead, so a match on a project card lit its section
      heading. Keep everything selectable only while find is open. */
-  :global(body:has(.document-find) .workspace *) {
+  :global(.document-find-open .workspace *) {
     -webkit-user-select: text !important;
     user-select: text !important;
   }

@@ -643,7 +643,10 @@
       const moved = moveItemWithinLevel(planId, item.id, direction)
       if (moved === false) return
       await tick()
-      focusItemTextInput(item.id)
+      // Keyed reordering often moves the neighbouring row, leaving this editor
+      // focused. Re-focusing and replacing its selection forces another style/
+      // layout pass; use the existing node and only restore focus when lost.
+      if (document.activeElement !== current) focusTextTarget(current)
       scrollMovedItemsIntoView('plan', [item.id], direction)
       return
     }
@@ -787,17 +790,13 @@
   }
 
   function focusTextTarget(target: HTMLDivElement, position: 'start' | 'end' = 'end') {
-    target.focus()
-
-    if (!target.matches('[contenteditable="true"]')) return
-
-    const range = document.createRange()
-    range.selectNodeContents(target)
-    range.collapse(position === 'start')
-
-    const selection = document.getSelection()
-    selection?.removeAllRanges()
-    selection?.addRange(range)
+    if (target.matches('[contenteditable="true"]')) {
+      // Setting the caret also focuses editable hosts in Chromium and WebKit.
+      // Do it once, before the fallback focus, rather than styling the old
+      // selection on focus and then an intermediate empty selection.
+      document.getSelection()?.collapse(target, position === 'start' ? 0 : target.childNodes.length)
+    }
+    if (document.activeElement !== target) target.focus()
   }
 
   function handleDisplayKeydown(event: KeyboardEvent) {

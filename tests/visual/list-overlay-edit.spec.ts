@@ -1085,7 +1085,10 @@ test('Lists opens today’s list in its modal, generating it first', async ({ pa
   await expect(dialog.getByRole('listitem', { name: 'Plan item: Milk' }).getByRole('checkbox')).toBeChecked()
 })
 
-test('recent pages reuse live editors and release hidden modal controls', async ({ page }) => {
+test('recent pages reuse live editors and release hidden modal controls', async ({ page, browserName }) => {
+  // This journey opens eleven pages/overlays; keep each assertion's deadline,
+  // but allow WebKit's cold page construction to finish on slower CI hosts.
+  if (browserName === 'webkit') test.setTimeout(60_000)
   const pageErrors: string[] = []
   page.on('pageerror', (error) => pageErrors.push(error.message))
   await page.clock.install({ time: new Date('2026-10-08T12:00:00') })

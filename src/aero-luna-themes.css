@@ -398,7 +398,11 @@
 
 /* ---------- Everything that follows is shared unless a theme is named ---------- */
 
-:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) ::selection {
+/* Keep highlight styling on text surfaces. A universal ::selection also gives
+   every empty Goal Rhythm cell a highlight style, making caret moves restyle
+   the whole timeline. */
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) :is(input, textarea, [contenteditable='true'], .item-text-display)::selection,
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) :is([contenteditable='true'], .item-text-display) :is(b, strong, i, em, u, s, a, code, span, br)::selection {
   background: var(--win-select);
   color: var(--win-select-text);
 }
@@ -968,7 +972,7 @@
     padding-block: 2px;
   }
   /* IMAX's floating exit sits in the client area, clear of the caption. */
-  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .app-shell:has(> .window-caption) .imax-exit-control {
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .app-shell .imax-exit-control {
     top: calc(var(--win-caption-height) + 14px);
     right: calc(var(--win-frame-width) + 18px);
   }

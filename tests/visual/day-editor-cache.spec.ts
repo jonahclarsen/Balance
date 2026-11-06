@@ -73,3 +73,56 @@ test('recent days reuse editors, stay current through edits and undo, and expire
   await page.clock.fastForward(30_001)
   await expect(page.locator('.retained-day')).toHaveCount(0)
 })
+
+for (const themeId of ['graphite', 'windowsvista']) {
+  test(`held Alt-arrow keeps the editor usable through moves, undo and reload in ${themeId}`, async ({ page, isMobile }) => {
+    test.skip(isMobile, 'Desktop keyboard interaction')
+    const date = '2026-10-08'
+    await page.clock.setFixedTime(new Date(`${date}T12:00:00`))
+    await page.addInitScript(({ date, themeId }) => {
+      if (localStorage.getItem('keyboard-test-ready')) return
+      const item = (id: string, text: string) => ({ id, text, html: text, done: false, startMinutes: null, endMinutes: null, children: [] })
+      localStorage.setItem('balance.appState.v1', JSON.stringify({
+        schemaVersion: 1, deviceId: 'keyboard-test', localSequence: 0, historyRevision: 0,
+        activePlanDate: date, templates: [], goals: [], goalCompletions: [], operations: [],
+        plans: [{ id: 'keyboard-plan', date, dailyReminder: '', items: [
+          { ...item('moving', 'Moving task'), children: [item('child', 'Child task')] },
+          ...Array.from({ length: 12 }, (_, index) => item(`sibling-${index}`, `Sibling ${index}`)),
+        ] }],
+      }))
+      localStorage.setItem('balance:deviceAppearance.v1', JSON.stringify({ version: 1, themeId }))
+    }, { date, themeId })
+    await page.goto('/')
+    const editor = page.locator('[data-plan-text-input-id="moving"]')
+    await editor.focus()
+    await page.keyboard.down('Alt')
+    await page.keyboard.down('ArrowDown')
+    await page.keyboard.down('ArrowDown')
+    await page.keyboard.up('ArrowDown')
+    await page.keyboard.up('Alt')
+    const order = () => page.locator('[data-plan-item-scope="keyboard-plan"] > .item-shell > [data-plan-item-id]').evaluateAll(rows => rows.map(row => (row as HTMLElement).dataset.planItemId))
+    await expect.poll(order).toEqual(['sibling-0', 'sibling-1', 'moving', ...Array.from({ length: 10 }, (_, index) => `sibling-${index + 2}`)])
+    await expect(editor).toBeFocused()
+    expect(await editor.evaluate(element => {
+      const selection = document.getSelection()
+      return Boolean(selection?.isCollapsed && element.contains(selection.anchorNode))
+    })).toBe(true)
+    await page.keyboard.press('x')
+    await expect(editor).toHaveText('Moving taskx')
+    await expect(page.locator('[data-plan-text-input-id="child"]')).toHaveText('Child task')
+    await page.keyboard.press('ControlOrMeta+z')
+    await expect(editor).toHaveText('Moving task')
+    await page.keyboard.press('ControlOrMeta+z')
+    await expect.poll(async () => (await order())[1]).toBe('moving')
+    await page.keyboard.press('ControlOrMeta+z')
+    await expect.poll(async () => (await order())[0]).toBe('moving')
+    await page.keyboard.press('ControlOrMeta+Shift+z')
+    await expect.poll(async () => (await order())[1]).toBe('moving')
+    await page.keyboard.press('ControlOrMeta+Shift+z')
+    await expect.poll(async () => (await order())[2]).toBe('moving')
+    // Skip reseeding on reload so persisted order is tested.
+    await page.evaluate(() => localStorage.setItem('keyboard-test-ready', '1'))
+    await page.reload()
+    await expect.poll(async () => (await order())[2]).toBe('moving')
+  })
+}

@@ -1,8 +1,10 @@
 import { expect, test, type Page } from '@playwright/test'
+import { writeFile } from 'node:fs/promises'
 import { openView } from '../helpers/navigation'
 
 const PLAN_COUNT = performanceSize('BALANCE_INTERACTION_PERF_PLANS', 365)
 const ITEMS_PER_PLAN = performanceSize('BALANCE_INTERACTION_PERF_ITEMS_PER_PLAN', 20)
+const ACTIVE_ITEMS = performanceSize('BALANCE_INTERACTION_PERF_ACTIVE_ITEMS', 100)
 const LIST_COUNT = performanceSize('BALANCE_INTERACTION_PERF_LISTS', 180)
 const ITEMS_PER_LIST = performanceSize('BALANCE_INTERACTION_PERF_ITEMS_PER_LIST', 20)
 const GOAL_COUNT = performanceSize('BALANCE_INTERACTION_PERF_GOALS', 80)
@@ -153,7 +155,7 @@ function summarizeDurations(values: number[]) {
 
 async function installSyntheticWorkspace(page: Page) {
   await page.addInitScript(
-    ({ planCount, itemsPerPlan, listCount, itemsPerList, goalCount, operationCount, activeDate, themeId, surface }) => {
+    ({ planCount, itemsPerPlan, listCount, itemsPerList, goalCount, operationCount, activeDate, activeItems, themeId, surface }) => {
       const planDate = (index: number) => {
         if (index === planCount - 1) return activeDate
         const date = new Date(`${activeDate}T12:00:00Z`)
@@ -176,7 +178,7 @@ async function installSyntheticWorkspace(page: Page) {
         dailyReminder: '',
         generatedFromTemplateId: null,
         createdAt: '2026-01-01T00:00:00Z',
-        items: Array.from({ length: itemsPerPlan }, (_, itemIndex) => item(`plan_${planIndex}`, itemIndex)),
+        items: Array.from({ length: planIndex === planCount - 1 ? activeItems : itemsPerPlan }, (_, itemIndex) => item(`plan_${planIndex}`, itemIndex)),
       }))
       const lists = Array.from({ length: listCount }, (_, listIndex) => ({
         id: `list_${listIndex}`,
@@ -270,6 +272,7 @@ async function installSyntheticWorkspace(page: Page) {
       goalCount: GOAL_COUNT,
       operationCount: EXISTING_OPERATION_COUNT,
       activeDate: ACTIVE_DATE,
+      activeItems: ACTIVE_ITEMS,
       themeId: THEME_ID,
       surface: SURFACE,
     },
@@ -277,7 +280,11 @@ async function installSyntheticWorkspace(page: Page) {
 }
 
 async function profileEdits(page: Page, selector: string, direction: 'type' | 'backspace', editCount = EDIT_COUNT) {
-  await page.locator(selector).evaluate((element) => {
+  // Resolve once: Playwright's shadow-piercing selector engine otherwise scans
+  // the entire Goal Rhythm DOM between every input and dominates CPU samples.
+  const target = await page.locator(selector).elementHandle()
+  if (!target) throw new Error(`Missing editor: ${selector}`)
+  await target.evaluate((element) => {
     const editor = element as HTMLElement
     editor.focus()
     const range = document.createRange()
@@ -288,7 +295,7 @@ async function profileEdits(page: Page, selector: string, direction: 'type' | 'b
   })
   const samples: Sample[] = []
   for (let index = 0; index < editCount; index += 1) {
-    await page.locator(selector).evaluate((element) => {
+    await target.evaluate((element) => {
       const runtime = window as unknown as { typingSample: Promise<Sample> }
       runtime.typingSample = new Promise((resolve) => {
         let started = 0
@@ -303,6 +310,48 @@ async function profileEdits(page: Page, selector: string, direction: 'type' | 'b
     })
     await page.keyboard.press(direction === 'type' ? 'x' : 'Backspace')
     samples.push(await page.evaluate(() => (window as unknown as { typingSample: Promise<Sample> }).typingSample))
+  }
+  return samples
+}
+
+// Real keyboard events with Alt held throughout, including repeated arrows.
+// Check the DOM order after every event so ignored shortcuts cannot look fast.
+async function profileKeyboardMoves(page: Page) {
+  const editor = await page.locator(EDITOR_SELECTOR).elementHandle()
+  if (!editor) throw new Error('Missing keyboard movement editor')
+  await editor.focus()
+  const samples: Sample[] = []
+  await page.keyboard.down('Alt')
+  try {
+    for (let index = 0; index < EDIT_COUNT; index += 1) {
+      const key = index % 4 < 2 ? 'ArrowDown' : 'ArrowUp'
+      await editor.evaluate((element) => {
+        const runtime = window as unknown as { moveSample: Promise<Sample> }
+        runtime.moveSample = new Promise(resolve => {
+          let started = 0
+          element.addEventListener('keydown', () => { started = performance.now() }, { once: true, capture: true })
+          window.addEventListener('keydown', () => {
+            const dispatched = performance.now()
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve({
+              dispatchMs: dispatched - started, paintMs: performance.now() - started,
+            })))
+          }, { once: true })
+        })
+      })
+      await page.keyboard.down(key)
+      samples.push(await page.evaluate(() => (window as unknown as { moveSample: Promise<Sample> }).moveSample))
+      const order = await editor.evaluate(element => {
+        const row = element.closest('[data-plan-item-id]')!
+        return [...row.parentElement!.parentElement!.children].map(child => child.querySelector<HTMLElement>('[data-plan-item-id]')?.dataset.planItemId ?? '')
+      })
+      expect(order.indexOf(`plan_${PLAN_COUNT - 1}_item_1`)).toBe([2, 3, 2, 1][index % 4])
+      expect(await editor.evaluate(element => element === document.activeElement)).toBe(true)
+      if (index % 2 === 1) await page.keyboard.up(key)
+    }
+  } finally {
+    await page.keyboard.up('ArrowDown')
+    await page.keyboard.up('ArrowUp')
+    await page.keyboard.up('Alt')
   }
   return samples
 }
@@ -445,6 +494,8 @@ async function profileGoalRhythmScroll(page: Page, frameCount = GOAL_SCROLL_FRAM
 }
 
 test.beforeEach(async ({ page }, testInfo) => {
+  // Keep Today and goal reconciliation inside the fixture's active day.
+  await page.clock.setFixedTime(new Date(`${ACTIVE_DATE}T12:00:00`))
   await installSyntheticWorkspace(page)
   if (testInfo.project.name.includes('6x-cpu')) {
     const session = await page.context().newCDPSession(page)
@@ -517,6 +568,20 @@ test('profiles common typing and backspacing paths', async ({ page }, testInfo) 
   const originalText = await page.locator(typingSelector).innerText()
   const profiler = await page.context().newCDPSession(page)
   await profiler.send('Profiler.enable')
+  await profiler.send('Performance.enable')
+  await profiler.send('Profiler.start')
+  const beforeMoveMetrics = await profiler.send('Performance.getMetrics')
+  const keyboardMoves = await profileKeyboardMoves(page)
+  const afterMoveMetrics = await profiler.send('Performance.getMetrics')
+  const { profile: moveCpu } = await profiler.send('Profiler.stop')
+  const moveCpuPath = testInfo.outputPath('keyboard-move.cpuprofile')
+  await writeFile(moveCpuPath, JSON.stringify(moveCpu))
+  await testInfo.attach('keyboard-move.cpuprofile', { path: moveCpuPath, contentType: 'application/json' })
+  const rendererWork = Object.fromEntries(['TaskDuration', 'ScriptDuration', 'LayoutDuration', 'RecalcStyleDuration', 'LayoutCount', 'RecalcStyleCount'].map(name => {
+    const before = beforeMoveMetrics.metrics.find(metric => metric.name === name)?.value ?? 0
+    const after = afterMoveMetrics.metrics.find(metric => metric.name === name)?.value ?? 0
+    return [name, (after - before) * (name.endsWith('Duration') ? 1000 : 1) / keyboardMoves.length]
+  }))
   await profiler.send('Profiler.start')
   const typing = await profileEdits(page, typingSelector, 'type')
   const backspacing = await profileEdits(page, typingSelector, 'backspace')
@@ -530,13 +595,16 @@ test('profiles common typing and backspacing paths', async ({ page }, testInfo) 
     line: node.callFrame.lineNumber + 1,
     samples: hits.get(node.id) ?? 0,
   })).filter(node => node.samples > 0).sort((a, b) => b.samples - a.samples).slice(0, 35))}`)
-  await testInfo.attach('typing.cpuprofile', { body: JSON.stringify(cpu), contentType: 'application/json' })
+  const typingCpuPath = testInfo.outputPath('typing.cpuprofile')
+  await writeFile(typingCpuPath, JSON.stringify(cpu))
+  await testInfo.attach('typing.cpuprofile', { path: typingCpuPath, contentType: 'application/json' })
   const profile = {
     project: testInfo.project.name,
     fixture: {
       surface: SURFACE,
       plans: PLAN_COUNT,
-      planItems: PLAN_COUNT * ITEMS_PER_PLAN,
+      planItems: (PLAN_COUNT - 1) * ITEMS_PER_PLAN + ACTIVE_ITEMS,
+      activeItems: ACTIVE_ITEMS,
       lists: LIST_COUNT,
       listItems: LIST_COUNT * ITEMS_PER_LIST,
       goals: GOAL_COUNT,
@@ -549,6 +617,8 @@ test('profiles common typing and backspacing paths', async ({ page }, testInfo) 
     idleFrameIntervals: summarizeDurations(idle.frameIntervals),
     idleRenderer: idle.renderer,
     taskFocus: summarize(taskActions.focus),
+    keyboardMove: summarize(keyboardMoves),
+    keyboardMoveRendererPerEvent: rendererWork,
     checkboxClick: summarize(taskActions.checkboxClicks),
     typing: summarize(typing),
     backspacing: summarize(backspacing),

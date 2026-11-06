@@ -19,6 +19,7 @@
   import { getCurrentWebview } from '@tauri-apps/api/webview'
   import { confirm as confirmDialog, open as openDialog } from '@tauri-apps/plugin-dialog'
   import { onDestroy, onMount, tick } from 'svelte'
+  import { applyThemeStyles } from './lib/themeStyles'
   import { startListStorageMaintenance } from './lib/listStorageMaintenance'
   import { startFreezeDiagnostics } from './lib/freezeDiagnostics'
   import { installMobileKeyboardScroll } from './lib/mobileKeyboardScroll'
@@ -873,7 +874,7 @@ return rows`
     colorSchemePreference,
     systemPrefersDark,
   )
-  $: document.documentElement.dataset.theme = displayedThemeId
+  $: applyThemeStyles(displayedThemeId)
   $: observeCurrentTodayTheme(
     preferencesReady
       && view === 'today'
