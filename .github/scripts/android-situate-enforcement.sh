@@ -157,6 +157,7 @@ for attempt in $(seq 1 10); do
     assert_allowed
   else
     adb shell input keyevent KEYCODE_HOME
+    wait_for home_resumed
     wait_for gate_absent
   fi
 done
@@ -175,6 +176,8 @@ assert_allowed
 adb shell settings put secure enabled_accessibility_services "$COMPONENT"
 wait_for service_connected
 adb shell input keyevent KEYCODE_HOME
+# Key injection returns before Home is handled, so a start could land first.
+wait_for home_resumed
 adb shell am start -a android.settings.SETTINGS >/dev/null
 wait_for gate_present
 # Never show a stale gate after the last applicable mode is removed.
