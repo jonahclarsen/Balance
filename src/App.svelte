@@ -6786,39 +6786,37 @@ return rows`
   async function openSearchResult(result: SearchResult) {
     searchOpen = false
     clearItemSelection()
-
-    if (result.kind === 'note') {
-      selectedNoteId = result.noteId
-      view = 'notes'
-    } else if (result.kind === 'day') {
-      plannerStore.setActivePlanDate(result.date)
-      view = 'today'
-    } else if (result.kind === 'list') {
-      plannerStore.setActivePlanDate(result.date)
-      listViewTemplateId = result.listTemplateId
-      openListHistory()
-    } else if (result.kind === 'day-template') {
-      selectedTemplateId = result.templateId
-      view = 'templates'
-    } else if (result.kind === 'list-template') {
-      selectedListTemplateId = result.templateId
-      openLists()
-    } else if (result.kind === 'history') {
-      await openRecoveryPanel(result.historyId)
+    const { target } = result
+    if (target.kind === 'link') {
+      await openNavigationLink(target.url)
+      return
+    }
+    if (target.kind === 'history') {
+      await openRecoveryPanel(target.historyId)
+      return
+    }
+    if (target.kind === 'project') {
+      await openActiveProject(target.projectId)
       return
     }
 
-    if (!result.itemId) return
+    let selector = ''
+    if (target.kind === 'list-history') {
+      listViewTemplateId = target.listTemplateId
+      openListHistory()
+    } else if (target.kind === 'deleted-list-items') {
+      selectedListTemplateId = target.listTemplateId
+      listArchiveOpen = true
+      openLists()
+      selector = '#list-item-archive'
+    } else {
+      openProjectHistory()
+      if (target.itemId) selector = `[data-note-item-id="${CSS.escape(target.itemId)}"]`
+    }
+
+    if (!selector) return
     await tick()
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-
-    const selector = result.kind === 'note'
-      ? `[data-note-item-id="${CSS.escape(result.itemId)}"]`
-      : result.kind === 'day-template'
-      ? `[data-template-item-id="${CSS.escape(result.itemId)}"]`
-      : result.kind === 'list-template'
-        ? `[data-list-template-item-id="${CSS.escape(result.itemId)}"]`
-        : `[data-plan-item-id="${CSS.escape(result.itemId)}"]`
     const row = workspaceEl?.querySelector<HTMLElement>(selector)
     if (!row) return
 
@@ -6826,6 +6824,7 @@ return rows`
     row.classList.add('search-result-target')
     window.setTimeout(() => row.classList.remove('search-result-target'), 1800)
   }
+
 
   function dismissAvailableUpdate() {
     if (availableUpdate) {

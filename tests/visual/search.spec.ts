@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { createInitialState, createNote, createNoteItem, createPlanItem } from '../../src/lib/planner'
 
 test('search finds saved days, list history, and editable lists without Enter', async ({ page, isMobile }) => {
   await page.goto('/')
@@ -156,4 +157,35 @@ test('search finds readable text in retained task history', async ({ page }) => 
   await historyResult.click()
   await expect(page.getByRole('heading', { name: 'Recovery history' })).toBeVisible()
   await expect(page.locator('[data-recovery-history-id="history-deleted-kumquat"]')).toContainText('Buy the secret kumquat')
+})
+
+test('search finds trashed ideas, trashed notes and archived projects and opens them', async ({ page }) => {
+  const state = createInitialState()
+  const now = '2026-10-20T17:00:00Z'
+  state.ideaBuckets = [{ id: 'bucket_trash', kind: 'trash', items: [{ ...createPlanItem('Carve a medlar spoon'), id: 'trashed_idea', bucketedAt: now }] }]
+  state.notes = [{ ...createNote('Binned medlar recipe'), id: 'binned', deletedAt: now, items: [createNoteItem('Medlar jelly')] }]
+  state.projects = [{ id: 'archived_project', name: 'Medlar grove', description: '', color: '#888', archived: true, archivedAt: now, createdAt: now, updatedAt: now }]
+  await page.clock.setFixedTime(new Date(now))
+  await page.addInitScript((seed) => {
+    if (!localStorage.getItem('balance.appState.v1')) localStorage.setItem('balance.appState.v1', JSON.stringify(seed))
+  }, state)
+  await page.goto('/')
+
+  const dialog = page.getByRole('dialog', { name: 'Search Balance' })
+  const search = dialog.getByRole('searchbox', { name: 'Search everything' })
+  await page.getByRole('button', { name: /Search/ }).click()
+  await search.fill('medlar')
+  await expect(dialog.getByRole('heading', { name: /Ideas/ })).toBeVisible()
+  await expect(dialog.getByRole('button', { name: /Binned medlar recipe, Note · Trash/ })).toBeVisible()
+  await expect(dialog.getByRole('button', { name: /Medlar grove, Project · Archived/ })).toBeVisible()
+
+  await dialog.getByRole('button', { name: /Carve a medlar spoon, Idea · Trash/ }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(page.locator('[data-idea-pane="trash"] [data-plan-item-id="trashed_idea"]')).toBeVisible()
+
+  await page.getByRole('button', { name: /Search/ }).click()
+  await search.fill('medlar jelly')
+  await dialog.getByRole('button', { name: /Binned medlar recipe/ }).click()
+  await expect(page.getByRole('heading', { name: 'Binned medlar recipe', exact: true })).toBeVisible()
+  await expect(page.locator('.notes-trash-open')).toHaveCount(1)
 })

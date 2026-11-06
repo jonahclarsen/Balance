@@ -13,6 +13,10 @@
 
   const groups: { kind: SearchResult['kind']; label: string }[] = [
     { kind: 'note', label: 'Notes' },
+    { kind: 'idea', label: 'Ideas' },
+    { kind: 'goal', label: 'Goals' },
+    { kind: 'project', label: 'Projects' },
+    { kind: 'quiz', label: 'Quizzes' },
     { kind: 'list-template', label: 'Lists' },
     { kind: 'day-template', label: 'Day templates' },
     { kind: 'day', label: 'Saved days' },
@@ -137,7 +141,7 @@
         bind:this={searchInput}
         type="search"
         value={query}
-        placeholder="Search notes, days, lists, and history"
+        placeholder="Search everything"
         aria-label="Search everything"
         on:input={(event) => updateQuery(event.currentTarget.value)}
         on:keydown={handleKeydown}
@@ -148,7 +152,6 @@
     {#if !query.trim()}
       <div class="search-empty">
         <strong>Search everything in Balance.</strong>
-        <span>Notes, saved days, lists, and retained earlier versions are all included.</span>
       </div>
     {:else if !pending && results.length === 0}
       <div class="search-empty" role="status">

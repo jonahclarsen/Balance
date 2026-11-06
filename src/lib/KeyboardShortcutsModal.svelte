@@ -38,7 +38,7 @@
     {
       title: 'General',
       shortcuts: [
-        { keys: ['mod', 'K'], label: 'Open / close search' },
+        { keys: ['mod', 'K'], label: 'Open / close search', alt: ['alt', 'C'] },
         { keys: ['mod', 'F'], label: 'Find in current view / search goals' },
         { keys: ['enter'], label: 'Next match (in Find)' },
         { keys: ['shift', 'enter'], label: 'Previous match (in Find)' },
