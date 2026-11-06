@@ -4,11 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       runner:
-        description: Runner for matched browser checks (macOS remains the default)
+        description: Runner for matched browser checks (Intel macOS remains the default)
         required: false
-        default: macos-15
+        default: macos-15-intel
         type: choice
         options:
+          - macos-15-intel
           - macos-15
           - macos-14
           - ubuntu-24.04
@@ -44,7 +45,7 @@ permissions:
 jobs:
   compare:
     name: Matched ref/theme comparison under CPU contention
-    runs-on: ${{ inputs.runner || 'macos-15' }}
+    runs-on: ${{ inputs.runner || 'macos-15-intel' }}
     timeout-minutes: 30
     env:
       BALANCE_INTERACTION_PERF_SURFACE: ${{ inputs.surface || 'today' }}
@@ -234,7 +235,7 @@ jobs:
 
   verify:
     name: Typecheck, Goal Rhythm, and recent-page behavior
-    runs-on: ${{ inputs.runner || 'macos-15' }}
+    runs-on: ${{ inputs.runner || 'macos-15-intel' }}
     timeout-minutes: 15
 
     steps:
