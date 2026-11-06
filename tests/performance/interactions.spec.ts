@@ -563,8 +563,19 @@ test('profiles common typing and backspacing paths', async ({ page }, testInfo) 
   const originalText = await page.locator(typingSelector).innerText()
   const profiler = await page.context().newCDPSession(page)
   await profiler.send('Profiler.enable')
+  await profiler.send('Performance.enable')
   await profiler.send('Profiler.start')
+  const beforeMoveMetrics = await profiler.send('Performance.getMetrics')
   const keyboardMoves = await profileKeyboardMoves(page)
+  const afterMoveMetrics = await profiler.send('Performance.getMetrics')
+  const { profile: moveCpu } = await profiler.send('Profiler.stop')
+  await testInfo.attach('keyboard-move.cpuprofile', { body: JSON.stringify(moveCpu), contentType: 'application/json' })
+  const rendererWork = Object.fromEntries(['TaskDuration', 'ScriptDuration', 'LayoutDuration', 'RecalcStyleDuration', 'LayoutCount', 'RecalcStyleCount'].map(name => {
+    const before = beforeMoveMetrics.metrics.find(metric => metric.name === name)?.value ?? 0
+    const after = afterMoveMetrics.metrics.find(metric => metric.name === name)?.value ?? 0
+    return [name, (after - before) * (name.endsWith('Duration') ? 1000 : 1) / keyboardMoves.length]
+  }))
+  await profiler.send('Profiler.start')
   const typing = await profileEdits(page, typingSelector, 'type')
   const backspacing = await profileEdits(page, typingSelector, 'backspace')
   const { profile: cpu } = await profiler.send('Profiler.stop')
@@ -598,6 +609,7 @@ test('profiles common typing and backspacing paths', async ({ page }, testInfo) 
     idleRenderer: idle.renderer,
     taskFocus: summarize(taskActions.focus),
     keyboardMove: summarize(keyboardMoves),
+    keyboardMoveRendererPerEvent: rendererWork,
     checkboxClick: summarize(taskActions.checkboxClicks),
     typing: summarize(typing),
     backspacing: summarize(backspacing),
