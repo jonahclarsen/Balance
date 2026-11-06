@@ -270,10 +270,14 @@ for (const [themeId, name] of [['windowsxp', 'Windows XP'], ['windowsvista', 'Wi
     })
     expect(urls.length).toBeGreaterThan(100)
     // The dev server answers unknown paths with the app's HTML, so check the type too.
-    const responses = await Promise.all(urls.map(async url => ({ url, response: await page.request.get(url) })))
-    for (const { url, response } of responses) {
-      expect(response.status(), url).toBe(200)
-      expect(response.headers()['content-type'], url).toMatch(/^image\//)
+    // A few at a time: hundreds at once make the dev server reset connections.
+    for (let start = 0; start < urls.length; start += 8) {
+      const batch = urls.slice(start, start + 8)
+      const responses = await Promise.all(batch.map(async url => ({ url, response: await page.request.get(url) })))
+      for (const { url, response } of responses) {
+        expect(response.status(), url).toBe(200)
+        expect(response.headers()['content-type'], url).toMatch(/^image\//)
+      }
     }
   })
 }
