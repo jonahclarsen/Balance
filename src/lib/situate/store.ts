@@ -6,7 +6,7 @@ export const situate = writable<Document>(defaults())
 export const situateError = writable('')
 export const situateReady = writable(false)
 export const situateNow = writable(Date.now())
-export const quizRequest = writable<{ mode: string; target: string; startedAt: number; revision: number } | null>(null)
+export const quizRequest = writable<{ mode: string; target: string; startedAt: number } | null>(null)
 /** A reminder mode whose description is showing. */
 export const reminderRequest = writable<string | null>(null)
 export const situatePlatform: Platform = /Android/i.test(navigator.userAgent) ? 'android' : /Win/i.test(navigator.userAgent) ? 'windows' : 'mac'
@@ -49,16 +49,15 @@ export async function startSituate(): Promise<() => void> {
 }
 export function requestQuiz(mode: string, target = '') {
   if (get(situate).modes.find(m => m.id === mode)?.reminder) { reminderRequest.set(mode); return }
-  quizRequest.set({ mode, target, startedAt: Date.now(), revision: get(situate).revision })
+  quizRequest.set({ mode, target, startedAt: Date.now() })
 }
 export function activateMode(mode: string) { return mutateSituate(current => enableMode(current, mode)) }
 export function answerQuiz(answers: Answers, minutes?: number) {
   const request = get(quizRequest)
   if (!request) return Promise.resolve()
-  return mutateSituate(current => {
-    if(current.revision !== request.revision) throw new Error('Rules changed. Reopen the quiz.')
-    return grant(current, request.mode, answers, request.startedAt, Date.now(), request.target, minutes)
-  }).then(() => quizRequest.set(null))
+  // Saves elsewhere (sync, other windows) bump the revision constantly; grant rejects only
+  // what actually voids the quiz: a new schedule period or the mode turned back on.
+  return mutateSituate(current => grant(current, request.mode, answers, request.startedAt, Date.now(), request.target, minutes)).then(() => quizRequest.set(null))
 }
 export function situateDeepLink(raw: string): boolean {
   try {

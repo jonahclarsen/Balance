@@ -30,15 +30,29 @@
     const next = quizProgress(quiz, answers)
     if (!next.next && !next.denied && !$quizRequest?.target) await finish()
   }
+  let root: HTMLElement
+  // Window-wide so they work without focus, but never while typing or in another dialog.
+  function onKeydown(event: KeyboardEvent) {
+    if (!progress.next || event.isComposing || event.altKey || event.ctrlKey || event.metaKey) return
+    if (event.target instanceof HTMLElement && (event.target.isContentEditable || event.target.matches('input, textarea, select'))) return
+    const focusedDialog = document.activeElement?.closest('[role="dialog"], dialog')
+    if (focusedDialog && root && !focusedDialog.contains(root)) return
+    const key = event.key.toLowerCase()
+    if (key !== 'y' && key !== 'n') return
+    event.preventDefault()
+    // A held key answers one question, not every question after it.
+    if (!event.repeat) void answer(key === 'y')
+  }
   async function finish(minutes?: number) {
     busy = true
     try { await answerQuiz(answers, minutes) } catch (e) { error = String(e) }
     finally { busy = false }
   }
 </script>
+<svelte:window on:keydown={onKeydown} />
 {#if $quizRequest && mode}
   <OverlayModal title={`${mode.name} quiz`} onClose={() => quizRequest.set(null)} maxWidth={520} cover="viewport" z={150}>
-    <div class="quiz" style:--mode={mode.color}>
+    <div class="quiz" style:--mode={mode.color} bind:this={root}>
       {#if error}<p role="alert">{error}</p>
       {:else if progress.denied}
         <h2>Keep this boundary for now.</h2><p class="muted">You can come back when you’ve done what you intended.</p>
@@ -53,12 +67,12 @@
         {#key shown.id}<div in:fade={{ duration: 140 }}>
           <p class="muted">Question {quiz.slice(0, quiz.indexOf(shown) + 1).filter(askable).length} of {total}</p>
           <h2>{shown.text}</h2>
-          <div class="answers"><button disabled={busy || !progress.next} type="button" on:click={() => answer(false)}>No</button><button disabled={busy || !progress.next} type="button" on:click={() => answer(true)}>Yes</button></div>
+          <div class="answers"><button disabled={busy || !progress.next} type="button" aria-keyshortcuts="N" on:click={() => answer(false)}>No <kbd aria-hidden="true">N</kbd></button><button disabled={busy || !progress.next} type="button" aria-keyshortcuts="Y" on:click={() => answer(true)}>Yes <kbd aria-hidden="true">Y</kbd></button></div>
         </div>{/key}
       {/if}
     </div>
   </OverlayModal>
 {/if}
 <style>
-  .quiz { padding: 18px 4px 28px; } h2 { font-size: 1.5rem; line-height: 1.5; font-weight: 550; } .answers { display: flex; gap: 16px; margin-top: 30px; } .answers button { flex: 1; min-height: 64px; font-size: 1.2rem; border-radius: 18px; } .quiz { border-top: 4px solid var(--mode); margin-top: -4px; } .muted { color: color-mix(in srgb, var(--mode) 65%, var(--muted)); font-weight: 600; } .done { margin-top: 24px; min-width: 120px; min-height: 48px; border-color: var(--mode); background: var(--mode); color: white; font-weight: 600; } .done:hover { border-color: color-mix(in srgb, var(--mode) 85%, black); background: color-mix(in srgb, var(--mode) 85%, black); }
+  .quiz { padding: 18px 4px 28px; } h2 { font-size: 1.5rem; line-height: 1.5; font-weight: 550; } .answers { display: flex; gap: 16px; margin-top: 30px; } .answers kbd { padding: 1px 6px; border: 1px solid var(--line-strong); border-radius: 4px; font-size: 12px; color: var(--muted); } .answers button { flex: 1; min-height: 64px; font-size: 1.2rem; border-radius: 18px; } .quiz { border-top: 4px solid var(--mode); margin-top: -4px; } .muted { color: color-mix(in srgb, var(--mode) 65%, var(--muted)); font-weight: 600; } .done { margin-top: 24px; min-width: 120px; min-height: 48px; border-color: var(--mode); background: var(--mode); color: white; font-weight: 600; } .done:hover { border-color: color-mix(in srgb, var(--mode) 85%, black); background: color-mix(in srgb, var(--mode) 85%, black); }
 </style>
