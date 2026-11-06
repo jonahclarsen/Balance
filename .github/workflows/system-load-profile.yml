@@ -261,6 +261,11 @@ jobs:
       - name: Check source
         run: pnpm check
 
+      - name: Verify held task movement, focus, undo, and persistence
+        run: |
+          pnpm exec playwright test tests/visual/day-editor-cache.spec.ts \
+            --project desktop --project webkit-days --grep "held Alt-arrow" --workers 1
+
       - name: Verify Goal Rhythm scrolling and task-badge interactions
         run: |
           pnpm exec playwright test tests/visual/goals.spec.ts \
