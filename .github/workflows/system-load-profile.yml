@@ -3,6 +3,11 @@ name: Profile desktop interactions under system load
 on:
   workflow_dispatch:
     inputs:
+      verification_only:
+        description: Run behavior checks without a performance comparison
+        required: false
+        default: false
+        type: boolean
       runner:
         description: Runner for matched browser checks (Intel macOS remains the default)
         required: false
@@ -44,6 +49,7 @@ permissions:
 
 jobs:
   compare:
+    if: ${{ !inputs.verification_only }}
     name: Matched ref/theme comparison under CPU contention
     runs-on: ${{ inputs.runner || 'macos-15-intel' }}
     timeout-minutes: 30
