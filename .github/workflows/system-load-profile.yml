@@ -199,11 +199,11 @@ jobs:
                 variants: $variants,
                 candidate_to_baseline_ratio: ($baseline.metrics | to_entries | map({
                   key,
-                  value: (($candidate.metrics[.key] / .value) * 100 | round / 100)
+                  value: (if .value > 0 then (($candidate.metrics[.key] / .value) * 100 | round / 100) else null end)
                 }) | from_entries),
                 candidate_overhead_percent: ($baseline.metrics | to_entries | map({
                   key,
-                  value: (((($candidate.metrics[.key] / .value) - 1) * 1000 | round) / 10)
+                  value: (if .value > 0 then (((($candidate.metrics[.key] / .value) - 1) * 1000 | round) / 10) else null end)
                 }) | from_entries)
               }
           ' "$results")"

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { writeFile } from 'node:fs/promises'
 import { openView } from '../helpers/navigation'
 
 const PLAN_COUNT = performanceSize('BALANCE_INTERACTION_PERF_PLANS', 365)
@@ -322,15 +323,14 @@ async function profileKeyboardMoves(page: Page) {
       await editor.evaluate((element) => {
         const runtime = window as unknown as { moveSample: Promise<Sample> }
         runtime.moveSample = new Promise(resolve => {
-          element.addEventListener('keydown', () => {
-            const started = performance.now()
-            queueMicrotask(() => {
-              const dispatched = performance.now()
-              requestAnimationFrame(() => requestAnimationFrame(() => resolve({
-                dispatchMs: dispatched - started, paintMs: performance.now() - started,
-              })))
-            })
-          }, { once: true, capture: true })
+          let started = 0
+          element.addEventListener('keydown', () => { started = performance.now() }, { once: true, capture: true })
+          window.addEventListener('keydown', () => {
+            const dispatched = performance.now()
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve({
+              dispatchMs: dispatched - started, paintMs: performance.now() - started,
+            })))
+          }, { once: true })
         })
       })
       await page.keyboard.down(key)
@@ -569,7 +569,9 @@ test('profiles common typing and backspacing paths', async ({ page }, testInfo) 
   const keyboardMoves = await profileKeyboardMoves(page)
   const afterMoveMetrics = await profiler.send('Performance.getMetrics')
   const { profile: moveCpu } = await profiler.send('Profiler.stop')
-  await testInfo.attach('keyboard-move.cpuprofile', { body: JSON.stringify(moveCpu), contentType: 'application/json' })
+  const moveCpuPath = testInfo.outputPath('keyboard-move.cpuprofile')
+  await writeFile(moveCpuPath, JSON.stringify(moveCpu))
+  await testInfo.attach('keyboard-move.cpuprofile', { path: moveCpuPath, contentType: 'application/json' })
   const rendererWork = Object.fromEntries(['TaskDuration', 'ScriptDuration', 'LayoutDuration', 'RecalcStyleDuration', 'LayoutCount', 'RecalcStyleCount'].map(name => {
     const before = beforeMoveMetrics.metrics.find(metric => metric.name === name)?.value ?? 0
     const after = afterMoveMetrics.metrics.find(metric => metric.name === name)?.value ?? 0
@@ -588,7 +590,9 @@ test('profiles common typing and backspacing paths', async ({ page }, testInfo) 
     line: node.callFrame.lineNumber + 1,
     samples: hits.get(node.id) ?? 0,
   })).filter(node => node.samples > 0).sort((a, b) => b.samples - a.samples).slice(0, 35))}`)
-  await testInfo.attach('typing.cpuprofile', { body: JSON.stringify(cpu), contentType: 'application/json' })
+  const typingCpuPath = testInfo.outputPath('typing.cpuprofile')
+  await writeFile(typingCpuPath, JSON.stringify(cpu))
+  await testInfo.attach('typing.cpuprofile', { path: typingCpuPath, contentType: 'application/json' })
   const profile = {
     project: testInfo.project.name,
     fixture: {
