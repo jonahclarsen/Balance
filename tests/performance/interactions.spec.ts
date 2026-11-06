@@ -3,6 +3,7 @@ import { openView } from '../helpers/navigation'
 
 const PLAN_COUNT = performanceSize('BALANCE_INTERACTION_PERF_PLANS', 365)
 const ITEMS_PER_PLAN = performanceSize('BALANCE_INTERACTION_PERF_ITEMS_PER_PLAN', 20)
+const ACTIVE_ITEMS = performanceSize('BALANCE_INTERACTION_PERF_ACTIVE_ITEMS', 100)
 const LIST_COUNT = performanceSize('BALANCE_INTERACTION_PERF_LISTS', 180)
 const ITEMS_PER_LIST = performanceSize('BALANCE_INTERACTION_PERF_ITEMS_PER_LIST', 20)
 const GOAL_COUNT = performanceSize('BALANCE_INTERACTION_PERF_GOALS', 80)
@@ -153,7 +154,7 @@ function summarizeDurations(values: number[]) {
 
 async function installSyntheticWorkspace(page: Page) {
   await page.addInitScript(
-    ({ planCount, itemsPerPlan, listCount, itemsPerList, goalCount, operationCount, activeDate, themeId, surface }) => {
+    ({ planCount, itemsPerPlan, listCount, itemsPerList, goalCount, operationCount, activeDate, activeItems, themeId, surface }) => {
       const planDate = (index: number) => {
         if (index === planCount - 1) return activeDate
         const date = new Date(`${activeDate}T12:00:00Z`)
@@ -176,7 +177,7 @@ async function installSyntheticWorkspace(page: Page) {
         dailyReminder: '',
         generatedFromTemplateId: null,
         createdAt: '2026-01-01T00:00:00Z',
-        items: Array.from({ length: itemsPerPlan }, (_, itemIndex) => item(`plan_${planIndex}`, itemIndex)),
+        items: Array.from({ length: planIndex === planCount - 1 ? activeItems : itemsPerPlan }, (_, itemIndex) => item(`plan_${planIndex}`, itemIndex)),
       }))
       const lists = Array.from({ length: listCount }, (_, listIndex) => ({
         id: `list_${listIndex}`,
@@ -270,6 +271,7 @@ async function installSyntheticWorkspace(page: Page) {
       goalCount: GOAL_COUNT,
       operationCount: EXISTING_OPERATION_COUNT,
       activeDate: ACTIVE_DATE,
+      activeItems: ACTIVE_ITEMS,
       themeId: THEME_ID,
       surface: SURFACE,
     },
@@ -487,6 +489,8 @@ async function profileGoalRhythmScroll(page: Page, frameCount = GOAL_SCROLL_FRAM
 }
 
 test.beforeEach(async ({ page }, testInfo) => {
+  // Keep Today and goal reconciliation inside the fixture's active day.
+  await page.clock.setFixedTime(new Date(`${ACTIVE_DATE}T12:00:00`))
   await installSyntheticWorkspace(page)
   if (testInfo.project.name.includes('6x-cpu')) {
     const session = await page.context().newCDPSession(page)
@@ -579,7 +583,8 @@ test('profiles common typing and backspacing paths', async ({ page }, testInfo) 
     fixture: {
       surface: SURFACE,
       plans: PLAN_COUNT,
-      planItems: PLAN_COUNT * ITEMS_PER_PLAN,
+      planItems: (PLAN_COUNT - 1) * ITEMS_PER_PLAN + ACTIVE_ITEMS,
+      activeItems: ACTIVE_ITEMS,
       lists: LIST_COUNT,
       listItems: LIST_COUNT * ITEMS_PER_LIST,
       goals: GOAL_COUNT,
