@@ -13,10 +13,10 @@
 
   const groups: { kind: SearchResult['kind']; label: string }[] = [
     { kind: 'note', label: 'Notes' },
+    { kind: 'list-template', label: 'Lists' },
+    { kind: 'day-template', label: 'Day templates' },
     { kind: 'day', label: 'Saved days' },
     { kind: 'list', label: 'List History' },
-    { kind: 'day-template', label: 'Day templates' },
-    { kind: 'list-template', label: 'Lists' },
     { kind: 'history', label: 'Earlier versions & removed items' },
   ]
 
