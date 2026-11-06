@@ -507,18 +507,6 @@
       "sha256": "217e924da20c03a631a0664b1e2fc6326a82111e3f29e993e82a801ea3f3d001"
     },
     {
-      "path": "public/themes/windowsxp/icons/large/prioritize.png",
-      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/SYSDM.CP_ (sysdm.cpl) icon group 1",
-      "method": "Native 32px ICO frame, exported without scaling",
-      "sha256": "18490001ec62b678659ecd52cb4ee801244efb446c52695668edb4d60db3353c"
-    },
-    {
-      "path": "public/themes/windowsxp/icons/prioritize.png",
-      "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/SYSDM.CP_ (sysdm.cpl) icon group 1",
-      "method": "Native 16px ICO frame, exported without scaling",
-      "sha256": "fc7bf9bef2ac9e2b96ab6388bd38666b3f4ebc7b7108a7c74f6e5ef593160f26"
-    },
-    {
       "path": "public/themes/windowsxp/icons/large/ideas.png",
       "source": "Internet Archive WinXPProSP3x86: en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso (SHA-1 66ac289ae27724c5ae17139227cbe78c01eefe40), I386/MSPAINT.EX_ (mspaint.exe) icon group 2",
       "method": "Native 32px ICO frame, exported without scaling",
@@ -919,18 +907,6 @@
       "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Windows/System32/imageres.dll icon group 4",
       "method": "Native 16px ICO frame, exported without scaling",
       "sha256": "99658d5e6514d0b5fbaed9b71089d9ca388ae806857f0fd69ac17e7bfb73a153"
-    },
-    {
-      "path": "public/themes/windowsvista/icons/large/prioritize.png",
-      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Program Files/Windows Calendar/WinCal.exe icon group 117",
-      "method": "Native 32px ICO frame, exported without scaling",
-      "sha256": "c258435b7e1d358ad85327598791894556425e74b1d5d9824702f33d5a7094aa"
-    },
-    {
-      "path": "public/themes/windowsvista/icons/prioritize.png",
-      "source": "Internet Archive en_windows_vista_sp2_x86_dvd_342266: en_windows_vista_sp2_x86_dvd_342266.iso (SHA-1 25ad9a776503e6a583bec07879dbcc5dfd20cd6e), sources/install.wim image 4, Program Files/Windows Calendar/WinCal.exe icon group 117",
-      "method": "Native 16px ICO frame, exported without scaling",
-      "sha256": "f5416b5f7eb73677b77244a731854f484847bbd8835204e01c0a672cb5acc7e3"
     },
     {
       "path": "public/themes/windowsvista/icons/large/ideas.png",

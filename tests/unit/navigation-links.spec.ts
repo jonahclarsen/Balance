@@ -32,7 +32,7 @@ test('navigation routes round trip dates, page names and generated row IDs', () 
   for (const view of LINKABLE_VIEWS) expect(parseNavigationURL(navigationURL('page', view))).toEqual({ kind: 'page', view })
   expect(parseNavigationURL(navigationURL('quiz', 'quiz_id', 'question_id', '2026-10-20'))).toEqual({ kind: 'quiz', id: 'quiz_id', itemId: 'question_id', date: '2026-10-20' })
   expect(parseNavigationURL('balance://day/2028-02-29')).toEqual({ kind: 'day', date: '2028-02-29' })
-  for (const kind of ['day-template', 'list-template', 'note', 'list', 'quiz', 'prioritize'] as const) {
+  for (const kind of ['day-template', 'list-template', 'note', 'list', 'quiz'] as const) {
     expect(parseNavigationURL(navigationURL(kind, 'synthetic_id', 'row_123.generated-456'))).toEqual({ kind, id: 'synthetic_id', itemId: 'row_123.generated-456' })
   }
   for (const kind of ['task', 'goal', 'idea-group'] as const) expect(parseNavigationURL(navigationURL(kind, 'synthetic_id'))).toEqual({ kind, id: 'synthetic_id' })
@@ -45,7 +45,7 @@ test('malformed navigation URLs cannot navigate to an accepted prefix', () => {
 })
 
 test('plain text and rich text use the same navigation destinations', () => {
-  for (const url of ['balance://task/list_item_123.generated-456', 'balance://note/n?item=p', 'balance://page/settings', 'balance://day/2026-10-20', 'balance://quiz/q?item=question', 'balance://prioritize/s?item=row']) {
+  for (const url of ['balance://task/list_item_123.generated-456', 'balance://note/n?item=p', 'balance://page/settings', 'balance://day/2026-10-20', 'balance://quiz/q?item=question']) {
     const link = itemLinkFromURL(url)!
     expect(link).not.toBeNull()
     expect(internalLinkId(link)).toBe(url)

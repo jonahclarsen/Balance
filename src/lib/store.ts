@@ -5,7 +5,6 @@ import { invoke, isTauri } from '@tauri-apps/api/core'
 import { noteItemsEqual } from './noteEditor/noteItems'
 import { pickerColorToHex } from './colors'
 import { isProjectActive, projectActiveUntil, projectActiveUntilOn, projectStartOn, templateForGeneration, withActiveUntil } from './projects'
-import { spreadPriorityItems } from './prioritize'
 import { get, writable, type Writable } from 'svelte/store'
 import {
   hasNoRecordChanges,
@@ -216,7 +215,6 @@ const ENTITY_COLLECTIONS = [
   'projects',
   'projectCheckIns',
   'projectHistoryNotes',
-  'prioritySessions',
   'dayGenerations',
   'ideaBuckets',
   'voiceClips',
@@ -2471,76 +2469,6 @@ function createPlannerStore() {
       }, { undoable: false, reconcileGoals: false })
     },
 
-    // ---- Prioritize ----
-
-    startPrioritySession(seeds: Omit<import('./types').PriorityItem, 'id'>[]) {
-      const timestamp = nowISO()
-      const session = { id: createId('priority_session'), items: seeds.map((seed) => ({ ...seed, id: createId('priority') })), createdAt: timestamp, updatedAt: timestamp }
-      commitEntities('start_priority_session', { sessionId: session.id }, (state) => ({ ...state, prioritySessions: [...state.prioritySessions, session] }))
-      return session.id
-    },
-
-    addPriorityItem(sessionId: Id, text: string) {
-      const trimmed = text.replace(/\s+/g, ' ').trim()
-      if (!trimmed) return null
-      const item = { id: createId('priority'), text: trimmed }
-      let added = false
-      commitEntities('add_priority_item', { sessionId, itemId: item.id }, (state) => {
-        if (!state.prioritySessions.some((session) => session.id === sessionId)) return state
-        added = true
-        return { ...state, prioritySessions: state.prioritySessions.map((session) =>
-          session.id === sessionId ? { ...session, items: [...session.items, item], updatedAt: nowISO() } : session) }
-      })
-      return added ? item.id : null
-    },
-
-    deletePriorityItem(sessionId: Id, itemId: Id) {
-      commitEntities('delete_priority_item', { sessionId, itemId }, (state) => {
-        const session = state.prioritySessions.find((candidate) => candidate.id === sessionId)
-        if (!session?.items.some((item) => item.id === itemId)) return state
-        return { ...state, prioritySessions: state.prioritySessions.map((candidate) => candidate === session
-          ? { ...session, items: session.items.filter((item) => item.id !== itemId), updatedAt: nowISO() }
-          : candidate) }
-      })
-    },
-
-    renamePriorityItem(sessionId: Id, itemId: Id, text: string) {
-      const trimmed = text.replace(/\s+/g, ' ').trim()
-      if (!trimmed) return
-      commitEntities('rename_priority_item', { sessionId, itemId }, (state) => {
-        const session = state.prioritySessions.find((candidate) => candidate.id === sessionId)
-        const item = session?.items.find((candidate) => candidate.id === itemId)
-        if (!session || !item || item.text === trimmed) return state
-        return { ...state, prioritySessions: state.prioritySessions.map((candidate) => candidate === session
-          ? { ...session, items: session.items.map((entry) => entry === item ? { ...item, text: trimmed } : entry), updatedAt: nowISO() }
-          : candidate) }
-      })
-    },
-
-    setPriority(sessionId: Id, itemId: Id, priority: number | undefined) {
-      if (priority !== undefined && !Number.isFinite(priority)) return
-      commitEntities('set_priority', { sessionId, itemId }, (state) => {
-        const session = state.prioritySessions.find((candidate) => candidate.id === sessionId)
-        const item = session?.items.find((candidate) => candidate.id === itemId)
-        if (!session || !item || item.priority === priority) return state
-        const { priority: _previous, ...rest } = item
-        const next = priority === undefined ? rest : { ...rest, priority }
-        return { ...state, prioritySessions: state.prioritySessions.map((candidate) => candidate === session
-          ? { ...session, items: session.items.map((entry) => entry === item ? next : entry), updatedAt: nowISO() }
-          : candidate) }
-      }, { mergeKey: `priority:${sessionId}:${itemId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS })
-    },
-
-    spreadPriorities(sessionId: Id) {
-      commitEntities('spread_priorities', { sessionId }, (state) => {
-        const session = state.prioritySessions.find((candidate) => candidate.id === sessionId)
-        if (!session || !session.items.some((item) => item.priority !== undefined)) return state
-        return { ...state, prioritySessions: state.prioritySessions.map((candidate) => candidate === session
-          ? { ...session, items: spreadPriorityItems(session.items), updatedAt: nowISO() }
-          : candidate) }
-      })
-    },
-
     // ---- Idea groups (plan-item trees inside five fixed group records) ----
 
     addIdea(text: string, kind: IdeaGroupKind = 'proposition', html?: string) {
@@ -4493,7 +4421,6 @@ export async function inspectDatabase(): Promise<DatabaseInspection | null> {
       projects: [],
       projectCheckIns: [],
       projectHistoryNotes: [],
-      prioritySessions: [],
       dayGenerations: [],
       ideaBuckets: [],
       voiceClips: [],
@@ -4639,7 +4566,6 @@ function* normalizeStateSteps(state: AppState): Generator<void, AppState, void> 
     projects: state.projects ?? [],
     projectCheckIns: state.projectCheckIns ?? [],
     projectHistoryNotes: yield* normalizeRecords(state.projectHistoryNotes ?? [], normalize.projectHistoryNotes),
-    prioritySessions: state.prioritySessions ?? [],
     dayGenerations: state.dayGenerations ?? [],
     ideaBuckets: state.ideaBuckets ?? [],
     voiceClips: state.voiceClips ?? [],

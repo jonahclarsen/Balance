@@ -248,20 +248,6 @@ export function createScreenshotState(today: string): AppState {
     { id: 'bucket_trash', kind: 'trash', items: [] },
   ]
 
-  const priorityNow = new Date().toISOString()
-  state.prioritySessions = [{
-    id: createId('priority_session'),
-    createdAt: priorityNow,
-    updatedAt: priorityNow,
-    items: [
-      { id: createId('priority'), text: 'Finish the short story draft', priority: 9 },
-      { id: createId('priority'), text: 'Plant the vegetable bed', priority: 7 },
-      { id: createId('priority'), text: 'Learn the second piano piece', priority: 6 },
-      { id: createId('priority'), text: 'Sort the garage', priority: 3 },
-      { id: createId('priority'), text: 'Repaint the fence' },
-    ],
-  }]
-
   const trip = createNote('Camping weekend')
   trip.items = [
     noteLine('Campsite', 'heading'),

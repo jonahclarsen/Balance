@@ -9,7 +9,7 @@ type Tree = { id: Id; children: Tree[] }
 
 const VIEW_TITLES: Record<LinkableView, string> = {
   situate: 'Situate', next: 'Next', today: 'Today', templates: 'Days', listTemplates: 'Lists', lists: 'List History',
-  notes: 'Notes', projects: 'Projects', projectHistory: 'Project History', prioritize: 'Prioritize', ideas: 'Ideas', metrics: 'Quizzes', goals: 'Goals', settings: 'Settings',
+  notes: 'Notes', projects: 'Projects', projectHistory: 'Project History', ideas: 'Ideas', metrics: 'Quizzes', goals: 'Goals', settings: 'Settings',
 }
 
 function findItem<T extends Tree>(items: T[], id: Id): T | null {
@@ -78,8 +78,7 @@ export function balanceLinkTitle(value: string, state: LinkTitleState): string |
     return target.itemId ? shorten(metric.questions.find((question) => question.id === target.itemId)?.prompt) || null : shorten(metric.name) || null
   }
   if (target.kind === 'goal') return shorten(state.goals.find((goal) => goal.id === target.id)?.name) || null
-  if (target.kind === 'idea-group') return IDEA_GROUPS.find((group) => group.kind === target.id)?.label ?? null
-  return 'Prioritize'
+  return IDEA_GROUPS.find((group) => group.kind === target.id)?.label ?? null
 }
 
 // Pasting a lone balance:// link inserts it titled, as if the title had been

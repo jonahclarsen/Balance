@@ -135,7 +135,7 @@ test('Mac System 1 typography and selection readability across the app', async (
   }
   for (const scheme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme: scheme })
-    for (const view of ['Today', 'Next', 'Days', 'Lists', 'Notes', 'Quizzes', 'Goals', 'Projects', 'Prioritize', 'Ideas', 'Situate', 'Settings']) {
+    for (const view of ['Today', 'Next', 'Days', 'Lists', 'Notes', 'Quizzes', 'Goals', 'Projects', 'Ideas', 'Situate', 'Settings']) {
       await openView(page, view)
       await page.evaluate(() => {
         (document.activeElement as HTMLElement | null)?.blur()
