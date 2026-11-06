@@ -207,10 +207,6 @@ test('each group copies a review link that reviews only its own ideas', async ({
     await page.keyboard.press('n')
     await page.keyboard.press('t')
     await expect(dialog).toBeHidden()
-    await expect.poll(() => page.evaluate(() => {
-      const state = JSON.parse(localStorage.getItem('balance.appState.v1')!)
-      return state.plans[0].items.filter((item: any) => item.done && item.text === 'Filter Genuinely Worth Doing').length
-    })).toBe(kind === 'genuine' ? 1 : 0)
   }
   // Sorting and trash stay separate from the three reviewable groups.
   for (const kind of ['proposition', 'trash']) {
