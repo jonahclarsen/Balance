@@ -794,13 +794,9 @@
 
     if (!target.matches('[contenteditable="true"]')) return
 
-    const range = document.createRange()
-    range.selectNodeContents(target)
-    range.collapse(position === 'start')
-
-    const selection = document.getSelection()
-    selection?.removeAllRanges()
-    selection?.addRange(range)
+    // Replace the caret atomically. Clearing the selection first makes the
+    // browser restyle the document for an intermediate, empty selection.
+    document.getSelection()?.collapse(target, position === 'start' ? 0 : target.childNodes.length)
   }
 
   function handleDisplayKeydown(event: KeyboardEvent) {
