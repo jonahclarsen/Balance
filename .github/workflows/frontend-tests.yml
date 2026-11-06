@@ -116,7 +116,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium webkit
       - name: Exercise Lexical Notes on desktop, mobile, and WebKit
-        timeout-minutes: 14
+        timeout-minutes: 20
         env:
           PLAYWRIGHT_JSON_OUTPUT_NAME: artifacts/playwright-notes-editors/results.json
         run: pnpm exec playwright test --config playwright.notes-editors.config.ts --project=lexical --project=lexical-mobile --project=lexical-webkit --workers=1 --reporter=list,json

@@ -1693,6 +1693,8 @@ test('Enter moves the caret into the newly created note line', async ({ page }) 
 
 test('notes save adjustable breathing room and follow the final caret to the bottom', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'desktop scroll behavior is covered here')
+  // This long walkthrough can outlast the default budget on a cold WebKit start.
+  test.slow()
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -1735,22 +1737,24 @@ test('notes save adjustable breathing room and follow the final caret to the bot
     ;(element as HTMLElement).style.removeProperty('--goal-history-height')
   })
 
-  await workspace.evaluate((element) => element.scrollTo({ top: 0 }))
   const spacingControl = page.locator('.note-scroll-space-control')
-  await expect(spacingControl).toHaveCSS('opacity', '0')
+  // A pending follow-the-bottom frame or the layout settling can undo one scroll.
+  const scrollToEnd = (end: 'top' | 'bottom') => expect(async () => {
+    await workspace.evaluate((element, end) => element.scrollTo({ top: end === 'top' ? 0 : element.scrollHeight }), end)
+    await expect(spacingControl).toHaveCSS('opacity', end === 'top' ? '0' : '1', { timeout: 1000 })
+  }).toPass()
+  await scrollToEnd('top')
   await expect(spacingControl).toHaveCSS('visibility', 'hidden')
   await expect(spacingControl).toHaveCSS('transition-property', /opacity.*visibility/)
 
-  await workspace.evaluate((element) => element.scrollTo({ top: element.scrollHeight }))
-  await expect(spacingControl).toHaveCSS('opacity', '1')
+  await scrollToEnd('bottom')
   await expect(spacingControl).toHaveCSS('visibility', 'visible')
 
   await workspace.evaluate((element) => element.scrollTo({ top: element.scrollTop - 20 }))
   await expect(spacingControl).toHaveCSS('opacity', '0')
   await expect(spacingControl).toHaveCSS('visibility', 'hidden')
 
-  await workspace.evaluate((element) => element.scrollTo({ top: element.scrollHeight }))
-  await expect(spacingControl).toHaveCSS('opacity', '1')
+  await scrollToEnd('bottom')
   await spacingSlider.fill('0')
   const minimumSpace = await page.locator('.note-scroll-space').evaluate((element) => ({
     spacerHeight: element.getBoundingClientRect().height,
@@ -1847,8 +1851,7 @@ test('notes save adjustable breathing room and follow the final caret to the bot
   await openView(page, 'Notes')
   await expect(page.getByLabel('Bottom writing space')).toHaveValue('40')
 
-  await workspace.evaluate((element) => element.scrollTo({ top: element.scrollHeight }))
-  await expect(spacingControl).toHaveCSS('opacity', '1')
+  await scrollToEnd('bottom')
   await expect(spacingControl).toHaveCSS('visibility', 'visible')
   await placeCaretAtEnd(editor)
   await pressNoteKey(editor, 'Enter')

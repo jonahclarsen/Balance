@@ -343,7 +343,9 @@ jobs:
         if: always()
         with:
           name: android-updater-api-${{ matrix.api }}
-          path: android-updater-log.txt
+          path: |
+            android-updater-log.txt
+            android-updater-poll.txt
           if-no-files-found: ignore
 
   smoke-test:

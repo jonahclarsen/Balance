@@ -575,8 +575,11 @@ test.describe('touch', () => {
     await expect.poll(async () => { const top = await scrollTop(); await page.waitForTimeout(150); return top === await scrollTop() }).toBe(true)
     await cards.nth(3).evaluate((card) => card.dispatchEvent(new PointerEvent('contextmenu', { pointerType: 'touch', bubbles: true, cancelable: true })))
     await expect(page.locator('.link-context-menu')).toHaveCount(0)
-    await cards.nth(3).click({ button: 'right' })
-    await expect(page.locator('.link-context-menu')).toBeVisible()
+    // Bringing the card into view can scroll again, so the right-click retries.
+    await expect(async () => {
+      await cards.nth(3).click({ button: 'right' })
+      await expect(page.locator('.link-context-menu')).toBeVisible({ timeout: 1000 })
+    }).toPass()
   })
 })
 

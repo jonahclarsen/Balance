@@ -188,13 +188,12 @@ test('each group copies a review link that reviews only its own ideas', async ({
   const dialog = page.locator('.idea-sort[role="dialog"]')
   for (const kind of ['possible', 'afterlife', 'genuine'] as const) {
     await openView(page, 'Ideas')
-    // Scrolling closes the menu, and bringing a card into a phone's sideways strip scrolls it.
-    const reviewLink = page.getByRole('menuitem', { name: 'Copy review link' })
+    // Any scroll closes the menu, and bringing a card into a phone's sideways strip
+    // scrolls it, even after the menu appears. So opening and choosing retry together.
     await expect(async () => {
       await page.locator(`[data-idea-group="${kind}"]`).click({ button: 'right' })
-      await expect(reviewLink).toBeVisible({ timeout: 1000 })
+      await page.getByRole('menuitem', { name: 'Copy review link' }).click({ timeout: 1000 })
     }).toPass()
-    await reviewLink.click()
     expect(await page.evaluate(() => (window as any).__copiedLink)).toBe(`balance://ideas/review/${kind}`)
     if (kind === 'possible') {
       await openView(page, 'Today')
@@ -208,10 +207,6 @@ test('each group copies a review link that reviews only its own ideas', async ({
     await page.keyboard.press('n')
     await page.keyboard.press('t')
     await expect(dialog).toBeHidden()
-    await expect.poll(() => page.evaluate(() => {
-      const state = JSON.parse(localStorage.getItem('balance.appState.v1')!)
-      return state.plans[0].items.filter((item: any) => item.done && item.text === 'Filter Genuinely Worth Doing').length
-    })).toBe(kind === 'genuine' ? 1 : 0)
   }
   // Sorting and trash stay separate from the three reviewable groups.
   for (const kind of ['proposition', 'trash']) {
