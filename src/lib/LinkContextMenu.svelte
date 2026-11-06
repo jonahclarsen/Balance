@@ -19,6 +19,7 @@
   let failedURL = ''
   let previousFocus: HTMLElement | null = null
   let statusTimer: ReturnType<typeof setTimeout>
+  let openedAt = 0
 
   function close(restore = false) {
     options = []
@@ -69,6 +70,7 @@
     const url = linkAtElement(event.target)
     if (!url) return
     event.preventDefault()
+    openedAt = performance.now()
     previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
     const entries: Option[] = [{ label: 'Copy link', url }]
     const target = parseNavigationURL(url)
@@ -120,7 +122,9 @@
     window.addEventListener('balance-copy-link', copyRequest)
     const context = (event: MouseEvent) => { void open(event) }
     const dismiss = (event: PointerEvent) => { if (options.length && !menu?.contains(event.target as Node)) close() }
-    const scroll = () => close()
+    // Scrolling closes the menu, except for the settling scroll from the press
+    // that opened it (a long press on a phone's sideways card strip).
+    const scroll = (event: Event) => { if (event.type === 'resize' || performance.now() - openedAt > 300) close() }
     const key = (event: KeyboardEvent) => {
       if (!options.length) return
       if (event.key === 'Escape' || event.key === 'Tab') {

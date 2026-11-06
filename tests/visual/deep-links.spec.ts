@@ -188,7 +188,7 @@ test('each group copies a review link that reviews only its own ideas', async ({
   const dialog = page.locator('.idea-sort[role="dialog"]')
   for (const kind of ['possible', 'afterlife', 'genuine'] as const) {
     await openView(page, 'Ideas')
-    // Any scroll closes the menu, and bringing a card into a phone's sideways strip scrolls it.
+    // Scrolling closes the menu, and bringing a card into a phone's sideways strip scrolls it.
     const reviewLink = page.getByRole('menuitem', { name: 'Copy review link' })
     await expect(async () => {
       await page.locator(`[data-idea-group="${kind}"]`).click({ button: 'right' })
