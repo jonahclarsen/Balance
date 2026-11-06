@@ -307,6 +307,48 @@ async function profileEdits(page: Page, selector: string, direction: 'type' | 'b
   return samples
 }
 
+// Real keyboard events with Alt held throughout, including repeated arrows.
+// Check the DOM order after every event so ignored shortcuts cannot look fast.
+async function profileKeyboardMoves(page: Page) {
+  const editor = page.locator(EDITOR_SELECTOR)
+  await editor.focus()
+  const samples: Sample[] = []
+  await page.keyboard.down('Alt')
+  try {
+    for (let index = 0; index < EDIT_COUNT; index += 1) {
+      const key = index % 4 < 2 ? 'ArrowDown' : 'ArrowUp'
+      await editor.evaluate((element) => {
+        const runtime = window as unknown as { moveSample: Promise<Sample> }
+        runtime.moveSample = new Promise(resolve => {
+          element.addEventListener('keydown', () => {
+            const started = performance.now()
+            queueMicrotask(() => {
+              const dispatched = performance.now()
+              requestAnimationFrame(() => requestAnimationFrame(() => resolve({
+                dispatchMs: dispatched - started, paintMs: performance.now() - started,
+              })))
+            })
+          }, { once: true, capture: true })
+        })
+      })
+      await page.keyboard.down(key)
+      samples.push(await page.evaluate(() => (window as unknown as { moveSample: Promise<Sample> }).moveSample))
+      const order = await editor.evaluate(element => {
+        const row = element.closest('[data-plan-item-id]')!
+        return [...row.parentElement!.parentElement!.children].map(child => child.querySelector<HTMLElement>('[data-plan-item-id]')?.dataset.planItemId ?? '')
+      })
+      expect(order.indexOf(`plan_${PLAN_COUNT - 1}_item_1`)).toBe([2, 3, 2, 1][index % 4])
+      await expect(editor).toBeFocused()
+      if (index % 2 === 1) await page.keyboard.up(key)
+    }
+  } finally {
+    await page.keyboard.up('ArrowDown')
+    await page.keyboard.up('ArrowUp')
+    await page.keyboard.up('Alt')
+  }
+  return samples
+}
+
 async function profileIdleFrames(page: Page, durationMs = FRAME_SAMPLE_MS) {
   return page.evaluate(async (durationMs) => {
     const intervals: number[] = []
@@ -518,6 +560,7 @@ test('profiles common typing and backspacing paths', async ({ page }, testInfo) 
   const profiler = await page.context().newCDPSession(page)
   await profiler.send('Profiler.enable')
   await profiler.send('Profiler.start')
+  const keyboardMoves = await profileKeyboardMoves(page)
   const typing = await profileEdits(page, typingSelector, 'type')
   const backspacing = await profileEdits(page, typingSelector, 'backspace')
   const { profile: cpu } = await profiler.send('Profiler.stop')
@@ -549,6 +592,7 @@ test('profiles common typing and backspacing paths', async ({ page }, testInfo) 
     idleFrameIntervals: summarizeDurations(idle.frameIntervals),
     idleRenderer: idle.renderer,
     taskFocus: summarize(taskActions.focus),
+    keyboardMove: summarize(keyboardMoves),
     checkboxClick: summarize(taskActions.checkboxClicks),
     typing: summarize(typing),
     backspacing: summarize(backspacing),

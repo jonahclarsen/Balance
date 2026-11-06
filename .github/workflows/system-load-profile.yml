@@ -184,6 +184,8 @@ jobs:
                       metric("idle_frame_interval_ms"; ["profile", "idleFrameIntervals", "medianMs"]),
                       metric("task_focus_paint_ms"; ["profile", "taskFocus", "paint", "medianMs"]),
                       metric("checkbox_paint_ms"; ["profile", "checkboxClick", "paint", "medianMs"]),
+                      metric("keyboard_move_paint_ms"; ["profile", "keyboardMove", "paint", "medianMs"]),
+                      metric("keyboard_move_dispatch_ms"; ["profile", "keyboardMove", "dispatch", "medianMs"]),
                       metric("typing_paint_ms"; ["profile", "typing", "paint", "medianMs"]),
                       metric("backspace_paint_ms"; ["profile", "backspacing", "paint", "medianMs"])
                     ] | from_entries)
