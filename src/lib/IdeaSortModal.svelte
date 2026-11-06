@@ -36,6 +36,9 @@
   export let onFinish: (completed: boolean) => void
   // Scheduled reviews open on a summary page before the first card.
   export let intro: { days: number } | undefined = undefined
+  // Pasted items must be read: Yes and No answer at once, but every choice
+  // after them stays locked until the card has been up this long.
+  export let readDelayMs = 0
 
   type Step = 'question' | 'yes' | 'no'
 
@@ -57,7 +60,10 @@
   let answeredAt = Date.now()
   let unlockTimers: number[] = []
   let unlockTick = 0
-  let shaking: IdeaGroupKind | null = null
+  let reading = false
+  let readTimer: number | null = null
+  type Action = IdeaGroupKind | 'note' | 'cut' | 'day'
+  let shaking: Action | null = null
   let shakeTimer: number | null = null
 
   $: sorted = sortedBefore + history.length
@@ -73,6 +79,9 @@
   function resetCard(_index: number) {
     step = 'question'
     editing = false
+    if (readTimer !== null) window.clearTimeout(readTimer)
+    reading = readDelayMs > 0
+    readTimer = reading ? window.setTimeout(() => { readTimer = null; reading = false }, readDelayMs) : null
   }
 
   function startSorting() {
@@ -90,11 +99,19 @@
     }
   }
 
-  function locked(kind: IdeaGroupKind, _tick: number): boolean {
-    return Date.now() < answeredAt + IDEA_UNLOCK_MS[kind]
+  function locked(action: Action, _tick: number, _reading: boolean): boolean {
+    if (reading) return true
+    return action in IDEA_UNLOCK_MS && Date.now() < answeredAt + IDEA_UNLOCK_MS[action as IdeaGroupKind]
   }
 
-  function shake(kind: IdeaGroupKind) {
+  // Shakes and refuses an action that is still locked.
+  function refuse(action: Action): boolean {
+    if (!locked(action, unlockTick, reading)) return false
+    shake(action)
+    return true
+  }
+
+  function shake(kind: Action) {
     shaking = kind
     if (shakeTimer !== null) window.clearTimeout(shakeTimer)
     shakeTimer = window.setTimeout(() => { shaking = null }, 420)
@@ -110,11 +127,7 @@
   }
 
   function choose(kind: IdeaGroupKind) {
-    if (!current) return
-    if (locked(kind, unlockTick)) {
-      shake(kind)
-      return
-    }
+    if (!current || refuse(kind)) return
     record(snapshot(current.id))
     onDecide(current.id, kind)
     advance()
@@ -152,21 +165,21 @@
   }
 
   function cut() {
-    if (!current) return
+    if (!current || refuse('cut')) return
     record(snapshot(current.id))
     onCut(current.id)
     dropCurrent()
   }
 
   function addToDay() {
-    if (!current || !onAddToDay) return
+    if (!current || !onAddToDay || refuse('day')) return
     record(snapshot(current.id))
     onAddToDay(current.id)
     dropCurrent()
   }
 
   function addToNote() {
-    if (!current) return
+    if (!current || refuse('note')) return
     const snapshots = snapshot(current.id)
     const noteId = onAddToNote(current.id)
     if (!noteId) return
@@ -274,6 +287,7 @@
   onDestroy(() => {
     for (const timer of unlockTimers) window.clearTimeout(timer)
     if (shakeTimer !== null) window.clearTimeout(shakeTimer)
+    if (readTimer !== null) window.clearTimeout(readTimer)
   })
 </script>
 
@@ -389,17 +403,28 @@
             type="button"
             class="idea-group-button"
             class:primary={kind === 'afterlife'}
-            class:locked={locked(kind, unlockTick)}
+            class:locked={locked(kind, unlockTick, reading)}
             class:shaking={shaking === kind}
-            aria-disabled={locked(kind, unlockTick) ? 'true' : undefined}
+            aria-disabled={locked(kind, unlockTick, reading) ? 'true' : undefined}
             on:click={() => choose(kind)}
           >{meta.label} ({meta.key.toUpperCase()})</button>
         {/each}
         {#if step === 'yes'}
-          <button type="button" title="Move this idea into a new note" on:click={addToNote}>Add to new note (N)</button>
-          <button type="button" title="Remove this idea and copy it to paste somewhere else" on:click={cut}>Cut (X)</button>
+          {#snippet extra(action: Action, title: string, label: string, run: () => void)}
+            <button
+              type="button"
+              class="idea-group-button"
+              class:locked={locked(action, unlockTick, reading)}
+              class:shaking={shaking === action}
+              aria-disabled={locked(action, unlockTick, reading) ? 'true' : undefined}
+              {title}
+              on:click={run}
+            >{label}</button>
+          {/snippet}
+          {@render extra('note', 'Move this idea into a new note', 'Add to new note (N)', addToNote)}
+          {@render extra('cut', 'Remove this idea and copy it to paste somewhere else', 'Cut (X)', cut)}
           {#if onAddToDay}
-            <button type="button" title="Add this idea to the day being generated" on:click={addToDay}>Add to day (D)</button>
+            {@render extra('day', 'Add this idea to the day being generated', 'Add to day (D)', addToDay)}
           {/if}
         {/if}
       {/if}

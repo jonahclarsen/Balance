@@ -170,6 +170,7 @@
   // Pasting four or more items onto a different day sorts them like new ideas,
   // one card at a time, with Add to day sending a card to the pasted spot.
   const PASTE_REVIEW_THRESHOLD = 4
+  const PASTE_REVIEW_READ_MS = 2000
   const TEMPLATE_REVIEW_COOLDOWN_MS = 2000
   const REVIEW_DISCARD_SWEEP_MS = 420
   const PASTE_MATCH_STYLE_EVENT = 'balance-paste-match-style'
@@ -456,7 +457,7 @@
   // A sort belongs to the page it was opened on: it hides while another page is
   // open and picks up where it left off on return.
   // Sorts run during day generation can also pick ideas for the new day.
-  let ideaSort: { queue: import('./lib/types').IdeaItem[]; title: string; view: View; sortedBefore: number; addToDay?: (itemId: Id) => void; intro?: { days: number }; resolve: (completed: boolean) => void } | null = null
+  let ideaSort: { queue: import('./lib/types').IdeaItem[]; title: string; view: View; sortedBefore: number; addToDay?: (itemId: Id) => void; intro?: { days: number }; readDelayMs: number; resolve: (completed: boolean) => void } | null = null
   $: ideaSortVisible = Boolean(ideaSort && view === ideaSort.view)
   let ideaImportOpen = false
   let activeIdeaGroup = readActiveIdeaGroup()
@@ -3333,10 +3334,10 @@ return rows`
 
   // Sorting starts at the bottom of the list and works up, so Proposition
   // Party, which grows from the top, is sorted oldest first.
-  function askIdeaSort(queue: import('./lib/types').IdeaItem[], title: string, addToDay?: (itemId: Id) => void, sortedBefore = 0, intro?: { days: number }): Promise<boolean> {
+  function askIdeaSort(queue: import('./lib/types').IdeaItem[], title: string, addToDay?: (itemId: Id) => void, sortedBefore = 0, intro?: { days: number }, readDelayMs = 0): Promise<boolean> {
     ideaSort?.resolve(false)
     return new Promise((resolve) => {
-      ideaSort = { queue: [...queue].reverse(), title, view, sortedBefore, addToDay, intro, resolve }
+      ideaSort = { queue: [...queue].reverse(), title, view, sortedBefore, addToDay, intro, readDelayMs, resolve }
     })
   }
 
@@ -5899,7 +5900,7 @@ return rows`
     if (cut) writePlanItemsToSystemClipboard({ items, cut: false, sourceDate: plan.date })
     const queue = ideaIds.flatMap((id) => findIdea($plannerStore.ideaBuckets, id)?.item ?? [])
     // askIdeaSort works bottom-up; reverse so the cards follow the pasted order.
-    await askIdeaSort([...queue].reverse(), 'Sort pasted items', (itemId) => plannerStore.assignIdeaToDay(itemId, plan.date))
+    await askIdeaSort([...queue].reverse(), 'Sort pasted items', (itemId) => plannerStore.assignIdeaToDay(itemId, plan.date), 0, undefined, PASTE_REVIEW_READ_MS)
     const reserved = ideaIds.flatMap((id) => {
       const found = findIdea($plannerStore.ideaBuckets, id)
       return found && found.group.kind !== 'trash' && found.item.dayAssignmentDate === plan.date ? [found] : []
@@ -8836,6 +8837,7 @@ return rows`
           onAddToNote={plannerStore.moveIdeaToNewNote}
           onAddToDay={ideaSort.addToDay}
           intro={ideaSort.intro}
+          readDelayMs={ideaSort.readDelayMs}
           onRestore={plannerStore.restoreSortedIdeas}
           onFinish={finishIdeaSort}
         />

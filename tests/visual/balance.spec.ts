@@ -4998,9 +4998,16 @@ test('pasting four or more items onto a different day sorts them like ideas', as
   // One card per pasted item, children riding along as its checklist.
   const sorter = page.getByRole('dialog', { name: 'Sort pasted items' })
   const card = sorter.locator('.idea-sort-card')
+  const addToDay = sorter.getByRole('button', { name: 'Add to day (D)' })
   await expect(sorter).toBeVisible()
   await expect(card).toContainText(before[1])
+
+  // Yes answers at once, but every choice after it waits until the card has been read.
   await page.keyboard.press('y')
+  await expect(addToDay).toHaveAttribute('aria-disabled', 'true')
+  await page.keyboard.press('d')
+  await expect(card).toContainText(before[1])
+  await expect(addToDay).not.toHaveAttribute('aria-disabled', 'true')
   await page.keyboard.press('d')
   await expect(card).toContainText(before[2])
   await expect(card.locator('.idea-sort-children li')).toHaveCount(2)
@@ -5009,9 +5016,11 @@ test('pasting four or more items onto a different day sorts them like ideas', as
   await page.keyboard.press('b')
   await expect(card).toContainText(before[1])
   await page.keyboard.press('y')
+  await expect(addToDay).not.toHaveAttribute('aria-disabled', 'true')
   await page.keyboard.press('d')
   await expect(card).toContainText(before[2])
   await page.keyboard.press('n')
+  await expect(sorter.getByRole('button', { name: /^Trash/ })).not.toHaveAttribute('aria-disabled', 'true')
   await page.keyboard.press('t')
 
   await expect(sorter).toBeHidden()
@@ -5040,6 +5049,7 @@ test('closing the pasted-item sort keeps the rest in Proposition Party', async (
   const sorter = page.getByRole('dialog', { name: 'Sort pasted items' })
   await expect(sorter).toBeVisible()
   await page.keyboard.press('y')
+  await expect(sorter.getByRole('button', { name: 'Add to day (D)' })).not.toHaveAttribute('aria-disabled', 'true')
   await page.keyboard.press('d')
   await expect(sorter.locator('.idea-sort-card')).toContainText(before[2])
   await page.keyboard.press('Escape')
