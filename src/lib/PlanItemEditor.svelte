@@ -643,7 +643,10 @@
       const moved = moveItemWithinLevel(planId, item.id, direction)
       if (moved === false) return
       await tick()
-      focusItemTextInput(item.id)
+      // Keyed reordering often moves the neighbouring row, leaving this editor
+      // focused. Re-focusing and replacing its selection forces another style/
+      // layout pass; use the existing node and only restore focus when lost.
+      if (document.activeElement !== current) focusTextTarget(current)
       scrollMovedItemsIntoView('plan', [item.id], direction)
       return
     }
