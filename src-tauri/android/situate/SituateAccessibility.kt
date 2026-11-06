@@ -111,6 +111,13 @@ class SituateAccessibility : AccessibilityService() {
         if (pkg == foregroundPackage) reconcile()
         else { foregroundPackage = pkg; invalidate() }
     }
+    // Identifies one saved rules file. Saves replace it atomically, so a new
+    // save changes the inode, and usually the size and time too.
+    private fun rulesStamp(): String = try {
+        val file = java.io.File(noBackupFilesDir, "situate-rules.json")
+        val stat = android.system.Os.stat(file.path)
+        "${stat.st_ino}:${stat.st_size}:${file.lastModified()}"
+    } catch (_: Exception) { "" }
     private fun interactive() = getSystemService(PowerManager::class.java).isInteractive &&
         !getSystemService(KeyguardManager::class.java).isKeyguardLocked
     private fun invalidate() {
@@ -130,6 +137,7 @@ class SituateAccessibility : AccessibilityService() {
         evaluating = true
         // Never queue behind archive encryption/export, and never read rules on the UI thread.
         worker.execute {
+            val stamp = rulesStamp()
             val observed = try { appIdentity.latest() } catch (_: Exception) { null }
             val recovered = observed?.takeIf { reportedPackage.isBlank() || it.at > reportedAt }
             val pkg = recovered?.packageName ?: reportedPackage
@@ -143,7 +151,8 @@ class SituateAccessibility : AccessibilityService() {
                 trace("identity reported=$reportedPackage at=$reportedAt usage=${observed?.packageName} at=${observed?.at}")
                 if (!connected) return@post
                 // A queued result must not resurrect a gate after a pass, app switch, or Home.
-                if (expected != generation) { reconcile(); return@post }
+                // The rules file can be replaced before its change event reaches this thread.
+                if (expected != generation || stamp != rulesStamp()) { reconcile(); return@post }
                 if (pkg != foregroundPackage) {
                     val currentAt = System.currentTimeMillis() - SystemClock.uptimeMillis() + eventTime
                     // A real app-switch event may have arrived while usage access was queried.
