@@ -364,15 +364,6 @@ export type ProjectCheckIn = {
   createdAt: string
 }
 
-export type PriorityItem = {
-  id: Id
-  text: string
-  // Absent until rated; higher values rank first.
-  priority?: number
-  projectId?: Id
-  goalId?: Id
-}
-
 export type IdeaGroupKind = 'proposition' | 'genuine' | 'possible' | 'afterlife' | 'trash'
 
 // Ideas reuse the plan-item tree so the Today row editor renders them.
@@ -409,14 +400,6 @@ export type IdeaGroup = {
   items: IdeaItem[]
   // Days between scheduled reviews; absent uses the group's default.
   reviewDays?: number
-}
-
-export type PrioritySession = {
-  id: Id
-  // Unrated items keep this order.
-  items: PriorityItem[]
-  createdAt: string
-  updatedAt: string
 }
 
 // A day's generation, keyed by its date: the template chosen for it and how
@@ -456,7 +439,6 @@ export type AppState = {
   projects: Project[]
   projectCheckIns: ProjectCheckIn[]
   projectHistoryNotes: ProjectHistoryNote[]
-  prioritySessions: PrioritySession[]
   dayGenerations: DayGeneration[]
   // Stored as the ideaBuckets collection, with bucket_<kind> record IDs.
   ideaBuckets: IdeaGroup[]

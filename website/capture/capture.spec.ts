@@ -88,10 +88,6 @@ test.describe('desktop', () => {
       }
       await shot(page, scheme, name)
     }
-    await openView(page, 'Prioritize')
-    await page.getByRole('button', { name: 'Past sessions', exact: true }).click()
-    await page.locator('.prioritize-past button').first().click()
-    await shot(page, scheme, 'mac-prioritize')
     await openView(page, 'Settings')
     await page.getByRole('heading', { name: 'Sync across your devices' }).evaluate((heading) => heading.scrollIntoView({ block: 'start' }))
     await shot(page, scheme, 'mac-sync', false)

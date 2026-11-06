@@ -50,7 +50,6 @@
   } from './lib/listTiming'
   import ProjectsPanel from './lib/ProjectsPanel.svelte'
   import { activeProjects, needsProjectPick, templateForGeneration } from './lib/projects'
-  import PrioritizePanel from './lib/PrioritizePanel.svelte'
   import IdeasPanel from './lib/IdeasPanel.svelte'
   import { finishVoiceRecording, recoverVoiceRecordings, voiceRecording, voiceRecordingError } from './lib/voiceRecorder'
   import VoiceRecordControls from './lib/VoiceRecordControls.svelte'
@@ -60,7 +59,6 @@
   import { countIdeas, dueIdeaReviews, ideaGroupItems, findIdea, IDEA_GROUPS, readActiveIdeaGroup, saveActiveIdeaGroup } from './lib/ideas'
   import { awaitingTranscription } from './lib/voiceClips'
   import { IDEA_REVIEW_LABELS, type IdeaReviewKind } from './lib/ideaLinks'
-  import { prioritizeReveal } from './lib/prioritize'
   import NotesPanel from './lib/NotesPanel.svelte'
   import ImaxButton from './lib/ImaxButton.svelte'
   import OverlayModal from './lib/OverlayModal.svelte'
@@ -188,7 +186,7 @@
     { id: 'dark', name: 'Dark', description: 'Always use dark mode' },
   ]
 
-  type View = 'situate' | 'next' | 'today' | 'templates' | 'listTemplates' | 'lists' | 'notes' | 'projects' | 'projectHistory' | 'prioritize' | 'ideas' | 'metrics' | 'goals' | 'settings'
+  type View = 'situate' | 'next' | 'today' | 'templates' | 'listTemplates' | 'lists' | 'notes' | 'projects' | 'projectHistory' | 'ideas' | 'metrics' | 'goals' | 'settings'
   const WINDOW_CAPTIONS = {
     situate: { title: 'Situate', icon: 'situate' },
     next: { title: 'Next', icon: 'next' },
@@ -199,7 +197,6 @@
     notes: { title: 'Notes', icon: 'notes' },
     projects: { title: 'Projects', icon: 'projects' },
     projectHistory: { title: 'Project History', icon: 'projects' },
-    prioritize: { title: 'Prioritize', icon: 'prioritize' },
     ideas: { title: 'Ideas', icon: 'ideas' },
     metrics: { title: 'Quizzes', icon: 'metrics' },
     goals: { title: 'Goals', icon: 'goals' },
@@ -559,7 +556,6 @@ return rows`
   // Set once a recording starts from the dialog.
   let quickAddRecorded = false
   let quickAddReturnFocus: FocusReturn | null = null
-  let prioritizeSessionOpen = false
   let quickAddText = ''
   let quickAddHTML = ''
   let recoveryEntries: RecoveryEntry[] = []
@@ -1285,7 +1281,6 @@ return rows`
     else if (nextView === 'goals') goalSearch = ''
     // Undoing an add removes the project, so there is nothing to reveal.
     else if (nextView === 'projects') linkedProjectId = destination.removed || view === 'projectHistory' ? '' : entityId
-    else if (nextView === 'prioritize') prioritizeReveal.set({ sessionId: entityId, itemId })
     // Project History shows stretches, so undoing one stays there.
     openMobileDrawerView(nextView === 'projects' && view === 'projectHistory' ? 'projectHistory' : nextView)
     await tick()
@@ -1298,7 +1293,7 @@ return rows`
     const attribute = {
       today: 'data-plan-item-id', lists: 'data-plan-item-id', templates: 'data-template-item-id',
       listTemplates: 'data-list-template-item-id', notes: 'data-note-item-id',
-      projects: 'data-project-id', prioritize: 'data-priority-id', ideas: 'data-plan-item-id', metrics: 'data-metric-question-id', goals: 'data-goal-id',
+      projects: 'data-project-id', ideas: 'data-plan-item-id', metrics: 'data-metric-question-id', goals: 'data-goal-id',
     }[nextView]
     const targetId = nextView === 'goals' ? entityId : itemId
     const row = targetId ? workspaceEl?.querySelector<HTMLElement>(
@@ -1307,7 +1302,7 @@ return rows`
     const containerSelector = {
       today: `[data-plan-item-scope="${CSS.escape(entityId)}"]`, lists: '.list-panel',
       templates: '.template-panel', listTemplates: '.template-panel',
-      projects: `#project-${CSS.escape(entityId)}`, prioritize: '.priority-list', ideas: `[data-plan-item-scope="${CSS.escape(entityId)}"]`, notes: '.note-document', metrics: '.metric-card', goals: '.goal-list',
+      projects: `#project-${CSS.escape(entityId)}`, ideas: `[data-plan-item-scope="${CSS.escape(entityId)}"]`, notes: '.note-document', metrics: '.metric-card', goals: '.goal-list',
     }[nextView]
     const target = (metricOverlay ? document.querySelector<HTMLElement>('.metric-quiz') : row) ??
       workspaceEl?.querySelector<HTMLElement>(containerSelector) ?? workspaceEl?.querySelector<HTMLElement>('h2')
@@ -1893,11 +1888,6 @@ return rows`
       if (!goals.some(goal => goal.id === target.id)) return unavailableLink()
       goalSearch = ''
       await openGoals(target.id)
-    } else if (target.kind === 'prioritize') {
-      if (!$plannerStore.prioritySessions.some(session => session.id === target.id)) return unavailableLink()
-      view = 'prioritize'
-      await tick()
-      prioritizeReveal.set({ sessionId: target.id, itemId: target.itemId })
     } else if (target.kind === 'idea-group') {
       if (!IDEA_GROUPS.some(group => group.kind === target.id)) return unavailableLink()
       showIdeaGroup(target.id as IdeaGroupKind)
@@ -3028,7 +3018,7 @@ return rows`
   }
 
   function viewSupportsImax(targetView: View) {
-    return targetView === 'today' || targetView === 'notes' || targetView === 'prioritize'
+    return targetView === 'today' || targetView === 'notes'
   }
 
   function switchViewFromShortcut(nextView: View) {
@@ -3567,7 +3557,6 @@ return rows`
       value === 'notes' ||
       value === 'projects' ||
       value === 'projectHistory' ||
-      value === 'prioritize' ||
       value === 'ideas' ||
       value === 'metrics' ||
       value === 'goals' ||
@@ -4045,7 +4034,6 @@ return rows`
     KeyD: 'templates',
     KeyN: 'notes',
     KeyP: 'projects',
-    KeyR: 'prioritize',
     KeyB: 'ideas',
     KeyV: 'metrics',
     KeyZ: 'situate',
@@ -7031,8 +7019,7 @@ return rows`
     ></button>
   {/if}
 
-  <!-- A Prioritize session keeps its own button beside Back, clear of its list. -->
-  {#if viewMaximized && (view !== 'prioritize' || !prioritizeSessionOpen)}
+  {#if viewMaximized}
     <div class="imax-exit-control">
       <ImaxButton active onToggle={(event) => toggleViewMaximized(view, event)} />
     </div>
@@ -7219,7 +7206,6 @@ return rows`
       {#if projectHistoryNavigationVisible}
         <button class="nav-child" data-nav-view="projectHistory" class:active={selectedNavView === 'projectHistory'} type="button" title="Project History" on:click={() => selectMobileDrawerView('projectHistory')}><span class="nav-label"><NavIcon name="lists" />Project History</span></button>
       {/if}
-      <button data-nav-view="prioritize" class:active={selectedNavView === 'prioritize'} type="button" title="Prioritize (Alt+R)" aria-keyshortcuts="Alt+R" on:click={() => selectMobileDrawerView('prioritize')}><span class="nav-label"><NavIcon name="prioritize" />Prioritize</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('R')}</kbd></button>
       <button data-nav-view="ideas" class:active={selectedNavView === 'ideas'} type="button" title="Ideas (Alt+B)" aria-keyshortcuts="Alt+B" on:click={() => selectMobileDrawerView('ideas')}><span class="nav-label"><NavIcon name="ideas" />Ideas</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('B')}</kbd></button>
       <button data-nav-view="situate" class:active={selectedNavView === 'situate'} type="button" title="Situate (Alt+Z)" aria-keyshortcuts="Alt+Z" on:click={() => selectMobileDrawerView('situate')}><span class="nav-label"><NavIcon name="situate" />Situate</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('Z')}</kbd></button>
       <button data-nav-view="settings" class:active={selectedNavView === 'settings'} type="button" title="Settings (Alt+S)" aria-keyshortcuts="Alt+S" on:click={() => selectMobileDrawerView('settings')}><span class="nav-label"><NavIcon name="settings" />Settings</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('S')}</kbd></button>
@@ -7286,7 +7272,6 @@ return rows`
       data-balance-link={view === 'templates' && selectedTemplate ? navigationURL('day-template', selectedTemplate.id) : view === 'listTemplates' && selectedListTemplate ? navigationURL('list-template', selectedListTemplate.id) : view === 'metrics' && selectedMetric ? navigationURL('quiz', selectedMetric.id) : navigationURL('page', view)}
       class:notes-view-workspace={view === 'notes'}
       class:list-template-workspace={view === 'templates' || view === 'listTemplates'}
-      class:prioritize-workspace={view === 'prioritize'}
       class:tree-sticky-workspace={view === 'today' || view === 'lists' || view === 'ideas'}
       class:before-current-day-workspace={view === 'today' && displayedPlanDate < currentDay}
       class:current-day-workspace={view === 'today' && displayedPlanDate === currentDay}
@@ -8019,19 +8004,6 @@ return rows`
         onShowHistory={openProjectHistory}
         onHideHistory={openProjects}
         onOpenLink={(link) => openLink(link, null)}
-      />
-    {/if}
-
-    {#if view === 'prioritize'}
-      <PrioritizePanel
-        sessions={$plannerStore.prioritySessions}
-        projects={$plannerStore.projects}
-        {goals}
-        {goalCompletions}
-        {currentDay}
-        maximized={viewMaximized}
-        onToggleMaximized={(event) => toggleViewMaximized('prioritize', event)}
-        bind:sessionOpen={prioritizeSessionOpen}
       />
     {/if}
 

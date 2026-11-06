@@ -135,7 +135,7 @@ test('Mac System 1 typography and selection readability across the app', async (
   }
   for (const scheme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme: scheme })
-    for (const view of ['Today', 'Next', 'Days', 'Lists', 'Notes', 'Quizzes', 'Goals', 'Projects', 'Prioritize', 'Ideas', 'Situate', 'Settings']) {
+    for (const view of ['Today', 'Next', 'Days', 'Lists', 'Notes', 'Quizzes', 'Goals', 'Projects', 'Ideas', 'Situate', 'Settings']) {
       await openView(page, view)
       await page.evaluate(() => {
         (document.activeElement as HTMLElement | null)?.blur()
@@ -225,6 +225,20 @@ for (const [themeId, name] of [['windowsxp', 'Windows XP'], ['windowsvista', 'Wi
     // A browser has no window to minimize or close.
     await expect(caption.getByRole('button', { name: 'Minimize' })).toBeDisabled()
     await expect(caption.getByRole('button', { name: 'Close' })).toBeDisabled()
+    // The header's IMAX button fits its whole logo.
+    const enterImax = page.getByRole('region', { name: 'Daily plan' }).getByRole('button', { name: 'Enter IMAX mode' })
+    expect(await enterImax.evaluate(button => button.scrollWidth <= button.clientWidth)).toBe(true)
+    await caption.getByRole('button', { name: 'Maximize' }).click()
+    await expect(page.locator('.app-shell')).toHaveClass(/page-maximized/)
+    // IMAX keeps its own exit in view, clear of the caption.
+    const exitImax = page.getByRole('button', { name: 'Exit IMAX mode' })
+    await expect(exitImax).toBeVisible()
+    const exitBox = await exitImax.boundingBox()
+    const captionBox = await caption.boundingBox()
+    if (!exitBox || !captionBox) throw new Error('IMAX exit or caption has no box')
+    expect(exitBox.y).toBeGreaterThanOrEqual(captionBox.y + captionBox.height)
+    await exitImax.click()
+    await expect(page.locator('.app-shell')).not.toHaveClass(/page-maximized/)
     await caption.getByRole('button', { name: 'Maximize' }).click()
     await expect(page.locator('.app-shell')).toHaveClass(/page-maximized/)
     // On macOS a click handoff covers the spot, so click where a person would.

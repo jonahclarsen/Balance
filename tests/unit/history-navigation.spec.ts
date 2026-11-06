@@ -117,17 +117,3 @@ test('all removals reveal the first changed destination in the first changed col
     view: 'today', entityId: 'plan', itemId: 'parent', removed: true,
   })
 })
-
-test('a bulk prioritize change still reveals the session without selecting a row', () => {
-  const before = fixture()
-  before.prioritySessions = [{
-    id: 'session', createdAt: '', updatedAt: '',
-    items: [{ id: 'a', text: 'A', priority: 1 }, { id: 'b', text: 'B', priority: 2 }],
-  }]
-  const after = structuredClone(before)
-  after.prioritySessions[0].items[0].priority = 2
-  after.prioritySessions[0].items[1].priority = 3
-  expect(historyDestination(before, after)).toMatchObject({
-    view: 'prioritize', entityId: 'session', itemId: undefined, label: 'item change · Prioritize', removed: false,
-  })
-})

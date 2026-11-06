@@ -1,7 +1,7 @@
 import type { AppState } from './types'
 
 export type HistoryDestination = {
-  view: 'today' | 'templates' | 'listTemplates' | 'lists' | 'notes' | 'projects' | 'prioritize' | 'ideas' | 'metrics' | 'goals'
+  view: 'today' | 'templates' | 'listTemplates' | 'lists' | 'notes' | 'projects' | 'ideas' | 'metrics' | 'goals'
   entityId: string
   itemId?: string
   date?: string
@@ -61,14 +61,13 @@ function changedItem(before: Item[], after: Item[]) {
     const siblings = [...next.values()].filter((entry) => entry.parentId === a?.parentId)
     itemId = (siblings[Math.min(a?.index ?? 0, siblings.length - 1)])?.item.id
   }
-  return { itemId, removed: !b, completion: !!completion, bulk: changedIds.length > 1 }
+  return { itemId, removed: !b, completion: !!completion }
 }
 
 export function historyDestination(before: AppState, after: AppState): HistoryDestination | null {
   const collections = [
     ['plans', 'today'], ['templates', 'templates'], ['listTemplates', 'listTemplates'],
     ['projects', 'projects'], ['lists', 'lists'], ['notes', 'notes'], ['metrics', 'metrics'], ['goals', 'goals'],
-    ['prioritySessions', 'prioritize'],
     ['ideaBuckets', 'ideas'],
   ] as const
   for (const [collection, view] of collections) {
@@ -91,10 +90,9 @@ export function historyDestination(before: AppState, after: AppState): HistoryDe
       const change = changedItem(old?.items ?? old?.questions ?? [], current?.items ?? current?.questions ?? [])
       const name = entity.title || entity.name
       const subject = change?.completion ? 'completion' : change ? 'item change' : 'change'
-      const context = entity.date ? null : name ?? ({ today: 'Today', templates: 'Days', listTemplates: 'Lists', lists: 'List History', notes: 'Notes', projects: 'Projects', prioritize: 'Prioritize', ideas: 'Ideas', metrics: 'Quizzes', goals: 'Goals' }[view])
+      const context = entity.date ? null : name ?? ({ today: 'Today', templates: 'Days', listTemplates: 'Lists', lists: 'List History', notes: 'Notes', projects: 'Projects', ideas: 'Ideas', metrics: 'Quizzes', goals: 'Goals' }[view])
       const destination: HistoryDestination = {
-        // A Prioritize reveal selects its row, so whole-list changes like Spread select nothing.
-        view, entityId: id, itemId: view === 'prioritize' && change?.bulk ? undefined : change?.itemId, date: entity.date,
+        view, entityId: id, itemId: change?.itemId, date: entity.date,
         listTemplateId: entity.listTemplateId,
         label: context ? `${subject} · ${context}` : subject,
         removed: !b || (change?.removed ?? false),

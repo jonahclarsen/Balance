@@ -5,7 +5,7 @@
   import NavIcon from './NavIcon.svelte'
 
   export let title: string
-  export let icon: 'next' | 'today' | 'templates' | 'listTemplates' | 'lists' | 'notes' | 'metrics' | 'goals' | 'projects' | 'prioritize' | 'ideas' | 'situate' | 'settings'
+  export let icon: 'next' | 'today' | 'templates' | 'listTemplates' | 'lists' | 'notes' | 'metrics' | 'goals' | 'projects' | 'ideas' | 'situate' | 'settings'
   export let maximized = false
   export let canMaximize = true
   export let onToggleMaximized: (event: MouseEvent) => void
