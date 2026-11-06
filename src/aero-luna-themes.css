@@ -943,6 +943,14 @@
   padding: 0 4px;
   color: inherit;
 }
+/* IMAX's floating exit keeps the light push-button face in the dark appearance too,
+   so its logo keeps the light appearance's ink. */
+:root[data-color-scheme='dark'][data-theme='windowsxp'] .imax-exit-control .imax-logo {
+  color: #215dc6;
+}
+:root[data-color-scheme='dark'][data-theme='windowsvista'] .imax-exit-control .imax-logo {
+  color: #0066cc;
+}
 :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .page-header :is(input, select) {
   height: 21px;
   min-height: 21px;
@@ -1056,6 +1064,10 @@
 }
 :root[data-theme='windowsvista'] .children-toggle:hover {
   background-image: url('/themes/windowsvista/ui/tree-arrow-hot.png');
+}
+/* Vista's tree arrows are dark ink; lighten them on the dark appearance. */
+:root[data-color-scheme='dark'][data-theme='windowsvista'] .children-toggle {
+  filter: invert(1) hue-rotate(180deg);
 }
 :root[data-theme='windowsxp'] .children {
   border-left-style: dotted;
