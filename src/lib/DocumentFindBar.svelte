@@ -35,8 +35,8 @@
       attributeFilter: ['hidden', 'aria-hidden', 'inert', 'class', 'style', 'open'],
     })
     window.addEventListener('resize', invalidate)
-    // A class instead of body:has(.document-find): Chromium restyles the whole
-    // page for a body :has() rule whenever a dialog opens or closes.
+    // A class, not a :has() rule on body, which makes Chromium restyle the
+    // whole page whenever a dialog opens or closes.
     document.documentElement.classList.add('document-find-open')
     // Later, not here: matching can expand text, and that can't be flushed during mount.
     if (hasQuery) scheduleFind(0)
