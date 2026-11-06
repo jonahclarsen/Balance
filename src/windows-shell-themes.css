@@ -792,7 +792,7 @@
    mainsection styles) beside the #6375d6 category list with its watermark. */
 :root[data-theme='windowsxp'] .settings-panel {
   --cp-pane: 210px;
-  --muted: #d6dff5;
+  --muted: #eef2fc;
   padding: 20px 20px 24px;
   background: url('/themes/windowsxp/controlpanel/watermark.png') right bottom no-repeat, #6375d6;
   color: #fff;
@@ -912,12 +912,30 @@
   background: var(--cp-icon) no-repeat;
 }
 
-/* Category View text is white on the blue view; controls keep their own ink. */
-:root[data-theme='windowsxp'] .settings-panel :is(button, input, select, textarea, .theme-task-preview) {
+/* Category View text is white on the blue view, the choice cards included;
+   controls keep their own ink and the task preview keeps the page's. */
+:root[data-theme='windowsxp'] .settings-panel :is(button, input, select, textarea):not(.theme-option-select, .color-scheme-option, .celebration-title-toggle, .control-panel-task) {
   --muted: #454339;
 }
 
-:root[data-theme='windowsxp'] .settings-panel :is(.settings-section > div:first-child > p, label > span, label > span strong, .color-control-label, .export-panel h4, .export-panel p, .path-row) {
+/* White boxes on the view (previews, export cards, the folder path) keep the page's ink. */
+:root[data-theme='windowsxp'] .settings-panel :is(.theme-task-preview, .done-tint-preview, .export-panel div, .path-row) {
+  --muted: var(--win-muted);
+}
+
+:root[data-theme='windowsxp'] .settings-panel :is(.export-panel div, .path-row) {
+  color: var(--ink);
+}
+
+:root[data-theme='windowsxp'] .settings-panel :is(.theme-option-select, .color-scheme-option) {
+  color: #fff;
+}
+
+:root[data-theme='windowsxp'] .settings-panel :is(.theme-option, .color-scheme-option):not(.active):hover {
+  background: #ffffff1a;
+}
+
+:root[data-theme='windowsxp'] .settings-panel :is(.settings-section > div:first-child > p, label > span, label > span strong, .color-control-label) {
   color: #fff;
 }
 

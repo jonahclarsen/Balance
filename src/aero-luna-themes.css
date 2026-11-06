@@ -30,6 +30,7 @@
   --paper-strong: #ffffff;
   --ink: #000000;
   --muted: #5e5c50;
+  --win-muted: #5e5c50;
   --line: #aca899;
   --line-strong: #716f64;
   --accent: #316ac5;
@@ -281,6 +282,7 @@
   --paper-strong: #2a3240;
   --ink: #f4f4ef;
   --muted: #c1c7d2;
+  --win-muted: #c1c7d2;
   --line: #727e91;
   --line-strong: #9caac0;
   --accent: #8abeff;
@@ -511,33 +513,44 @@
 
 /* ---------- Push buttons: the real nine-grid bevels ---------- */
 
-:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) button:where(:not(.ghost, .check, .time-part, .daily-reminder-button, .quiet, .plan-goal-badge, .select-handle, .drag-handle, .search-result, .search-section-header, .caption-button, .overlay-caption-close, .note-card, .rail-chip, .swatch, .path-link, .menu-toggle, .notes-back-link, .situate-pill, .theme-option-select, .color-scheme-option, .idea-group-card, .goal-date-head, .goal-day-cell, .goal-recent-day, .imax-click-handoff, .whole-row-selection-target, .search-result-target, .children-toggle, .day-template-option, .mobile-menu-button, .mobile-search-button, .mobile-drawer-backdrop, .primary-nav button, .sidebar-active-projects button, .sidebar-quick-actions > button, .sidebar-footer .generate-day-button, .control-panel-task, .celebration-title-toggle, .note-format-group button, .segmented button, .link-context-menu button, .page-header button, .goal-history-toolbar button)) {
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) button:where(:not(.ghost, .check, .time-part, .daily-reminder-button, .quiet, .plan-goal-badge, .select-handle, .drag-handle, .search-result, .search-section-header, .caption-button, .overlay-caption-close, .note-card, .rail-chip, .swatch, .path-link, .menu-toggle, .notes-back-link, .situate-pill, .theme-option-select, .color-scheme-option, .idea-group-card, .goal-date-head, .goal-day-cell, .goal-recent-day, .imax-click-handoff, .whole-row-selection-target, .search-result-target, .children-toggle, .day-template-option, .mobile-menu-button, .mobile-search-button, .mobile-drawer-backdrop, .primary-nav button, .sidebar-active-projects button, .sidebar-quick-actions > button, .sidebar-footer .generate-day-button, .control-panel-task, .celebration-title-toggle, .note-format-group button, .segmented button, .link-context-menu button, .page-header button, .goal-history-toolbar button, .note-empty-editor, .note-version-add, .range-switcher button, .choice button, .menu button, .document-find button)) {
   border: 1px solid transparent;
   border-radius: 0;
   border-image: var(--win-button) var(--win-button-slice) fill / var(--win-button-edge) stretch;
   background: none;
   box-shadow: none;
   color: #000;
+  /* The face is light in both appearances, so secondary text on it stays dark. */
+  --muted: #5e5c50;
   text-shadow: none;
   image-rendering: pixelated;
   transition: none;
 }
-:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) button:where(:not(.ghost, .check, .time-part, .daily-reminder-button, .quiet, .plan-goal-badge, .select-handle, .drag-handle, .search-result, .search-section-header, .caption-button, .overlay-caption-close, .note-card, .rail-chip, .swatch, .path-link, .menu-toggle, .notes-back-link, .situate-pill, .theme-option-select, .color-scheme-option, .idea-group-card, .goal-date-head, .goal-day-cell, .goal-recent-day, .imax-click-handoff, .whole-row-selection-target, .search-result-target, .children-toggle, .day-template-option, .mobile-menu-button, .mobile-search-button, .mobile-drawer-backdrop, .primary-nav button, .sidebar-active-projects button, .sidebar-quick-actions > button, .sidebar-footer .generate-day-button, .control-panel-task, .celebration-title-toggle, .note-format-group button, .segmented button, .link-context-menu button, .page-header button, .goal-history-toolbar button)):hover:not(:disabled) {
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) button:where(:not(.ghost, .check, .time-part, .daily-reminder-button, .quiet, .plan-goal-badge, .select-handle, .drag-handle, .search-result, .search-section-header, .caption-button, .overlay-caption-close, .note-card, .rail-chip, .swatch, .path-link, .menu-toggle, .notes-back-link, .situate-pill, .theme-option-select, .color-scheme-option, .idea-group-card, .goal-date-head, .goal-day-cell, .goal-recent-day, .imax-click-handoff, .whole-row-selection-target, .search-result-target, .children-toggle, .day-template-option, .mobile-menu-button, .mobile-search-button, .mobile-drawer-backdrop, .primary-nav button, .sidebar-active-projects button, .sidebar-quick-actions > button, .sidebar-footer .generate-day-button, .control-panel-task, .celebration-title-toggle, .note-format-group button, .segmented button, .link-context-menu button, .page-header button, .goal-history-toolbar button, .note-empty-editor, .note-version-add, .range-switcher button, .choice button, .menu button, .document-find button)):hover:not(:disabled) {
   border-color: transparent;
   border-image-source: var(--win-button-hot);
   background: none;
   box-shadow: none;
   color: #000;
 }
-:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) button:where(:not(.ghost, .check, .time-part, .daily-reminder-button, .quiet, .plan-goal-badge, .select-handle, .drag-handle, .search-result, .search-section-header, .caption-button, .overlay-caption-close, .note-card, .rail-chip, .swatch, .path-link, .menu-toggle, .notes-back-link, .situate-pill, .theme-option-select, .color-scheme-option, .idea-group-card, .goal-date-head, .goal-day-cell, .goal-recent-day, .imax-click-handoff, .whole-row-selection-target, .search-result-target, .children-toggle, .day-template-option, .mobile-menu-button, .mobile-search-button, .mobile-drawer-backdrop, .primary-nav button, .sidebar-active-projects button, .sidebar-quick-actions > button, .sidebar-footer .generate-day-button, .control-panel-task, .celebration-title-toggle, .note-format-group button, .segmented button, .link-context-menu button, .page-header button, .goal-history-toolbar button)):active:not(:disabled) {
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) button:where(:not(.ghost, .check, .time-part, .daily-reminder-button, .quiet, .plan-goal-badge, .select-handle, .drag-handle, .search-result, .search-section-header, .caption-button, .overlay-caption-close, .note-card, .rail-chip, .swatch, .path-link, .menu-toggle, .notes-back-link, .situate-pill, .theme-option-select, .color-scheme-option, .idea-group-card, .goal-date-head, .goal-day-cell, .goal-recent-day, .imax-click-handoff, .whole-row-selection-target, .search-result-target, .children-toggle, .day-template-option, .mobile-menu-button, .mobile-search-button, .mobile-drawer-backdrop, .primary-nav button, .sidebar-active-projects button, .sidebar-quick-actions > button, .sidebar-footer .generate-day-button, .control-panel-task, .celebration-title-toggle, .note-format-group button, .segmented button, .link-context-menu button, .page-header button, .goal-history-toolbar button, .note-empty-editor, .note-version-add, .range-switcher button, .choice button, .menu button, .document-find button)):active:not(:disabled) {
   border-image-source: var(--win-button-pressed);
 }
-:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) button:where(:not(.ghost, .check, .time-part, .daily-reminder-button, .quiet, .plan-goal-badge, .select-handle, .drag-handle, .search-result, .search-section-header, .caption-button, .overlay-caption-close, .note-card, .rail-chip, .swatch, .path-link, .menu-toggle, .notes-back-link, .situate-pill, .theme-option-select, .color-scheme-option, .idea-group-card, .goal-date-head, .goal-day-cell, .goal-recent-day, .imax-click-handoff, .whole-row-selection-target, .search-result-target, .children-toggle, .day-template-option, .mobile-menu-button, .mobile-search-button, .mobile-drawer-backdrop, .primary-nav button, .sidebar-active-projects button, .sidebar-quick-actions > button, .sidebar-footer .generate-day-button, .control-panel-task, .celebration-title-toggle, .note-format-group button, .segmented button, .link-context-menu button, .page-header button, .goal-history-toolbar button)):disabled {
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) button:where(:not(.ghost, .check, .time-part, .daily-reminder-button, .quiet, .plan-goal-badge, .select-handle, .drag-handle, .search-result, .search-section-header, .caption-button, .overlay-caption-close, .note-card, .rail-chip, .swatch, .path-link, .menu-toggle, .notes-back-link, .situate-pill, .theme-option-select, .color-scheme-option, .idea-group-card, .goal-date-head, .goal-day-cell, .goal-recent-day, .imax-click-handoff, .whole-row-selection-target, .search-result-target, .children-toggle, .day-template-option, .mobile-menu-button, .mobile-search-button, .mobile-drawer-backdrop, .primary-nav button, .sidebar-active-projects button, .sidebar-quick-actions > button, .sidebar-footer .generate-day-button, .control-panel-task, .celebration-title-toggle, .note-format-group button, .segmented button, .link-context-menu button, .page-header button, .goal-history-toolbar button, .note-empty-editor, .note-version-add, .range-switcher button, .choice button, .menu button, .document-find button)):disabled {
   border-image-source: var(--win-button-disabled);
   color: var(--win-gray-text);
   opacity: 1;
 }
-:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) button:where(:not(.ghost, .check, .time-part, .daily-reminder-button, .quiet, .plan-goal-badge, .select-handle, .drag-handle, .search-result, .search-section-header, .caption-button, .overlay-caption-close, .note-card, .rail-chip, .swatch, .path-link, .menu-toggle, .notes-back-link, .situate-pill, .theme-option-select, .color-scheme-option, .idea-group-card, .goal-date-head, .goal-day-cell, .goal-recent-day, .imax-click-handoff, .whole-row-selection-target, .search-result-target, .children-toggle, .day-template-option, .mobile-menu-button, .mobile-search-button, .mobile-drawer-backdrop, .primary-nav button, .sidebar-active-projects button, .sidebar-quick-actions > button, .sidebar-footer .generate-day-button, .control-panel-task, .celebration-title-toggle, .note-format-group button, .segmented button, .link-context-menu button, .page-header button, .goal-history-toolbar button)):focus-visible {
+/* A toggled push button (BS_PUSHLIKE) stays drawn pressed. Components paint their
+   own pressed state with an accent fill and paper text; on these faces that fill
+   would show square through the bitmap's rounded corners and the text would vanish. */
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) button[aria-pressed='true']:not(:disabled):where(:not(.ghost, .check, .time-part, .daily-reminder-button, .quiet, .plan-goal-badge, .select-handle, .drag-handle, .search-result, .search-section-header, .caption-button, .overlay-caption-close, .note-card, .rail-chip, .swatch, .path-link, .menu-toggle, .notes-back-link, .situate-pill, .theme-option-select, .color-scheme-option, .idea-group-card, .goal-date-head, .goal-day-cell, .goal-recent-day, .imax-click-handoff, .whole-row-selection-target, .search-result-target, .children-toggle, .day-template-option, .mobile-menu-button, .mobile-search-button, .mobile-drawer-backdrop, .primary-nav button, .sidebar-active-projects button, .sidebar-quick-actions > button, .sidebar-footer .generate-day-button, .control-panel-task, .celebration-title-toggle, .note-format-group button, .segmented button, .link-context-menu button, .page-header button, .goal-history-toolbar button, .note-empty-editor, .note-version-add, .range-switcher button, .choice button, .menu button, .document-find button)) {
+  border-color: transparent;
+  border-image-source: var(--win-button-pressed);
+  background: none;
+  color: #000;
+}
+:root:is([data-theme='windowsxp'], [data-theme='windowsvista']) button:where(:not(.ghost, .check, .time-part, .daily-reminder-button, .quiet, .plan-goal-badge, .select-handle, .drag-handle, .search-result, .search-section-header, .caption-button, .overlay-caption-close, .note-card, .rail-chip, .swatch, .path-link, .menu-toggle, .notes-back-link, .situate-pill, .theme-option-select, .color-scheme-option, .idea-group-card, .goal-date-head, .goal-day-cell, .goal-recent-day, .imax-click-handoff, .whole-row-selection-target, .search-result-target, .children-toggle, .day-template-option, .mobile-menu-button, .mobile-search-button, .mobile-drawer-backdrop, .primary-nav button, .sidebar-active-projects button, .sidebar-quick-actions > button, .sidebar-footer .generate-day-button, .control-panel-task, .celebration-title-toggle, .note-format-group button, .segmented button, .link-context-menu button, .page-header button, .goal-history-toolbar button, .note-empty-editor, .note-version-add, .range-switcher button, .choice button, .menu button, .document-find button)):focus-visible {
   border-image-source: var(--win-button-default);
   outline: 1px dotted #000;
   outline-offset: -4px;
@@ -548,7 +561,7 @@
   text-shadow: none;
 }
 :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) button .nav-shortcut {
-  color: #5e5c50;
+  color: var(--muted);
 }
 
 /* Flat toolbar buttons that only show a bevel under the pointer. */
@@ -577,6 +590,10 @@
   border-image: var(--win-toolbar-checked) var(--win-toolbar-slice) fill / var(--win-toolbar-edge) stretch;
   background: transparent;
   color: #000;
+}
+/* Aero's toolbar highlights are translucent, so on the dark appearance the page's ink shows through. */
+:root[data-color-scheme='dark'][data-theme='windowsvista'] button:where(.ghost, .icon-button.quiet:not(.children-toggle, .overlay-caption-close), .note-format-group button, .segmented button, .notes-back-link, .goal-history-toolbar button):is(:hover, :active, :focus-visible, .active):not(:disabled) {
+  color: var(--ink);
 }
 :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .segmented {
   border: 0;
@@ -1100,10 +1117,15 @@
 }
 :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .theme-selected-mark {
   border-radius: 0;
+  background: transparent;
+  color: inherit;
 }
 :root[data-theme='windowsxp'] :is(.theme-option, .color-scheme-option, .note-card, .day-template-option, .idea-group-card):hover {
   border-color: transparent;
   background: #e8eefa;
+}
+:root[data-color-scheme='dark'][data-theme='windowsxp'] :is(.theme-option, .color-scheme-option, .note-card, .day-template-option, .idea-group-card):hover {
+  background: #2c3b55;
 }
 :root[data-theme='windowsxp'] :is(.theme-option.active, .color-scheme-option.active, .note-card.active, .note-card.selected, .day-template-option.selected, .idea-group-card.active),
 :root[data-theme='windowsxp'] :is(.theme-option.active, .color-scheme-option.active, .note-card.active, .note-card.selected, .day-template-option.selected, .idea-group-card.active):hover {
@@ -1134,6 +1156,18 @@
 }
 :root[data-theme='windowsvista'] :is(.theme-option.active, .color-scheme-option.active, .note-card.active, .note-card.selected, .day-template-option.selected, .idea-group-card.active) :is(strong, small, span, p) {
   color: inherit;
+}
+:root[data-color-scheme='dark'][data-theme='windowsvista'] :is(.theme-option, .color-scheme-option, .note-card, .day-template-option, .idea-group-card):hover {
+  border-color: #3d7896;
+  border-image: none;
+  background: linear-gradient(#22465a, #1a3646);
+}
+:root[data-color-scheme='dark'][data-theme='windowsvista'] :is(.theme-option.active, .color-scheme-option.active, .note-card.active, .note-card.selected, .day-template-option.selected, .idea-group-card.active),
+:root[data-color-scheme='dark'][data-theme='windowsvista'] :is(.theme-option.active, .color-scheme-option.active, .note-card.active, .note-card.selected, .day-template-option.selected, .idea-group-card.active):hover {
+  border-color: #4f9cc4;
+  border-image: none;
+  background: linear-gradient(#2b5d78, #1d4559);
+  color: var(--ink);
 }
 
 /* The real selection on a task row, and Today's checked row. Checked rows keep
@@ -1168,7 +1202,8 @@
   box-shadow: none;
   color: var(--win-select-text);
 }
-:root[data-theme='windowsxp'] :is(.plan-row.selected, .template-main.selected) :is(.item-text, .item-text-display, .template-text) {
+:root[data-theme='windowsxp'] :is(.plan-row.selected, .template-main.selected) :is(.item-text, .item-text-display, .template-text),
+:root[data-theme='windowsxp'] :is(.plan-row.selected, .template-main.selected) :is(.item-text, .item-text-display, .template-text) a:is(*, :hover) {
   color: var(--win-select-text);
 }
 :root[data-theme='windowsxp'] :is(.plan-row.sticky-parent.selected, .template-main.sticky-parent.selected) {
@@ -1180,6 +1215,15 @@
 }
 :root[data-theme='windowsvista'] :is(.plan-row.sticky-parent.selected, .template-main.sticky-parent.selected) {
   --tree-sticky-tint: linear-gradient(#f4fbfe, #c5eafc);
+}
+/* Explorer's selection is a pale wash. The dark appearance keeps its frame and
+   gloss but deepens the fill so the light text on it stays readable. */
+:root[data-color-scheme='dark'][data-theme='windowsvista'] :is(.plan-row.selected, .template-main.selected) {
+  background: linear-gradient(#2b5d78, #1d4559);
+  box-shadow: inset 0 0 0 1px #4f9cc4;
+}
+:root[data-color-scheme='dark'][data-theme='windowsvista'] :is(.plan-row.sticky-parent.selected, .template-main.sticky-parent.selected) {
+  --tree-sticky-tint: linear-gradient(#2b5d78, #1d4559);
 }
 
 /* ---------- Progress ---------- */
@@ -1493,6 +1537,9 @@
 }
 :root[data-theme='windowsvista'] .page-header .imax-logo {
   color: #fff;
+}
+:root[data-theme='windowsvista'] .page-header button .nav-shortcut {
+  color: inherit;
 }
 :root[data-theme='windowsvista'] .page-header button:hover:not(:disabled) {
   border-color: transparent;
