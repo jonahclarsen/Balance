@@ -89,6 +89,16 @@ export type Note = {
   versionName?: string
 }
 
+// A note that comes back during day generation, keyed by the note's ID. last
+// is the date it was set up or last resurfaced; next is last plus days with
+// ±15% jitter, so it stays put when synced.
+export type NoteResurfacing = {
+  id: Id
+  days: number
+  last: string
+  next: string
+}
+
 export type NoteViewState = {
   scrollTop: number
   caret: {
@@ -444,6 +454,7 @@ export type AppState = {
   ideaBuckets: IdeaGroup[]
   voiceClips: VoiceClip[]
   notes: Note[]
+  noteResurfacing: NoteResurfacing[]
   goals: Goal[]
   goalCompletions: GoalCompletion[]
   operations: Operation[]

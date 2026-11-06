@@ -160,6 +160,7 @@ import type {
 import { dayThemePreferenceKey, normalizeReplicatedPreferences } from './preferences'
 import { isNoteTrashExpired } from './noteTrash'
 import { copyNoteItemsWithNewIds, noteVersionGroupId } from './noteVersions'
+import { scheduleResurfacing } from './noteResurfacing'
 import { findIdea, ideaGroupId, IDEA_GROUP_KINDS, isIdeaTrashExpired, parseIdeaReviewDays, type ScheduledIdeaReviewKind } from './ideas'
 import { reconcileTaskNotifications } from './taskNotifications'
 import { reconcileVoiceClips } from './voiceClips'
@@ -203,6 +204,11 @@ function imageReferences(value: unknown): ReadonlySet<string> {
   imageReferenceCache.set(value, ids)
   return ids
 }
+function withoutResurfacingOfMissingNotes(state: AppState): AppState {
+  const noteResurfacing = state.noteResurfacing.filter(({ id }) => state.notes.some((note) => note.id === id))
+  return noteResurfacing.length === state.noteResurfacing.length ? state : { ...state, noteResurfacing }
+}
+
 const ENTITY_COLLECTIONS = [
   'images',
   'goals',
@@ -212,6 +218,7 @@ const ENTITY_COLLECTIONS = [
   'metrics',
   'metricEntries',
   'notes',
+  'noteResurfacing',
   'projects',
   'projectCheckIns',
   'projectHistoryNotes',
@@ -2807,8 +2814,34 @@ function createPlannerStore() {
       commitEntities(
         'permanently_delete_note',
         { noteId },
-        (state) => ({ ...state, notes: state.notes.filter((note) => note.id !== noteId) }),
+        (state) => withoutResurfacingOfMissingNotes({ ...state, notes: state.notes.filter((note) => note.id !== noteId) }),
       )
+    },
+
+    // null turns it off. A new cadence counts from the note's last appearance.
+    setNoteResurfacing(noteId: Id, days: number | null) {
+      commitEntities('set_note_resurfacing', { noteId, days }, (state) => {
+        const existing = state.noteResurfacing.find(({ id }) => id === noteId)
+        if ((existing?.days ?? null) === days) return state
+        const others = state.noteResurfacing.filter(({ id }) => id !== noteId)
+        if (days === null) return { ...state, noteResurfacing: others }
+        const record = { ...existing, ...scheduleResurfacing(noteId, days, existing?.last ?? todayISO()) }
+        return { ...state, noteResurfacing: existing ? state.noteResurfacing.map((candidate) => candidate.id === noteId ? record : candidate) : [...others, record] }
+      }, { reconcileGoals: false })
+    },
+
+    // The note was read during day generation on date; it comes back after
+    // days (null retires it).
+    resurfaceNote(noteId: Id, date: string, days: number | null) {
+      commitEntities('resurface_note', { noteId, date, days }, (state) => {
+        if (!state.noteResurfacing.some(({ id }) => id === noteId)) return state
+        return {
+          ...state,
+          noteResurfacing: days === null
+            ? state.noteResurfacing.filter(({ id }) => id !== noteId)
+            : state.noteResurfacing.map((record) => record.id === noteId ? { ...record, ...scheduleResurfacing(noteId, days, date) } : record),
+        }
+      }, { reconcileGoals: false })
     },
 
     emptyNoteTrash() {
@@ -2817,7 +2850,7 @@ function createPlannerStore() {
         {},
         (state) => {
           const notes = state.notes.filter((note) => !note.deletedAt)
-          return notes.length === state.notes.length ? state : { ...state, notes }
+          return notes.length === state.notes.length ? state : withoutResurfacingOfMissingNotes({ ...state, notes })
         },
       )
     },
@@ -2828,7 +2861,7 @@ function createPlannerStore() {
         { now },
         (state) => {
           const notes = state.notes.filter((note) => !isNoteTrashExpired(note, now))
-          return notes.length === state.notes.length ? state : { ...state, notes }
+          return notes.length === state.notes.length ? state : withoutResurfacingOfMissingNotes({ ...state, notes })
         },
         { undoable: false },
       )
@@ -4411,6 +4444,7 @@ export async function inspectDatabase(): Promise<DatabaseInspection | null> {
       uneditedPlanItems: [],
       templateQuestions: [],
       templateItemConditions: [],
+      noteResurfacing: [],
       templateListExpansions: [],
       taskNotifications: [],
       situateRules: [],
@@ -4560,6 +4594,7 @@ function* normalizeStateSteps(state: AppState): Generator<void, AppState, void> 
     uneditedPlanItems: state.uneditedPlanItems ?? [],
     templateQuestions: state.templateQuestions ?? [],
     templateItemConditions: state.templateItemConditions ?? [],
+    noteResurfacing: state.noteResurfacing ?? [],
     templateListExpansions: state.templateListExpansions ?? [],
     taskNotifications: state.taskNotifications ?? [],
     situateRules: state.situateRules ?? [],

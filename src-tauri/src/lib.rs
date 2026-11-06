@@ -176,7 +176,7 @@ const SYNC_LOG_DIRTY_SINCE_MS: &str = "sync_log_dirty_since_ms";
 const REPLICATED_PREFERENCES: &str = "replicated_preferences";
 const DEVICE_APPEARANCE: &str = "device_appearance";
 const DAY_THEME_PREFERENCE_PREFIX: &str = "dayTheme/";
-const ENTITY_COLLECTIONS: [&str; 21] = [
+const ENTITY_COLLECTIONS: [&str; 22] = [
     "images",
     "uneditedPlanItems",
     "templateQuestions",
@@ -191,6 +191,7 @@ const ENTITY_COLLECTIONS: [&str; 21] = [
     "metrics",
     "metricEntries",
     "notes",
+    "noteResurfacing",
     "projects",
     "projectCheckIns",
     "projectHistoryNotes",
@@ -3275,6 +3276,7 @@ fn read_app_state_from_database_with_progress(
         "uneditedPlanItems": read_entity_collection(connection, "uneditedPlanItems")?,
         "templateQuestions": read_entity_collection(connection, "templateQuestions")?,
         "templateItemConditions": read_entity_collection(connection, "templateItemConditions")?,
+        "noteResurfacing": read_entity_collection(connection, "noteResurfacing")?,
         "templateListExpansions": read_entity_collection(connection, "templateListExpansions")?,
         "taskNotifications": read_entity_collection(connection, "taskNotifications")?,
         "situateRules": read_entity_collection(connection, "situateRules")?,
@@ -12472,6 +12474,33 @@ mod tests {
         assert_eq!(undone["templateItemConditions"], json!([]));
         let redone = redo_last_operation_in_database(&mut connection).unwrap().unwrap();
         assert_eq!(redone["templateItemConditions"], json!([condition]));
+    }
+
+    #[test]
+    fn note_resurfacing_persists_and_round_trips_undo_redo() {
+        let database = TestDatabase::new("note-resurfacing");
+        let recovery_key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        let state = test_state("Synthetic note resurfacing");
+        replace_app_state(&mut connection, &state).unwrap();
+        let record = json!({"id": "note_test", "days": 91, "last": "2026-11-05", "next": "2027-02-01"});
+        let operation = json!({
+            "id": "note-resurfacing-op", "deviceId": "device_test", "sequence": 2,
+            "type": "apply_entity_changes", "timestamp": "2026-11-05T08:00:00Z",
+            "payload": {"action": "set_note_resurfacing", "noteId": "note_test", "entityChanges": {
+                "version": 2, "deletes": [], "upserts": [{"collection": "noteResurfacing", "key": "note_test",
+                    "position": 0, "value": record, "patches": [sync::entities::diff(&Value::Null, &record)]}]
+            }}
+        });
+        persist_operation_to_database(&mut connection, &operation).unwrap();
+        drop(connection);
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        let loaded = read_app_state_from_database(&connection).unwrap().unwrap();
+        assert_eq!(loaded["noteResurfacing"], json!([record]));
+        let undone = undo_last_operation_in_database(&mut connection).unwrap().unwrap();
+        assert_eq!(undone["noteResurfacing"], json!([]));
+        let redone = redo_last_operation_in_database(&mut connection).unwrap().unwrap();
+        assert_eq!(redone["noteResurfacing"], json!([record]));
     }
 
     #[test]

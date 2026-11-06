@@ -7,7 +7,8 @@
   import type { ItemLink } from './planner'
   import { NOTE_TRASH_RETENTION_DAYS, noteTrashDaysRemaining } from './noteTrash'
   import { noteVersionGroupId, noteVersionLabel, noteVersionsOf } from './noteVersions'
-  import type { Id, ListTemplate, Metric, Note, NoteItem, NoteItemKind, NoteViewState } from './types'
+  import { NOTE_RESURFACE_CHOICES, resurfaceLabel } from './noteResurfacing'
+  import type { Id, ListTemplate, Metric, Note, NoteItem, NoteItemKind, NoteResurfacing, NoteViewState } from './types'
 
   const NOTE_SCROLL_SPACE_PERCENT_KEY = 'balance:noteScrollSpacePercent'
   const DEFAULT_NOTE_SCROLL_SPACE_PERCENT = 60
@@ -38,6 +39,8 @@
   export let onPermanentlyDelete: (noteId: Id) => boolean | Promise<boolean>
   export let onEmptyTrash: () => boolean | Promise<boolean>
   export let onRename: (noteId: Id, title: string) => void
+  export let resurfacing: NoteResurfacing[] = []
+  export let onSetResurfacing: (noteId: Id, days: number | null) => void = () => {}
   export let onAddItem: (noteId: Id, kind?: NoteItemKind) => Id
   export let patchItem: typeof import('./store').plannerStore.patchNoteItem
   export let patchItemsDone: typeof import('./store').plannerStore.patchNoteItemsDone
@@ -151,6 +154,15 @@
   $: visibleNotes = trashOpen ? trashedNotes : activeNotes
   $: selectedNote = visibleNotes.find((note) => note.id === selectedNoteId) ?? visibleNotes[0] ?? null
   $: wordCount = selectedNote ? countWords(selectedNote.items) : 0
+  $: resurfaceDays = resurfacing.find(({ id }) => id === selectedNote?.id)?.days ?? null
+  $: resurfacingIds = new Set(resurfacing.map(({ id }) => id))
+  let resurfacePickerOpen = false
+  $: if (selectedNote?.id || trashOpen) resurfacePickerOpen = false
+
+  function chooseResurfacing(days: number | null) {
+    if (selectedNote) onSetResurfacing(selectedNote.id, days)
+    resurfacePickerOpen = false
+  }
   $: if (!trashOpen && selectedNote) lastActiveNoteId = selectedNote.id
   $: if (trashOpen && selectedNote) lastTrashNoteId = selectedNote.id
   $: selectedVersions = selectedNote && !trashOpen ? noteVersionsOf(activeNotes, noteVersionGroupId(selectedNote)) : []
@@ -733,6 +745,7 @@
                 <strong>{note.title.trim() || 'Untitled note'}{#if versionLabel}<small class="note-card-version"> · {versionLabel}</small>{/if}</strong>
                 <span>{previewText(note) || 'Empty note'}</span>
                 {#if versions.length > 1}<small class="note-card-versions">{versions.length} versions</small>{/if}
+                {#if !trashOpen && versions.some(({ id }) => resurfacingIds.has(id))}<small class="note-card-resurface" title="Resurfaces">↻</small>{/if}
                 <time datetime={updatedAt}>{readableDate(updatedAt)}</time>
               </button>
               {#if !trashOpen}
@@ -769,10 +782,27 @@
             <button class="primary" type="button" on:click={() => restoreFromTrash(selectedNote!.id)}>Restore</button>
             <button class="ghost danger" type="button" on:click={() => permanentlyDelete(selectedNote!.id)}>Delete now</button>
           {:else}
+            <button
+              type="button"
+              class="note-resurface-toggle"
+              class:active={resurfaceDays !== null}
+              aria-expanded={resurfacePickerOpen}
+              aria-label={resurfaceDays === null ? 'Resurface' : `Resurface ${resurfaceLabel(resurfaceDays)}`}
+              title="Resurface: show while generating a day, every so often"
+              on:click={() => (resurfacePickerOpen = !resurfacePickerOpen)}
+            ><span aria-hidden="true">↻{resurfaceDays === null ? '' : ` ${resurfaceLabel(resurfaceDays)}`}</span></button>
             <button type="button" title="Start another version from a copy of this one" on:click={addVersion}>New version</button>
             <button class="ghost danger" type="button" title={selectedVersions.length > 1 ? 'Move every version of this note to the Bin' : undefined} on:click={() => moveToTrash(selectedNote!.id)}>Bin it</button>
           {/if}
         </div>
+        {#if resurfacePickerOpen && !trashOpen}
+          <div class="note-resurface-choices" role="group" aria-label="Resurface every">
+            {#each NOTE_RESURFACE_CHOICES as days (days)}
+              <button type="button" class:primary={days === resurfaceDays} aria-pressed={days === resurfaceDays} on:click={() => chooseResurfacing(days)}>{resurfaceLabel(days)}</button>
+            {/each}
+            {#if resurfaceDays !== null}<button class="ghost" type="button" on:click={() => chooseResurfacing(null)}>Off</button>{/if}
+          </div>
+        {/if}
         <span class="note-word-count" title="Words in the note body">{wordCount.toLocaleString()} {wordCount === 1 ? 'word' : 'words'}</span>
       </header>
 
@@ -926,6 +956,8 @@
       {onPermanentlyDelete}
       {onEmptyTrash}
       {onRename}
+      {resurfacing}
+      {onSetResurfacing}
       {onAddItem}
       {patchItem}
       {patchItemsDone}

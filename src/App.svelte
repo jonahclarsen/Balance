@@ -66,6 +66,8 @@
   import SyncStatusIndicator from './lib/SyncStatusIndicator.svelte'
   import MetricQuiz from './lib/MetricQuiz.svelte'
   import TemplateDayQuiz from './lib/TemplateDayQuiz.svelte'
+  import ResurfacedNoteModal from './lib/ResurfacedNoteModal.svelte'
+  import { dueResurfacedNote } from './lib/noteResurfacing'
   import MetricGraph from './lib/MetricGraph.svelte'
   import MetricQuestionEditor from './lib/MetricQuestionEditor.svelte'
   import RichTextEditor from './lib/RichTextEditor.svelte'
@@ -454,6 +456,10 @@
   let goalDoabilityReviews: GoalDoabilityReview[] = []
   let projectPick: { date: string; resolve: (picked: boolean) => void } | null = null
   let dayQuiz: { title: string; steps: TemplateQuizStep[]; resolve: (answers: TemplateQuizAnswers | null) => void } | null = null
+  let resurfacing: { noteId: Id; date: string; resolve: (read: boolean) => void } | null = null
+  $: resurfacingNote = resurfacing && $plannerStore.notes.find(({ id }) => id === resurfacing?.noteId)
+  $: resurfacingRecord = resurfacing && $plannerStore.noteResurfacing.find(({ id }) => id === resurfacing?.noteId)
+  $: if (resurfacing && !(resurfacingNote && !resurfacingNote.deletedAt && resurfacingRecord)) skipVanishedResurfacedNote()
   // One-card-at-a-time idea sorting; resolves true once every queued idea has a group.
   // A sort belongs to the page it was opened on: it hides while another page is
   // open and picks up where it left off on return.
@@ -3833,6 +3839,8 @@ return rows`
       const queue = review.items.filter((item) => item.dayAssignmentDate !== date)
       if (queue.length > 0 && !(await askIdeaSort(queue, IDEA_REVIEW_LABELS[review.kind], addToDay, 0, { days: review.days }))) return false
     }
+    const resurfaced = dueResurfacedNote($plannerStore.noteResurfacing, $plannerStore.notes, date)
+    if (resurfaced && !(await askResurfacedNote(resurfaced.note.id, date))) return false
     if (needsProjectPick($plannerStore.projects, date) && !(await askProjectPick(date))) return false
 
     const steps = templateQuizSteps(
@@ -3878,6 +3886,27 @@ return rows`
     const last = plan.items.at(-1)
     plannerStore.pastePlanItems(plan.id, items, next?.id ?? last?.id ?? null, next ? 'before' : 'after')
     for (const { group, item } of found) plannerStore.removeIdeaAfterTransfer(group.id, item.id)
+  }
+
+  function askResurfacedNote(noteId: Id, date: string): Promise<boolean> {
+    resurfacing?.resolve(false)
+    return new Promise((resolve) => {
+      resurfacing = { noteId, date, resolve }
+    })
+  }
+
+  // Binned, deleted or turned off elsewhere while shown: carry on without it.
+  function skipVanishedResurfacedNote() {
+    const shown = resurfacing
+    resurfacing = null
+    shown?.resolve(true)
+  }
+
+  function finishResurfacedNote(days: number | null | undefined) {
+    const shown = resurfacing
+    resurfacing = null
+    if (shown && days !== undefined) plannerStore.resurfaceNote(shown.noteId, shown.date, days)
+    shown?.resolve(days !== undefined)
   }
 
   function askProjectPick(date: string): Promise<boolean> {
@@ -7892,6 +7921,8 @@ return rows`
         onLeave={discardUnwrittenNote}
         onEmptyTrash={confirmEmptyNoteTrash}
         onRename={plannerStore.renameNote}
+        resurfacing={$plannerStore.noteResurfacing}
+        onSetResurfacing={plannerStore.setNoteResurfacing}
         onAddItem={plannerStore.addRootNoteItem}
         patchItem={plannerStore.patchNoteItem}
         patchItemsDone={plannerStore.patchNoteItemsDone}
@@ -8722,6 +8753,15 @@ return rows`
         />
       </OverlayModal>
       {/key}
+    {/if}
+
+    {#if resurfacing && resurfacingNote && resurfacingRecord}
+      <ResurfacedNoteModal
+        note={resurfacingNote}
+        record={resurfacingRecord}
+        onDecide={finishResurfacedNote}
+        onClose={() => finishResurfacedNote(undefined)}
+      />
     {/if}
 
     {#if projectPick}
