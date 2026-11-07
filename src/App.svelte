@@ -58,6 +58,7 @@
   import IdeaImportModal from './lib/IdeaImportModal.svelte'
   import { countIdeas, dueIdeaReviews, ideaGroupItems, findIdea, IDEA_GROUPS, readActiveIdeaGroup, saveActiveIdeaGroup } from './lib/ideas'
   import { awaitingTranscription } from './lib/voiceClips'
+  import { transcribeClips } from './lib/voiceTranscription'
   import { IDEA_REVIEW_LABELS, type IdeaReviewKind } from './lib/ideaLinks'
   import NotesPanel from './lib/NotesPanel.svelte'
   import ImaxButton from './lib/ImaxButton.svelte'
@@ -8891,6 +8892,8 @@ return rows`
           onDecide={(itemId, kind) => plannerStore.moveIdeaToGroup(itemId, kind)}
           onAppendToPrevious={(itemId, previousId) => plannerStore.appendIdeaToPrevious(itemId, previousId)}
           onEdit={(itemId, html, text) => { const found = findIdea($plannerStore.ideaBuckets, itemId); if (found) plannerStore.patchIdeaItem(found.group.id, itemId, { text, html }) }}
+          voiceClips={$plannerStore.voiceClips}
+          onTranscribe={(clip) => { if (clip.transcript) plannerStore.applyVoiceTranscript(clip.id, clip.transcript); else void transcribeClips([clip], plannerStore.applyVoiceTranscript) }}
           onToggleDone={(ideaId, itemId, done) => { const found = findIdea($plannerStore.ideaBuckets, ideaId); if (found) plannerStore.patchIdeaItem(found.group.id, itemId, { done }) }}
           onCut={cutSortedIdea}
           onAddToNote={plannerStore.moveIdeaToNewNote}

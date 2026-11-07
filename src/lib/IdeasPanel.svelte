@@ -4,11 +4,12 @@
   import VoiceIdeaModal from './VoiceIdeaModal.svelte'
   import IdeaReviewCadence from './IdeaReviewCadence.svelte'
   import VoiceRecordControls from './VoiceRecordControls.svelte'
+  import VoiceClipChip from './VoiceClipChip.svelte'
   import { plannerStore } from './store'
   import { focusTaskBelow } from './taskCompletionFocus'
   import { ideaUnlockDelay, findIdea, ideaGroupId, ideaGroupKindForKey, ideaGroupMeta, IDEA_GROUPS, IDEA_TRASH_RETENTION_DAYS, scheduledIdeaReviewDefault, type ScheduledIdeaReviewKind } from './ideas'
   import type { ItemLink, ItemTimeWarning } from './planner'
-  import { clipsByIdea, formatClipDuration } from './voiceClips'
+  import { clipsByIdea } from './voiceClips'
   import { voiceRecording, voiceRecordingError } from './voiceRecorder'
   import { canTranscribe, transcribeClips, transcriptionError, transcriptionStatus } from './voiceTranscription'
   import type { Id, IdeaGroup, IdeaGroupKind, ListTemplate, Metric, Note, VoiceClip } from './types'
@@ -319,20 +320,7 @@
           >
             <svelte:fragment slot="trailing">
               {#if clip}
-                <button
-                  type="button"
-                  class="voice-clip-chip"
-                  data-voice-clip={clip.id}
-                  aria-label={`Voice idea, ${formatClipDuration(clip.durationMs)}`}
-                  on:click={() => { openClipId = clip.id }}
-                >
-                  <svg viewBox={`0 0 ${Math.min(48, clip.peaks.length)} 16`} preserveAspectRatio="none" aria-hidden="true">
-                    {#each Array.from({ length: Math.min(48, clip.peaks.length) }, (_, index) => clip.peaks[Math.floor((index * clip.peaks.length) / Math.min(48, clip.peaks.length))] ?? 0) as peak, index}
-                      <rect x={index + 0.15} width="0.7" y={8 - Math.max(0.6, (peak / 255) * 8)} height={Math.max(1.2, (peak / 255) * 16)} />
-                    {/each}
-                  </svg>
-                  <span>{formatClipDuration(clip.durationMs)}</span>
-                </button>
+                <VoiceClipChip {clip} onOpen={() => { openClipId = clip.id }} />
               {/if}
             </svelte:fragment>
           </PlanItemEditor>
@@ -426,19 +414,6 @@
   .idea-group-pane { min-width: 0; }
   .idea-group-note { color: var(--muted); font-size: 12px; }
   .voice-idea-error { margin: 0 0 12px; color: var(--danger); font-size: 13px; }
-  .voice-clip-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    flex: none;
-    padding: 2px 8px;
-    border-radius: 999px;
-    color: var(--accent);
-    font-size: 12px;
-    font-variant-numeric: tabular-nums;
-  }
-  .voice-clip-chip svg { width: 56px; height: 14px; fill: currentColor; }
-  .voice-clip-chip span { color: var(--muted); }
   .idea-move-strip {
     display: flex;
     flex-wrap: wrap;

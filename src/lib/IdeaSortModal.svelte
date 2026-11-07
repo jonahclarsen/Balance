@@ -4,10 +4,12 @@
   import TaskCheckbox from './TaskCheckbox.svelte'
   import OverlayModal from './OverlayModal.svelte'
   import RichTextEditor from './RichTextEditor.svelte'
+  import VoiceClipChip from './VoiceClipChip.svelte'
+  import VoiceIdeaModal from './VoiceIdeaModal.svelte'
   import { IDEA_UNLOCK_MS, findIdea, ideaGroupMeta, IDEA_SORT_QUESTION } from './ideas'
   import { renderItemDisplayHTML, type ItemLink, type ItemTextSegment } from './planner'
   import { openClickedLink, openRenderedLinkFromShortcut } from './externalLinks'
-  import type { Id, IdeaGroup, IdeaGroupKind, IdeaItem, IdeaSnapshot, PlanItem } from './types'
+  import type { Id, IdeaGroup, IdeaGroupKind, IdeaItem, IdeaSnapshot, PlanItem, VoiceClip } from './types'
 
   // Ideas are sorted one card at a time in queue order (bottom of the list first). Each card asks
   // the key question; Yes picks a keep group, No picks a discard group.
@@ -23,6 +25,9 @@
   export let onDecide: (itemId: Id, kind: IdeaGroupKind) => void
   export let onAppendToPrevious: (itemId: Id, previousId: Id) => boolean
   export let onEdit: (itemId: Id, html: string, text: string) => void
+  // Recordings show on their card as on the Ideas page and open the same dialog.
+  export let voiceClips: VoiceClip[] = []
+  export let onTranscribe: (clip: VoiceClip) => void = () => {}
   // Toggles the idea or one of its children, found under the idea being sorted.
   export let onToggleDone: (ideaId: Id, itemId: Id, done: boolean) => void
   // Removes the idea and puts it on the clipboard to paste where it belongs.
@@ -65,10 +70,13 @@
   type Action = IdeaGroupKind | 'note' | 'cut' | 'day'
   let shaking: Action | null = null
   let shakeTimer: number | null = null
+  let openClipId: Id | null = null
 
   $: sorted = sortedBefore + history.length
   $: queued = queue[index]
   $: current = queued ? findIdea(groups, queued.id)?.item ?? queued : undefined
+  $: clip = current ? voiceClips.find((candidate) => candidate.ideaId === current.id) : undefined
+  $: openClip = openClipId ? voiceClips.find((candidate) => candidate.id === openClipId) ?? null : null
   $: options = step === 'yes' ? (['possible', 'genuine'] as const) : step === 'no' ? (['trash', 'afterlife'] as const) : []
   $: resetCard(index)
 
@@ -78,6 +86,7 @@
 
   function resetCard(_index: number) {
     step = 'question'
+    openClipId = null
     editing = false
     if (readTimer !== null) window.clearTimeout(readTimer)
     reading = readDelayMs > 0
@@ -234,7 +243,8 @@
   }
 
   function handleKeydown(event: KeyboardEvent) {
-    if (!active || event.metaKey || event.ctrlKey || event.repeat) return
+    // The Voice idea dialog owns the keyboard while it's open.
+    if (!active || openClip || event.metaKey || event.ctrlKey || event.repeat) return
     if (introOpen) {
       if (event.altKey) return
       if (event.key === 'Enter') startSorting()
@@ -380,6 +390,9 @@
                   class:empty={!current.text?.trim()}
                 >{@html current.text?.trim() ? renderIdeaHTML(current) : '(empty idea)'}</div>
               {/if}
+              {#if clip}
+                <VoiceClipChip {clip} onOpen={() => { openClipId = clip.id }} />
+              {/if}
             </div>
             {#if current.children.length > 0}{@render childRows(current.id, current.children)}{/if}
           </div>
@@ -442,3 +455,15 @@
   </div>
   {/if}
 </OverlayModal>
+
+{#if active && openClip && current}
+  {#key openClip.id}
+    <VoiceIdeaModal
+      clip={openClip}
+      idea={current}
+      onEdit={(text, html) => { if (current) onEdit(current.id, html, text) }}
+      onTranscribe={() => { if (openClip) onTranscribe(openClip) }}
+      onClose={() => { openClipId = null }}
+    />
+  {/key}
+{/if}

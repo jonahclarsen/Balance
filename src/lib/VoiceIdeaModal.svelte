@@ -15,7 +15,8 @@
   export let clip: VoiceClip
   export let idea: IdeaItem
   export let onEdit: (text: string, html: string) => void
-  export let onMove: (kind: IdeaGroupKind) => void
+  // Sorting decides with its own choices, so it leaves out the move buttons.
+  export let onMove: ((kind: IdeaGroupKind) => void) | undefined = undefined
   export let onTranscribe: () => void
   export let onClose: () => void
 
@@ -207,6 +208,7 @@
   </div>
   <VoiceWaveform bind:this={waveform} peaks={clip.peaks} {durationSeconds} {playhead} {range} onSeek={seek} onSelectRange={selectRange} />
 
+  {#if onMove}
   <div class="idea-move-strip" role="group" aria-label="Move idea to">
     {#each targets as target (target.kind)}
       <button
@@ -214,10 +216,11 @@
         class="idea-group-button"
         class:locked={locked(target.kind, unlockTick)}
         disabled={locked(target.kind, unlockTick)}
-        on:click={() => onMove(target.kind)}
+        on:click={() => onMove?.(target.kind)}
       >{target.label}</button>
     {/each}
   </div>
+  {/if}
 </OverlayModal>
 
 <style>

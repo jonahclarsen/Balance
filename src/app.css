@@ -7885,3 +7885,7 @@ textarea.note-title {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.paste-review-line .voice-clip-chip {
+  margin-left: auto;
+}

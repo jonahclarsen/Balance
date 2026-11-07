@@ -331,3 +331,34 @@ test('a transcript goes below text typed on its idea', async ({ page }, testInfo
   await expect(dialog.getByRole('button', { name: 'Transcribe', exact: true })).toBeHidden()
   expect((await idea()).text).toBe('Typed only\nSynthetic spoken idea.')
 })
+
+test('a sorted voice idea shows its clip and opens the voice dialog', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'The shared dialog is covered on desktop')
+  await open(page)
+  const transcript = { text: 'Synthetic spoken idea.', words: [
+    { text: 'Synthetic', start: 0, end: 0.4 }, { text: 'spoken', start: 0.4, end: 0.8 }, { text: 'idea.', start: 0.8, end: 1.2 },
+  ], model: 'test', transcribedAt: '2026-10-27T00:00:00Z' }
+  await storeCall(page, "plannerStore.addVoiceIdea({ dataURL: 'data:audio/webm;base64,', durationMs: 1200, peaks: [10, 200, 90] })")
+  const clipId = (await state(page)).voiceClips[0].id
+  await storeCall(page, 'plannerStore.applyVoiceTranscript(arg.clipId, arg.transcript)', { clipId, transcript })
+
+  await proposition(page).getByRole('button', { name: 'Sort', exact: true }).click()
+  const sorter = page.locator('.idea-sort[role="dialog"]')
+  await sorter.locator('.voice-clip-chip').click()
+  const dialog = page.getByRole('dialog', { name: 'Voice idea' })
+  await expect(dialog.getByRole('textbox', { name: 'Idea text' })).toHaveValue('Synthetic spoken idea.')
+  // Sorting decides with its own choices.
+  await expect(dialog.getByRole('group', { name: 'Move idea to' })).toHaveCount(0)
+
+  // Typing in the dialog edits the idea instead of answering the sort.
+  await dialog.getByRole('textbox', { name: 'Idea text' }).press('End')
+  await dialog.getByRole('textbox', { name: 'Idea text' }).pressSequentially(' yes')
+  await expect.poll(async () => (await state(page)).ideaBuckets[0].items[0].text).toBe('Synthetic spoken idea. yes')
+  await expect(sorter.getByRole('button', { name: 'Yes (Y)' })).toBeVisible()
+
+  // Escape closes only the voice dialog.
+  await page.keyboard.press('Escape')
+  await expect(dialog).toBeHidden()
+  await expect(sorter).toBeVisible()
+  await expect(sorter.locator('.paste-review-text')).toHaveText('Synthetic spoken idea. yes')
+})
