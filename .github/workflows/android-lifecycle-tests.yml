@@ -16,7 +16,7 @@ on:
         description: Lifecycle path to verify with synthetic data
         type: choice
         default: activity
-        options: [activity, situate, situate-stress, voice-recording, process, worker-start, offline-ideas, offline-history, offline-notifications, offline-latency, startup-ab]
+        options: [activity, situate, situate-stress, voice-recording, voice-permissions, process, worker-start, offline-ideas, offline-history, offline-notifications, offline-latency, startup-ab]
       situate_api:
         description: Android API for Situate stress (all includes 31, 34, 36, and 37)
         type: choice
@@ -53,7 +53,7 @@ permissions:
 
 jobs:
   capture-acknowledgement:
-    if: ${{ !startsWith(inputs.scenario, 'situate') && inputs.scenario != 'voice-recording' }}
+    if: ${{ !startsWith(inputs.scenario, 'situate') && !startsWith(inputs.scenario, 'voice-') }}
     name: Offline refresh and durable capture
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -179,8 +179,55 @@ jobs:
             voice-recording-notifications.txt
           if-no-files-found: ignore
 
+  voice-permissions:
+    if: inputs.scenario == 'voice-permissions'
+    name: Voice permission prompts / Android ${{ matrix.api }}
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        # The Android 31 image's WebView 91 is too old for Balance to save anything.
+        api: [34, 36]
+    steps:
+      - uses: actions/checkout@v6
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v7
+        with:
+          name: Balance-android-lifecycle-test-apk
+      - name: Start recording through the permission prompts
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          BALANCE_TEST_PACKAGE: app.balance.local
+        with:
+          api-level: ${{ matrix.api }}
+          arch: x86_64
+          target: google_apis
+          emulator-options: -no-window -gpu lavapipe -no-boot-anim -camera-back none
+          disable-animations: true
+          script: timeout --foreground --kill-after=10s 18m node .github/scripts/android-voice-permissions-test.mjs
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: voice-permissions-api-${{ matrix.api }}
+          path: |
+            voice-crash-*.txt
+          if-no-files-found: ignore
+
   situate:
-    if: inputs.scenario != 'situate-stress' && inputs.scenario != 'voice-recording'
+    if: inputs.scenario != 'situate-stress' && !startsWith(inputs.scenario, 'voice-')
     name: Situate blocking / Android ${{ matrix.api }}
     needs: build
     runs-on: ubuntu-latest
@@ -282,7 +329,7 @@ jobs:
           if-no-files-found: ignore
 
   lifecycle:
-    if: ${{ !startsWith(inputs.scenario, 'situate') && inputs.scenario != 'voice-recording' }}
+    if: ${{ !startsWith(inputs.scenario, 'situate') && !startsWith(inputs.scenario, 'voice-') }}
     name: Android ${{ matrix.api }} / ${{ matrix.scenario }}
     needs: build
     runs-on: ubuntu-latest
