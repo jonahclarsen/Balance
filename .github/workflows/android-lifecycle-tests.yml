@@ -189,7 +189,7 @@ jobs:
       fail-fast: false
       matrix:
         # The Android 31 image's WebView 91 is too old for Balance to save anything.
-        api: [34, 36]
+        api: [34, 36, 37]
     steps:
       - uses: actions/checkout@v6
       - name: Enable KVM
@@ -212,7 +212,7 @@ jobs:
         env:
           BALANCE_TEST_PACKAGE: app.balance.local
         with:
-          api-level: ${{ matrix.api }}
+          api-level: ${{ matrix.api == 37 && '37.0' || format('{0}', matrix.api) }}
           arch: x86_64
           target: google_apis
           emulator-options: -no-window -gpu lavapipe -no-boot-anim -camera-back none

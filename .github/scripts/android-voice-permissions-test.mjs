@@ -126,7 +126,7 @@ async function answerPrompts(answer, windowMs = 15_000) {
 function crashLog() {
   const crash = adb(['logcat', '-b', 'crash', '-d'], { allowFailure: true }).trim()
   const fatal = adb(['logcat', '-d'], { allowFailure: true }).split('\n')
-    .filter((line) => /FATAL EXCEPTION|E AndroidRuntime|Render process|renderer.*(crash|gone|killed)|SIGSEGV|SIGABRT|Abort message|lowmemorykiller|ANR in|BalanceVoiceInput/i.test(line))
+    .filter((line) => /FATAL EXCEPTION|E AndroidRuntime|Render process|renderer.*(crash|gone|killed)|SIGSEGV|SIGABRT|Abort message|lowmemorykiller: Kill|ANR in|BalanceVoiceInput/i.test(line))
   return [crash, ...fatal].filter(Boolean).join('\n')
 }
 
