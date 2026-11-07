@@ -144,7 +144,16 @@ async function runCase(name, { answer, grant = [], record = 4_000, after }) {
   for (const permission of grant) adb(['shell', 'pm', 'grant', packageName, `android.permission.${permission}`], { allowFailure: true })
   adb(['logcat', '-c'])
   adb(['logcat', '-b', 'crash', '-c'], { allowFailure: true })
-  adb(['shell', 'monkey', '-p', packageName, '-c', 'android.intent.category.LAUNCHER', '1'])
+  // Android finishes removing the force-stopped task asynchronously and can
+  // kill a process launched too soon after it, so wait and relaunch if needed.
+  await sleep(2_000)
+  let launched = null
+  for (let attempt = 0; attempt < 3 && !launched; attempt += 1) {
+    adb(['shell', 'monkey', '-p', packageName, '-c', 'android.intent.category.LAUNCHER', '1'])
+    launched = await waitFor(pid, 'the app process', 15_000).catch(() => null)
+    if (launched) await sleep(2_000)
+    if (launched && pid() !== launched) launched = null
+  }
   const evaluate = await connect()
   const startPid = pid()
   const has = (selector) => evaluate(`Boolean(document.querySelector(${JSON.stringify(selector)}))`)
