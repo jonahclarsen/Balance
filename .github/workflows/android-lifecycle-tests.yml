@@ -223,7 +223,7 @@ jobs:
         with:
           name: voice-permissions-api-${{ matrix.api }}
           path: |
-            voice-crash-*.txt
+            voice-crash-*
           if-no-files-found: ignore
 
   situate:

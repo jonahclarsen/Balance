@@ -71,9 +71,23 @@ async function tap(evaluate, selector) {
     if (!element) return null
     element.scrollIntoView({ block: 'center' })
     const rect = element.getBoundingClientRect()
-    return { x: Math.round((rect.left + rect.width / 2) * devicePixelRatio), y: Math.round((rect.top + rect.height / 2) * devicePixelRatio) }
+    const cx = rect.left + rect.width / 2
+    const cy = rect.top + rect.height / 2
+    const top = document.elementFromPoint(cx, cy)
+    return {
+      x: Math.round(cx * devicePixelRatio), y: Math.round(cy * devicePixelRatio),
+      ratio: devicePixelRatio, viewport: [innerWidth, innerHeight], screen: [screen.width, screen.height],
+      hit: top === element || element.contains(top) ? 'self' : (top?.outerHTML.slice(0, 160) ?? 'nothing'),
+    }
   })()`), selector, 60_000)
+  console.log(`Tap ${selector}: ${JSON.stringify(point)}; display ${adb(['shell', 'wm', 'size']).trim()}`)
   adb(['shell', 'input', 'tap', String(point.x), String(point.y)])
+}
+
+let shot = 0
+function screenshot(label) {
+  const result = spawnSync('adb', ['exec-out', 'screencap', '-p'], { maxBuffer: 64 * 1024 * 1024, timeout: 20_000 })
+  if (result.stdout?.length) writeFileSync(`voice-crash-shot-${String(++shot).padStart(2, '0')}-${label.replace(/\W+/g, '-')}.png`, result.stdout)
 }
 
 const PROMPT_BUTTONS = {
@@ -112,7 +126,7 @@ async function answerPrompts(answer, windowMs = 15_000) {
 function crashLog() {
   const crash = adb(['logcat', '-b', 'crash', '-d'], { allowFailure: true }).trim()
   const fatal = adb(['logcat', '-d'], { allowFailure: true }).split('\n')
-    .filter((line) => /FATAL|AndroidRuntime|Render process|renderer.*(crash|gone|killed)|SIGSEGV|SIGABRT|Abort message|lowmemorykiller|ANR in/i.test(line))
+    .filter((line) => /FATAL EXCEPTION|E AndroidRuntime|Render process|renderer.*(crash|gone|killed)|SIGSEGV|SIGABRT|Abort message|lowmemorykiller|ANR in|BalanceVoiceInput/i.test(line))
   return [crash, ...fatal].filter(Boolean).join('\n')
 }
 
@@ -144,8 +158,12 @@ async function runCase(name, { answer, grant = [], record = 4_000, after }) {
   await waitFor(() => has('[aria-label="Record an idea"]'), 'the Ideas page', 30_000)
   await evaluate(`document.querySelector('[aria-label="Record an idea"]').scrollIntoView({ block: 'center' })`)
   await sleep(1_000)
+  screenshot(`${name} before`)
   await tap(evaluate, '[aria-label="Record an idea"]')
+  await sleep(1_500)
+  screenshot(`${name} after tap`)
   const answered = await answerPrompts(answer)
+  screenshot(`${name} after prompts`)
   console.log(`Prompts: ${JSON.stringify(answered)}`)
   let outcome = 'alive'
   let detail = ''
