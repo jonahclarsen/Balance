@@ -69,6 +69,7 @@ async function tap(evaluate, selector) {
   const point = await waitFor(() => evaluate(`(() => {
     const element = document.querySelector(${JSON.stringify(selector)})
     if (!element) return null
+    element.scrollIntoView({ block: 'center' })
     const rect = element.getBoundingClientRect()
     return { x: Math.round((rect.left + rect.width / 2) * devicePixelRatio), y: Math.round((rect.top + rect.height / 2) * devicePixelRatio) }
   })()`), selector, 60_000)
@@ -133,10 +134,16 @@ async function runCase(name, { answer, grant = [], record = 4_000, after }) {
   const startPid = pid()
   const has = (selector) => evaluate(`Boolean(document.querySelector(${JSON.stringify(selector)}))`)
   await waitFor(async () => !(await has('.database-loading-backdrop')) && await has('.mobile-menu-button'), 'the app to load', 60_000)
-  await tap(evaluate, '.mobile-menu-button')
-  await sleep(800)
-  await tap(evaluate, 'button[data-nav-view="ideas"]')
-  await sleep(800)
+  const click = async (selector) => {
+    await waitFor(() => has(selector), selector, 60_000)
+    await evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`)
+  }
+  // Navigation needs no gesture; only Record gets a real touch.
+  await click('.mobile-menu-button')
+  await click('button[data-nav-view="ideas"]')
+  await waitFor(() => has('[aria-label="Record an idea"]'), 'the Ideas page', 30_000)
+  await evaluate(`document.querySelector('[aria-label="Record an idea"]').scrollIntoView({ block: 'center' })`)
+  await sleep(1_000)
   await tap(evaluate, '[aria-label="Record an idea"]')
   const answered = await answerPrompts(answer)
   console.log(`Prompts: ${JSON.stringify(answered)}`)
