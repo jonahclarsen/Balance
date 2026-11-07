@@ -148,6 +148,19 @@ async function runCase(name, { answer, grant = [], record = 4_000, after }) {
   const startPid = pid()
   const has = (selector) => evaluate(`Boolean(document.querySelector(${JSON.stringify(selector)}))`)
   await waitFor(async () => !(await has('.database-loading-backdrop')) && await has('.mobile-menu-button'), 'the app to load', 60_000)
+  // A fresh install asks to confirm its (synthetic) recovery key first. Never log it.
+  await waitFor(() => evaluate(`(async () => {
+    const status = await window.__TAURI_INTERNALS__.invoke('get_recovery_key_status')
+    if (status.confirmed) return true
+    const input = document.querySelector('#recovery-key-confirmation')
+    if (!input) return false
+    input.value = status.recoveryKey
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    input.closest('form').requestSubmit()
+    return false
+  })()`), 'the synthetic recovery key to be confirmed', 30_000)
+  await waitFor(async () => !(await has('#recovery-key-confirmation')), 'the recovery key dialog to close', 30_000)
   const click = async (selector) => {
     await waitFor(() => has(selector), selector, 60_000)
     await evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`)
