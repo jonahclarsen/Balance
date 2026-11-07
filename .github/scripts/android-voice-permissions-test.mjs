@@ -123,9 +123,10 @@ async function answerPrompts(answer, windowMs = 15_000) {
   return answered
 }
 
+// uiautomator itself sometimes crashes on newer images; that is not the app.
 function crashLog() {
-  const crash = adb(['logcat', '-b', 'crash', '-d'], { allowFailure: true }).trim()
-  const fatal = adb(['logcat', '-d'], { allowFailure: true }).split('\n')
+  const crash = adb(['logcat', '-b', 'crash', '-d'], { allowFailure: true }).split('\n').filter((line) => !/UiAutomation|uiautomator/i.test(line)).join('\n').trim()
+  const fatal = adb(['logcat', '-d'], { allowFailure: true }).split('\n').filter((line) => !/UiAutomation|uiautomator/i.test(line))
     .filter((line) => /FATAL EXCEPTION|E AndroidRuntime|Render process|renderer.*(crash|gone|killed)|SIGSEGV|SIGABRT|Abort message|lowmemorykiller: Kill|ANR in|BalanceVoiceInput/i.test(line))
   return [crash, ...fatal].filter(Boolean).join('\n')
 }
@@ -169,6 +170,8 @@ async function runCase(name, { answer, grant = [], record = 4_000, after }) {
   await click('.mobile-menu-button')
   await click('button[data-nav-view="ideas"]')
   await waitFor(() => has('[aria-label="Record an idea"]'), 'the Ideas page', 30_000)
+  // The update banner can cover the header on a networked emulator.
+  await evaluate(`document.querySelector('.app-error-banner-actions .ghost')?.click()`)
   await evaluate(`document.querySelector('[aria-label="Record an idea"]').scrollIntoView({ block: 'center' })`)
   await sleep(1_000)
   screenshot(`${name} before`)
@@ -194,12 +197,16 @@ async function runCase(name, { answer, grant = [], record = 4_000, after }) {
     detail = String(error)
   }
   const log = crashLog()
-  if (log) outcome = outcome === 'alive' ? 'alive (with crash log)' : outcome
+  if (log && /FATAL EXCEPTION|SIGSEGV|SIGABRT|Abort message|Render process/.test(log)) outcome = outcome === 'alive' ? 'alive (with crash log)' : outcome
   results.push({ name, outcome, detail, answered })
   console.log(`Outcome: ${outcome} ${detail}`)
-  if (log) {
-    console.log(log)
-    writeFileSync(`voice-crash-${name.replace(/\W+/g, '-')}.txt`, `${log}\n\n${adb(['logcat', '-d'], { allowFailure: true })}`)
+  if (log || outcome !== 'alive') {
+    // Android's own record of why the process ended.
+    const exits = adb(['shell', 'dumpsys', 'activity', 'exit-info', packageName], { allowFailure: true })
+    const appLines = adb(['logcat', '-d'], { allowFailure: true }).split('\n')
+      .filter((line) => line.includes(packageName) || /ActivityManager|OneTimePermission|PermissionController/.test(line)).slice(-80).join('\n')
+    if (outcome !== 'alive') console.log(`${log}\n-- exit info\n${exits.split('\n').slice(0, 40).join('\n')}\n-- app lines\n${appLines}`)
+    writeFileSync(`voice-crash-${name.replace(/\W+/g, '-')}.txt`, `${log}\n\n-- exit info\n${exits}\n\n${adb(['logcat', '-d'], { allowFailure: true })}`)
   }
 }
 
@@ -215,7 +222,7 @@ async function run() {
   console.log(`Android ${adb(['shell', 'getprop', 'ro.build.version.release']).trim()}, WebView ${adb(['shell', 'dumpsys', 'package', 'com.google.android.webview']).match(/versionName=(\S+)/)?.[1] ?? 'unknown'}`)
 
   await runCase('fresh install, allow every prompt, stop in app', { answer: 'allow', after: stopInApp })
-  await runCase('fresh install, allow only this time', { answer: 'once', after: stopInApp })
+  for (const attempt of [1, 2, 3]) await runCase(`fresh install, allow only this time #${attempt}`, { answer: 'once', after: stopInApp })
   await runCase('fresh install, deny every prompt', { answer: 'deny' })
   await runCase('microphone granted earlier, allow the rest', { answer: 'allow', grant: ['RECORD_AUDIO'], after: stopInApp })
   await runCase('everything granted earlier', { answer: 'allow', grant: ['RECORD_AUDIO', 'BLUETOOTH_CONNECT', 'POST_NOTIFICATIONS'], after: stopInApp })
