@@ -290,7 +290,8 @@
   .project-details { display: flex; flex-direction: column; gap: 12px; overflow-y: auto; margin: -4px; padding: 4px; }
   .project-details > * { flex-shrink: 0; }
   .name-field { display: grid; gap: 6px; font-size: 13px; }
-  .project-details .description-field { display: flex; flex-direction: column; gap: 6px; flex-shrink: 1; min-height: 0; font-size: 13px; }
+  /* Shrinks no further than its label plus the editor's minimum, so on short screens the card scrolls instead of the editor overflowing onto the controls below. */
+  .project-details .description-field { display: flex; flex-direction: column; gap: 6px; flex-shrink: 1; min-height: calc(1lh + 6px + 96px); font-size: 13px; }
   .project-status { margin: 0; color: var(--muted); font-size: 13px; }
   .project-actions, .project-days { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
   .project-actions button { font-size: 14px; padding: 8px 10px; }

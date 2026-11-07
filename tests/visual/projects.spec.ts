@@ -747,6 +747,26 @@ test('long project descriptions truncate within the page and remain editable in 
   expect(await field.evaluate(editor => editor.scrollHeight <= editor.clientHeight)).toBe(true)
 })
 
+test('a long description stays clear of the controls below it on a short screen', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 340 })
+  await page.goto('/')
+  await openView(page, 'Projects')
+  await addProject(page, 'Synthetic short screen')
+  await page.locator('.project-card', { hasText: 'Synthetic short screen' }).click()
+  const details = page.getByRole('dialog')
+  await details.getByRole('button', { name: 'Mark active' }).click()
+  await details.getByRole('button', { name: '3 days' }).click()
+  await page.locator('.project-card', { hasText: 'Synthetic short screen' }).click()
+  await details.getByRole('textbox', { name: 'Description' }).fill('Synthetic words for a long description. '.repeat(80))
+  await expect(details.getByText(/^Active until/)).toBeVisible()
+  const gap = await details.evaluate(card => {
+    const editor = card.querySelector('.description-editor')!.getBoundingClientRect()
+    const status = card.querySelector('.project-status')!.getBoundingClientRect()
+    return status.top - editor.bottom
+  })
+  expect(gap).toBeGreaterThanOrEqual(0)
+})
+
 test('typing continues at the caret after new lines resize the project modal', async ({ page }) => {
   await page.goto('/')
   await openView(page, 'Projects')
