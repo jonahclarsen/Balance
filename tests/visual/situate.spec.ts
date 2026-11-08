@@ -204,16 +204,16 @@ test('sidebar shows only modes that are on; reminders open their description', a
 
 test.describe('without a sunset location', () => {
   test.use({ timezoneId: 'UTC' })
-  test('sidebar pills say when a mode turns on or off within the hour', async ({page}, testInfo) => {
+  test('sidebar pills count down to a mode turning on or off within the hour', async ({page}, testInfo) => {
     await page.clock.setSystemTime(Date.UTC(2026,9,17,19))
     await page.clock.runFor(1001)
     if (testInfo.project.name==='mobile') await page.getByRole('button',{name:'Open navigation',exact:true}).click()
     const sidebar=page.getByLabel('Situate modes')
-    await expect(sidebar.getByRole('button',{name:'Active Projects to 7:30PM',exact:true})).toBeVisible()
+    await expect(sidebar.getByRole('button',{name:'Active Projects for 30 mins',exact:true})).toBeVisible()
     await expect(sidebar.getByText('Touch grass')).toHaveCount(0)
     await page.clock.setSystemTime(Date.UTC(2026,9,17,21))
     await page.clock.runFor(1001)
-    await expect(sidebar.getByText('Touch grass at 9:30PM',{exact:true})).toBeVisible()
+    await expect(sidebar.getByText('Touch grass in 30 mins',{exact:true})).toBeVisible()
     await expect(sidebar.getByRole('button',{name:/^Touch grass/})).toHaveCount(0)
     await expect(sidebar.getByText('Active Projects')).toHaveCount(0)
   })

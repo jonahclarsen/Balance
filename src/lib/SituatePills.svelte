@@ -1,21 +1,21 @@
 <script lang="ts">
   import { situate, situateNow, situatePlatform, requestQuiz } from './situate/store'
   import { isActive, nextChange } from './situate/core'
-  import { clockTime } from './situate/ui'
   import { browsersMissingExtension, extensionSetupOpen } from './situate/extension'
   $: pills = $situate.modes.flatMap(mode => {
     const on = isActive($situate, mode, situatePlatform, $situateNow)
     const change = nextChange($situate, mode, situatePlatform, $situateNow)
     return on || change ? [{ mode, on, change }] : []
   })
+  const mins = (at: number, now: number) => { const n = Math.ceil((at - now) / 60000); return `${n} min${n === 1 ? '' : 's'}` }
 </script>
 {#if pills.length || $browsersMissingExtension.length}
   <div class="situate-pills" aria-label="Situate modes">
     {#each pills as { mode, on, change } (mode.id)}
       {#if on || mode.reminder}
-        <button class="situate-pill" class:upcoming={!on} type="button" style:--mode={mode.color} title={mode.reminder ? mode.description : `Take the quiz to turn off ${mode.name}`} on:click={() => requestQuiz(mode.id)}>{mode.name}{#if change}{' '}<span class="when">{on ? 'to' : 'at'} {clockTime(change)}</span>{/if}</button>
+        <button class="situate-pill" class:upcoming={!on} type="button" style:--mode={mode.color} title={mode.reminder ? mode.description : `Take the quiz to turn off ${mode.name}`} on:click={() => requestQuiz(mode.id)}>{mode.name}{#if change}{' '}<span class="when">{on ? 'for' : 'in'} {mins(change, $situateNow)}</span>{/if}</button>
       {:else}
-        <span class="situate-pill upcoming" style:--mode={mode.color} title={mode.description}>{mode.name}{#if change}{' '}<span class="when">at {clockTime(change)}</span>{/if}</span>
+        <span class="situate-pill upcoming" style:--mode={mode.color} title={mode.description}>{mode.name}{#if change}{' '}<span class="when">in {mins(change, $situateNow)}</span>{/if}</span>
       {/if}
     {/each}
     {#if $browsersMissingExtension.length}<button class="situate-pill warning" type="button" title="Websites aren’t blocked in this browser" on:click={() => extensionSetupOpen.set(true)}>! Extension</button>{/if}
