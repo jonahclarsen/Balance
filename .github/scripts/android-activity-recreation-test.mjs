@@ -143,7 +143,7 @@ async function openSyntheticNote() {
   await client.evaluate(`document.querySelector('button[data-nav-view="notes"]').click()`)
   await waitFor(() => client.evaluate(`(() => {
     const visible = el => el && !el.closest('[hidden], [inert]') && el.getClientRects().length > 0
-    let editor = document.querySelector('section[aria-label="Main note"] [contenteditable="true"]')
+    let editor = document.querySelector('section[aria-label="Note"] [contenteditable="true"]')
     if (!visible(editor)) { document.querySelector('.note-card')?.click(); return false }
     editor.focus()
     const range = document.createRange()
