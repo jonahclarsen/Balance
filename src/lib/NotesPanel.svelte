@@ -790,7 +790,7 @@
               aria-label={resurfaceDays === null ? 'Resurface' : `Resurface ${resurfaceLabel(resurfaceDays)}`}
               title="Resurface: show while generating a day, every so often"
               on:click={() => (resurfacePickerOpen = !resurfacePickerOpen)}
-            ><ResurfaceIcon /><span aria-hidden="true">Resurface</span></button>
+            ><span aria-hidden="true">Resurface</span><ResurfaceIcon /></button>
             <button type="button" title="Start another version from a copy of this one" on:click={addVersion}>New version</button>
             <button class="ghost danger" type="button" title={selectedVersions.length > 1 ? 'Move every version of this note to the Bin' : undefined} on:click={() => moveToTrash(selectedNote!.id)}>Bin it</button>
           {/if}
