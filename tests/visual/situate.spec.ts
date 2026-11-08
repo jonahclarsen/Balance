@@ -202,6 +202,23 @@ test('sidebar shows only modes that are on; reminders open their description', a
   await expect(page.getByRole('button',{name:'Turn off Active Projects',exact:true})).toHaveCount(0)
 })
 
+test.describe('without a sunset location', () => {
+  test.use({ timezoneId: 'UTC' })
+  test('sidebar pills say when a mode turns on or off within the hour', async ({page}, testInfo) => {
+    await page.clock.setSystemTime(Date.UTC(2026,9,17,19))
+    await page.clock.runFor(1001)
+    if (testInfo.project.name==='mobile') await page.getByRole('button',{name:'Open navigation',exact:true}).click()
+    const sidebar=page.getByLabel('Situate modes')
+    await expect(sidebar.getByRole('button',{name:'Active Projects to 7:30PM',exact:true})).toBeVisible()
+    await expect(sidebar.getByText('Touch grass')).toHaveCount(0)
+    await page.clock.setSystemTime(Date.UTC(2026,9,17,21))
+    await page.clock.runFor(1001)
+    await expect(sidebar.getByText('Touch grass at 9:30PM',{exact:true})).toBeVisible()
+    await expect(sidebar.getByRole('button',{name:/^Touch grass/})).toHaveCount(0)
+    await expect(sidebar.getByText('Active Projects')).toHaveCount(0)
+  })
+})
+
 test('compact widget opens a quiz without loading planner storage', async ({page}) => {
   await page.addInitScript(() => {
     const original=Storage.prototype.getItem
@@ -236,7 +253,7 @@ test('a mode can turn on only at evening with heads-ups', async ({page}) => {
 test.describe('with a sunset location', () => {
   test.use({ timezoneId: 'America/Vancouver' })
   test('reminder times can follow sunset and say when that is tonight', async ({page}) => {
-    await expect(page.locator('.schedule').getByText(/^\(\d+:\d\d\s[AP]M tonight\)$/)).toHaveCount(2)
+    await expect(page.locator('.schedule').getByText(/^\(\d+:\d\d[AP]M tonight\)$/)).toHaveCount(2)
     await page.getByRole('button',{name:'Edit Active Projects',exact:true}).click()
     const dialog=page.getByRole('dialog',{name:'Edit Active Projects'})
     const start=dialog.getByRole('button',{name:'Start or sunset',exact:true})

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { defaults, regenerate, reminderWindow, epoch, enableMode, grant, isActive, backOn, headsUp, questions, quizProgress, validate, matches, sunset, upgradePresets, timeZoneLocation, type Reminder } from '../../src/lib/situate/core'
+import { defaults, regenerate, reminderWindow, epoch, enableMode, grant, isActive, backOn, headsUp, nextChange, questions, quizProgress, validate, matches, sunset, upgradePresets, timeZoneLocation, type Reminder } from '../../src/lib/situate/core'
 import { reconcileRules, sharedRules } from '../../src/lib/situate/sharing'
 const date = (day:number,hour:number,minute=0) => new Date(2026,9,17+day,hour,minute).getTime()
 // Clock times only: sunset would otherwise follow the machine's time zone.
@@ -55,6 +55,17 @@ test('touch grass turns on only at evening, with heads-ups, and a daytime turn-o
   const legacy=upgradePresets({ ...d, presets:8, modes:d.modes.map(({ eveningOnly:_e, headsUp:_h, ...m })=>m) })
   expect(legacy.modes[1]).toMatchObject({ eveningOnly:true, headsUp:[15,5] })
   expect(() => validate({ ...d, modes:[{ ...tg, headsUp:[0] }] })).toThrow('Heads-ups')
+})
+test('next change within the hour, on or off', () => {
+  const d=fixture();const [dolo,tg]=d.modes;const ap=d.modes.find(m=>m.id==='active-projects')!
+  expect(nextChange(d,tg,'mac',date(0,21))).toBe(date(0,21,30))
+  expect(nextChange(d,tg,'mac',date(0,20,29))).toBeNull()
+  expect(nextChange(d,dolo,'mac',date(0,21))).toBeNull()
+  expect(nextChange(d,ap,'mac',date(0,19))).toBe(date(0,19,30))
+  expect(nextChange(d,tg,'mac',date(1,6,30))).toBe(date(1,7))
+  const passed=grant(d,'dolo',{thrust:true},date(0,23),date(0,23))
+  expect(nextChange(passed,dolo,'mac',date(1,6,30))).toBe(date(1,7))
+  expect(nextChange(d,tg,'windows',date(0,21))).toBeNull()
 })
 test('night passes last 50 minutes, drop to 25 at the late boundary, and never cross wake time', () => {
   const d=fixture();const answers={peed:true,bed:true}

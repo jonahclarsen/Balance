@@ -255,6 +255,14 @@ export function nextScheduled(doc: Document, mode: Mode, now: number): number | 
   if (!mode.scheduled) return null
   return doc.epochs.find(e => e.at > now && (!eveningOnly(mode) || e.phase === 'night'))?.at ?? null
 }
+/** When a mode next turns on or off within the next `within` milliseconds, or null. */
+export function nextChange(doc: Document, mode: Mode, platform: Platform, now: number, within = 60 * minute): number | null {
+  if (!mode.platforms.includes(platform)) return null
+  const on = isActive(doc, mode, platform, now)
+  const times = [...doc.epochs.flatMap(e => [e.at, e.end]), ...doc.windows.filter(w => w.mode === mode.id).flatMap(w => [w.at, w.end]), ...doc.grants.filter(g => g.mode === mode.id).map(g => g.until)]
+  const soon = [...new Set(times.filter(t => t > now && t <= now + within))].sort((a, b) => a - b)
+  return soon.find(t => isActive(doc, mode, platform, t) !== on) ?? null
+}
 /** The heads-up, in minutes, whose time before an off mode comes back on has been reached. */
 export function headsUp(doc: Document, mode: Mode, platform: Platform, now: number): number | null {
   if (!mode.headsUp?.length || isActive(doc, mode, platform, now)) return null
