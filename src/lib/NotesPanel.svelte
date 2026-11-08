@@ -8,6 +8,7 @@
   import { NOTE_TRASH_RETENTION_DAYS, noteTrashDaysRemaining } from './noteTrash'
   import { noteVersionGroupId, noteVersionLabel, noteVersionsOf } from './noteVersions'
   import { NOTE_RESURFACE_CHOICES, resurfaceLabel } from './noteResurfacing'
+  import ResurfaceIcon from './ResurfaceIcon.svelte'
   import type { Id, ListTemplate, Metric, Note, NoteItem, NoteItemKind, NoteResurfacing, NoteViewState } from './types'
 
   const NOTE_SCROLL_SPACE_PERCENT_KEY = 'balance:noteScrollSpacePercent'
@@ -160,8 +161,7 @@
   $: if (selectedNote?.id || trashOpen) resurfacePickerOpen = false
 
   function chooseResurfacing(days: number | null) {
-    if (selectedNote) onSetResurfacing(selectedNote.id, days)
-    resurfacePickerOpen = false
+    if (selectedNote && days !== resurfaceDays) onSetResurfacing(selectedNote.id, days)
   }
   $: if (!trashOpen && selectedNote) lastActiveNoteId = selectedNote.id
   $: if (trashOpen && selectedNote) lastTrashNoteId = selectedNote.id
@@ -745,7 +745,7 @@
                 <strong>{note.title.trim() || 'Untitled note'}{#if versionLabel}<small class="note-card-version"> · {versionLabel}</small>{/if}</strong>
                 <span>{previewText(note) || 'Empty note'}</span>
                 {#if versions.length > 1}<small class="note-card-versions">{versions.length} versions</small>{/if}
-                {#if !trashOpen && versions.some(({ id }) => resurfacingIds.has(id))}<small class="note-card-resurface" title="Resurfaces">↻</small>{/if}
+                {#if !trashOpen && versions.some(({ id }) => resurfacingIds.has(id))}<small class="note-card-resurface" title="Resurfaces"><ResurfaceIcon size={13} /></small>{/if}
                 <time datetime={updatedAt}>{readableDate(updatedAt)}</time>
               </button>
               {#if !trashOpen}
@@ -790,17 +790,17 @@
               aria-label={resurfaceDays === null ? 'Resurface' : `Resurface ${resurfaceLabel(resurfaceDays)}`}
               title="Resurface: show while generating a day, every so often"
               on:click={() => (resurfacePickerOpen = !resurfacePickerOpen)}
-            ><span aria-hidden="true">↻{resurfaceDays === null ? '' : ` ${resurfaceLabel(resurfaceDays)}`}</span></button>
+            ><ResurfaceIcon /><span aria-hidden="true">Resurface</span></button>
             <button type="button" title="Start another version from a copy of this one" on:click={addVersion}>New version</button>
             <button class="ghost danger" type="button" title={selectedVersions.length > 1 ? 'Move every version of this note to the Bin' : undefined} on:click={() => moveToTrash(selectedNote!.id)}>Bin it</button>
           {/if}
         </div>
         {#if resurfacePickerOpen && !trashOpen}
-          <div class="note-resurface-choices" role="group" aria-label="Resurface every">
-            {#each NOTE_RESURFACE_CHOICES as days (days)}
-              <button type="button" class:primary={days === resurfaceDays} aria-pressed={days === resurfaceDays} on:click={() => chooseResurfacing(days)}>{resurfaceLabel(days)}</button>
+          <div class="note-resurface-choices" role="group" aria-labelledby={sidePane ? 'note-side-resurface-every' : 'note-resurface-every'}>
+            <span id={sidePane ? 'note-side-resurface-every' : 'note-resurface-every'} class="note-resurface-every">Resurface every</span>
+            {#each [null, ...NOTE_RESURFACE_CHOICES] as days (days ?? 'off')}
+              <button type="button" class:primary={days === resurfaceDays} aria-pressed={days === resurfaceDays} on:click={() => chooseResurfacing(days)}>{days === null ? 'Off' : resurfaceLabel(days)}</button>
             {/each}
-            {#if resurfaceDays !== null}<button class="ghost" type="button" on:click={() => chooseResurfacing(null)}>Off</button>{/if}
           </div>
         {/if}
         <span class="note-word-count" title="Words in the note body">{wordCount.toLocaleString()} {wordCount === 1 ? 'word' : 'words'}</span>

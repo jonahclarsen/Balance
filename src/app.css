@@ -6692,8 +6692,8 @@ a[href^="balance://page/settings"] {
   position: absolute;
   right: 9px;
   bottom: 10px;
+  display: flex;
   color: var(--accent);
-  font-size: 12px;
 }
 
 .note-card-row:hover .note-card-resurface,
@@ -6764,6 +6764,12 @@ textarea.note-title {
   flex: 0 0 auto;
 }
 
+.note-resurface-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .note-resurface-toggle.active {
   border-color: var(--accent);
   color: var(--accent);
@@ -6773,7 +6779,14 @@ textarea.note-title {
   display: flex;
   flex-basis: 100%;
   flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
   gap: 6px;
+}
+
+.note-resurface-every {
+  margin-right: 4px;
+  color: var(--muted);
 }
 
 .note-word-count {
@@ -7298,6 +7311,10 @@ textarea.note-title {
 
   .note-actions {
     flex-wrap: wrap;
+  }
+
+  .note-resurface-choices {
+    justify-content: flex-start;
   }
 
   .note-format-toolbar {
