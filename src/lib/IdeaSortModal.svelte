@@ -76,6 +76,9 @@
   $: queued = queue[index]
   $: current = queued ? findIdea(groups, queued.id)?.item ?? queued : undefined
   $: clip = current ? voiceClips.find((candidate) => candidate.ideaId === current.id) : undefined
+  // Until its transcript arrives the audio is the whole idea, and it only
+  // survives in an idea group, so choices that leave the groups wait.
+  $: untranscribed = Boolean(clip && !clip.transcript)
   $: openClip = openClipId ? voiceClips.find((candidate) => candidate.id === openClipId) ?? null : null
   $: options = step === 'yes' ? (['possible', 'genuine'] as const) : step === 'no' ? (['trash', 'afterlife'] as const) : []
   $: resetCard(index)
@@ -165,7 +168,7 @@
   }
 
   function appendToPrevious() {
-    if (!current || index === 0) return
+    if (!current || index === 0 || untranscribed) return
     const previousId = queue[index - 1]!.id
     const snapshots = [...snapshot(previousId), ...snapshot(current.id)]
     if (!onAppendToPrevious(current.id, previousId)) return
@@ -174,21 +177,21 @@
   }
 
   function cut() {
-    if (!current || refuse('cut')) return
+    if (!current || untranscribed || refuse('cut')) return
     record(snapshot(current.id))
     onCut(current.id)
     dropCurrent()
   }
 
   function addToDay() {
-    if (!current || !onAddToDay || refuse('day')) return
+    if (!current || !onAddToDay || untranscribed || refuse('day')) return
     record(snapshot(current.id))
     onAddToDay(current.id)
     dropCurrent()
   }
 
   function addToNote() {
-    if (!current || refuse('note')) return
+    if (!current || untranscribed || refuse('note')) return
     const snapshots = snapshot(current.id)
     const noteId = onAddToNote(current.id)
     if (!noteId) return
@@ -387,8 +390,8 @@
                   on:click={(event) => openClickedLink(event, onOpenLink)}
                   class="paste-review-text item-text item-text-display"
                   class:done={current.done}
-                  class:empty={!current.text?.trim()}
-                >{@html current.text?.trim() ? renderIdeaHTML(current) : '(empty idea)'}</div>
+                  class:empty={!current.text?.trim() && !clip}
+                >{@html current.text?.trim() ? renderIdeaHTML(current) : clip ? '' : '(empty idea)'}</div>
               {/if}
               {#if clip}
                 <VoiceClipChip {clip} onOpen={() => { openClipId = clip.id }} />
@@ -422,7 +425,7 @@
             on:click={() => choose(kind)}
           >{meta.label} ({meta.key.toUpperCase()})</button>
         {/each}
-        {#if step === 'yes'}
+        {#if step === 'yes' && !untranscribed}
           {#snippet extra(action: Action, title: string, label: string, run: () => void)}
             <button
               type="button"
@@ -446,7 +449,7 @@
     {#if !editing}
       <div class="paste-review-actions idea-sort-secondary">
         <button type="button" disabled={history.length === 0 && step === 'question'} on:click={goBack}>Back (B)</button>
-        <button type="button" disabled={index === 0} title="Join this idea onto the previous one" on:click={appendToPrevious}>Append to previous (M)</button>
+        <button type="button" disabled={index === 0 || untranscribed} title="Join this idea onto the previous one" on:click={appendToPrevious}>Append to previous (M)</button>
         <button type="button" on:click={() => void startEdit()}>Edit (E)</button>
       </div>
     {/if}

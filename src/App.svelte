@@ -57,8 +57,7 @@
   import { dayTemplateShortcutLetters } from './lib/dayTemplateShortcuts'
   import IdeaImportModal from './lib/IdeaImportModal.svelte'
   import { countIdeas, dueIdeaReviews, ideaGroupItems, findIdea, IDEA_GROUPS, readActiveIdeaGroup, saveActiveIdeaGroup } from './lib/ideas'
-  import { awaitingTranscription } from './lib/voiceClips'
-  import { transcribeClips } from './lib/voiceTranscription'
+  import { canTranscribe, transcribeClips, transcriptionStatus } from './lib/voiceTranscription'
   import { IDEA_REVIEW_LABELS, type IdeaReviewKind } from './lib/ideaLinks'
   import NotesPanel from './lib/NotesPanel.svelte'
   import ImaxButton from './lib/ImaxButton.svelte'
@@ -121,7 +120,7 @@
     runDatabaseMaintenanceIfNeeded,
   } from './lib/store'
   import type { DatabaseHistoryEntry, DatabaseInspection, DatabaseMaintenanceStatus, DatabaseOperationEntry, MetadataEntry, RecoveryEntry, RecoveryKeyStatus } from './lib/store'
-  import type { ArchivedListTemplateItem, ColorSchemePreference, DailyPlan, DailyTemplate, DeviceAppearancePreferences, Goal, Id, IdeaGroupKind, ListInstance, ListTemplate, ListTemplateItem, Metric, MetricEntry, MetricQuestion, MoveDirection, MovePlacement, Note, NoteViewState, PlanItem, TemplateItem, TemplateQuizAnswers } from './lib/types'
+  import type { ArchivedListTemplateItem, ColorSchemePreference, DailyPlan, DailyTemplate, DeviceAppearancePreferences, Goal, Id, IdeaGroupKind, ListInstance, ListTemplate, ListTemplateItem, Metric, MetricEntry, MetricQuestion, MoveDirection, MovePlacement, Note, NoteViewState, PlanItem, TemplateItem, TemplateQuizAnswers, VoiceClip } from './lib/types'
   import { historyDestination, type HistoryDestination } from './lib/historyNavigation'
   import { captureTreeEditorSelection, restoreTreeEditorSelection } from './lib/treeEditorSelection'
   import type { SearchResult } from './lib/search'
@@ -3413,8 +3412,7 @@ return rows`
   }
 
   function sortPropositions() {
-    const waiting = awaitingTranscription($plannerStore.voiceClips)
-    const queue = ideaGroupItems($plannerStore.ideaBuckets, 'proposition').filter((item) => !waiting.has(item.id))
+    const queue = ideaGroupItems($plannerStore.ideaBuckets, 'proposition')
     if (queue.length > 0) void askIdeaSort(queue, 'Sort Proposition Party')
   }
 
@@ -3791,6 +3789,18 @@ return rows`
     voiceRecoveryStarted = true
     void recoverVoiceRecordings()
   }
+  // The Mac transcribes recordings as they arrive, from this device or a sync.
+  // A clip is tried once per launch; the Ideas page button retries failures.
+  const autoTranscribed = new Set<Id>()
+  $: if (canTranscribe && !$databaseLoadPending && $voiceRecording.state === 'idle' && $transcriptionStatus.state === 'idle') {
+    autoTranscribe($plannerStore.voiceClips)
+  }
+  function autoTranscribe(clips: VoiceClip[]) {
+    const pending = clips.filter((clip) => !clip.transcript && !autoTranscribed.has(clip.id))
+    if (pending.length === 0) return
+    for (const clip of pending) autoTranscribed.add(clip.id)
+    void transcribeClips(pending, plannerStore.applyVoiceTranscript)
+  }
 
   async function generateDayFromTemplate(templateId: Id, date = $plannerStore.activePlanDate || todayISO()) {
     const template = templates.find((candidate) => candidate.id === templateId)
@@ -3826,10 +3836,8 @@ return rows`
     // Every proposition must land in a group or the new day before it begins.
     // Keep day reservations on the ideas until generation succeeds, so closing
     // either the sorter or the quiz preserves choices for this specific date.
-    // Recordings wait in Proposition Party until they are transcribed.
-    const waiting = awaitingTranscription($plannerStore.voiceClips)
     const propositions = ideaGroupItems($plannerStore.ideaBuckets, 'proposition')
-      .filter((item) => item.dayAssignmentDate !== date && !waiting.has(item.id))
+      .filter((item) => item.dayAssignmentDate !== date)
     const addToDay = (itemId: Id) => plannerStore.assignIdeaToDay(itemId, date)
     if (propositions.length > 0 && !(await askIdeaSort(
       propositions, 'Sort new ideas', addToDay, plannerStore.showDayGenerationIdeas(date, propositions.map(({ id }) => id)),

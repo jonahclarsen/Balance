@@ -35,7 +35,7 @@ async function open(page: Page) {
 
 const proposition = (page: Page) => page.locator('.ideas-panel')
 
-test('a recorded idea persists, waits for transcription and leaves with its idea', async ({ page }, testInfo) => {
+test('a recorded idea persists, sorts before transcription and leaves with its idea', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop', 'Fake capture devices are Chromium-only')
   await open(page)
 
@@ -58,11 +58,18 @@ test('a recorded idea persists, waits for transcription and leaves with its idea
   await openView(page, 'Ideas')
   await expect(proposition(page).locator('.voice-clip-chip')).toBeVisible()
 
-  // Untranscribed recordings are skipped by Sort.
+  // Sort offers untranscribed recordings too, holding back choices that
+  // would take the audio out of the idea groups.
   await storeCall(page, "plannerStore.addIdea('Synthetic typed idea')")
   await proposition(page).getByRole('button', { name: 'Sort', exact: true }).click()
   const sorter = page.locator('.idea-sort[role="dialog"]')
-  await expect(sorter.getByRole('progressbar', { name: 'Ideas sorted' })).toHaveAttribute('aria-valuemax', '1')
+  await expect(sorter.getByRole('progressbar', { name: 'Ideas sorted' })).toHaveAttribute('aria-valuemax', '2')
+  // The older recording comes first.
+  await expect(sorter.locator('.voice-clip-chip')).toBeVisible()
+  await page.keyboard.press('y')
+  await expect(sorter.getByRole('button', { name: /^Possibly/ })).toBeVisible()
+  await expect(sorter.getByRole('button', { name: 'Cut (X)' })).toHaveCount(0)
+  await expect(sorter.getByRole('button', { name: 'Add to new note (N)' })).toHaveCount(0)
   await page.keyboard.press('Escape')
   await expect(sorter).toBeHidden()
 

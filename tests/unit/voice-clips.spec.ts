@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { createPlanItem, createInitialState } from '../../src/lib/planner'
-import { alignTranscript, awaitingTranscription, reconcileVoiceClips, timeRangeForSelection, tokenAtTime } from '../../src/lib/voiceClips'
+import { alignTranscript, reconcileVoiceClips, timeRangeForSelection, tokenAtTime } from '../../src/lib/voiceClips'
 import type { AppState, IdeaGroupKind, VoiceClip, VoiceWord } from '../../src/lib/types'
 
 const words: VoiceWord[] = [
@@ -45,10 +45,15 @@ function stateWith(kind: IdeaGroupKind, clip: Partial<VoiceClip> = {}): AppState
   }
 }
 
-test('clips are dropped once their idea leaves Proposition Party', () => {
-  const waiting = stateWith('proposition')
-  const sorted = { ...waiting, ideaBuckets: [{ ...waiting.ideaBuckets[0]!, id: 'bucket_trash', kind: 'trash' as const }] }
-  expect(reconcileVoiceClips(waiting, sorted).voiceClips).toEqual([])
+const transcript = { text: 'Synthetic', words: [], model: 'test', transcribedAt: '2026-10-27T00:00:00Z' }
+
+function sortedTo(state: AppState, kind: IdeaGroupKind): AppState {
+  return { ...state, ideaBuckets: [{ ...state.ideaBuckets[0]!, id: `bucket_${kind}`, kind }] }
+}
+
+test('transcribed clips are dropped once their idea leaves Proposition Party', () => {
+  const waiting = stateWith('proposition', { transcript })
+  expect(reconcileVoiceClips(waiting, sortedTo(waiting, 'trash')).voiceClips).toEqual([])
   // Unrelated edits keep the clip and the state reference.
   const unrelated = { ...waiting, notes: [] }
   expect(reconcileVoiceClips(waiting, unrelated)).toBe(unrelated)
@@ -58,10 +63,15 @@ test('clips are dropped once their idea leaves Proposition Party', () => {
   expect(reconcileVoiceClips(waiting, nested).voiceClips).toHaveLength(1)
 })
 
-test('only untranscribed clips hold their ideas back from sorting', () => {
-  expect([...awaitingTranscription(stateWith('proposition').voiceClips)]).toEqual(['idea_voice'])
-  const transcribed = stateWith('proposition', { transcript: { text: 'Synthetic', words: [], model: 'test', transcribedAt: '2026-10-27T00:00:00Z' } })
-  expect(awaitingTranscription(transcribed.voiceClips).size).toBe(0)
+test('untranscribed clips follow their idea into any group until it leaves the groups', () => {
+  const waiting = stateWith('proposition')
+  const sorted = sortedTo(waiting, 'possible')
+  expect(reconcileVoiceClips(waiting, sorted).voiceClips).toHaveLength(1)
+  // The transcript fills the idea, so the audio goes with that commit.
+  const transcribed = { ...sorted, voiceClips: [{ ...sorted.voiceClips[0]!, transcript }] }
+  expect(reconcileVoiceClips(sorted, transcribed).voiceClips).toEqual([])
+  const deleted = { ...sorted, ideaBuckets: [{ ...sorted.ideaBuckets[0]!, items: [] }] }
+  expect(reconcileVoiceClips(sorted, deleted).voiceClips).toEqual([])
 })
 
 test('lines typed before transcribing stay untimed', () => {

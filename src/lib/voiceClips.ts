@@ -9,29 +9,27 @@ function collectIds(items: PlanItem[], ids: Set<Id>) {
   }
 }
 
-export function propositionIdeaIds(groups: IdeaGroup[]): Set<Id> {
+function ideaIds(groups: IdeaGroup[], keep: (group: IdeaGroup) => boolean): Set<Id> {
   const ids = new Set<Id>()
-  for (const group of groups) if (group.kind === 'proposition') collectIds(group.items, ids)
+  for (const group of groups) if (keep(group)) collectIds(group.items, ids)
   return ids
 }
 
 // Audio is kept only while its idea waits in Proposition Party, so sorting,
 // deleting, merging or moving the idea to a day drops the clip in the same commit.
+// An untranscribed clip is the idea's only content, so it stays with its idea
+// in any group until its transcript arrives.
 export function reconcileVoiceClips(before: AppState, after: AppState): AppState {
   if (after.voiceClips.length === 0) return after
   if (before.ideaBuckets === after.ideaBuckets && before.voiceClips === after.voiceClips) return after
-  const live = propositionIdeaIds(after.ideaBuckets)
-  const voiceClips = after.voiceClips.filter((clip) => live.has(clip.ideaId))
+  const waiting = ideaIds(after.ideaBuckets, (group) => group.kind === 'proposition')
+  const anywhere = after.voiceClips.some((clip) => !clip.transcript) ? ideaIds(after.ideaBuckets, () => true) : waiting
+  const voiceClips = after.voiceClips.filter((clip) => (clip.transcript ? waiting : anywhere).has(clip.ideaId))
   return voiceClips.length === after.voiceClips.length ? after : { ...after, voiceClips }
 }
 
 export function clipsByIdea(clips: VoiceClip[]): Map<Id, VoiceClip> {
   return new Map(clips.map((clip) => [clip.ideaId, clip]))
-}
-
-// Untranscribed recordings can't be judged yet, so sorting passes them by.
-export function awaitingTranscription(clips: VoiceClip[]): Set<Id> {
-  return new Set(clips.filter((clip) => !clip.transcript).map((clip) => clip.ideaId))
 }
 
 export function formatClipDuration(ms: number): string {

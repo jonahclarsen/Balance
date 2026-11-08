@@ -29,14 +29,21 @@ Each clip is a `voiceClips` record (`src/lib/types.ts`) holding the audio as a
 data URL, its duration, 20-per-second loudness peaks and, once transcribed, the
 transcript with word times. It syncs like any other entity collection.
 
-A clip lives only while its idea is in Proposition Party: every local commit
-runs `reconcileVoiceClips`, so sorting, deleting, merging or moving the idea to
-a day deletes the audio in the same operation. Undo restores it. Untranscribed
-recordings are skipped by Sort and by the sort before day generation.
+A transcribed clip lives only while its idea is in Proposition Party: every
+local commit runs `reconcileVoiceClips`, so sorting, deleting, merging or moving
+the idea to a day deletes the audio in the same operation. Undo restores it.
+Until its transcript arrives the audio is the idea's only content, so an
+untranscribed clip stays with its idea in any idea group and is dropped when the
+transcript fills the idea. Sort and the sort before day generation show
+untranscribed recordings with their chip, but hide Add to day, Add to new note,
+Cut and Append to previous for them, since those take the idea out of the
+groups.
 
 ## Transcription (macOS)
 
-Transcribe sends 16 kHz PCM to the `transcribe_voice_clips` command, which runs
+The Mac app transcribes every untranscribed clip on its own once the workspace
+loads and whenever a new one arrives, locally or by sync, trying each clip once
+per launch; the Ideas page's Transcribe button retries failures. Transcribe sends 16 kHz PCM to the `transcribe_voice_clips` command, which runs
 `balance-transcriber` (`src-tauri/macos/BalanceTranscriber`, built by
 `scripts/build-macos-transcriber.mjs` and bundled in `Contents/MacOS`). It uses
 FluidAudio's Parakeet models in `~/Library/Application Support/FluidAudio/Models`,
