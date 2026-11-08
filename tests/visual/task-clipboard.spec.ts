@@ -323,3 +323,61 @@ test('Today batches paste into the open Ideas bucket with hierarchy, persistence
   await expect(inputs.last()).toContainText('plus text')
   await expect(inputs).toHaveCount(3)
 })
+
+test('tasks pasted into Add idea land in the dialog, not the day behind it', async ({ page }, info) => {
+  test.skip(info.project.name === 'mobile', 'desktop keyboard clipboard')
+  await page.clock.install({ time: new Date('2026-03-10T12:00:00') })
+  await page.goto('/')
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+  await page.evaluate(() => {
+    const item = (id: string, text: string, html = text) => ({ id, text, html, children: [], done: false, startMinutes: null, endMinutes: null })
+    localStorage.clear()
+    localStorage.setItem('balance.appState.v1', JSON.stringify({
+      schemaVersion: 1, deviceId: 'clipboard-test', localSequence: 0, historyRevision: 0,
+      activePlanDate: '2026-03-10', templates: [], goals: [], goalCompletions: [], operations: [],
+      plans: [{ id: 'clipboard-plan', date: '2026-03-10', dailyReminder: '', items: [
+        item('first', 'Bold task', '<b>Bold</b> task'), item('second', 'Second task'),
+      ] }],
+    }))
+  })
+  await page.reload()
+  const tasks = page.locator('[data-plan-text-input]')
+  const input = page.getByRole('textbox', { name: 'New idea' })
+  const state = () => page.evaluate(() => {
+    const value = JSON.parse(localStorage.getItem('balance.appState.v1')!)
+    return {
+      tasks: value.plans[0].items.map((item: any) => item.text),
+      ideas: (value.ideaBuckets ?? []).flatMap((group: any) => group.items.map((item: any) => `${group.kind}:${item.text.replace(/\u00a0/g, ' ')}`)),
+    }
+  })
+
+  // One task joins the draft at the caret, formatting and all.
+  await page.getByRole('button', { name: 'Select item' }).filter({ visible: true }).first().click()
+  await page.keyboard.press('Meta+C')
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('Bold task')
+  // Focus that lands just after a selection click keeps the selection instead.
+  await page.clock.fastForward(500)
+  await page.keyboard.press('Alt+A')
+  await expect(input).toBeFocused()
+  await input.pressSequentially('Idea: ')
+  await page.keyboard.press('Meta+V')
+  await expect(input).toHaveText('Idea: Bold task')
+  await expect(input.locator('b, strong')).toHaveText('Bold')
+  await page.keyboard.press('Enter')
+  await expect(input).toBeHidden()
+  await expect.poll(state).toEqual({ tasks: ['Bold task', 'Second task'], ideas: ['proposition:Idea: Bold task'] })
+
+  // Several tasks become separate ideas, and an empty draft closes.
+  await tasks.first().focus()
+  await page.keyboard.press('Meta+Shift+ArrowDown')
+  await page.keyboard.press('Meta+Shift+ArrowDown')
+  await page.keyboard.press('Meta+C')
+  await page.keyboard.press('Alt+A')
+  await expect(input).toBeFocused()
+  await page.keyboard.press('Meta+V')
+  await expect(input).toBeHidden()
+  await expect.poll(state).toEqual({
+    tasks: ['Bold task', 'Second task'],
+    ideas: ['proposition:Bold task', 'proposition:Second task', 'proposition:Idea: Bold task'],
+  })
+})

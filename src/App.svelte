@@ -4223,6 +4223,13 @@ return rows`
       return
     }
 
+    // The browser reads Balance's copied tasks here; Tauri delivers a paste event.
+    if (!isTauri() && isQuickAddEditorActive() && primaryModifier && !event.altKey && !event.shiftKey && key === 'v') {
+      event.preventDefault()
+      void pasteIntoQuickAdd()
+      return
+    }
+
     // Quick add owns the keyboard while open; its editor handles Enter and Escape.
     if (quickAddOpen) return
 
@@ -5817,7 +5824,49 @@ return rows`
     else pastePlainClipboardIntoActiveEditor(clipboard)
   }
 
+  function isQuickAddEditorActive() {
+    return quickAddOpen && document.activeElement instanceof HTMLElement && document.activeElement.dataset.richTextInputId === 'quick-add'
+  }
+
+  // Copied tasks paste into the idea dialog, not the page behind it. One task
+  // joins the draft; several become their own ideas, which ends an empty draft.
+  async function pasteIntoQuickAdd(contents?: ClipboardContents) {
+    const editor = document.activeElement
+    const clipboard = contents ?? await readSystemClipboard()
+    if (!isQuickAddEditorActive() || document.activeElement !== editor) return
+    const items = (parsePlanItemClipboard(clipboard.structuredPayload) ?? plainPlanItemClipboard(clipboard.plainText))?.items ?? []
+    if (items.length === 0) {
+      pastePlainClipboardIntoActiveEditor(clipboard)
+      return
+    }
+    const single = items.length === 1 && items[0]!.children.length === 0 ? items[0]! : null
+    if (single || quickAddEditing) {
+      pastePlainClipboardIntoActiveEditor({
+        structuredPayload: null,
+        plainText: single ? single.text : planItemsClipboardText(items),
+        html: single?.html ?? null,
+      })
+      return
+    }
+    plannerStore.importIdeas(items, 'proposition')
+    if (!quickAddText.trim() && $voiceRecording.state !== 'recording') {
+      await plannerStore.flushPendingOperations().catch(() => {})
+      closeQuickAdd()
+    }
+  }
+
   async function handleNativeEditorPaste(event: ClipboardEvent) {
+    if (isQuickAddEditorActive() && event.clipboardData && !event.defaultPrevented) {
+      if (clipboardHasDirectImage(event.clipboardData) || event.clipboardData.getData(IMAGE_CLIPBOARD_TYPE)) return
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      const fallback: ClipboardContents = { structuredPayload: null, plainText: event.clipboardData.getData('text/plain'), html: event.clipboardData.getData('text/html') }
+      let clipboard = await readSystemClipboard().catch(() => fallback)
+      if (!clipboard.structuredPayload && (fallback.plainText || fallback.html)) clipboard = { ...clipboard, ...fallback }
+      await pasteIntoQuickAdd(clipboard)
+      return
+    }
+
     if (canPasteIdeas() && event.clipboardData && !event.defaultPrevented) {
       if (clipboardHasDirectImage(event.clipboardData) || event.clipboardData.getData(IMAGE_CLIPBOARD_TYPE)) return
       event.preventDefault()
