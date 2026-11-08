@@ -7973,6 +7973,7 @@ return rows`
         onRename={plannerStore.renameNote}
         resurfacing={$plannerStore.noteResurfacing}
         onSetResurfacing={plannerStore.setNoteResurfacing}
+        onSetResurfacingReason={plannerStore.setNoteResurfacingReason}
         onAddItem={plannerStore.addRootNoteItem}
         patchItem={plannerStore.patchNoteItem}
         patchItemsDone={plannerStore.patchNoteItemsDone}

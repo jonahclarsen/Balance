@@ -12,22 +12,33 @@
   export let onClose: () => void
 
   $: later = Math.min(record.days * 2, 3650)
+  // A reminder of why it comes back shows first, before the note itself.
+  let viewing = !record.reason?.trim()
 </script>
 
 <OverlayModal title={note.title.trim() || 'Untitled note'} linkURL={navigationURL('note', note.id)} z={70} {onClose}>
-  <div class="resurfaced-note">
-    <div class="note-blocks">
-      {#each note.items as item (item.id)}
-        <ReadOnlyNoteItem {item} siblings={note.items} />
-      {/each}
+  {#if !viewing}
+    <div class="resurfaced-note">
+      <p class="resurfaced-note-reason">{record.reason}</p>
+      <div class="resurfaced-note-next">
+        <button class="primary" type="button" on:click={() => (viewing = true)}>View note</button>
+      </div>
     </div>
-    <div class="resurfaced-note-next" role="group" aria-label="Next time">
-      <span>Next</span>
-      <button class="primary" type="button" on:click={() => onDecide(record.days)}>{resurfaceLabel(record.days)}</button>
-      <button type="button" on:click={() => onDecide(later)}>{resurfaceLabel(later)}</button>
-      <button class="ghost" type="button" on:click={() => onDecide(null)}>Never</button>
+  {:else}
+    <div class="resurfaced-note">
+      <div class="note-blocks">
+        {#each note.items as item (item.id)}
+          <ReadOnlyNoteItem {item} siblings={note.items} />
+        {/each}
+      </div>
+      <div class="resurfaced-note-next" role="group" aria-label="Next time">
+        <span>Next</span>
+        <button class="primary" type="button" on:click={() => onDecide(record.days)}>{resurfaceLabel(record.days)}</button>
+        <button type="button" on:click={() => onDecide(later)}>{resurfaceLabel(later)}</button>
+        <button class="ghost" type="button" on:click={() => onDecide(null)}>Never</button>
+      </div>
     </div>
-  </div>
+  {/if}
 </OverlayModal>
 
 <style>
@@ -44,6 +55,14 @@
     gap: 8px;
     padding-top: 12px;
     border-top: 1px solid var(--line);
+  }
+
+  .resurfaced-note-reason {
+    margin: 0;
+    font-size: 17px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
 
   .resurfaced-note-next span {

@@ -91,12 +91,14 @@ export type Note = {
 
 // A note that comes back during day generation, keyed by the note's ID. last
 // is the date it was set up or last resurfaced; next is last plus days with
-// ±15% jitter, so it stays put when synced.
+// ±15% jitter, so it stays put when synced. reason is the reminder shown
+// before the note when it comes back.
 export type NoteResurfacing = {
   id: Id
   days: number
   last: string
   next: string
+  reason?: string
 }
 
 export type NoteViewState = {

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { generateDay, openView } from '../helpers/navigation'
+import { generateDay, openNoteList, openView } from '../helpers/navigation'
 
 test.use({ timezoneId: 'America/Vancouver' })
 
@@ -27,8 +27,19 @@ test('a resurfacing note blocks day generation until it is read', async ({ page 
   await expect(choices.getByRole('button', { name: 'Off' })).toHaveAttribute('aria-pressed', 'true')
   await choices.getByRole('button', { name: '≈2 wk' }).click()
   await expect(choices.getByRole('button', { name: '≈2 wk' })).toHaveAttribute('aria-pressed', 'true')
+  await page.getByRole('textbox', { name: 'Resurface reason' }).fill('You keep rushing again.')
   await page.getByRole('button', { name: 'Resurface ≈2 wk' }).click()
   await expect(choices).toBeHidden()
+
+  await openNoteList(page)
+  await page.getByRole('button', { name: 'New', exact: true }).click()
+  await page.getByRole('textbox', { name: 'Note title' }).fill('Never again')
+  await openNoteList(page)
+  const list = page.locator('.notes-list')
+  await expect(list.getByText('Never again')).toBeVisible()
+  await page.getByRole('button', { name: 'Only notes that resurface' }).click()
+  await expect(list.getByText('Never again')).toBeHidden()
+  await expect(list.getByText('Remember why')).toBeVisible()
   await expect.poll(async () => (await stored(page)).noteResurfacing.map(({ days, last }: { days: number; last: string }) => ({ days, last })))
     .toEqual([{ days: 14, last: '2026-10-08' }])
 
@@ -41,11 +52,14 @@ test('a resurfacing note blocks day generation until it is read', async ({ page 
   await page.reload()
   await generateDay(page)
   const dialog = page.getByRole('dialog', { name: 'Remember why' })
+  await expect(dialog).toContainText('You keep rushing again.')
+  await expect(dialog).not.toContainText('Slow down.')
+  await dialog.getByRole('button', { name: 'View note' }).click()
   await expect(dialog).toContainText('Slow down.')
   await dialog.getByRole('button', { name: '≈1 mo' }).click()
   await expect(dialog).toBeHidden()
   await expect(page.getByRole('region', { name: 'Daily plan' })).toBeVisible()
   const [record] = (await stored(page)).noteResurfacing
-  expect(record).toMatchObject({ days: 28, last: '2026-10-08' })
+  expect(record).toMatchObject({ days: 28, last: '2026-10-08', reason: 'You keep rushing again.' })
   expect(record.next >= '2026-10-31' && record.next <= '2026-11-09').toBe(true)
 })

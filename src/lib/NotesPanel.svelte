@@ -1,7 +1,6 @@
 <script lang="ts">
   import { externalNotePaste } from './externalNotePaste'
   import { onDestroy, onMount, tick } from 'svelte'
-  import NotesPanel from './NotesPanel.svelte'
   import ReadOnlyNoteItem from './ReadOnlyNoteItem.svelte'
   import NoteEditorHost from './noteEditor/NoteEditorHost.svelte'
   import type { ItemLink } from './planner'
@@ -9,6 +8,7 @@
   import { noteVersionGroupId, noteVersionLabel, noteVersionsOf } from './noteVersions'
   import { NOTE_RESURFACE_CHOICES, resurfaceLabel } from './noteResurfacing'
   import ResurfaceIcon from './ResurfaceIcon.svelte'
+  import { autoGrow } from './autoGrow'
   import type { Id, ListTemplate, Metric, Note, NoteItem, NoteItemKind, NoteResurfacing, NoteViewState } from './types'
 
   const NOTE_SCROLL_SPACE_PERCENT_KEY = 'balance:noteScrollSpacePercent'
@@ -42,6 +42,7 @@
   export let onRename: (noteId: Id, title: string) => void
   export let resurfacing: NoteResurfacing[] = []
   export let onSetResurfacing: (noteId: Id, days: number | null) => void = () => {}
+  export let onSetResurfacingReason: (noteId: Id, reason: string) => void = () => {}
   export let onAddItem: (noteId: Id, kind?: NoteItemKind) => Id
   export let patchItem: typeof import('./store').plannerStore.patchNoteItem
   export let patchItemsDone: typeof import('./store').plannerStore.patchNoteItemsDone
@@ -53,47 +54,23 @@
   // Called with the note this pane stops showing, also on close and page hide.
   export let onLeave: (noteId: Id) => void = () => {}
 
-  // The right pane reuses the complete note editor without another sidebar.
-  export let sidePane = false
-  export let onClose: () => void = () => {}
-
-  let sideNoteId: Id | null = null
-  let sidePanel: { rememberBeforeLeaving: () => void } | null = null
   let titleElement: HTMLTextAreaElement | null = null
   let documentElement: HTMLElement | null = null
-  $: sideNote = activeNotes.find((note) => note.id === sideNoteId) ?? null
-  $: if (sideNoteId && (!sideNote || trashOpen)) closeSidePane()
 
   let editableNoteId: Id | null = null
   function showEditableNote(noteId: Id | null) {
     if (noteId === editableNoteId) return
     const left = editableNoteId
     editableNoteId = noteId
-    if (left) leaveNote(left)
-  }
-
-  // A note still open in the other pane has not been left.
-  function leaveNote(noteId: Id) {
-    if (noteId !== sideNoteId) onLeave(noteId)
-  }
-
-  function leaveSideNote(noteId: Id) {
-    if (noteId !== editableNoteId) onLeave(noteId)
+    if (left) onLeave(left)
   }
 
   function leaveOnPageHide() {
     if (editableNoteId) onLeave(editableNoteId)
   }
 
-  function closeSidePane() {
-    sideNoteId = null
-  }
-
-  function openBeside(noteId: Id) {
-    sideNoteId = noteId
-  }
-
   let filter = ''
+  let resurfacingOnly = false
 
   // The notes list hides behind the menu button. Hovering opens it until the
   // pointer leaves; taps and the keyboard toggle it instead.
@@ -155,8 +132,9 @@
   $: visibleNotes = trashOpen ? trashedNotes : activeNotes
   $: selectedNote = visibleNotes.find((note) => note.id === selectedNoteId) ?? visibleNotes[0] ?? null
   $: wordCount = selectedNote ? countWords(selectedNote.items) : 0
-  $: resurfaceDays = resurfacing.find(({ id }) => id === selectedNote?.id)?.days ?? null
-  $: resurfacingIds = new Set(resurfacing.map(({ id }) => id))
+  $: resurfaceRecord = resurfacing.find(({ id }) => id === selectedNote?.id)
+  $: resurfaceDays = resurfaceRecord?.days ?? null
+  $: resurfaceDaysById = new Map(resurfacing.map(({ id, days }) => [id, days]))
   let resurfacePickerOpen = false
   $: if (selectedNote?.id || trashOpen) resurfacePickerOpen = false
 
@@ -171,7 +149,10 @@
   // The Bin lists each binned version on its own; Notes lists one card per note.
   $: noteCards = trashOpen ? trashedNotes.map((note) => [note]) : groupVersions(activeNotes)
   $: filterQuery = filter.trim().toLocaleLowerCase()
-  $: filteredCards = (filterQuery ? noteCards.filter((versions) => versions.some((note) => searchText(note).includes(filterQuery))) : noteCards)
+  $: showResurfacingOnly = resurfacingOnly && !trashOpen
+  $: filteredCards = noteCards
+    .filter((versions) => !showResurfacingOnly || versions.some(({ id }) => resurfaceDaysById.has(id)))
+    .filter((versions) => !filterQuery || versions.some((note) => searchText(note).includes(filterQuery)))
     .slice()
     .sort((a, b) => trashOpen
       ? (b[0].deletedAt ?? '').localeCompare(a[0].deletedAt ?? '')
@@ -330,10 +311,7 @@
     const index = groups.findIndex((versions) => versions.some((note) => note.id === noteId))
     const nextGroup = groups[index + 1] ?? groups[index - 1]
     const nextNoteId = nextGroup ? cardNote(nextGroup, null).id : ''
-    if (await onTrash(noteId)) {
-      if (sidePane) onClose()
-      else onSelect(nextNoteId)
-    }
+    if (await onTrash(noteId)) onSelect(nextNoteId)
   }
 
   async function restoreFromTrash(noteId: Id) {
@@ -662,20 +640,14 @@
   }
 
   onMount(() => {
-    const mobile = window.matchMedia('(max-width: 760px)')
-    const closeOnMobile = () => { if (mobile.matches) sideNoteId = null }
-    mobile.addEventListener('change', closeOnMobile)
-    closeOnMobile()
     const storedPercent = localStorage.getItem(NOTE_SCROLL_SPACE_PERCENT_KEY)
     noteScrollSpacePercent = storedPercent === null
       ? DEFAULT_NOTE_SCROLL_SPACE_PERCENT
       : normalizeNoteScrollSpacePercent(Number(storedPercent))
-    return () => mobile.removeEventListener('change', closeOnMobile)
   })
 
   export function rememberBeforeLeaving() {
     noteEditorHost?.rememberBeforeLeaving()
-    sidePanel?.rememberBeforeLeaving()
   }
 
   onDestroy(() => {
@@ -693,8 +665,7 @@
   on:pagehide={leaveOnPageHide}
 />
 
-<div class="notes-workspace" class:notes-split={Boolean(sideNote)} class:notes-side-pane={sidePane}>
-  {#if !sidePane}
+<div class="notes-workspace">
     <div
       class="notes-drawer"
       class:open={drawerOpen}
@@ -734,29 +705,32 @@
             </button>
           {/if}
           <input class="notes-filter" type="search" bind:value={filter} placeholder={trashOpen ? 'Filter Bin' : 'Filter notes'} aria-label={trashOpen ? 'Filter Bin' : 'Filter notes'} />
+          {#if !trashOpen}
+            <button
+              type="button"
+              class="notes-resurface-filter"
+              class:active={resurfacingOnly}
+              aria-pressed={resurfacingOnly}
+              aria-label="Only notes that resurface"
+              title="Only notes that resurface"
+              on:click={() => (resurfacingOnly = !resurfacingOnly)}
+            ><ResurfaceIcon /></button>
+          {/if}
         </div>
         <div class="notes-list">
           {#each filteredCards as versions (noteVersionGroupId(versions[0]) + (trashOpen ? `:${versions[0].id}` : ''))}
             {@const note = trashOpen ? versions[0] : cardNote(versions, selectedNote)}
             {@const versionLabel = trashOpen ? binnedVersionLabel(note) : ''}
+            {@const cardResurfaceDays = trashOpen ? undefined : versions.map(({ id }) => resurfaceDaysById.get(id)).find((days) => days !== undefined)}
             {@const updatedAt = trashOpen ? note.deletedAt ?? note.updatedAt : latestUpdate(versions)}
             <div class="note-card-row" data-balance-link={`balance://note/${note.id}`}>
               <button type="button" class="note-card" class:active={note.id === selectedNote?.id} on:click={() => selectFromDrawer(note.id)}>
                 <strong>{note.title.trim() || 'Untitled note'}{#if versionLabel}<small class="note-card-version"> · {versionLabel}</small>{/if}</strong>
                 <span>{previewText(note) || 'Empty note'}</span>
                 {#if versions.length > 1}<small class="note-card-versions">{versions.length} versions</small>{/if}
-                {#if !trashOpen && versions.some(({ id }) => resurfacingIds.has(id))}<small class="note-card-resurface" title="Resurfaces"><ResurfaceIcon size={13} /></small>{/if}
+                {#if cardResurfaceDays !== undefined}<small class="note-card-resurface" title="Resurfaces">{resurfaceLabel(cardResurfaceDays)}<ResurfaceIcon size={13} /></small>{/if}
                 <time datetime={updatedAt}>{readableDate(updatedAt)}</time>
               </button>
-              {#if !trashOpen}
-                <button
-                  type="button"
-                  class="note-open-beside"
-                  aria-label={`Open ${note.title.trim() || 'Untitled note'} on the right`}
-                  title="Open on the right"
-                  on:click={() => { drawerPinned = false; openBeside(note.id) }}
-                ><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M12 4v16M15 9l3 3-3 3M14 12h4" /></svg></button>
-              {/if}
             </div>
           {/each}
           {#if visibleNotes.length > 0 && filteredCards.length === 0}<p class="notes-no-match">No matching notes.</p>{/if}
@@ -764,18 +738,14 @@
         {#if trashOpen}<button class="notes-back-link" type="button" on:click={showNotes}><span aria-hidden="true">←</span> Back to Notes</button>{/if}
       </aside>
     </div>
-  {/if}
 
-  <section data-balance-link={selectedNote ? `balance://note/${selectedNote.id}` : undefined} bind:this={documentElement} class="note-document" aria-label={sidePane ? 'Right note' : 'Main note'} use:externalNotePaste={`${selectedNoteId}:${trashOpen}`}>
+  <section data-balance-link={selectedNote ? `balance://note/${selectedNote.id}` : undefined} bind:this={documentElement} class="note-document" aria-label="Note" use:externalNotePaste={`${selectedNoteId}:${trashOpen}`}>
     {#if selectedNote}
       <header class="note-document-head">
-        {#if sidePane}
-          <button class="note-side-close" type="button" aria-label="Close right note" title="Close" on:click={onClose}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg></button>
-        {/if}
         {#if trashOpen}
           <h1 class="note-title note-trashed-title">{selectedNote.title.trim() || 'Untitled note'}</h1>
         {:else}
-          <textarea bind:this={titleElement} id={sidePane ? 'note-side-title' : 'note-title'} class="note-title" rows="1" value={selectedNote.title} use:autoSizeTitle={selectedNote.title} placeholder="Untitled note" aria-label="Note title" on:input={(event) => onRename(selectedNote!.id, event.currentTarget.value)} on:keydown={handleTitleKeydown}></textarea>
+          <textarea bind:this={titleElement} id="note-title" class="note-title" rows="1" value={selectedNote.title} use:autoSizeTitle={selectedNote.title} placeholder="Untitled note" aria-label="Note title" on:input={(event) => onRename(selectedNote!.id, event.currentTarget.value)} on:keydown={handleTitleKeydown}></textarea>
         {/if}
         <div class="note-actions">
           {#if trashOpen}
@@ -796,11 +766,24 @@
           {/if}
         </div>
         {#if resurfacePickerOpen && !trashOpen}
-          <div class="note-resurface-choices" role="group" aria-labelledby={sidePane ? 'note-side-resurface-every' : 'note-resurface-every'}>
-            <span id={sidePane ? 'note-side-resurface-every' : 'note-resurface-every'} class="note-resurface-every">Resurface every</span>
-            {#each [null, ...NOTE_RESURFACE_CHOICES] as days (days ?? 'off')}
-              <button type="button" class:primary={days === resurfaceDays} aria-pressed={days === resurfaceDays} on:click={() => chooseResurfacing(days)}>{days === null ? 'Off' : resurfaceLabel(days)}</button>
-            {/each}
+          <div class="note-resurface-picker">
+            <div class="note-resurface-choices" role="group" aria-labelledby="note-resurface-every">
+              <span id="note-resurface-every" class="note-resurface-every">Resurface every</span>
+              {#each [null, ...NOTE_RESURFACE_CHOICES] as days (days ?? 'off')}
+                <button type="button" class:primary={days === resurfaceDays} aria-pressed={days === resurfaceDays} on:click={() => chooseResurfacing(days)}>{days === null ? 'Off' : resurfaceLabel(days)}</button>
+              {/each}
+            </div>
+            {#if resurfaceDays !== null}
+              <textarea
+                class="note-resurface-reason"
+                rows="1"
+                placeholder="Why resurface it?"
+                aria-label="Resurface reason"
+                value={resurfaceRecord?.reason ?? ''}
+                use:autoGrow={resurfaceRecord?.reason ?? ''}
+                on:input={(event) => onSetResurfacingReason(selectedNote!.id, event.currentTarget.value)}
+              ></textarea>
+            {/if}
           </div>
         {/if}
         <span class="note-word-count" title="Words in the note body">{wordCount.toLocaleString()} {wordCount === 1 ? 'word' : 'words'}</span>
@@ -933,36 +916,4 @@
       </div>
     {/if}
   </section>
-  {#if !sidePane && sideNote}
-    <NotesPanel
-      bind:this={sidePanel}
-      sidePane
-      onClose={closeSidePane}
-      {notes}
-      selectedNoteId={sideNote.id}
-      {listTemplates}
-      {metrics}
-      {historyRevision}
-      {viewStatesByNote}
-      {onViewStateChange}
-      onLeave={leaveSideNote}
-      onSelect={(noteId) => { sideNoteId = noteId }}
-      {onCreate}
-      {onTrash}
-      {onAddVersion}
-      {onRenameVersion}
-      {onTrashVersion}
-      {onRestore}
-      {onPermanentlyDelete}
-      {onEmptyTrash}
-      {onRename}
-      {resurfacing}
-      {onSetResurfacing}
-      {onAddItem}
-      {patchItem}
-      {patchItemsDone}
-      {replaceItems}
-      {onOpenLink}
-    />
-  {/if}
 </div>

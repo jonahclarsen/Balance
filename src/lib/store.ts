@@ -2830,6 +2830,17 @@ function createPlannerStore() {
       }, { reconcileGoals: false })
     },
 
+    // An empty reason removes it.
+    setNoteResurfacingReason(noteId: Id, reason: string) {
+      commitEntities('set_note_resurfacing_reason', { noteId, reason }, (state) => {
+        const existing = state.noteResurfacing.find(({ id }) => id === noteId)
+        if (!existing || (existing.reason ?? '') === reason) return state
+        const { reason: _previous, ...rest } = existing
+        const record = reason ? { ...rest, reason } : rest
+        return { ...state, noteResurfacing: state.noteResurfacing.map((candidate) => candidate === existing ? record : candidate) }
+      }, { reconcileGoals: false, mergeKey: `note-resurface-reason:${noteId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS })
+    },
+
     // The note was read during day generation on date; it comes back after
     // days (null retires it).
     resurfaceNote(noteId: Id, date: string, days: number | null) {
