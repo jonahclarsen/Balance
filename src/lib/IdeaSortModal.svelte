@@ -6,7 +6,8 @@
   import RichTextEditor from './RichTextEditor.svelte'
   import VoiceClipChip from './VoiceClipChip.svelte'
   import VoiceIdeaModal from './VoiceIdeaModal.svelte'
-  import { IDEA_UNLOCK_MS, findIdea, ideaGroupMeta, IDEA_SORT_QUESTION } from './ideas'
+  import IdeaRefinement from './IdeaRefinement.svelte'
+  import { IDEA_GROUPS, IDEA_UNLOCK_MS, findIdea, ideaGroupMeta, IDEA_SORT_QUESTION } from './ideas'
   import { renderItemDisplayHTML, type ItemLink, type ItemTextSegment } from './planner'
   import { openClickedLink, openRenderedLinkFromShortcut } from './externalLinks'
   import type { Id, IdeaGroup, IdeaGroupKind, IdeaItem, IdeaSnapshot, PlanItem, VoiceClip } from './types'
@@ -71,6 +72,10 @@
   let shaking: Action | null = null
   let shakeTimer: number | null = null
   let openClipId: Id | null = null
+  let refinement: { text: string; destination: IdeaGroupKind; label: string; progress: number; distribution: number[]; serial: number } | null = null
+  let refinementTimer: number | null = null
+  let refinementSerial = 0
+  let finishing = false
 
   $: sorted = sortedBefore + history.length
   $: queued = queue[index]
@@ -82,6 +87,44 @@
   $: openClip = openClipId ? voiceClips.find((candidate) => candidate.id === openClipId) ?? null : null
   $: options = step === 'yes' ? (['possible', 'genuine'] as const) : step === 'no' ? (['trash', 'afterlife'] as const) : []
   $: resetCard(index)
+  // Switching pages should never leave an unseen animation holding generation.
+  $: if (!active && refinement) endRefinement()
+
+  function endRefinement() {
+    if (refinementTimer !== null) window.clearTimeout(refinementTimer)
+    refinementTimer = null
+    refinement = null
+    if (finishing) {
+      finishing = false
+      onFinish(true)
+    }
+  }
+
+  function refine(destination: IdeaGroupKind, label = ideaGroupMeta(destination).label) {
+    if (!current || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    endRefinement()
+    const kinds = IDEA_GROUPS.map(({ kind }) => kind)
+    const counts = kinds.map((kind) => groups.find((group) => group.kind === kind)?.items.length ?? 0)
+    const source = findIdea(groups, current.id)?.group.kind
+    if (source) counts[kinds.indexOf(source)]! -= 1
+    counts[kinds.indexOf(destination)]! += 1
+    const count = Math.max(1, counts.reduce((sum, value) => sum + value, 0))
+    refinement = {
+      text: current.text, destination, label, serial: ++refinementSerial,
+      progress: (sortedBefore + history.length + 1) / total,
+      distribution: counts.map((value) => value / count),
+    }
+    refinementTimer = window.setTimeout(endRefinement, 1320)
+  }
+
+  function finish() {
+    if (refinement) {
+      finishing = true
+      // The last card also offers a real Back while its flourish is running.
+      step = 'question'
+    }
+    else onFinish(true)
+  }
 
   function renderIdeaHTML(item: PlanItem) {
     return renderItemDisplayHTML(item.html, item.text, linkSegments(item.text))
@@ -140,6 +183,7 @@
 
   function choose(kind: IdeaGroupKind) {
     if (!current || refuse(kind)) return
+    refine(kind)
     record(snapshot(current.id))
     onDecide(current.id, kind)
     advance()
@@ -147,13 +191,15 @@
 
   function advance() {
     if (index >= queue.length - 1) {
-      onFinish(true)
+      finish()
       return
     }
     index += 1
   }
 
   function goBack() {
+    finishing = false
+    endRefinement()
     if (step !== 'question') {
       step = 'question'
       return
@@ -172,12 +218,14 @@
     const previousId = queue[index - 1]!.id
     const snapshots = [...snapshot(previousId), ...snapshot(current.id)]
     if (!onAppendToPrevious(current.id, previousId)) return
+    refine(findIdea(groups, previousId)?.group.kind ?? 'proposition', 'Append to previous')
     record(snapshots)
     dropCurrent()
   }
 
   function cut() {
     if (!current || untranscribed || refuse('cut')) return
+    refine('proposition', 'Clipboard')
     record(snapshot(current.id))
     onCut(current.id)
     dropCurrent()
@@ -185,6 +233,7 @@
 
   function addToDay() {
     if (!current || !onAddToDay || untranscribed || refuse('day')) return
+    refine('proposition', 'Today')
     record(snapshot(current.id))
     onAddToDay(current.id)
     dropCurrent()
@@ -195,6 +244,7 @@
     const snapshots = snapshot(current.id)
     const noteId = onAddToNote(current.id)
     if (!noteId) return
+    refine('proposition', 'New note')
     record(snapshots, noteId)
     dropCurrent()
   }
@@ -203,7 +253,7 @@
     if (!current) return
     const removedId = current.id
     queue = queue.filter((item) => item.id !== removedId)
-    if (index >= queue.length) onFinish(true)
+    if (index >= queue.length) finish()
     else resetCard(index)
   }
 
@@ -276,6 +326,20 @@
       return
     }
     const key = event.key.toLowerCase()
+    const sortKey = ['b', 'e', 'm', 'y', 'n', 'g', 'p', 'x', 'd', 'a', 't'].includes(key) || event.key === 'ArrowLeft'
+    // A deliberate next shortcut can cut the flourish short. Repeated keydown
+    // is already ignored above, and pointer controls wait for the reveal.
+    if (finishing && event.key !== 'Escape' && key !== 'b' && event.key !== 'ArrowLeft') {
+      if (sortKey) {
+        event.preventDefault()
+        event.stopPropagation()
+      }
+      return
+    }
+    if (sortKey) {
+      finishing = false
+      endRefinement()
+    }
     let handled = true
     if (event.key === 'Escape') onFinish(false)
     else if (key === 'b' || event.key === 'ArrowLeft') goBack()
@@ -298,6 +362,7 @@
   }
 
   onDestroy(() => {
+    if (refinementTimer !== null) window.clearTimeout(refinementTimer)
     for (const timer of unlockTimers) window.clearTimeout(timer)
     if (shakeTimer !== null) window.clearTimeout(shakeTimer)
     if (readTimer !== null) window.clearTimeout(readTimer)
@@ -349,7 +414,9 @@
       <button class="primary" type="button" on:click={startSorting}>Start (Enter)</button>
     </div>
   {:else}
-  <div class="paste-review">
+  <div class="idea-sort-stage" class:refining={Boolean(refinement)}>
+  <span class="sort-announcement" role="status">{refinement ? `Sorted: ${refinement.label}` : ''}</span>
+  <div class="paste-review" inert={Boolean(refinement)}>
     <ProgressBar done={sorted} {total} label="Ideas sorted" />
     <div class="paste-review-list" aria-label="Idea being sorted">
       {#if current}
@@ -456,6 +523,12 @@
 
     <p class="paste-review-hint">{sorted}/{total} sorted</p>
   </div>
+  {#if refinement}
+    {#key refinement.serial}
+      <IdeaRefinement {...refinement} />
+    {/key}
+  {/if}
+  </div>
   {/if}
 </OverlayModal>
 
@@ -470,3 +543,23 @@
     />
   {/key}
 {/if}
+
+<style>
+  .idea-sort-stage {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    aspect-ratio: 1000 / 640;
+  }
+  .paste-review { flex: 1; min-height: 0; }
+  .refining > .paste-review { pointer-events: none; }
+  .sort-announcement {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+</style>

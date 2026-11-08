@@ -82,6 +82,23 @@ test.describe('desktop', () => {
       await openView(page, view)
       await shot(page, scheme, name)
     }
+    await openView(page, 'Ideas')
+    await page.locator('.ideas-panel').getByRole('button', { name: 'Sort', exact: true }).click()
+    // Freeze a real sorting flourish, using only the generated screenshot seed.
+    const now = await page.evaluate(() => Date.now())
+    await page.clock.pauseAt(new Date(now + 1000))
+    await page.keyboard.press('y')
+    await page.clock.runFor(2100)
+    await page.keyboard.press('p')
+    await page.locator('.refinement').evaluate((element) => {
+      for (const animation of element.getAnimations({ subtree: true })) {
+        animation.pause()
+        animation.currentTime = 700
+      }
+    })
+    await page.screenshot({ path: `${OUT}/mac-idea-refinement${scheme === 'dark' ? '-dark' : ''}.png` })
+    await page.keyboard.press('Escape')
+    await page.clock.resume()
     await openView(page, 'Settings')
     await page.getByRole('heading', { name: 'Sync across your devices' }).evaluate((heading) => heading.scrollIntoView({ block: 'start' }))
     await shot(page, scheme, 'mac-sync', false)
