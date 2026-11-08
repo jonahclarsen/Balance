@@ -5919,6 +5919,8 @@ test('list-template word cap allows one trailing space and letters within a word
   const probability = page.getByLabel('Appearance probability').nth(1)
   await probability.focus()
   await page.keyboard.press('Home')
+  await expect(probability).toHaveValue('5')
+  for (let i = 0; i < 4; i += 1) await page.keyboard.press('ArrowRight')
   await expect(probability).toHaveValue('25')
 
   await editor.fill('')
@@ -5953,68 +5955,6 @@ test('list-template word cap allows one trailing space and letters within a word
   await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(trailingSpaceOffset)
 })
 
-test('list template item appearance probability grandfathers saved values below 25 percent', async ({ page }) => {
-  await page.goto('/')
-  await page.evaluate(() => {
-    localStorage.clear()
-    const now = new Date().toISOString()
-    const item = (id: string, text: string, probability: number) => ({
-      id,
-      text,
-      html: text,
-      probability,
-      children: [],
-    })
-    localStorage.setItem(
-      'balance.appState.v1',
-      JSON.stringify({
-        schemaVersion: 1,
-        deviceId: 'test-device',
-        localSequence: 0,
-        historyRevision: 0,
-        activePlanDate: now.slice(0, 10),
-        templates: [],
-        plans: [],
-        listTemplates: [{
-          id: 'list_template_probabilities',
-          name: 'Probabilities',
-          maxExpectedWords: 0,
-          items: [item('low', 'Low item', 10), item('normal', 'Normal item', 100)],
-          createdAt: now,
-          updatedAt: now,
-        }],
-        lists: [],
-        metrics: [],
-        metricEntries: [],
-        goals: [],
-        goalCompletions: [],
-        operations: [],
-      }),
-    )
-  })
-  await page.reload()
-  await openView(page, 'Lists')
-
-  const probabilities = page.getByLabel('Appearance probability')
-  await expect(probabilities).toHaveCount(2)
-  const lowProbability = probabilities.nth(0)
-  const normalProbability = probabilities.nth(1)
-  await expect(lowProbability).toHaveAttribute('min', '10')
-  await expect(lowProbability).toHaveValue('10')
-  await expect(normalProbability).toHaveAttribute('min', '25')
-
-  await normalProbability.press('Home')
-  await expect(normalProbability).toHaveValue('25')
-  await expect
-    .poll(() =>
-      page.evaluate(() => {
-        const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
-        return state.listTemplates?.[0]?.items?.map((item: { probability: number }) => item.probability)
-      }),
-    )
-    .toEqual([10, 25])
-})
-
 test('list template appearance slider uses the full visible track for pointer dragging', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -6024,7 +5964,7 @@ test('list template appearance slider uses the full visible track for pointer dr
 
   const probability = page.getByLabel('Appearance probability')
   await dragRangeToRatio(page, probability, 0)
-  await expect(probability).toHaveValue(await probability.getAttribute('min') ?? '25')
+  await expect(probability).toHaveValue('5')
   await dragRangeToRatio(page, probability, 1)
   await expect(probability).toHaveValue(await probability.getAttribute('max') ?? '100')
 })
@@ -6049,8 +5989,8 @@ test('dragging a selected list-template probability applies it to every selected
   await expect(probabilities).toHaveCount(2)
   const originalProbabilities = await inputValues(probabilities)
 
-  // The list-template range is 25–100 in 5-point steps; 7/15 lands on 60.
-  await dragRangeToRatio(page, probabilities.first(), 7 / 15)
+  // The list-template range is 5–100 in 5-point steps; 11/19 lands on 60.
+  await dragRangeToRatio(page, probabilities.first(), 11 / 19)
   await expect.poll(async () => inputValues(probabilities)).toEqual(['60', '60'])
   await expect(selectedRows).toHaveCount(2)
 

@@ -128,7 +128,7 @@
   import { keepBelowPinnedParents, revealCaret, scrollMovedItemsIntoView, type ItemRowKind } from './lib/itemScroll'
   import { focusTaskBelow, focusTaskById, TASK_COMPLETION_FOCUS_EVENT, type TaskCaretOffsets, type TaskCompletionFocusDetail } from './lib/taskCompletionFocus'
   import { rememberFocusReturn, type FocusReturn } from './lib/focusReturn'
-  import { buildItemTimeWarnings, createPlanItem, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatMinutes, formatPlanTitle, hasActiveTimeRange, hasIncompletePlanItems, isUnwrittenNote, itemLinkFromURL, linkifyItemText, listTemplateQuizSteps, MAX_TIMELINE_MINUTES, processUncheckedTasksDate, renderItemDisplayHTML, sanitizeInlineHTML, templateQuizSteps, todayISO, totalWordCount, type ItemLink, type TemplateQuizStep, type TemplateReviewKind } from './lib/planner'
+  import { buildItemTimeWarnings, createPlanItem, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatMinutes, formatPlanTitle, hasActiveTimeRange, hasIncompletePlanItems, isUnwrittenNote, itemLinkFromURL, linkifyItemText, listTemplateQuizSteps, MAX_TIMELINE_MINUTES, MIN_LIST_ITEM_PROBABILITY, processUncheckedTasksDate, renderItemDisplayHTML, sanitizeInlineHTML, templateQuizSteps, todayISO, totalWordCount, type ItemLink, type TemplateQuizStep, type TemplateReviewKind } from './lib/planner'
   import { hexToPickerColor, pickerColorToHex, type PickerColor } from './lib/colors'
   import { automaticSyncStatus, requestSync, startAutomaticSync } from './lib/syncScheduler'
   import { DEFAULT_DATABASE_LOADING_MESSAGES, replicatedDayTheme } from './lib/preferences'
@@ -5013,7 +5013,7 @@ return rows`
       for (const itemId of itemIds) {
         const item = findListTemplateItem(selectedListTemplate.items, (item) => item.id === itemId)
         if (!item) continue
-        const probability = Math.max(item.probability < 30 ? 10 : 30, Math.min(100, item.probability + delta))
+        const probability = Math.max(MIN_LIST_ITEM_PROBABILITY, Math.min(100, item.probability + delta))
         if (probability !== item.probability) {
           plannerStore.patchListTemplateItem(selectedListTemplate.id, item.id, { probability })
         }

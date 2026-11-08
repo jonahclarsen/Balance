@@ -121,7 +121,7 @@ export type ListTemplateItemAlternative = {
   probability: number
 }
 
-// A list-template item carries an appearance probability (10-100) = the chance
+// A list-template item carries an appearance probability (5-100) = the chance
 // it shows up in a generated list instance. Alternatives only decide which
 // wording shows up: each takes its share of those appearances and the item's
 // own text keeps the rest. The children follow whichever wording was picked.

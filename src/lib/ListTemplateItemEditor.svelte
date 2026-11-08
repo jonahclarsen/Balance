@@ -15,10 +15,6 @@
     mergeWindowMs?: number
   }
 
-  // The data layer keeps accepting 10% so previously saved low-probability
-  // items survive unchanged. Only those grandfathered items expose that lower
-  // range; every item currently at 25% or above uses the normal UI minimum.
-  const NORMAL_MIN_LIST_ITEM_PROBABILITY = 25
   const PROBABILITY_DRAG_MERGE_WINDOW_MS = 1500
 
   export let item: ListTemplateItem
@@ -77,7 +73,6 @@
   // Bumped to force the contenteditable to revert when a keystroke would push the
   // template's expected word count past the cap.
   let revertNonce = 0
-  let allowsLowProbability = item.probability < NORMAL_MIN_LIST_ITEM_PROBABILITY
   // Clearing a row is ambiguous until focus moves: it may be a deletion, or the
   // first half of replacing all text. Keep the persisted item intact while the
   // editor is empty so a committed deletion can archive the original snapshot,
@@ -86,7 +81,6 @@
   $: revision = historyRevision + revertNonce
   $: selected = selectedItemIds.has(item.id)
   $: alternatives = item.alternatives ?? []
-  $: if (item.probability < NORMAL_MIN_LIST_ITEM_PROBABILITY) allowsLowProbability = true
   $: primaryShare = listItemPrimaryShare(item)
   $: question = templateQuestions.find(({ id }) => id === item.id)?.question
 
@@ -516,7 +510,7 @@
       {/if}
       <ProbabilitySlider
         value={item.probability}
-        min={allowsLowProbability ? MIN_LIST_ITEM_PROBABILITY : NORMAL_MIN_LIST_ITEM_PROBABILITY}
+        min={MIN_LIST_ITEM_PROBABILITY}
         step={5}
         ariaLabel="Appearance probability"
         generousHitbox
