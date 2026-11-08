@@ -140,6 +140,12 @@ export function sunset(date: Date, latitude: number, longitude: number): number 
   if (cosine < -1 || cosine > 1) return null
   return (transit + Math.acos(cosine) / (2 * Math.PI) - 2440587.5) * 86_400_000
 }
+/** Sunset plus an offset, on the nearest quarter hour of the local clock. */
+function afterSunset(sun: number, offset: number): number {
+  const at = new Date(sun + offset * minute)
+  at.setMinutes(Math.round(at.getMinutes() / 15) * 15, 0, 0)
+  return at.getTime()
+}
 function clock(day: Date, minutes: number): number {
   return new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, minutes).getTime()
 }
@@ -176,7 +182,7 @@ function reminderTime(day: Date, minutes: number, offset: number | undefined, su
   const at = clock(day, minutes)
   if (offset === undefined || !location) return at
   const sun = sunset(sunDay, location.latitude, location.longitude)
-  return sun === null ? at : Math.max(at, sun + offset * minute)
+  return sun === null ? at : Math.max(at, afterSunset(sun, offset))
 }
 /** The reminder's hours starting on this day. It has none when its start passes its end. */
 export function reminderWindow(reminder: Reminder, day: Date, location = timeZoneLocation()): { at: number; end: number } {
@@ -197,13 +203,11 @@ export function regenerate(doc: Document, now = Date.now(), location = timeZoneL
     const nextDay = new Date(day); nextDay.setDate(nextDay.getDate() + 1)
     const end = clock(nextDay, s.wakeMinutes)
     const sun = location ? sunset(day, location.latitude, location.longitude) : null
-    const evening = Math.min(end - minute, Math.max(wake + minute, clock(day, s.eveningMinutes), sun === null ? 0 : sun + s.sunsetOffset * minute))
+    const evening = Math.min(end - minute, Math.max(wake + minute, clock(day, s.eveningMinutes), sun === null ? 0 : afterSunset(sun, s.sunsetOffset)))
     // Late clock belongs to the night following this day's sunset.
     const lateDay = s.lateMinutes < s.eveningMinutes ? nextDay : day
-    const rawLate = sun === null ? clock(lateDay, s.lateMinutes) : sun + s.lateOffset * minute
-    const localLate = new Date(rawLate)
-    localLate.setMinutes(Math.round(localLate.getMinutes() / 30) * 30, 0, 0)
-    const late = Math.max(evening, Math.min(end, localLate.getTime()))
+    const rawLate = sun === null ? clock(lateDay, s.lateMinutes) : afterSunset(sun, s.lateOffset)
+    const late = Math.max(evening, Math.min(end, rawLate))
     epochs.push({ at: wake, end: evening, phase: 'day', late }, { at: evening, end, phase: 'night', late })
   }
   const windows: Window[] = []

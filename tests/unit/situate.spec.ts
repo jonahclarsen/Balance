@@ -158,7 +158,8 @@ test('sunset is plausible for Vancouver and later-of rule is respected', () => {
   const actual=sunset(day,49.28,-123.12)!
   expect(new Date(actual).toISOString()).toMatch(/^2026-10-18T01:/)
   const p=regenerate(fixture(),day.getTime(),timeZoneLocation('America/Vancouver'));const e=epoch(p,day.getTime())!
-  expect(e.end).toBeGreaterThanOrEqual(actual+240*60000-1000)
+  expect(Math.abs(e.end-(actual+240*60000))).toBeLessThanOrEqual(450_000)
+  expect(new Date(e.end).getMinutes()%15).toBe(0)
 })
 test('a stale schedule fails closed and regeneration preserves unexpired grants', () => {
   const now=date(0,12);let d=grant(fixture(),'dolo',{thrust:true},now,now)
@@ -225,18 +226,20 @@ test('reminder times follow sunset when it is later, across midnight', () => {
   const day=new Date(2026,5,21,12)
   const sun=sunset(day,vancouver.latitude,vancouver.longitude)!
   const hour=3_600_000
-  expect(reminderWindow({ from:420,until:1170,untilSunset:120 },day,vancouver).end).toBe(Math.max(new Date(2026,5,21,19,30).getTime(),sun+2*hour))
+  const quarter=(t:number)=>{ const d=new Date(t); d.setMinutes(Math.round(d.getMinutes()/15)*15,0,0); return d.getTime() }
+  expect(new Date(reminderWindow({ from:420,until:420,fromSunset:0 },day,vancouver).at).getMinutes()%15).toBe(0)
+  expect(reminderWindow({ from:420,until:1170,untilSunset:120 },day,vancouver).end).toBe(Math.max(new Date(2026,5,21,19,30).getTime(),quarter(sun+2*hour)))
   const winter=new Date(2026,11,21,12)
   const winterSun=sunset(winter,vancouver.latitude,vancouver.longitude)!
-  expect(reminderWindow({ from:420,until:1170,untilSunset:0 },winter,vancouver).end).toBe(Math.max(new Date(2026,11,21,19,30).getTime(),winterSun))
+  expect(reminderWindow({ from:420,until:1170,untilSunset:0 },winter,vancouver).end).toBe(Math.max(new Date(2026,11,21,19,30).getTime(),quarter(winterSun)))
   // A start past midnight stays on the same night and still ends the following morning.
   const late=reminderWindow({ from:1110,until:420,fromSunset:360 },day,vancouver)
-  expect(late.at).toBe(sun+6*hour)
+  expect(late.at).toBe(quarter(sun+6*hour))
   expect(late.end).toBe(new Date(2026,5,22,7).getTime())
   // A clock time after midnight is measured from the previous evening's sunset.
-  expect(reminderWindow({ from:1200,until:60,untilSunset:360 },day,vancouver).end).toBe(Math.max(new Date(2026,5,22,1).getTime(),sun+6*hour))
+  expect(reminderWindow({ from:1200,until:60,untilSunset:360 },day,vancouver).end).toBe(Math.max(new Date(2026,5,22,1).getTime(),quarter(sun+6*hour)))
   // A next-morning end measures from the sunset of the day it started, not the next evening.
-  expect(reminderWindow({ from:1110,until:420,untilSunset:120 },day,vancouver).end).toBe(Math.max(new Date(2026,5,22,7).getTime(),sun+2*hour))
+  expect(reminderWindow({ from:1110,until:420,untilSunset:120 },day,vancouver).end).toBe(Math.max(new Date(2026,5,22,7).getTime(),quarter(sun+2*hour)))
   // Without a location the rule falls back to the clock time.
   expect(reminderWindow({ from:1110,until:420,fromSunset:180 },day,null).at).toBe(new Date(2026,5,21,18,30).getTime())
 })
