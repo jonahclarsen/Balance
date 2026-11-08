@@ -323,6 +323,17 @@
   font-family: var(--font-mono);
   font-size: 24px;
 }
+/* The pixel fonts only render cleanly at their native sizes, so small labels
+   use Chicago's 16px rather than the shared theme's 9-12px. */
+:root[data-theme='system1'] .time-range button.time-part {
+  font-size: inherit;
+}
+:root[data-theme='system1'] :is(button.mobile-time-summary, .generation-template-field, .nav-shortcut, .goal-history-name, .goal-history-name small) {
+  font-size: 16px;
+}
+:root[data-theme='system1'] .generation-template-field {
+  letter-spacing: 0;
+}
 :root[data-theme='system1'] .app-shell {
   --app-default-zoom: 1;
   --notes-page-zoom: 1;
