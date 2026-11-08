@@ -220,7 +220,7 @@
   color: #373738;
   background: transparent;
   font-family: Tahoma, Verdana, sans-serif;
-  font-size: 11px;
+  font-size: var(--win-text);
   box-shadow: 2px 0 4px #00000059;
 }
 
@@ -290,7 +290,7 @@
   background: transparent;
   box-shadow: none;
   color: #000;
-  font-size: 11px;
+  font-size: var(--win-text);
   font-weight: 700;
 }
 
@@ -307,7 +307,7 @@
   margin: 0 3px 0 2px;
   padding: 1px 6px 1px 4px;
   color: #373738;
-  font-size: 11px;
+  font-size: var(--win-text);
   font-weight: 400;
 }
 
@@ -362,7 +362,7 @@
   padding: 2px 8px 2px 37px;
   background: transparent no-repeat 7px center;
   color: #0a246a;
-  font-size: 11px;
+  font-size: var(--win-text);
 }
 
 :root[data-theme='windowsxp'] .sidebar-quick-actions > .sidebar-search-button {
@@ -388,7 +388,7 @@
   min-height: 26px;
   padding: 0 2px;
   color: #fff;
-  font-size: 11px;
+  font-size: var(--win-text);
   font-weight: 700;
 }
 
@@ -441,7 +441,7 @@
   outline: 1px solid #000000cc;
   outline-offset: -1px;
   font-family: 'Vista UI', sans-serif;
-  font-size: 12px;
+  font-size: var(--win-text);
 }
 
 :root[data-theme='windowsvista'] .sidebar-brand-heading {
@@ -465,7 +465,7 @@
   min-width: 0;
   overflow: hidden;
   color: #fff;
-  font: 400 12px/1.3 'Vista UI', sans-serif;
+  font: 400 var(--win-text)/1.3 'Vista UI', sans-serif;
   letter-spacing: 0;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -481,7 +481,7 @@
   background: transparent;
   box-shadow: none;
   color: #fff;
-  font-size: 12px;
+  font-size: var(--win-text);
   font-weight: 400;
 }
 
@@ -536,7 +536,7 @@
   margin: 0;
   padding: 1px 6px 1px 4px;
   color: #282828;
-  font-size: 12px;
+  font-size: var(--win-text);
   font-weight: 400;
 }
 
@@ -599,7 +599,7 @@
   border-image: url('/themes/windowsvista/startmenu/search.png') 5 5 5 3 fill / 5px 5px 5px 3px;
   background: transparent;
   color: #575757;
-  font-size: 12px;
+  font-size: var(--win-text);
   font-style: italic;
 }
 
@@ -824,7 +824,7 @@
 :root[data-theme='windowsxp'] .control-panel-tasks {
   padding: 20px 12px 12px;
   background: var(--xp-pane);
-  font: 11px Tahoma, Verdana, sans-serif;
+  font: var(--win-text) Tahoma, Verdana, sans-serif;
 }
 
 :root[data-theme='windowsxp'] .control-panel-group-title {
@@ -838,7 +838,7 @@
   border-width: 0;
   border-image: var(--xp-pane-head-special) 2 106 0 3 fill / 2px 106px 0 3px stretch;
   color: #fff;
-  font: 700 11px Tahoma, Verdana, sans-serif;
+  font: 700 var(--win-text) Tahoma, Verdana, sans-serif;
   image-rendering: pixelated;
 }
 
@@ -883,7 +883,7 @@
 :root[data-theme='windowsxp'] .control-panel-task {
   gap: 6px;
   color: var(--win-link, #215dc6);
-  font: 11px Tahoma, Verdana, sans-serif;
+  font: var(--win-text) Tahoma, Verdana, sans-serif;
 }
 
 :root[data-theme='windowsxp'] .control-panel-task:hover {
@@ -908,7 +908,7 @@
   gap: 6px;
   min-height: 32px;
   color: #fff;
-  font: 700 11px Tahoma, Verdana, sans-serif;
+  font: 700 var(--win-text) Tahoma, Verdana, sans-serif;
 }
 
 :root[data-theme='windowsxp'] .settings-panel .settings-section[data-cp] h3::before {
@@ -968,13 +968,13 @@
   padding: 18px 14px;
   border-right: 1px solid #65a296;
   background: url('/themes/windowsvista/controlpanel/navigation-swoosh.png') left bottom no-repeat, linear-gradient(#416fa6, #6cb96e);
-  font: 12px 'Vista UI', sans-serif;
+  font: var(--win-text) 'Vista UI', sans-serif;
 }
 
 :root[data-theme='windowsvista'] .control-panel-group-title {
   margin: 0 0 8px;
   color: #fff;
-  font: 700 12px 'Vista UI', sans-serif;
+  font: 700 var(--win-text) 'Vista UI', sans-serif;
 }
 
 :root[data-theme='windowsvista'] .control-panel-group-icon,
@@ -988,7 +988,7 @@
 
 :root[data-theme='windowsvista'] .control-panel-task {
   color: #fff;
-  font: 12px 'Vista UI', sans-serif;
+  font: var(--win-text) 'Vista UI', sans-serif;
 }
 
 :root[data-theme='windowsvista'] .control-panel-task:hover {
