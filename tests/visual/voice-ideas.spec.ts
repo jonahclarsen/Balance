@@ -369,3 +369,15 @@ test('a sorted voice idea shows its clip and opens the voice dialog', async ({ p
   await expect(sorter).toBeVisible()
   await expect(sorter.locator('.paste-review-text')).toHaveText('Synthetic spoken idea. yes')
 })
+
+test('undo passes a transcript by', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'Store behavior is covered on desktop')
+  await open(page)
+  await storeCall(page, "plannerStore.addVoiceIdea({ dataURL: 'data:audio/webm;base64,', durationMs: 1200, peaks: [10, 200, 90] })")
+  const clipId = (await state(page)).voiceClips[0].id
+  await storeCall(page, "plannerStore.applyVoiceTranscript(arg, { text: 'Synthetic spoken idea.', words: [], model: 'test', transcribedAt: '2026-10-27T00:00:00Z' })", clipId)
+  expect((await state(page)).voiceClips[0].transcript.text).toBe('Synthetic spoken idea.')
+  await storeCall(page, 'return plannerStore.undo()')
+  // The recording itself was the last edit.
+  await expect.poll(async () => (await state(page)).voiceClips).toEqual([])
+})

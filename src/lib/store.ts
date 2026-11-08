@@ -1056,12 +1056,16 @@ function createPlannerStore() {
           if (plan) (payload as Record<string, unknown>)[dateField] = plan.date
         }
       }
-      const operationPayload = entityChanges
+      let operationPayload = entityChanges
         ? {
             ...(payload && typeof payload === 'object' ? payload : { value: payload }),
             entityChanges,
           }
         : payload
+      // Native history records every local operation unless told not to.
+      if (options.undoable === false && operationPayload && typeof operationPayload === 'object' && !Array.isArray(operationPayload)) {
+        operationPayload = { ...operationPayload, undoable: false }
+      }
       const operation: Operation = canMergeOperation
         ? { ...lastOperation, timestamp, payload: operationPayload }
         : {
@@ -1090,6 +1094,11 @@ function createPlannerStore() {
 
       if (options.undoable !== false) {
         recordHistory(state, committed, operation.id, type, options, historyGroup, now)
+      } else if (isTauri() && changesNativeHistoryContent(state, next)) {
+        // The cached snapshots predate this change, so native undo and redo
+        // return the database's state instead of restoring one of them.
+        undoStack = []
+        redoStack = []
       }
 
       return committed
@@ -2501,6 +2510,7 @@ function createPlannerStore() {
 
     // Puts the transcript in its idea, on a new line below any typed text.
     applyVoiceTranscript(clipId: Id, transcript: NonNullable<VoiceClip['transcript']>) {
+      // Transcripts arrive on their own, so undo passes them by.
       commitEntities('transcribe_voice_idea', { clipId }, (state) => {
         const clip = state.voiceClips.find((candidate) => candidate.id === clipId)
         if (!clip) return state
@@ -2518,7 +2528,7 @@ function createPlannerStore() {
           })),
           voiceClips,
         }
-      })
+      }, { undoable: false })
     },
 
     deleteVoiceClip(clipId: Id) {
@@ -3833,6 +3843,14 @@ function stateFromNativeHistoryEntry(current: AppState, snapshot: AppState, loca
     operations: [],
     historyRevision: current.historyRevision + 1,
   }
+}
+
+// Fields a native history snapshot restores; stateFromNativeHistoryEntry
+// keeps the rest current.
+const NATIVE_HISTORY_KEPT_FIELDS = new Set<string>(['images', 'deviceId', 'localSequence', 'preferences', 'dayGenerations', 'situateRules', 'activePlanDate', 'operations', 'historyRevision'])
+
+function changesNativeHistoryContent(before: AppState, after: AppState): boolean {
+  return (Object.keys(after) as (keyof AppState)[]).some((key) => !NATIVE_HISTORY_KEPT_FIELDS.has(key) && before[key] !== after[key])
 }
 
 function applyPatch<T extends object>(target: T, patch: Partial<Record<keyof T, unknown>>): T {

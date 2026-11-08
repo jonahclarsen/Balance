@@ -4240,9 +4240,11 @@ fn persist_operation_once(
         set_metadata(&tx, &format!("siri_request:{request_id}"), "1")?;
     }
     let existing_history = history_entry_for_operation(&tx, operation_id)?;
+    // The UI marks changes undo passes by, such as arriving transcripts.
     let undo_operation = if is_history_operation(operation_type)
         || operation_type == "add_image"
         || is_situate_rules_operation(operation)
+        || operation["payload"]["undoable"] == json!(false)
     {
         None
     } else if let Some(existing) = existing_history.as_ref() {
@@ -12675,6 +12677,33 @@ mod tests {
         assert_eq!(undone["voiceClips"], json!([clip]));
         let redone = redo_last_operation_in_database(&mut connection).unwrap().unwrap();
         assert_eq!(redone["voiceClips"], json!([]));
+    }
+
+    #[test]
+    fn operations_marked_not_undoable_are_passed_by_undo() {
+        let database = TestDatabase::new("synthetic-not-undoable");
+        let recovery_key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        replace_app_state(&mut connection, &test_state("Synthetic transcripts")).unwrap();
+        let clip = json!({"id": "voice_test", "ideaId": "idea_voice", "dataURL": "data:audio/webm;base64,",
+            "durationMs": 1200, "peaks": [0], "createdAt": "2026-10-27T08:00:00Z"});
+        let transcribed = json!({"id": "voice_test", "ideaId": "idea_voice", "dataURL": "data:audio/webm;base64,",
+            "durationMs": 1200, "peaks": [0], "createdAt": "2026-10-27T08:00:00Z",
+            "transcript": {"text": "Synthetic", "words": [], "model": "test", "transcribedAt": "2026-10-27T08:01:00Z"}});
+        let operation = |id: &str, sequence: i64, payload: Value| json!({
+            "id": id, "deviceId": "device_test", "sequence": sequence,
+            "type": "apply_entity_changes", "timestamp": "2026-10-27T08:00:00Z", "payload": payload,
+        });
+        persist_operation_to_database(&mut connection, &operation("voice-op-1", 2, json!({"action": "add_voice_idea",
+            "entityChanges": {"version": 2, "deletes": [], "upserts": [{"collection": "voiceClips", "key": "voice_test",
+                "position": 0, "value": clip, "patches": [sync::entities::diff(&Value::Null, &clip)]}]}}))).unwrap();
+        persist_operation_to_database(&mut connection, &operation("voice-op-2", 3, json!({"action": "transcribe_voice_idea",
+            "undoable": false, "entityChanges": {"version": 2, "deletes": [], "upserts": [{"collection": "voiceClips",
+                "key": "voice_test", "position": null, "value": transcribed, "patches": [sync::entities::diff(&clip, &transcribed)]}]}}))).unwrap();
+        // Undo passes the transcript by and removes the recording.
+        let undone = undo_last_operation_in_database(&mut connection).unwrap().unwrap();
+        assert_eq!(undone["voiceClips"], json!([]));
+        assert!(undo_last_operation_in_database(&mut connection).unwrap().is_none());
     }
 
     #[test]
