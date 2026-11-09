@@ -6,6 +6,15 @@
   font-weight: 100 900;
   font-display: swap;
 }
+/* Chicago has no keyboard symbols; these pixel glyphs fill them in. */
+@font-face {
+  font-family: 'Mac Chicago';
+  src: url('/fonts/BalanceMacKeys.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  unicode-range: U+2303, U+2318, U+21E7, U+2325;
+}
 @font-face {
   font-family: 'Mac Geneva';
   src: url('/fonts/FindersKeepers.woff2') format('woff2');
@@ -249,6 +258,16 @@
 :root[data-theme='system1'] :is(.page-header h2, .overlay-header h3) {
   font-size: 18px;
   font-weight: 700;
+}
+
+/* A plain link on the header's stripes: underlined, and inert on hover. */
+:root[data-theme='system1'] .projects-header:not(.history-header) button.ghost:is(*, :hover, :active) {
+  border-color: transparent;
+  border-radius: 0;
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: none;
+  text-decoration: underline;
 }
 
 :root[data-theme='system1'] button:where(:not(.ghost):not(.check):not(.time-part):not(.daily-reminder-button):not(.quiet):not(.plan-goal-badge):not(.select-handle)) {
