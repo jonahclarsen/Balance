@@ -321,8 +321,23 @@
 }
 /* Whole ideas are read here, so they get less than the day view's 32px. */
 :root[data-theme='system1'] .idea-sort .paste-review-text {
-  font-size: 24px;
-  line-height: 1.25;
+  padding: 13px 11px;
+  font-size: 30px;
+  line-height: 1.2;
+}
+:root[data-theme='system1'] .idea-sort .paste-review-list {
+  padding: 2px;
+}
+:root[data-theme='system1'] .idea-sort .paste-review-card {
+  padding: 9px;
+}
+:root[data-theme='system1'] .idea-sort .idea-sort-question {
+  font-size: 22px;
+}
+@media (min-width: 761px) {
+  :root[data-theme='system1'] .idea-sort .overlay-body {
+    padding: 25px;
+  }
 }
 :root[data-theme='system1'] .idea-sort .idea-sort-child-text {
   font-size: 16px;
