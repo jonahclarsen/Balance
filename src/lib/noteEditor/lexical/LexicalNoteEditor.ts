@@ -97,6 +97,7 @@ import type {
 import {
   clipboardHTML,
   clipboardPlainText,
+  continueList,
   countPasted,
   parseChecklistClipboard,
   parseClipboardHTML,
@@ -2051,12 +2052,14 @@ class LexicalNoteEditorView implements NoteEditorView {
   }
 
   // Multi-block paste (P-43 step 8).
-  private $pasteBlocks(items: PastedBlock[]) {
+  private $pasteBlocks(pasted: PastedBlock[]) {
     const selection = $currentRange()
     if (!selection) return
     const point = $blockPoint(selection.anchor)
     if (!point) return
     const { block, offset } = point
+    const items = isListKind(block.getKind()) ? continueList(pasted, block.getKind(), block.getDone()) : pasted
+    if (items.length === 0) return
     const content = $contentOf(block)
     const afterHTML = $serializeInline(content, offset)
     $removeInlineRange(block, offset, $caretLength(content))

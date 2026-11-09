@@ -760,6 +760,24 @@ test.describe('P-40..P-45 clipboard', () => {
     await harness.waitForNote(note.id, (current) => current.items.length === note.items.length && current.items[0].text === target.text)
   })
 
+  test('paragraphs pasted into a list item continue the list', async ({ harness }) => {
+    const items = [
+      { id: 'list-bullet', kind: 'bullet', text: 'Lead ', html: 'Lead ', done: false, children: [] },
+      { id: 'list-check', kind: 'checklist', text: 'Ticked', html: 'Ticked', done: true, children: [] },
+    ] as NoteItem[]
+    const seeded = { ...harness.noteByTitle('Simple paragraphs'), id: 'list-paste', title: 'List paste', items }
+    await harness.boot({ notes: [seeded], select: 'List paste' })
+    await pasteInto(harness, 'list-bullet', 5, { text: 'One\n\nTwo\n\nThree' })
+    await harness.waitForNote(seeded.id, (stored) => stored.items.length === 4)
+    let stored = (await harness.storedNote(seeded.id))!
+    expect(stored.items.slice(0, 3).map(({ kind, text }) => [kind, text])).toEqual([['bullet', 'Lead One'], ['bullet', 'Two'], ['bullet', 'Three']])
+
+    await pasteInto(harness, 'list-check', 6, { html: '<p> first</p><p>second</p>', text: ' first\n\nsecond' })
+    await harness.waitForNote(seeded.id, (current) => current.items.length === 5)
+    stored = (await harness.storedNote(seeded.id))!
+    expect(stored.items.slice(3).map(({ kind, text, done }) => [kind, text, done])).toEqual([['checklist', 'Ticked first', true], ['checklist', 'second', false]])
+  })
+
   test('bare links become anchors in multi-line pastes', async ({ harness }) => {
     await harness.boot({ select: 'Simple paragraphs' })
     const note = harness.noteByTitle('Simple paragraphs')

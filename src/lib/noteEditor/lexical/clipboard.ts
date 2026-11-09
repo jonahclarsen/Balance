@@ -127,3 +127,15 @@ export function parseClipboardHTML(html: string): PastedBlock[] {
   const items = parseNoteClipboardHTML(html)
   return countPasted(items) >= 2 || (items.length === 1 && items[0].kind !== 'paragraph') ? items : []
 }
+
+function hasContent(html: string): boolean {
+  return /<img\b/i.test(html) || html.replace(/<[^>]*>|&nbsp;|\s/g, '') !== ''
+}
+
+// Paragraphs pasted into a list continue it, one item per non-blank paragraph.
+// The item under the caret keeps its checked state.
+export function continueList(items: PastedBlock[], kind: NoteItemKind, done: boolean): PastedBlock[] {
+  return items
+    .filter((item) => item.kind !== 'paragraph' || item.children.length > 0 || hasContent(item.html))
+    .map((item, index) => (item.kind === 'paragraph' ? { ...item, kind, done: index === 0 && done } : item))
+}
