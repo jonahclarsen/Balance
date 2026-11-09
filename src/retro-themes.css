@@ -328,8 +328,39 @@
 :root[data-theme='system1'] .time-range button.time-part {
   font-size: inherit;
 }
-:root[data-theme='system1'] :is(button.mobile-time-summary, .generation-template-field, .nav-shortcut, .goal-history-name, .goal-history-name small) {
+:root[data-theme='system1'] :is(button.mobile-time-summary, .generation-template-field, .nav-shortcut, .goal-history-name, .goal-history-name small, .sidebar-stats) {
   font-size: 16px;
+}
+:root[data-theme='system1'] button.note-empty-editor {
+  font-size: 32px;
+  line-height: 1;
+}
+/* List markers match the note body's native 32px Geneva. The font has no
+   bullet, so draw one on its 2px grid, a pixel above the baseline. */
+:root[data-theme='system1'] .lexical-note-editor {
+  --note-body-size: 32px;
+  --note-body-line: 1;
+  --note-marker-column: 32px;
+}
+:root[data-theme='system1'] .lexical-note-editor .note-bullet > .note-block::before {
+  content: '';
+  top: 19px;
+  left: calc(2px + (var(--note-marker-column) - 8px) / 2);
+  width: 8px;
+  height: 8px;
+  background:
+    linear-gradient(var(--ink), var(--ink)) 2px 0 / 4px 8px no-repeat,
+    linear-gradient(var(--ink), var(--ink)) 0 2px / 8px 4px no-repeat;
+  transform: none;
+}
+:root[data-theme='system1'] .lexical-note-editor .note-numbered > .note-block::before {
+  top: 5px;
+  padding: 0;
+  font-size: 32px;
+  font-weight: 400;
+  font-variant-numeric: normal;
+  color: var(--ink);
+  white-space: nowrap;
 }
 :root[data-theme='system1'] .generation-template-field {
   letter-spacing: 0;
