@@ -812,6 +812,20 @@ test('a due review blocks day generation until every older idea is sorted', asyn
   expect(await groups(page)).toMatchObject({ genuine: ['Synthetic fresh', 'Synthetic today'], possible: ['Synthetic maybe'] })
 })
 
+test('sort new ideas leaves a long idea readable with every control in reach', async ({ page }) => {
+  await open(page)
+  const words = Array.from({ length: 140 }, (_, index) => `synthetic${index}`).join(' ')
+  await storeCall(page, `plannerStore.addIdea(${JSON.stringify(words)})`)
+  await openView(page, 'Ideas')
+  await page.locator('.ideas-panel').getByRole('button', { name: 'Sort', exact: true }).click()
+  const list = sorter(page).locator('.paste-review-list')
+  await expect(sorter(page).locator('.idea-sort-card')).toContainText('synthetic0')
+  const box = await list.boundingBox()
+  expect(box!.height).toBeGreaterThan(180)
+  await expect(sorter(page).getByRole('button', { name: 'Yes (Y)' })).toBeInViewport()
+  await expect(sorter(page).locator('.paste-review-hint')).toBeInViewport()
+})
+
 test('sort new ideas opens web links by click and Option-F without advancing', async ({ page }) => {
   await open(page)
   await storeCall(page, `

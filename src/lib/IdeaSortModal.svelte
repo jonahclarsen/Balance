@@ -402,7 +402,8 @@
   {title}
   class="idea-sort"
   z={65}
-  maxWidth={620}
+  maxWidth={760}
+  height={intro && introOpen ? null : 640}
   fill
   closeOnEscape={false}
   onClose={() => onFinish(false)}
@@ -549,7 +550,6 @@
     position: relative;
     display: flex;
     flex-direction: column;
-    aspect-ratio: 1000 / 640;
   }
   .paste-review { flex: 1; min-height: 0; }
   .refining > .paste-review { pointer-events: none; }

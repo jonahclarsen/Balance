@@ -319,6 +319,15 @@
   font-size: 32px;
   line-height: 1;
 }
+/* Whole ideas are read here, so they get less than the day view's 32px. */
+:root[data-theme='system1'] .idea-sort .paste-review-text {
+  font-size: 24px;
+  line-height: 1.25;
+}
+:root[data-theme='system1'] .idea-sort .idea-sort-child-text {
+  font-size: 16px;
+  line-height: 20px;
+}
 :root[data-theme='system1'] :is(.time-range, .date-input, .word-cap-count) {
   font-family: var(--font-mono);
   font-size: 24px;

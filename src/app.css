@@ -7682,8 +7682,21 @@ textarea.note-title {
 
 /* ---- Idea groups ------------------------------------------------------- */
 
+/* The card takes whatever the fixed frame leaves, so buttons stay put between
+   ideas. Short ideas sit mid-frame; long ones scroll from their first line. */
 .idea-sort .paste-review-list {
-  max-height: 46dvh;
+  flex: 1 1 auto;
+  align-content: safe center;
+  padding: 4px;
+}
+
+/* The shared card's 1% scale would knock long text off the pixel grid. */
+.idea-sort .paste-review-item.current {
+  transform: none;
+}
+
+.idea-sort .paste-review-text {
+  padding: 4px 6px;
 }
 
 .idea-sort-intro {
