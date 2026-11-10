@@ -493,6 +493,9 @@ test('sorting moves ideas into new notes with their formatting and children, and
     plannerStore.moveIdeaItem('bucket_proposition', child, id, 'inside')
     plannerStore.addIdea('Synthetic second note')
   `)
+  // The note takes the default title for when the idea was written, not when it was sorted.
+  const writtenTitle = await page.evaluate(async () => (await import(/* @vite-ignore */ '/src/lib/planner.ts')).formatDefaultNoteTitle())
+  await page.clock.fastForward('02:00:00')
   await openView(page, 'Ideas')
   await page.locator('.ideas-panel').getByRole('button', { name: 'Sort', exact: true }).click()
   await sorter(page).getByRole('button', { name: 'Yes (Y)' }).click()
@@ -510,7 +513,7 @@ test('sorting moves ideas into new notes with their formatting and children, and
   })
   const created = await notes()
   expect(created).toHaveLength(1)
-  expect(created[0]).toMatchObject({ title: 'Synthetic note', items: [{
+  expect(created[0]).toMatchObject({ title: writtenTitle, items: [{
     text: 'Synthetic note', html: '<strong>Synthetic note</strong>', done: true, kind: 'checklist',
     children: [{ text: 'Synthetic child', html: '<em>Synthetic child</em>', kind: 'checklist' }],
   }] })

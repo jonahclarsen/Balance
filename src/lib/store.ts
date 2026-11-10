@@ -102,6 +102,7 @@ import {
   createMetricQuestion,
   createMetricEntry,
   createNote,
+  formatDefaultNoteTitle,
   createNoteItem,
   shiftCalendarDateISO,
 } from './planner'
@@ -2744,8 +2745,11 @@ function createPlannerStore() {
           kind: 'checklist',
           children: item.children.map(toNoteItem),
         })
-        const { bucketedAt: _bucketedAt, ...item } = found.item
-        const note = { ...createNote(item.text), items: [toNoteItem(item)] }
+        const { bucketedAt, ...item } = found.item
+        // Proposition Party ideas keep their bucketedAt from when they were
+        // written, so the note takes the default title for that moment.
+        const writtenAt = found.group.kind === 'proposition' && bucketedAt ? new Date(bucketedAt) : new Date()
+        const note = { ...createNote(formatDefaultNoteTitle(Number.isNaN(writtenAt.getTime()) ? new Date() : writtenAt)), items: [toNoteItem(item)] }
         noteId = note.id
         const removed = updateIdeaGroup(state, found.group.kind, (group) => ({
           ...group, items: group.items.filter((candidate) => candidate.id !== itemId),
