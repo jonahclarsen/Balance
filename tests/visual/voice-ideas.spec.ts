@@ -180,8 +180,9 @@ test('the microphone switches mid-recording, to the phone unprocessed', async ({
   await expect(phone).toHaveCount(0)
   await proposition(page).getByRole('button', { name: 'Record an idea' }).click()
   await expect(headset).toHaveAttribute('aria-pressed', 'true')
-  // The headset choice keeps the system's processed input; only Android names the headset.
-  expect(await requests()).toEqual([{ audio: true }])
+  // The headset keeps the system's processed input.
+  expect(await requests()).toEqual([{ audio: { deviceId: { exact: 'headset' } } }])
+  await expect(proposition(page).locator('.voice-waveform')).toBeVisible()
   await page.waitForTimeout(1200)
 
   await phone.click()
@@ -204,6 +205,45 @@ test('the microphone switches mid-recording, to the phone unprocessed', async ({
   await expect(phone).toHaveAttribute('aria-pressed', 'true')
   expect((await requests())[before].audio.deviceId).toEqual({ ideal: 'phone' })
   await stop.click()
+})
+
+test('without a Bluetooth microphone, the phone records and shows as chosen', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'Fake capture devices are Chromium-only')
+  await page.addInitScript(() => {
+    const requests: unknown[] = []
+    ;(window as any).__micRequests = requests
+    ;(window as any).BalanceVoiceInput = {
+      permissions: () => 'granted',
+      requestPermissions: () => {},
+      recordingStarted: () => {},
+      recordingStopped: () => {},
+    }
+    const media = navigator.mediaDevices
+    const getUserMedia = media.getUserMedia.bind(media)
+    media.getUserMedia = (constraints) => {
+      requests.push(constraints)
+      return getUserMedia({ audio: true })
+    }
+    media.enumerateDevices = async () => [
+      { kind: 'audioinput', deviceId: 'default', label: 'Default' },
+      { kind: 'audioinput', deviceId: 'phone', label: 'Speakerphone' },
+    ] as MediaDeviceInfo[]
+  })
+  await open(page)
+  const headset = proposition(page).getByRole('button', { name: 'Headset microphone' })
+  const phone = proposition(page).getByRole('button', { name: 'Phone microphone' })
+
+  await proposition(page).getByRole('button', { name: 'Record an idea' }).click()
+  await expect(phone).toHaveAttribute('aria-pressed', 'true')
+  await expect(headset).toBeDisabled()
+  const requests = await page.evaluate(() => (window as any).__micRequests.slice())
+  expect(requests.at(-1)).toEqual({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, deviceId: { exact: 'phone' } } })
+  // The live waveform moves with the fake device's beep.
+  const bars = proposition(page).locator('.voice-waveform span')
+  await expect.poll(() => bars.evaluateAll((spans) => spans.filter((span) => span.getBoundingClientRect().height > 2).length)).toBeGreaterThan(0)
+  await page.waitForTimeout(1200)
+  await proposition(page).getByRole('button', { name: 'Stop recording' }).click()
+  await expect.poll(async () => (await state(page)).voiceClips.length).toBe(1)
 })
 
 test('the Add idea dialog records an idea with its typed text', async ({ page }, testInfo) => {

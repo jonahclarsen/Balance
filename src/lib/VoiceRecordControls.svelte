@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy } from 'svelte'
   import { formatClipDuration } from './voiceClips'
-  import { canChooseVoiceMic, finishVoiceRecording, startVoiceRecording, switchVoiceMic, voiceMic, voiceMicSwitching, voiceRecording } from './voiceRecorder'
+  import { canChooseVoiceMic, finishVoiceRecording, startVoiceRecording, switchVoiceMic, voiceInput, voiceMicSwitching, voiceRecording, type VoiceRecordingState } from './voiceRecorder'
 
   // Record, then stop; a mic choice shows while recording on Android.
   export let onStart: () => void = () => {}
@@ -10,9 +10,18 @@
 
   let now = Date.now()
   let clock: number | null = null
+  // About two seconds of the meter, newest on the right.
+  const BARS = 24
+  let levels: number[] = Array(BARS).fill(0)
 
   $: recording = $voiceRecording.state === 'recording' ? $voiceRecording : null
   $: syncClock(recording !== null)
+  $: addLevel($voiceRecording)
+
+  function addLevel(current: VoiceRecordingState) {
+    if (current.state === 'recording') levels = [...levels.slice(1), Math.sqrt(current.level)]
+    else if (current.state === 'idle') levels = Array(BARS).fill(0)
+  }
 
   function syncClock(running: boolean) {
     if (running && clock === null) clock = window.setInterval(() => { now = Date.now() }, 250)
@@ -35,14 +44,16 @@
 
 <div class="voice-record-controls">
   {#if recording}
-    <span class="voice-recording-dot" style:--level={recording.level} aria-hidden="true"></span>
+    <span class="voice-waveform" title={$voiceInput?.label || undefined} aria-hidden="true">
+      {#each levels as level}<span style:--level={level}></span>{/each}
+    </span>
     <span class="voice-recording-time">{formatClipDuration(now - recording.startedAt)}</span>
     {#if canChooseVoiceMic()}
       <div class="voice-mic-choice">
-        <button class="ghost" type="button" aria-label="Headset microphone" title="Headset" aria-pressed={$voiceMic === 'headset'} disabled={$voiceMicSwitching} on:click={() => { void switchVoiceMic('headset') }}>
+        <button class="ghost" type="button" aria-label="Headset microphone" title="Headset" aria-pressed={$voiceInput?.mic === 'headset'} disabled={$voiceMicSwitching || !$voiceInput?.headsetAvailable} on:click={() => { void switchVoiceMic('headset') }}>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 14v-2a8 8 0 0 1 16 0v2M4 14h3v6H4zM17 14h3v6h-3z" /></svg>
         </button>
-        <button class="ghost" type="button" aria-label="Phone microphone" title="Phone" aria-pressed={$voiceMic === 'phone'} disabled={$voiceMicSwitching} on:click={() => { void switchVoiceMic('phone') }}>
+        <button class="ghost" type="button" aria-label="Phone microphone" title="Phone" aria-pressed={$voiceInput?.mic === 'phone'} disabled={$voiceMicSwitching} on:click={() => { void switchVoiceMic('phone') }}>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3h8a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM11 18h2" /></svg>
         </button>
       </div>
@@ -80,13 +91,17 @@
     line-height: 1;
   }
   .voice-record-button.recording { color: var(--ink); font-size: 11px; }
-  .voice-recording-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
+  .voice-waveform {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    height: 20px;
+  }
+  .voice-waveform span {
+    width: 2px;
+    height: max(2px, calc(var(--level, 0) * 100%));
+    border-radius: 1px;
     background: var(--danger);
-    box-shadow: 0 0 0 calc(var(--level, 0) * 7px) color-mix(in srgb, var(--danger) 30%, transparent);
-    transition: box-shadow 80ms linear;
   }
   .voice-recording-time { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
 </style>

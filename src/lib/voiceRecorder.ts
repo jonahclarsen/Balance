@@ -61,14 +61,6 @@ async function allowNativeRecording() {
   }
 }
 
-// Chromium on Android lists a connected headset as its own input; elsewhere
-// the system's current input (often the headphones already) is used.
-async function headsetInput(): Promise<string | undefined> {
-  if (!/android/i.test(navigator.userAgent)) return undefined
-  const devices = await navigator.mediaDevices.enumerateDevices()
-  return devices.find((device) => device.kind === 'audioinput' && /bluetooth/i.test(device.label))?.deviceId
-}
-
 // Chromium only enters Android's call mode when voice processing is on, and a
 // default input selects a connected headset, so music is left alone only by
 // turning processing off and naming the phone's microphone. Android lists it
@@ -95,16 +87,31 @@ async function openPhoneMicrophone(): Promise<MediaStream> {
   return stream
 }
 
-async function openMicrophone(): Promise<MediaStream> {
+const audioInputs = async () => (await navigator.mediaDevices.enumerateDevices()).filter((device) => device.kind === 'audioinput')
+// Chromium on Android lists a connected Bluetooth headset as its own input.
+const isBluetooth = (device: MediaDeviceInfo) => /bluetooth/i.test(device.label)
+
+// The microphone actually open: the headset choice falls back to the phone
+// while no Bluetooth microphone is connected.
+export type VoiceInput = { mic: VoiceMic; headsetAvailable: boolean; label: string }
+export const voiceInput = writable<VoiceInput | null>(null)
+
+type OpenedMicrophone = { stream: MediaStream; mic: VoiceMic; headsetAvailable: boolean }
+
+async function openMicrophone(): Promise<OpenedMicrophone> {
   await allowNativeRecording()
-  if (canChooseVoiceMic() && get(voiceMic) === 'phone') return openPhoneMicrophone()
-  let stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-  const headset = await headsetInput()
-  if (headset && stream.getAudioTracks()[0]?.getSettings().deviceId !== headset) {
+  // Elsewhere the system's current input (often the headphones already) is used.
+  if (!canChooseVoiceMic()) return { stream: await navigator.mediaDevices.getUserMedia({ audio: true }), mic: 'headset', headsetAvailable: false }
+  let headset = (await audioInputs()).find(isBluetooth)
+  // Device names stay hidden until a microphone opens, so without a known
+  // headset the phone's opens first: it leaves music alone.
+  if (!headset || get(voiceMic) === 'phone') {
+    const stream = await openPhoneMicrophone()
+    headset = (await audioInputs()).find(isBluetooth)
+    if (!headset || get(voiceMic) === 'phone') return { stream, mic: 'phone', headsetAvailable: Boolean(headset) }
     stream.getTracks().forEach((track) => track.stop())
-    stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: headset } } })
   }
-  return stream
+  return { stream: await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: headset.deviceId } } }), mic: 'headset', headsetAvailable: true }
 }
 
 function blobToDataURL(blob: Blob): Promise<string> {
@@ -147,6 +154,7 @@ type Session = {
   startedAt: number
   written: Promise<unknown>
   stopping: boolean
+  unwatch: () => void
 }
 
 let session: Session | null = null
@@ -160,7 +168,8 @@ export async function startVoiceRecording() {
   // Created before the microphone opens, while the tap still counts as one.
   const context = new AudioContext()
   try {
-    const input = await openMicrophone()
+    const opened = await openMicrophone()
+    const input = opened.stream
     // Never awaited: without a user gesture it would wait forever.
     if (context.state === 'suspended') void context.resume()
     const analyser = context.createAnalyser()
@@ -181,7 +190,7 @@ export async function startVoiceRecording() {
     }, 80)
     const chunks: Blob[] = []
     const id = createId('voice')
-    const current: Session = { id, recorder, input, source, analyser, context, chunks, meter, startedAt, written: Promise.resolve(), stopping: false }
+    const current: Session = { id, recorder, input, source, analyser, context, chunks, meter, startedAt, written: Promise.resolve(), stopping: false, unwatch: () => {} }
     let sequence = 0
     recorder.ondataavailable = (event) => {
       if (event.data.size === 0) return
@@ -192,6 +201,8 @@ export async function startVoiceRecording() {
     }
     session = current
     recorder.start(1000)
+    showInput(opened)
+    current.unwatch = watchHeadset(current)
     androidVoiceInput()?.recordingStarted(startedAt)
     voiceRecording.set({ state: 'recording', startedAt, level: 0 })
   } catch (error) {
@@ -202,34 +213,51 @@ export async function startVoiceRecording() {
   }
 }
 
+function showInput({ stream, mic, headsetAvailable }: OpenedMicrophone) {
+  voiceInput.set({ mic, headsetAvailable, label: stream.getAudioTracks()[0]?.label ?? '' })
+}
+
+// A headset connecting enables its choice; one disconnecting mid-recording
+// hands over to the phone.
+function watchHeadset(current: Session) {
+  if (!canChooseVoiceMic()) return () => {}
+  const changed = async () => {
+    const headsetAvailable = (await audioInputs()).some(isBluetooth)
+    const shown = get(voiceInput)
+    if (session !== current || current.stopping || !shown || get(voiceMicSwitching)) return
+    if (shown.mic === 'headset' && !headsetAvailable) void reopenMicrophone(current)
+    else voiceInput.set({ ...shown, headsetAvailable })
+  }
+  navigator.mediaDevices.addEventListener('devicechange', changed)
+  return () => navigator.mediaDevices.removeEventListener('devicechange', changed)
+}
+
 // The old microphone closes first: Android may not open two at once, and
 // leaving a headset's microphone open would keep its call profile on. The
 // recording carries on through the gap as silence.
-export async function switchVoiceMic(mic: VoiceMic) {
-  const current = session
-  const previous = get(voiceMic)
-  if (!current || current.stopping || mic === previous || get(voiceMicSwitching)) return
+async function reopenMicrophone(current: Session, undoChoice?: () => void) {
   voiceMicSwitching.set(true)
-  chooseVoiceMic(mic)
   current.source.disconnect()
   current.input.getTracks().forEach((track) => track.stop())
   try {
-    let input: MediaStream
+    let opened: OpenedMicrophone
     try {
-      input = await openMicrophone()
+      opened = await openMicrophone()
     } catch (error) {
+      if (!undoChoice) throw error
       console.error('Could not switch microphones', error)
       voiceRecordingError.set('Could not switch microphones')
-      chooseVoiceMic(previous)
-      input = await openMicrophone()
+      undoChoice()
+      opened = await openMicrophone()
     }
     if (session !== current) {
-      input.getTracks().forEach((track) => track.stop())
+      opened.stream.getTracks().forEach((track) => track.stop())
       return
     }
-    current.input = input
-    current.source = current.context.createMediaStreamSource(input)
+    current.input = opened.stream
+    current.source = current.context.createMediaStreamSource(opened.stream)
     current.source.connect(current.analyser)
+    showInput(opened)
   } catch (error) {
     // Without a microphone, keep what was recorded.
     console.error('Could not reopen the microphone', error)
@@ -239,8 +267,18 @@ export async function switchVoiceMic(mic: VoiceMic) {
   }
 }
 
+export async function switchVoiceMic(mic: VoiceMic) {
+  const current = session
+  if (!current || current.stopping || mic === get(voiceInput)?.mic || get(voiceMicSwitching)) return
+  const previous = get(voiceMic)
+  chooseVoiceMic(mic)
+  await reopenMicrophone(current, () => chooseVoiceMic(previous))
+}
+
 function release(current: Session) {
   window.clearInterval(current.meter)
+  current.unwatch()
+  voiceInput.set(null)
   current.input.getTracks().forEach((track) => track.stop())
   void current.context.close()
   session = null
