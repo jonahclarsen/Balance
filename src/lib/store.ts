@@ -2852,15 +2852,15 @@ function createPlannerStore() {
     },
 
     // The note was read during day generation on date; it comes back after
-    // days (null retires it).
-    resurfaceNote(noteId: Id, date: string, days: number | null) {
-      commitEntities('resurface_note', { noteId, date, days }, (state) => {
+    // its usual interval.
+    resurfaceNote(noteId: Id, date: string) {
+      commitEntities('resurface_note', { noteId, date }, (state) => {
         if (!state.noteResurfacing.some(({ id }) => id === noteId)) return state
         return {
           ...state,
-          noteResurfacing: days === null
-            ? state.noteResurfacing.filter(({ id }) => id !== noteId)
-            : state.noteResurfacing.map((record) => record.id === noteId ? { ...record, ...scheduleResurfacing(noteId, days, date) } : record),
+          noteResurfacing: state.noteResurfacing.map((record) => record.id === noteId
+            ? { ...record, ...scheduleResurfacing(noteId, record.days, date) }
+            : record),
         }
       }, { reconcileGoals: false })
     },

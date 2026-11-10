@@ -2,16 +2,16 @@
   import OverlayModal from './OverlayModal.svelte'
   import ReadOnlyNoteItem from './ReadOnlyNoteItem.svelte'
   import { navigationURL } from './navigationLinks'
-  import { resurfaceLabel } from './noteResurfacing'
   import type { Note, NoteResurfacing } from './types'
 
   export let note: Note
   export let record: NoteResurfacing
-  // days is when it comes back next; null retires it.
-  export let onDecide: (days: number | null) => void
+  // Either way it comes back at the same interval; changing that takes
+  // opening the note, so pushing it back isn't one click away.
+  export let onDone: () => void
+  export let onOpen: () => void
   export let onClose: () => void
 
-  $: later = Math.min(record.days * 2, 3650)
   // A reminder of why it comes back shows first, before the note itself.
   let viewing = !record.reason?.trim()
 </script>
@@ -31,11 +31,9 @@
           <ReadOnlyNoteItem {item} siblings={note.items} />
         {/each}
       </div>
-      <div class="resurfaced-note-next" role="group" aria-label="Next time">
-        <span>Next</span>
-        <button class="primary" type="button" on:click={() => onDecide(record.days)}>{resurfaceLabel(record.days)}</button>
-        <button type="button" on:click={() => onDecide(later)}>{resurfaceLabel(later)}</button>
-        <button class="ghost" type="button" on:click={() => onDecide(null)}>Never</button>
+      <div class="resurfaced-note-next">
+        <button class="primary" type="button" on:click={onDone}>Done</button>
+        <button type="button" on:click={onOpen}>Open note</button>
       </div>
     </div>
   {/if}
@@ -63,10 +61,5 @@
     line-height: 1.5;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
-  }
-
-  .resurfaced-note-next span {
-    color: var(--muted);
-    font-size: 13px;
   }
 </style>

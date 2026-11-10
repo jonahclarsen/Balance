@@ -3911,11 +3911,18 @@ return rows`
     shown?.resolve(true)
   }
 
-  function finishResurfacedNote(days: number | null | undefined) {
+  // Done and Open both reschedule at the same interval; Open pauses
+  // generation on the note, where the interval can be changed.
+  function finishResurfacedNote(outcome: 'done' | 'open' | undefined) {
     const shown = resurfacing
     resurfacing = null
-    if (shown && days !== undefined) plannerStore.resurfaceNote(shown.noteId, shown.date, days)
-    shown?.resolve(days !== undefined)
+    if (shown && outcome) plannerStore.resurfaceNote(shown.noteId, shown.date)
+    shown?.resolve(outcome === 'done')
+    if (shown && outcome === 'open') {
+      selectedNoteId = shown.noteId
+      notesTrashOpen = false
+      view = 'notes'
+    }
   }
 
   function askProjectPick(date: string): Promise<boolean> {
@@ -8818,7 +8825,8 @@ return rows`
       <ResurfacedNoteModal
         note={resurfacingNote}
         record={resurfacingRecord}
-        onDecide={finishResurfacedNote}
+        onDone={() => finishResurfacedNote('done')}
+        onOpen={() => finishResurfacedNote('open')}
         onClose={() => finishResurfacedNote(undefined)}
       />
     {/if}

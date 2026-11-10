@@ -56,10 +56,16 @@ test('a resurfacing note blocks day generation until it is read', async ({ page 
   await expect(dialog).not.toContainText('Slow down.')
   await dialog.getByRole('button', { name: 'View note' }).click()
   await expect(dialog).toContainText('Slow down.')
-  await dialog.getByRole('button', { name: '≈1 mo' }).click()
+  await expect(dialog.getByRole('button', { name: /≈|Never/ })).toHaveCount(0)
+  await dialog.getByRole('button', { name: 'Open note' }).click()
   await expect(dialog).toBeHidden()
-  await expect(page.getByRole('region', { name: 'Daily plan' })).toBeVisible()
+  await expect(page.getByRole('textbox', { name: 'Note title' })).toHaveValue('Remember why')
   const [record] = (await stored(page)).noteResurfacing
-  expect(record).toMatchObject({ days: 28, last: '2026-10-08', reason: 'You keep rushing again.' })
-  expect(record.next >= '2026-10-31' && record.next <= '2026-11-09').toBe(true)
+  expect(record).toMatchObject({ days: 14, last: '2026-10-08', reason: 'You keep rushing again.' })
+  expect(record.next >= '2026-10-20' && record.next <= '2026-10-24').toBe(true)
+
+  // Already shown today, so generating carries straight on.
+  await generateDay(page)
+  await expect(page.getByRole('region', { name: 'Daily plan' })).toBeVisible()
+  await expect(dialog).toBeHidden()
 })
