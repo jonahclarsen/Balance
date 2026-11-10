@@ -1780,4 +1780,9 @@
   :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .page-header {
     margin: -8px -8px 8px;
   }
+  /* Bleed only as far as the thinner workspace padding, or the page scrolls sideways. */
+  :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .list-template-rail {
+    margin-inline: -8px;
+    padding-inline: 8px;
+  }
 }

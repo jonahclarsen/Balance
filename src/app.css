@@ -7242,12 +7242,15 @@ textarea.note-title {
     overflow: visible;
   }
 
+  /* Span the notes card so the list is sized by it, not by 100vw, which
+     the Notes zoom would scale past the screen edge. */
   .notes-drawer {
+    right: 0;
     bottom: auto;
   }
 
   .notes-sidebar {
-    width: min(300px, calc(100vw - 32px));
+    width: min(300px, 100%);
     height: auto;
     max-height: min(560px, 70vh);
     border-bottom: 1px solid var(--line);
