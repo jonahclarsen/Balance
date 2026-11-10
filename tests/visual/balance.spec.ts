@@ -4280,6 +4280,49 @@ test('backspace at the start of a plan item removes an empty item above it', asy
     })
 })
 
+test('backspace on a blank task below a blank timed task preserves the timed task and supports undo', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await openView(page, 'Today')
+  await seedPlanTree(page, [
+    { id: 'item_0', text: '', children: [] },
+    { id: 'item_1', text: '', children: [] },
+  ])
+  await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1')!)
+    Object.assign(state.plans[0].items[0], { startMinutes: 540, endMinutes: 600 })
+    localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+  })
+  await page.reload()
+
+  const timedInput = planTextInput(page, 'item_0')
+  const blankInput = planTextInput(page, 'item_1')
+  const timePill = page.locator('[data-plan-item-id="item_0"] .time-range')
+  await expect(timePill).toBeVisible()
+  await blankInput.click()
+  await page.keyboard.press('Backspace')
+
+  await expect(blankInput).toHaveCount(0)
+  await expect(timedInput).toBeFocused()
+  await expect(timePill).toBeVisible()
+  await expect.poll(() => page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1')!)
+    return state.plans[0].items.map(({ id, startMinutes, endMinutes }: { id: string; startMinutes: number; endMinutes: number }) =>
+      ({ id, startMinutes, endMinutes }))
+  })).toEqual([{ id: 'item_0', startMinutes: 540, endMinutes: 600 }])
+
+  await page.keyboard.press('ControlOrMeta+z')
+  await expect(blankInput).toBeVisible()
+  await expect(timePill).toBeVisible()
+  await page.keyboard.press('ControlOrMeta+Shift+z')
+  await expect(blankInput).toHaveCount(0)
+  await expect(timePill).toBeVisible()
+  await page.reload()
+  await expect(blankInput).toHaveCount(0)
+  await expect(timePill).toBeVisible()
+})
+
 test('backspace after a leading blank line removes the newline without merging tasks', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())

@@ -955,7 +955,10 @@ export function backspacePlanItemAtStart(items: PlanItem[], itemId: Id): Backspa
   const current = flattened[currentIndex]
   const previous = flattened[currentIndex - 1]
 
-  if (isPlanItemTextEmpty(previous) && previous.children.length === 0) {
+  if (
+    isPlanItemTextEmpty(previous) && previous.children.length === 0 &&
+    previous.startMinutes === null && previous.endMinutes === null
+  ) {
     return {
       items: deletePlanItem(items, previous.id),
       operation: { action: 'delete_previous', previousId: previous.id },

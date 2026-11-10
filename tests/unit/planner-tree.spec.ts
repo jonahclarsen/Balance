@@ -129,6 +129,21 @@ test('plan and list backspace use the last nested descendant as the previous vis
   }
 })
 
+for (const [startMinutes, endMinutes] of [[540, 600], [0, 60], [540, null], [null, 600]] as const) {
+  test(`backspace below a blank timed task preserves its time (${startMinutes}, ${endMinutes})`, () => {
+    const previous = { ...item('timed'), text: '', html: '', startMinutes, endMinutes }
+    const current = { ...item('blank'), text: '', html: '' }
+    const items = freezeTree([previous, current])
+
+    const result = backspacePlanItemAtStart(items, current.id)
+
+    expect(result?.items).toEqual([previous])
+    expect(result?.operation).toEqual({ action: 'merge', previousId: previous.id, patch: { text: '', html: '' } })
+    expect(result?.focusItemId).toBe(previous.id)
+    expect(result?.focusOffset).toBe(0)
+  })
+}
+
 test('template backspace visits options before descendants and returns to the next root', () => {
   const items = [item('parent', [item('child')]), item('empty'), item('next')]
   items[0].options.push({ id: 'second-option', text: 'second', html: 'second', probability: 100 })
