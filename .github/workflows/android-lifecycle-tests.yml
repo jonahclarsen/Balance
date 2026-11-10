@@ -272,6 +272,7 @@ jobs:
             logcat-situate-enforcement.txt
             situate-accessibility.txt
             situate-windows.txt
+            situate-notification.txt
             situate-gate.png
             situate-gate-window.txt
           if-no-files-found: ignore
