@@ -29,7 +29,7 @@ cleanup() {
     adb shell run-as "$PKG" rm -f no_backup/situate-rules.json || true
   fi
   adb shell run-as "$PKG" rm -f files/situate-ci-trace || true
-  adb logcat -d -s BalanceSituate:I ActivityTaskManager:I AndroidRuntime:E '*:S' > logcat-situate-enforcement.txt || true
+  adb logcat -d -s BalanceSituate:I ActivityTaskManager:I AndroidRuntime:E NotificationListeners:V ManagedServices:V ActivityManager:I '*:S' > logcat-situate-enforcement.txt || true
   adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null || true
 }
 trap cleanup EXIT
@@ -37,6 +37,7 @@ failed() {
   echo "Situate assertion failed at line $1"
   adb shell dumpsys accessibility > situate-accessibility.txt || true
   adb shell dumpsys window windows > situate-windows.txt || true
+  adb shell dumpsys notification > situate-notification.txt || true
 }
 trap 'failed "$LINENO"' ERR
 wait_for() {
@@ -47,6 +48,7 @@ wait_for() {
   echo "Situate emulator assertion timed out at line ${BASH_LINENO[0]}: $*"
   adb shell dumpsys accessibility > situate-accessibility.txt || true
   adb shell dumpsys window windows > situate-windows.txt || true
+  adb shell dumpsys notification > situate-notification.txt || true
   return 1
 }
 resumed() { adb shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity' | grep "$1" >/dev/null; }
