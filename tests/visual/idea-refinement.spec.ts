@@ -3,7 +3,7 @@ import { openView } from '../helpers/navigation'
 
 test.use({ timezoneId: 'America/Vancouver', reducedMotion: 'no-preference' })
 const dialog = (page: Page) => page.locator('.idea-sort[role="dialog"]')
-const effect = (page: Page) => dialog(page).locator('.refinement')
+const effect = (page: Page) => page.locator('.refinement')
 
 async function seed(page: Page, count = 2) {
   await page.clock.install({ time: new Date('2026-10-08T18:00:00Z') })
@@ -18,6 +18,7 @@ async function seed(page: Page, count = 2) {
   }, count)
   await openView(page, 'Ideas')
   await page.locator('.ideas-panel').getByRole('button', { name: 'Sort', exact: true }).click()
+  await page.clock.pauseAt(new Date(await page.evaluate(() => Date.now()) + 1000))
 }
 
 async function bucketTexts(page: Page, kind: string) {
@@ -38,6 +39,9 @@ test('refining commits immediately, refuses locked choices, and Back cancels it 
   await page.clock.fastForward(3000)
   await dialog(page).getByRole('button', { name: 'Genuinely Worth Doing (G)', exact: true }).click()
   await expect(effect(page)).toHaveAttribute('data-destination', 'genuine')
+  const bounds = await effect(page).boundingBox()
+  const viewport = page.viewportSize()!
+  expect(bounds).toEqual({ x: 0, y: 0, width: viewport.width, height: viewport.height })
   expect(await bucketTexts(page, 'genuine')).toEqual(['Synthetic idea 1'])
   // The flourish cannot accidentally accept a second pointer decision.
   await expect(dialog(page).locator('.paste-review')).toHaveAttribute('inert', '')

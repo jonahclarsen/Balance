@@ -2,8 +2,10 @@
   import { IDEA_GROUPS } from './ideas'
   import type { IdeaGroupKind } from './types'
 
-  // A short-lived, decorative terminal inside the sorter's existing modal.
+  // A short-lived full-window effect for the existing sorting dialog.
   // All movement is local SVG transforms; no inherited theme tokens animate.
+  export let source: HTMLElement | null = null
+  export let sourceRect: DOMRect | null = null
   export let text: string
   export let destination: IdeaGroupKind
   export let label: string
@@ -23,38 +25,49 @@
     x: 38 + (i % columns) * 40.2,
     y: 106 + Math.floor(i / columns) * 38,
   }))
-  // Keep a readable excerpt; the original idea is never changed or rasterized.
-  let remaining = Array.from(text.replace(/\s+/g, ' ').trim())
-  const lines: string[][] = []
-  for (let row = 0; row < 2 && remaining.length; row++) {
-    let end = Math.min(33, remaining.length)
-    if (row === 0 && remaining.length > end) {
-      const space = remaining.slice(0, end + 1).lastIndexOf(' ')
-      if (space > 0) end = space
-    }
-    const line = remaining.slice(0, end)
-    remaining = remaining.slice(end)
-    while (remaining[0] === ' ') remaining.shift()
-    if (row === 1 && remaining.length) line[line.length - 1] = '…'
-    lines.push(line)
-  }
-  const letters = lines.flatMap((line, row) => line.map((character, column) => ({
-    character,
-    number: (character.codePointAt(0)! + column) % 10,
-    x: 500 + (column - (line.length - 1) / 2) * 16,
-    y: 270 + row * 34,
-  }))).map((letter, i) => ({
-    ...letter,
-    clusterX: 500 + ((i % 3) - 1) * 44,
-    clusterY: 245 + Math.floor((i % 9) / 3) * 42,
+  // Spread the entire captured dialog surface into a field of numeric fragments.
+  const rect = sourceRect ?? new DOMRect(0, 0, innerWidth, innerHeight)
+  const letters = Array.from({ length: 120 }, (_, i) => ({
+    character: '', number: numberAt(i + 300),
+    x: (rect.left + ((i % 15) + .5) * rect.width / 15) / innerWidth * 1000,
+    y: (rect.top + (Math.floor(i / 15) + .5) * rect.height / 8) / innerHeight * 640,
+    clusterX: 500 + ((i % 15) - 7) * 24,
+    clusterY: 230 + Math.floor(i / 15) * 18,
   }))
+
+  function takeOver(node: HTMLElement) {
+    const backdrop = document.querySelector<HTMLElement>('.idea-sort[role="dialog"]')?.closest<HTMLElement>('.overlay-backdrop')
+    const visibility = backdrop?.style.visibility ?? ''
+    if (backdrop) backdrop.style.visibility = 'hidden'
+    document.body.append(node)
+    if (source) for (let i = 0; i < 16; i++) {
+      const strip = document.createElement('div')
+      Object.assign(strip.style, {
+        position: 'fixed', left: `${rect.left}px`, top: `${rect.top}px`,
+        width: `${rect.width}px`, height: `${rect.height}px`, pointerEvents: 'none',
+        clipPath: `inset(${i * 6.25}% 0 ${100 - (i + 1) * 6.25}% 0)`,
+      })
+      const copy = source.cloneNode(true) as HTMLElement
+      copy.removeAttribute('role')
+      copy.inert = true
+      Object.assign(copy.style, { width: '100%', height: '100%', maxHeight: 'none', transform: 'none', visibility: 'visible' })
+      strip.append(copy)
+      node.append(strip)
+      strip.animate([
+        { transform: 'translate(0,0) scaleX(1)', opacity: 1 },
+        { transform: `translate(${(i % 2 ? 1 : -1) * 24}px,${(i - 8) * 4}px) scaleX(.96)`, opacity: .85, offset: .55 },
+        { transform: `translate(${(i % 2 ? 1 : -1) * 70}px,${(i - 8) * 9}px) scaleX(.6)`, opacity: 0 },
+      ], { duration: 350, delay: i * 7, fill: 'both', easing: 'cubic-bezier(.3,0,.6,1)' })
+    }
+    return { destroy() { node.remove(); if (backdrop) backdrop.style.visibility = visibility } }
+  }
   const target = IDEA_GROUPS.findIndex((group) => group.kind === destination)
   const targetX = 108 + target * 196
   const hex = (value: number) => `0x${value.toString(16).toUpperCase().padStart(6, '0').slice(-6)}`
 </script>
 
-<div class="refinement" aria-hidden="true" data-destination={destination}>
-  <svg viewBox="0 0 1000 640" fill="none" xmlns="http://www.w3.org/2000/svg">
+<div use:takeOver class="refinement" aria-hidden="true" data-destination={destination}>
+  <svg preserveAspectRatio="none" viewBox="0 0 1000 640" fill="none" xmlns="http://www.w3.org/2000/svg">
     <defs>
       <pattern id="refinement-scanlines" width="4" height="4" patternUnits="userSpaceOnUse">
         <path d="M0 3.5H4" stroke="currentColor" stroke-opacity=".045" />
@@ -88,7 +101,7 @@
     {#each letters as letter, i}
       <g
         class="fragment"
-        class:merging={i >= 9}
+
         style={`--start-x:${letter.x}px; --start-y:${letter.y}px; --cluster-x:${letter.clusterX}px; --cluster-y:${letter.clusterY}px; --bend-x:${targetX + (letter.clusterX - 500) * .6}px; --bend-y:${398 + (i % 5) * 7}px; --target-x:${targetX + ((i % 3) - 1) * 9}px; --delay:${(i % 7) * 12}ms`}
       >
         <text class="letter">{letter.character}</text>
@@ -99,6 +112,7 @@
     {#each IDEA_GROUPS as group, i}
       {@const x = 28 + i * 196}
       <g class="bin" class:receiving={i === target}>
+        <rect class="bin-surface" x={x - 8} y="525" width="176" height="90" rx="5" />
         <path class="lid lid-left" d={`M${x} 531h80`} style={`transform-origin:${x}px 531px`} />
         <path class="lid lid-right" d={`M${x + 80} 531h80`} style={`transform-origin:${x + 160}px 531px`} />
         <path class="rule" d={`M${x} 535h160v36H${x}ZM${x} 580h160v28H${x}Z`} />
@@ -114,18 +128,18 @@
 
 <style>
   .refinement {
-    position: absolute;
+    position: fixed;
     inset: 0;
-    z-index: 2;
+    z-index: 10000;
     display: grid;
     place-items: center;
     overflow: hidden;
-    pointer-events: none;
+    pointer-events: auto;
     color: var(--accent-strong);
-    background: var(--paper-strong);
+    background: transparent;
     animation: terminal-shutter 1320ms linear both;
   }
-  svg { display: block; width: 100%; height: 100%; overflow: hidden; }
+  svg { background: transparent; animation: field-open 1320ms linear both; display: block; width: 100%; height: 100%; overflow: hidden; }
   text { fill: currentColor; font-family: var(--font-mono); font-weight: 500; }
   .paper { fill: var(--paper-strong); }
   .rule, .wordmark, .selection, .lid { stroke: currentColor; stroke-width: 2; }
@@ -138,7 +152,7 @@
     text-anchor: middle;
     animation: number-float 1400ms ease-in-out infinite alternate;
     animation-delay: var(--offset);
-    opacity: .75;
+    opacity: .24;
   }
   .selection {
     stroke-dasharray: 33;
@@ -152,12 +166,12 @@
     animation-delay: var(--delay);
   }
   .fragment text { text-anchor: middle; font-size: 26px; }
-  .fragment .encoded { font-size: 36px; }
+  .fragment .encoded { font-size: 22px; }
   .replenish { animation: refill-field 1320ms steps(1) both; }
-  .merging .encoded { animation-name: merge-number; }
   .letter { animation: encode-letter 1320ms steps(1) both; animation-delay: var(--delay); }
   .encoded { animation: encode-number 1320ms steps(1) both; animation-delay: var(--delay); }
   .destination { font-size: 22px; animation: destination-arrive 1320ms steps(1) both; }
+  .bin-surface { fill: var(--paper-strong); fill-opacity: .92; }
   .bin-number { font-size: 26px; font-weight: 700; }
   .bin-percent { font-size: 22px; paint-order: stroke; stroke: var(--paper-strong); stroke-width: 3px; }
   .bin-fill { fill: currentColor; opacity: .25; }
@@ -170,12 +184,11 @@
   /* Horizontal scan opens into the field; the closing iris folds vertically,
      then retracts to a point. No generic opacity transition on the surface. */
   @keyframes terminal-shutter {
-    0% { clip-path: inset(49.8% 50%); }
-    5% { clip-path: inset(49.8% 0); }
-    16%, 85% { clip-path: inset(0 0); }
+    0%, 85% { clip-path: inset(0 0); }
     95% { clip-path: inset(49.8% 0); }
     100% { clip-path: inset(49.8% 50%); }
   }
+  @keyframes field-open { 0% { clip-path: inset(49.8% 0); } 20%, 100% { clip-path: inset(0); } }
   @keyframes number-float { to { transform: translateY(var(--drift)); } }
   @keyframes refill-field { 0% { opacity: 0; } 54%, 100% { opacity: 1; } }
   @keyframes select-cluster {
@@ -185,10 +198,10 @@
     52%, 100% { stroke-dashoffset: 33; opacity: 0; }
   }
   @keyframes encode-letter { 0% { opacity: 1; } 27%, 100% { opacity: 0; } }
-  @keyframes encode-number { 0% { opacity: 0; } 27%, 100% { opacity: 1; } }
+  @keyframes encode-number { 0% { opacity: 0; } 15%, 100% { opacity: 1; } }
   @keyframes merge-number { 0% { opacity: 0; } 27% { opacity: 1; } 43%, 100% { opacity: 0; } }
   @keyframes refine-fragment {
-    0%, 30% { transform: translate(var(--start-x), var(--start-y)); opacity: 1; }
+    0%, 32% { transform: translate(var(--start-x), var(--start-y)); opacity: 1; }
     53% { transform: translate(var(--cluster-x), var(--cluster-y)); opacity: 1; }
     76% { transform: translate(var(--bend-x), var(--bend-y)); opacity: 1; }
     97% { transform: translate(var(--target-x), 555px) scale(.45); opacity: 1; }
@@ -198,4 +211,6 @@
   @keyframes open-left { 0%, 40%, 84%, 100% { transform: rotate(0); } 55%, 76% { transform: rotate(-42deg); } }
   @keyframes open-right { 0%, 40%, 84%, 100% { transform: rotate(0); } 55%, 76% { transform: rotate(42deg); } }
   @keyframes receive-fill { 0%, 72% { transform: scaleX(.7); } 84%, 100% { transform: scaleX(1); } }
+
+
 </style>

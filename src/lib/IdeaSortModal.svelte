@@ -72,7 +72,7 @@
   let shaking: Action | null = null
   let shakeTimer: number | null = null
   let openClipId: Id | null = null
-  let refinement: { text: string; destination: IdeaGroupKind; label: string; progress: number; distribution: number[]; serial: number } | null = null
+  let refinement: { source: HTMLElement | null; sourceRect: DOMRect | null; text: string; destination: IdeaGroupKind; label: string; progress: number; distribution: number[]; serial: number } | null = null
   let refinementTimer: number | null = null
   let refinementSerial = 0
   let finishing = false
@@ -109,7 +109,9 @@
     if (source) counts[kinds.indexOf(source)]! -= 1
     counts[kinds.indexOf(destination)]! += 1
     const count = Math.max(1, counts.reduce((sum, value) => sum + value, 0))
+    const surface = document.querySelector<HTMLElement>('.idea-sort[role="dialog"]')
     refinement = {
+      source: surface?.cloneNode(true) as HTMLElement ?? null, sourceRect: surface?.getBoundingClientRect() ?? null,
       text: current.text, destination, label, serial: ++refinementSerial,
       progress: (sortedBefore + history.length + 1) / total,
       distribution: counts.map((value) => value / count),
