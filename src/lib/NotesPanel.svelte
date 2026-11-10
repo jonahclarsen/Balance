@@ -480,6 +480,7 @@
       // who stayed put; only moving up leaves the bottom.
       noteRestsAtBottom = isAtNoteBottom(scroller) || (noteRestsAtBottom && scroller.scrollTop >= noteRestTop - 1)
       noteRestTop = scroller.scrollTop
+      noteEditorHost?.noteScrolled()
       scheduleVisibilityUpdate()
     }
     noteRestsAtBottom = isAtNoteBottom(scroller)

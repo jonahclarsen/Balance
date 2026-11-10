@@ -5,6 +5,7 @@
   import { mobileNoteToolbar } from '../mobileNoteToolbar'
   import type { ItemLink } from '../planner'
   import type { Id, ListTemplate, Metric, Note, NoteItemKind, NoteViewState } from '../types'
+  import { noteWasLeftAtBottom, rememberNoteLeftAtBottom } from '../notesLeftAtBottom'
   import { NoteEditorAdapter, type NoteEditorStore } from './NoteEditorAdapter'
   import type { NoteEditorSelectionState, NoteEditorView, NoteInlineMark } from './types'
 
@@ -59,6 +60,9 @@
     // scroll position instead of replacing it with the detached pane's zero.
     const scroller = host?.isConnected ? scrollContainer() : null
     const scrollTop = scroller?.isConnected ? scroller.scrollTop : previous?.scrollTop ?? 0
+    if (scroller?.isConnected) {
+      rememberNoteLeftAtBottom(openedNoteId, scroller.scrollHeight - scroller.clientHeight - scrollTop <= 4)
+    }
     const state = adapter.viewState(scrollTop)
     onViewStateChange(openedNoteId, { scrollTop: state.scrollTop, caret: state.caret ?? previous?.caret ?? null })
   }
@@ -66,6 +70,10 @@
   export function rememberBeforeLeaving() {
     rememberViewState()
     departing = true
+  }
+
+  export function noteScrolled() {
+    if (openedNoteId) scheduleViewStateSave()
   }
 
   function handleSelectionChange() {
@@ -140,10 +148,19 @@
       if (openedNoteId) rememberViewState()
       openedNoteId = note.id
       const remembered = viewStatesByNote.get(note.id) ?? null
+      const openedId = note.id
+      const atBottom = noteWasLeftAtBottom(openedId)
       adapter.open(note.id, note.items, historyRevision, remembered?.caret ?? null)
       void tick().then(() => {
         const scroller = scrollContainer()
-        if (scroller) scroller.scrollTop = remembered?.scrollTop ?? 0
+        if (!scroller) return
+        scroller.scrollTop = atBottom ? scroller.scrollHeight : remembered?.scrollTop ?? 0
+        // The bottom writing space can settle a frame later.
+        if (atBottom) {
+          window.requestAnimationFrame(() => {
+            if (openedNoteId === openedId && scroller.isConnected) scroller.scrollTop = scroller.scrollHeight
+          })
+        }
       })
       return
     }

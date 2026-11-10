@@ -1892,6 +1892,44 @@ test('notes save adjustable breathing room and follow the final caret to the bot
   expect(await workspace.evaluate((element) => element.scrollTop)).toBeCloseTo(scrolledUpPosition, 0)
 })
 
+test('a note left at its bottom reopens there after a reload', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await openNotesView(page)
+  await page.getByRole('button', { name: '+ New note' }).click()
+  await page.locator('.note-text').first().fill(Array.from({ length: 80 }, (_, index) => `Long note line ${index + 1}`).join('\n'))
+
+  const distanceFromBottom = () => page.evaluate(() => {
+    const noteDocument = document.querySelector<HTMLElement>('.note-document')
+    const noteDocumentScrolls = noteDocument && ['auto', 'scroll'].includes(getComputedStyle(noteDocument).overflowY)
+    const scroller = noteDocumentScrolls ? noteDocument : document.scrollingElement
+    return scroller ? scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop : -1
+  })
+  const reopen = async () => {
+    await page.reload()
+    await openNotesView(page)
+    await expect(page.locator('.note-text').first()).toContainText('Long note line 80')
+  }
+
+  await expect(async () => {
+    await setNoteScrollTop(page, 1_000_000)
+    expect(await distanceFromBottom()).toBeLessThanOrEqual(4)
+  }).toPass()
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('balance.notesLeftAtBottom'))).toContain('"')
+  await reopen()
+  await expect.poll(distanceFromBottom).toBeLessThanOrEqual(4)
+  expect(await noteScrollTop(page)).toBeGreaterThan(0)
+
+  await setNoteScrollTop(page, 0)
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('balance.notesLeftAtBottom'))).toBe('[]')
+  await reopen()
+  await page.evaluate(() => new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+  }))
+  expect(await noteScrollTop(page)).toBe(0)
+})
+
 test('notes layout remains usable on mobile', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'mobile')
   await page.goto('/')
