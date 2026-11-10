@@ -197,6 +197,10 @@ class BalanceSyncWorker {
     assert.match(kotlin, /setInt\(dots\[index\], "setColorFilter", color\)/)
     assert.match(kotlin, /R\.id\.widget_projects, if \(projects\.isEmpty\(\)\) View\.GONE else View\.VISIBLE/)
     assert.match(kotlin, /alarm\.set\(AlarmManager\.RTC, next, pending\)/)
+    // Situate pills count down the hour before a mode turns on or off.
+    assert.match(kotlin, /mode\.optLong\("changeAt", 0L\)/)
+    assert.match(kotlin, /alarm\.setWindow\(AlarmManager\.RTC, next, 5_000L, pending\)/)
+    assert.match(kotlin, /R\.id\.widget_situate_upcoming_3/)
     assert.match(
       kotlin,
       /intent\.action == BalanceWidgets\.ACTION_REDRAW\) \{\s*val pending = goAsync\(\)\s*BalanceWidgets\.refreshAllAsync\(context\) \{ pending\.finish\(\) \}/,
@@ -216,6 +220,11 @@ class BalanceSyncWorker {
     )
     assert.match(violetLayout, /@drawable\/balance_widget_violet_task_surface/)
     assert.match(violetLayout, /@drawable\/balance_widget_violet_time_pill/)
+    assert.match(violetLayout, /android:id="@\+id\/widget_situate_upcoming_1" android:background="@drawable\/balance_widget_violet_pill_upcoming"/)
+    assert.match(
+      await readFile(join(root, 'res/drawable/balance_widget_violet_pill_upcoming.xml'), 'utf8'),
+      /android:dashWidth/,
+    )
     assert.match(
       violetLayout,
       /android:id="@\+id\/widget_item_time_1"[\s\S]*?android:fontFamily="sans-serif"[\s\S]*?android:textSize="9sp"/,

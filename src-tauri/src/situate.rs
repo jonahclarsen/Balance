@@ -68,7 +68,42 @@ fn public_target(target: &Value) -> Value {
     json!({"id":target["id"],"kind":target["kind"],"value":target["value"],"category":target["category"]})
 }
 const MAX_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
+/// How far ahead `changeAt` looks. Widgets show changes within the hour, so
+/// they also need to know when one enters that hour.
+const CHANGE_HORIZON_MS: i64 = 24 * 60 * 60_000;
 pub(crate) fn status(doc: &Value, platform: &str, now: i64) -> Value {
+    let mut current = evaluate(doc, platform, now);
+    // `changeAt` is when each mode next turns on or off, as in the app's `nextChange`.
+    let list = |key: &str| doc[key].as_array().cloned().unwrap_or_default();
+    let (epochs, windows, grants) = (list("epochs"), list("windows"), list("grants"));
+    let mut later: Vec<(i64, Value)> = Vec::new();
+    for mode in current["modes"].as_array_mut().into_iter().flatten() {
+        let id = mode["id"].clone();
+        let mut times: Vec<i64> = epochs
+            .iter()
+            .flat_map(|e| [number(&e["at"]), number(&e["end"])])
+            .chain(windows.iter().filter(|w| w["mode"] == id).flat_map(|w| [number(&w["at"]), number(&w["end"])]))
+            .chain(grants.iter().filter(|g| g["mode"] == id).map(|g| number(&g["until"])))
+            .filter(|&t| t > now && t <= now + CHANGE_HORIZON_MS)
+            .collect();
+        times.sort_unstable();
+        times.dedup();
+        let change = times.into_iter().find(|&t| {
+            let index = match later.iter().position(|(at, _)| *at == t) {
+                Some(index) => index,
+                None => {
+                    later.push((t, evaluate(doc, platform, t)));
+                    later.len() - 1
+                }
+            };
+            let modes = later[index].1["modes"].as_array();
+            modes.and_then(|ms| ms.iter().find(|m| m["id"] == id)).is_some_and(|m| m["active"] != mode["active"])
+        });
+        mode["changeAt"] = json!(change);
+    }
+    current
+}
+fn evaluate(doc: &Value, platform: &str, now: i64) -> Value {
     let epochs = doc["epochs"].as_array();
     let epoch = epochs.and_then(|es| {
         es.iter()
@@ -459,7 +494,7 @@ pub(crate) fn widget_modes() -> Vec<Value> {
                 .as_array()
                 .into_iter()
                 .flatten()
-                .map(|m| json!({"id":m["id"],"name":m["name"],"color":m["color"],"active":m["active"]}))
+                .map(|m| json!({"id":m["id"],"name":m["name"],"color":m["color"],"active":m["active"],"changeAt":m["changeAt"]}))
                 .collect()
         })
         .unwrap_or_default()
@@ -612,6 +647,18 @@ mod tests {
         assert_eq!(status(&d, "mac", 2_700_000)["modes"][0]["soon"], 15);
         assert_eq!(status(&d, "mac", 3_400_000)["modes"][0]["soon"], 5);
         assert_eq!(status(&d, "mac", 3_600_000)["aiBlocked"], true);
+    }
+    #[test]
+    fn change_at_is_the_next_flip() {
+        let mut d = fixture();
+        d["epochs"] = json!([{"at":0,"end":3_600_000,"phase":"day"},{"at":3_600_000,"end":7_200_000,"phase":"night"}]);
+        d["modes"][0]["eveningOnly"] = json!(true);
+        // Off by day, on at evening, and a pass ends early.
+        assert_eq!(status(&d, "mac", 60_000)["modes"][0]["changeAt"], 3_600_000);
+        d["grants"] = json!([{"mode":"touch-grass","target":"","epoch":3_600_000,"until":5_000_000}]);
+        assert_eq!(status(&d, "mac", 3_700_000)["modes"][0]["changeAt"], 5_000_000);
+        assert_eq!(status(&d, "mac", 5_000_000)["modes"][0]["changeAt"], 7_200_000);
+        assert_eq!(status(&d, "mac", 7_200_000)["modes"][0]["changeAt"], Value::Null);
     }
     #[test]
     fn target_grant_never_unlocks_mode_and_manual_reactivation_revokes_pass() {

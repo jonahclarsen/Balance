@@ -44,8 +44,8 @@ during the day stays on until morning at most. There is no global switch: set a 
 to **Only by hand** to keep it off until you turn it on. Overlapping modes must each
 be passed. A **Heads-up** notifies 15 or 5 minutes before an off mode comes back on,
 whether at its scheduled time or when a pass ends.
-Within an hour of a mode turning on or off, its sidebar pill counts down the minutes; a mode
-about to turn on appears faded.
+Within an hour of a mode turning on or off, its pill in the sidebar and home screen widget
+counts down the minutes; a mode about to turn on appears faded.
 
 Entertainment has a separate pass for one site, offered from a blocked site's gate
 or the Mac app prompt. After its quiz, choose 5, 15, or 60 minutes. One quiz, edited under **Entertainment access**,
@@ -105,7 +105,7 @@ not recognized unless it is a Frank thread.
 
 The optional adapters read `~/.local/share/balance-situate/status.json` (directory
 0700, file 0600). Its allowlisted contract contains mode IDs/names, app/domain
-rules, active state, heads-up minutes, expiry, and the quiz link. It contains no coordinates, quiz
+rules, active state, next on/off time, heads-up minutes, expiry, and the quiz link. It contains no coordinates, quiz
 answers, tasks, notes, recovery keys, or notification text. Readers cannot write
 grants or run shell commands through the feed.
 

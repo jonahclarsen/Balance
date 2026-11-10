@@ -26,6 +26,7 @@ import android.os.Looper
 import android.text.SpannableString
 import android.text.Spanned
 import android.text.style.ForegroundColorSpan
+import android.text.style.RelativeSizeSpan
 import android.util.Log
 import android.view.View
 import android.widget.RemoteViews
@@ -116,19 +117,49 @@ object BalanceWidgets {
         for (id in ids) {
             manager.updateAppWidget(id, renderHome(context, snapshot))
         }
-        scheduleProjectExpiry(context, snapshot)
+        scheduleRedraw(context, snapshot)
     }
 
     // A project stops being active at activeUntil, which can pass while the
-    // app is closed. Redraw then; an inexact alarm needs no extra permission.
-    private fun scheduleProjectExpiry(context: Context, snapshot: BalanceWidgetSnapshot) {
+    // app is closed, and Situate countdowns tick each minute of the hour
+    // before a mode changes. Redraw then; RTC alarms wait for the screen to be
+    // on and need no extra permission.
+    private fun scheduleRedraw(context: Context, snapshot: BalanceWidgetSnapshot) {
         val now = System.currentTimeMillis()
-        val next = snapshot.activeProjects.map { it.activeUntilMs }.filter { it > now }.minOrNull()
+        val expiry = snapshot.activeProjects.map { it.activeUntilMs }.filter { it > now }.minOrNull()
+        val tick = situateModes(context).mapNotNull { mode ->
+            val change = mode.optLong("changeAt", 0L).takeIf { it > now } ?: return@mapNotNull null
+            val start = change - SITUATE_CHANGE_WINDOW_MS
+            // The minute count changes whenever change - now crosses a whole minute.
+            if (now < start) start else now + ((change - now) % 60_000L).let { if (it == 0L) 60_000L else it }
+        }.minOrNull()
+        val next = listOfNotNull(expiry, tick).minOrNull()
         val alarm = context.getSystemService(AlarmManager::class.java) ?: return
         val intent = Intent(context, BalanceHomeWidgetProvider::class.java).setAction(ACTION_REDRAW)
         val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         val pending = PendingIntent.getBroadcast(context, 43, intent, flags)
-        if (next == null) alarm.cancel(pending) else alarm.set(AlarmManager.RTC, next, pending)
+        when {
+            next == null -> alarm.cancel(pending)
+            next == tick -> alarm.setWindow(AlarmManager.RTC, next, 5_000L, pending)
+            else -> alarm.set(AlarmManager.RTC, next, pending)
+        }
+    }
+
+    private const val SITUATE_CHANGE_WINDOW_MS = 60 * 60_000L
+
+    private fun situateModes(context: Context): List<JSONObject> {
+        val modes = BalanceSituate.status(context).optJSONArray("modes") ?: return emptyList()
+        return (0 until modes.length()).mapNotNull { modes.optJSONObject(it) }
+    }
+
+    // A mode is on, or turns on within the hour. Within the hour of a change,
+    // the pill counts down the minutes, as in the app's sidebar.
+    private fun situateLabel(name: String, on: Boolean, change: Long?, now: Long): CharSequence {
+        if (change == null) return name
+        val minutes = maxOf(1L, (change - now + 59_999L) / 60_000L)
+        val text = SpannableString(name + " " + (if (on) "for " else "in ") + minutes + (if (minutes == 1L) " min" else " mins"))
+        text.setSpan(RelativeSizeSpan(0.85f), name.length, text.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        return text
     }
 
     private fun parseProjects(json: JSONObject): List<BalanceWidgetProject> {
@@ -189,15 +220,26 @@ object BalanceWidgets {
     private fun renderHome(context: Context, snapshot: BalanceWidgetSnapshot): RemoteViews {
         val views = RemoteViews(context.packageName, themeLayout(snapshot.themeId))
         views.setTextViewText(R.id.widget_brand, brandText(context, snapshot.themeId))
-        val situate = BalanceSituate.status(context).optJSONArray("modes") ?: org.json.JSONArray()
+        val now = System.currentTimeMillis()
+        val pills = situateModes(context).mapNotNull { mode ->
+            val changeAt = mode.optLong("changeAt", 0L).takeIf { it > 0L }
+            val changed = changeAt != null && changeAt <= now
+            val on = if (changed) !mode.optBoolean("active") else mode.optBoolean("active")
+            val change = changeAt?.takeIf { !changed && it - now <= SITUATE_CHANGE_WINDOW_MS }
+            if (on || change != null) Triple(mode, on, change) else null
+        }
         val pillIds = intArrayOf(R.id.widget_situate_1, R.id.widget_situate_2, R.id.widget_situate_3)
-        val activeModes = (0 until situate.length()).map { situate.getJSONObject(it) }.filter { it.optBoolean("active") }
-        for ((index, viewId) in pillIds.withIndex()) {
-            val mode = activeModes.getOrNull(index)
-            views.setViewVisibility(viewId, if(mode == null) View.GONE else View.VISIBLE)
-            if(mode != null) {
-                views.setTextViewText(viewId, mode.getString("name"))
-                val intent = Intent(context, MainActivity::class.java).setData(android.net.Uri.parse("balance://situate?mode=" + android.net.Uri.encode(mode.getString("id"))))
+        val upcomingIds = intArrayOf(R.id.widget_situate_upcoming_1, R.id.widget_situate_upcoming_2, R.id.widget_situate_upcoming_3)
+        for (index in pillIds.indices) {
+            val pill = pills.getOrNull(index)
+            // A mode about to turn on uses the faded, dashed pill.
+            val viewId = if (pill?.second == false) upcomingIds[index] else pillIds[index]
+            views.setViewVisibility(pillIds[index], if (pill != null && viewId == pillIds[index]) View.VISIBLE else View.GONE)
+            views.setViewVisibility(upcomingIds[index], if (pill != null && viewId == upcomingIds[index]) View.VISIBLE else View.GONE)
+            if (pill != null) {
+                val (mode, on, change) = pill
+                views.setTextViewText(viewId, situateLabel(mode.optString("name"), on, change, now))
+                val intent = Intent(context, MainActivity::class.java).setData(android.net.Uri.parse("balance://situate?mode=" + android.net.Uri.encode(mode.optString("id"))))
                 views.setOnClickPendingIntent(viewId, PendingIntent.getActivity(context, 6700 + index, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
             }
         }
@@ -775,7 +817,10 @@ function projectRows(theme) {
 
 function situateRow(theme) {
   return `<LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
-        ${[1,2,3].map(index => `<TextView android:id="@+id/widget_situate_${index}" android:background="@drawable/balance_widget_${theme.id}_pill" android:layout_marginEnd="6dp" android:layout_width="wrap_content" android:layout_height="wrap_content" android:minHeight="48dp" android:gravity="center" android:paddingHorizontal="8dp" android:textSize="12sp" android:textColor="${theme.accent}" android:visibility="gone" />`).join('\n')}
+        ${[1,2,3].map(index => [
+          `<TextView android:id="@+id/widget_situate_${index}" android:background="@drawable/balance_widget_${theme.id}_pill" android:layout_marginEnd="6dp" android:layout_width="wrap_content" android:layout_height="wrap_content" android:minHeight="48dp" android:gravity="center" android:paddingHorizontal="8dp" android:maxLines="1" android:textSize="12sp" android:textColor="${theme.accent}" android:visibility="gone" />`,
+          `<TextView android:id="@+id/widget_situate_upcoming_${index}" android:background="@drawable/balance_widget_${theme.id}_pill_upcoming" android:layout_marginEnd="6dp" android:layout_width="wrap_content" android:layout_height="wrap_content" android:minHeight="48dp" android:gravity="center" android:paddingHorizontal="8dp" android:maxLines="1" android:textSize="12sp" android:textColor="${theme.muted}" android:visibility="gone" />`,
+        ].join('\n')).join('\n')}
     </LinearLayout>`
 }
 
@@ -1224,6 +1269,16 @@ function pill(theme) {
 `
 }
 
+function upcomingPill(theme) {
+  const accent = theme.statusAccent ?? theme.accent
+  return `<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <corners android:radius="${theme.window?.controlRadius ?? 999}dp" />
+    <stroke android:width="1dp" android:color="${alphaColor(accent, '59')}" android:dashWidth="3dp" android:dashGap="2dp" />
+</shape>
+`
+}
+
 function refreshBackground(theme) {
   if (theme.window) {
     return theme.window.pinstripes ? shapeFile(`<solid android:color="${theme.paper}" />`) : transparentShape
@@ -1375,6 +1430,7 @@ function addThemeFiles(theme, layoutDirectory, drawableDirectory) {
   files.set(join(resPath, `${layoutDirectory}/balance_home_widget_${theme.id}.xml`), homeLayout(theme))
   files.set(join(resPath, `${drawableDirectory}/balance_widget_${theme.id}_background.xml`), background(theme))
   files.set(join(resPath, `${drawableDirectory}/balance_widget_${theme.id}_pill.xml`), pill(theme))
+  files.set(join(resPath, `${drawableDirectory}/balance_widget_${theme.id}_pill_upcoming.xml`), upcomingPill(theme))
   files.set(
     join(resPath, `${drawableDirectory}/balance_widget_${theme.id}_refresh_background.xml`),
     refreshBackground(theme),

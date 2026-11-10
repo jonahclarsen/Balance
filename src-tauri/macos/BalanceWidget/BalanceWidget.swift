@@ -85,9 +85,30 @@ private struct SituateMode: Codable, Identifiable {
     let name: String
     let color: String?
     let active: Bool
+    /// When the mode next turns on or off, in milliseconds since 1970.
+    let changeAt: Double?
 
     var tint: Color? { Color(hex: color) }
+    var changeDate: Date? { changeAt.map { Date(timeIntervalSince1970: $0 / 1000) } }
 }
+
+/// A mode's pill: on now, or turning on within the hour. `change` is set
+/// when the mode turns on or off within the hour, as in the app's sidebar.
+private struct SituatePill: Identifiable {
+    let mode: SituateMode
+    let on: Bool
+    let change: Date?
+    var id: String { mode.id }
+
+    /// "for 12 mins" or "in 12 mins".
+    func countdown(at date: Date) -> String? {
+        guard let change else { return nil }
+        let minutes = max(1, Int((change.timeIntervalSince(date) / 60).rounded(.up)))
+        return "\(on ? "for" : "in") \(minutes) min\(minutes == 1 ? "" : "s")"
+    }
+}
+
+private let situateChangeWindow: TimeInterval = 60 * 60
 
 private let projectDateFormatter = ISO8601DateFormatter()
 private let fractionalProjectDateFormatter: ISO8601DateFormatter = {
@@ -152,6 +173,25 @@ private struct BalanceSnapshot: Codable {
 
     func nextProjectExpiry(after date: Date) -> Date? {
         projects(activeAt: date).compactMap(\.expiresAt).min()
+    }
+
+    /// Modes change between snapshot publications, so every render re-checks them.
+    func situatePills(at date: Date) -> [SituatePill] {
+        (situateModes ?? []).compactMap { mode in
+            let changed = mode.changeDate.map { $0 <= date } ?? false
+            let on = changed ? !mode.active : mode.active
+            let change = changed ? nil : mode.changeDate.flatMap {
+                $0.timeIntervalSince(date) <= situateChangeWindow ? $0 : nil
+            }
+            return on || change != nil ? SituatePill(mode: mode, on: on, change: change) : nil
+        }
+    }
+
+    /// Minute ticks for the countdowns, from when each change enters the hour.
+    func situateTicks(after date: Date, until end: Date) -> [Date] {
+        (situateModes ?? []).compactMap(\.changeDate).filter { $0 > date }.flatMap { change in
+            (0...60).map { change.addingTimeInterval(-Double($0) * 60) }
+        }.filter { $0 > date && $0 < end }
     }
 
     static var today: String {
@@ -232,9 +272,13 @@ private struct BalanceProvider: TimelineProvider {
             .min() ?? regularRefresh
         var entries = [BalanceEntry(date: now, snapshot: snapshot)]
         // An entry at the expiry drops the project on time even if WidgetKit
-        // defers the reload requested by the refresh policy.
-        if let snapshot, let projectExpiry, hideAt.map({ projectExpiry < $0 }) ?? true {
-            entries.append(BalanceEntry(date: projectExpiry, snapshot: snapshot))
+        // defers the reload requested by the refresh policy. Situate countdowns
+        // tick each minute the same way.
+        if let snapshot {
+            let visibleEnd = min(hideAt ?? .distantFuture, refresh.addingTimeInterval(1))
+            let times = Set(([projectExpiry].compactMap { $0 } + snapshot.situateTicks(after: now, until: visibleEnd))
+                .filter { $0 < visibleEnd })
+            entries += times.sorted().map { BalanceEntry(date: $0, snapshot: snapshot) }
         }
         if snapshot != nil, let hideAt {
             entries.append(BalanceEntry(date: hideAt, snapshot: nil))
@@ -376,15 +420,25 @@ private struct BalanceWidgetView: View {
 
             activeProjectRows(snapshot)
 
-            if let modes = snapshot.situateModes, !modes.isEmpty {
+            let pills = snapshot.situatePills(at: entry.date)
+            if !pills.isEmpty {
                 HStack(spacing: 5) {
-                    ForEach(modes.filter { $0.active }.prefix(3)) { mode in
-                        Link(destination: URL(string: "balance://situate?mode=\(mode.id)&widget=1")!) {
-                            Text(mode.name).font(palette.font(.time, fallback: .caption2.weight(.semibold)))
-                                .foregroundStyle(mode.tint ?? palette.ink)
+                    ForEach(pills.prefix(3)) { pill in
+                        let tint = pill.mode.tint ?? palette.statusAccent
+                        Link(destination: URL(string: "balance://situate?mode=\(pill.mode.id)&widget=1")!) {
+                            // A mode about to turn on is faded with a dashed edge.
+                            let color = pill.on ? (pill.mode.tint ?? palette.ink) : palette.muted
+                            (Text(pill.mode.name) + Text(pill.countdown(at: entry.date).map { " \($0)" } ?? "")
+                                .foregroundColor(color.opacity(0.68)))
+                                .font(palette.font(.time, fallback: .caption2.weight(.semibold)))
+                                .lineLimit(1)
+                                .foregroundStyle(color)
                                 .padding(.horizontal, 8).padding(.vertical, 5)
-                                .background((mode.tint ?? palette.statusAccent).opacity(0.15), in: palette.controlShape)
-                                .overlay(palette.controlShape.stroke((mode.tint ?? palette.statusAccent).opacity(0.45), lineWidth: 1))
+                                .background(pill.on ? tint.opacity(0.15) : .clear, in: palette.controlShape)
+                                .overlay(palette.controlShape.stroke(
+                                    tint.opacity(pill.on ? 0.45 : 0.35),
+                                    style: StrokeStyle(lineWidth: 1, dash: pill.on ? [] : [3, 2])
+                                ))
                         }.privacySensitive()
                     }
                 }
