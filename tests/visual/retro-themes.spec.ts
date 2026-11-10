@@ -1,6 +1,63 @@
 import { expect, test } from '@playwright/test'
-import { openView } from '../helpers/navigation'
+import { openNoteList, closeNoteList, openView } from '../helpers/navigation'
 import { createScreenshotState } from '../../website/capture/seed'
+
+test('System 1 notes distinguish headings and center every formatting icon', async ({ page }, testInfo) => {
+  await page.goto('/')
+  await page.evaluate(state => {
+    localStorage.clear()
+    localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+    localStorage.setItem('balance:deviceAppearance.v1', JSON.stringify({ version: 1, themeId: 'system1', colorScheme: 'light' }))
+  }, createScreenshotState('2026-10-14'))
+  await page.reload()
+  await openView(page, 'Notes')
+  await openNoteList(page)
+  await page.locator('.note-card').filter({ hasText: 'Camping' }).click()
+  await closeNoteList(page)
+  await page.evaluate(() => document.fonts.ready)
+  const body = page.locator('.lexical-note-editor [data-kind="paragraph"] .note-text').first()
+  const heading = page.locator('.lexical-note-editor .note-heading .note-text').first()
+  expect(await heading.evaluate(el => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThan(await body.evaluate(el => parseFloat(getComputedStyle(el).fontSize)))
+  for (const button of await page.locator('.note-format-group button').all()) {
+    const centered = await button.evaluate(el => {
+      const box = el.getBoundingClientRect()
+      const icon = el.querySelector('svg')!.getBoundingClientRect()
+      return Math.abs(box.x + box.width / 2 - icon.x - icon.width / 2) < 1
+        && Math.abs(box.y + box.height / 2 - icon.y - icon.height / 2) < 1
+    })
+    expect(centered).toBe(true)
+  }
+  await page.screenshot({ path: testInfo.outputPath('system1-notes.png') })
+})
+
+for (const themeId of ['system1', 'windowsxp', 'windowsvista', 'graphite']) {
+  test(`${themeId} uses native hover labels only outside old OS themes`, async ({ page }) => {
+    await page.goto('/')
+    await page.evaluate(themeId => {
+      localStorage.setItem('balance:deviceAppearance.v1', JSON.stringify({ version: 1, themeId, colorScheme: 'light' }))
+    }, themeId)
+    await page.reload()
+    // Synthetic icon control exercises inherited titles and title-only naming.
+    await page.evaluate(() => {
+      const parent = document.createElement('div')
+      parent.title = 'Parent label'
+      const button = document.createElement('button')
+      button.id = 'tooltip-fixture'
+      button.title = 'Fixture action'
+      button.style.cssText = 'position:fixed;left:100px;top:200px;width:40px;height:40px;z-index:99999'
+      parent.append(button)
+      document.body.append(parent)
+    })
+    const button = page.locator('#tooltip-fixture')
+    await button.hover()
+    await expect(button).toHaveAttribute('title', themeId === 'graphite' ? 'Fixture action' : '')
+    await expect(button).toHaveAccessibleName('Fixture action')
+    await expect(button.locator('..')).toHaveAttribute('title', themeId === 'graphite' ? 'Parent label' : '')
+    await page.mouse.move(0, 0)
+    await expect(button).toHaveAttribute('title', 'Fixture action')
+    await expect(button.locator('..')).toHaveAttribute('title', 'Parent label')
+  })
+}
 
 for (const [id, name] of [['system1', 'Mac System 1'], ['windowsxp', 'Windows XP'], ['windowsvista', 'Windows Vista']] as const) {
   test(`${name} can be selected, survives reload, and stays usable in both appearances`, async ({ page, browserName, isMobile }, testInfo) => {

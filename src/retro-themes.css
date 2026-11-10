@@ -338,6 +338,14 @@
   font-size: 32px;
   line-height: 1;
 }
+/* A separate native-size step keeps headings distinct from 32px body text.
+   Geneva has no bold face; scaling on its pixel grid preserves crisp edges. */
+:root[data-theme='system1'] :is(.lexical-note-editor .note-item.note-heading, .lexical-note-editor .note-heading .note-text, .note-static-heading) {
+  font-size: 48px;
+  line-height: 1;
+  font-weight: 400;
+  letter-spacing: 0;
+}
 /* Whole ideas are read here, so they get less than the day view's 32px. */
 :root[data-theme='system1'] .idea-sort .paste-review-text {
   padding: 13px 11px;

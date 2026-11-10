@@ -1,6 +1,9 @@
 import retro from '../retro-themes.css?inline'
 import aeroLuna from '../aero-luna-themes.css?inline'
 import windowsShell from '../windows-shell-themes.css?inline'
+import { suppressNativeTooltips } from './nativeTooltips'
+
+let restoreNativeTooltips: (() => void) | undefined
 
 // Keep every historical theme renderable, but do not make unrelated themes
 // match thousands of inactive chrome selectors on every focus or DOM move.
@@ -11,6 +14,12 @@ const groups = [
 ]
 
 export function applyThemeStyles(themeId: string) {
+  const oldOSTheme = ['system1', 'windows98', 'windowsxp', 'windowsvista'].includes(themeId)
+  if (oldOSTheme && !restoreNativeTooltips) restoreNativeTooltips = suppressNativeTooltips()
+  if (!oldOSTheme && restoreNativeTooltips) {
+    restoreNativeTooltips()
+    restoreNativeTooltips = undefined
+  }
   for (const group of groups) {
     const enabled = group.themes.includes(themeId)
     let style = document.getElementById(`balance-theme-${group.id}`) as HTMLStyleElement | null
