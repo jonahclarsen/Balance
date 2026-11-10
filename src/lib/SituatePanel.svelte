@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { isTauri, invoke } from '@tauri-apps/api/core'
+  import { isTauri } from '@tauri-apps/api/core'
   import { situate, situateNow, situatePlatform, situateError, requestQuiz, activateMode } from './situate/store'
   import { isActive, epoch, backOn, nextScheduled, reminderWindow, scheduleToday, nightPassEnd, type Mode } from './situate/core'
   import { DEVICES, clockTime } from './situate/ui'
@@ -9,8 +9,8 @@
   import SituateAccess from './SituateAccess.svelte'
   import SituateIcon from './SituateIcon.svelte'
   import SituateNotifications from './SituateNotifications.svelte'
+  import SituatePermissions from './SituatePermissions.svelte'
   let editing: Mode | null = null
-  let permissions = ''
   $: modes = $situate.modes.filter(m => m.platforms.includes(situatePlatform))
   $: currentEpoch = epoch($situate, $situateNow)
   $: today = scheduleToday($situate, $situateNow)
@@ -33,9 +33,6 @@
     const until = nextScheduled($situate, mode, $situateNow)
     return until ? `A quiz turns it off until ${clockTime(until)}` : 'A quiz turns it off'
   }
-  async function permissionsAction(action: string) {
-    try { permissions = await invoke<string>('situate_permissions', { action }) } catch(e) { permissions = String(e) }
-  }
 </script>
 <section class="situate-panel" data-native-undo>
   <header class="page-header"><div><h2>Situate</h2></div></header>
@@ -47,6 +44,7 @@
       <span class="alert-action">Set up</span>
     </button>
   {/if}
+  {#if isTauri() && situatePlatform === 'android'}<SituatePermissions />{/if}
   {#if countdown}<div class="countdown" role="timer"><strong>{Math.ceil((countdown.until - $situateNow) / 60000)} min</strong><span>Touch grass is back on at {clockTime(countdown.until)}</span></div>{/if}
 
   <section class="block">
@@ -77,11 +75,6 @@
   <section class="block"><h3>Entertainment access</h3><SituateAccess /></section>
 
   {#if isTauri() && situatePlatform === 'android'}
-    <section class="block">
-      <h3>Device access</h3>
-      <div class="actions"><button type="button" on:click={() => permissionsAction('notifications')}>Notification access</button><button type="button" on:click={() => permissionsAction('mode-notifications')}>Mode notifications</button><button type="button" on:click={() => permissionsAction('accessibility')}>App blocking access</button><button type="button" on:click={() => permissionsAction('usage')}>App detection access</button><button type="button" on:click={() => permissionsAction('alarms')}>Schedule permission</button></div>
-      {#if permissions}<p role="status" class="muted">{permissions}</p>{/if}
-    </section>
     <section class="block"><SituateNotifications /></section>
   {/if}
 </section>

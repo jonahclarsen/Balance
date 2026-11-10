@@ -13,6 +13,12 @@ object SituateSelfTest {
         val directory=File(context.cacheDir,"situate-fixture-"+java.util.UUID.randomUUID()).apply { mkdirs() }
         val namespace="balance.situate.test."+java.util.UUID.randomUUID()
         try {
+            // Permission reporting must work on a fresh disposable install, before setup.
+            val permissions = JSONObject(BalanceSituate.call(context, "permissions", "status"))
+            for (name in listOf("notifications", "accessibility", "usage", "mode-notifications", "alarms", "battery", "samsung")) {
+                check(permissions.get(name) is Boolean) { "Missing permission status: $name" }
+            }
+            check(permissions.getBoolean("usage") == SituateAppIdentity.permitted(context))
             NotificationArchive(context,directory,namespace).use { archive ->
                 fun fixture(i:Int, modes:List<String> = emptyList()) = JSONObject().put("app",if(i%2==0) "test.social" else "test.mail").put("title","SYNTHETIC_PRIVATE_TITLE").put("text","searchable needle$i").put("received",1000+i).put("modes",JSONArray(modes))
                 for(i in 1..150) archive.store("fixture$i",fixture(i,if(i%3==0) listOf("dolo") else emptyList()))

@@ -123,6 +123,11 @@ Android's widget can resize vertically and includes active mode controls.
 
 ## Android notification history
 
+The **Device access** checklist at the top of Situate shows missing permissions,
+what stops working, and an **Enable** button for each. It rechecks when you return
+from Settings. It also checks battery optimization and, on Samsung, explains the
+separate sleeping-app setting that Android cannot report.
+
 Grant notification access for logging/silencing and accessibility access for app
 blocking. Also grant **App detection access** (Android Usage access) so Situate
 can recover the current app after a service restart or a missed accessibility

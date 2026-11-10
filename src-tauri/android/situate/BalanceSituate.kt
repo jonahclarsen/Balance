@@ -4,6 +4,9 @@ import android.app.*
 import android.content.*
 import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
+import android.accessibilityservice.AccessibilityServiceInfo
+import android.view.accessibility.AccessibilityManager
 import android.provider.Settings
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
@@ -79,6 +82,24 @@ object BalanceSituate {
         // database, so skip that on the periodic ticks that change nothing.
         if (active != previous || !announce) BalanceWidgets.refreshAllAsync(context)
     }
+    fun permissionStatus(context: Context): JSONObject {
+        val notifications = context.getSystemService(NotificationManager::class.java)
+        val channel = notifications.getNotificationChannel("situate")
+        val groupBlocked = if (Build.VERSION.SDK_INT >= 28) channel?.group?.let {
+            notifications.getNotificationChannelGroup(it)?.isBlocked
+        } == true else false
+        val accessibility = context.getSystemService(AccessibilityManager::class.java)
+            .getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
+            .any { ComponentName(it.resolveInfo.serviceInfo.packageName, it.resolveInfo.serviceInfo.name) == ComponentName(context, SituateAccessibility::class.java) }
+        return JSONObject()
+            .put("notifications", notifications.isNotificationListenerAccessGranted(ComponentName(context, SituateNotifications::class.java)))
+            .put("accessibility", accessibility)
+            .put("usage", SituateAppIdentity.permitted(context))
+            .put("mode-notifications", notifications.areNotificationsEnabled() && channel?.importance != NotificationManager.IMPORTANCE_NONE && !groupBlocked)
+            .put("alarms", Build.VERSION.SDK_INT < 31 || context.getSystemService(AlarmManager::class.java).canScheduleExactAlarms())
+            .put("battery", context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName))
+            .put("samsung", Build.MANUFACTURER.equals("samsung", ignoreCase = true))
+    }
     // Rust calls this by name through JNI; R8 cannot see that reference.
     @androidx.annotation.Keep
     @JvmStatic fun call(context: Context, action: String, query: String): String {
@@ -89,11 +110,13 @@ object BalanceSituate {
                 tmp.writeText(document.toString()); check(tmp.renameTo(file)); SituateAccessibility.enforceCurrent(); executor.execute { refresh(context, false) }; return "{}"
             }
             "permissions" -> {
+                if (query == "status") return permissionStatus(context).toString()
                 val intent = when(query) {
                     "notifications" -> Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
                     "mode-notifications" -> Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE,context.packageName)
                     "accessibility" -> Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
                     "usage" -> Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
+                    "battery" -> Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:"+context.packageName))
                     "alarms" -> if(Build.VERSION.SDK_INT >=31) Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,Uri.parse("package:"+context.packageName)) else Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:"+context.packageName))
                     else -> throw IllegalArgumentException("Unknown permission")
                 }
