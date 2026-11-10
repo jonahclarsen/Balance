@@ -84,15 +84,19 @@ object BalanceSituate {
     }
     fun permissionStatus(context: Context): JSONObject {
         val notifications = context.getSystemService(NotificationManager::class.java)
-        val channel = notifications.getNotificationChannel("situate")
+        val channel = if (Build.VERSION.SDK_INT >= 26) notifications.getNotificationChannel("situate") else null
         val groupBlocked = if (Build.VERSION.SDK_INT >= 28) channel?.group?.let {
             notifications.getNotificationChannelGroup(it)?.isBlocked
         } == true else false
+        val listener = ComponentName(context, SituateNotifications::class.java)
+        val listenerGranted = if (Build.VERSION.SDK_INT >= 27) notifications.isNotificationListenerAccessGranted(listener)
+            else Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners")
+                ?.split(':')?.any { ComponentName.unflattenFromString(it) == listener } == true
         val accessibility = context.getSystemService(AccessibilityManager::class.java)
             .getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
             .any { ComponentName(it.resolveInfo.serviceInfo.packageName, it.resolveInfo.serviceInfo.name) == ComponentName(context, SituateAccessibility::class.java) }
         return JSONObject()
-            .put("notifications", notifications.isNotificationListenerAccessGranted(ComponentName(context, SituateNotifications::class.java)))
+            .put("notifications", listenerGranted)
             .put("accessibility", accessibility)
             .put("usage", SituateAppIdentity.permitted(context))
             .put("mode-notifications", notifications.areNotificationsEnabled() && channel?.importance != NotificationManager.IMPORTANCE_NONE && !groupBlocked)
