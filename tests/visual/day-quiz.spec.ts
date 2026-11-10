@@ -32,6 +32,63 @@ test('a question with a blank only answer takes a typed answer after the questio
   await expect(page.getByRole('region', { name: 'Daily plan' }).locator('[data-plan-text-input]')).toHaveText(['Focus: snack break'])
 })
 
+test('day generation advances each consecutive typed answer with one Return', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Mac keyboard reproduction')
+  await page.clock.install({ time: NOW })
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  await openView(page, 'Days')
+  await page.getByRole('button', { name: 'New day', exact: true }).last().click()
+  const prompts = ['Morning:', 'Afternoon:', 'Evening:']
+  for (const [index, prompt] of prompts.entries()) {
+    if (index > 0) await page.getByRole('button', { name: '+ Add template item', exact: true }).click()
+    await page.getByRole('button', { name: 'Ask a question when generating the day' }).last().click()
+    await page.keyboard.type(prompt)
+  }
+
+  // Record implicit submit clicks as well as key and submit events. WebKit's
+  // keyboard-generated clicks can interact with the modal's opening-press guard.
+  await page.evaluate(() => {
+    const events: object[] = []
+    ;(window as any).__dayReturnEvents = events
+    for (const type of ['keydown', 'keyup', 'click', 'submit']) {
+      document.addEventListener(type, (event) => {
+        if (!(event.target instanceof Element) || !event.target.closest('.day-quiz')) return
+        const mouse = event as MouseEvent
+        events.push({ type, target: event.target.tagName, key: (event as KeyboardEvent).key,
+          detail: mouse.detail, x: mouse.clientX, y: mouse.clientY,
+          prompt: document.querySelector('.day-quiz-prompt')?.textContent })
+      }, true)
+    }
+  })
+
+  try {
+    await generateDay(page)
+    const quiz = page.locator('.day-quiz')
+    for (const [index, prompt] of prompts.entries()) {
+      const input = quiz.getByRole('textbox', { name: prompt })
+      await expect(input).toBeFocused()
+      await page.keyboard.type(`answer ${index + 1}`)
+      // No pointer press inside the modal and exactly one Return per answer.
+      await page.keyboard.press('Enter')
+      if (index < prompts.length - 1) {
+        await expect(quiz.locator('.day-quiz-prompt')).toHaveText(prompts[index + 1])
+      } else {
+        await expect(quiz).toBeHidden()
+      }
+    }
+    await expect(page.getByRole('region', { name: 'Daily plan' }).locator('[data-plan-text-input]'))
+      .toHaveText(prompts.map((prompt, index) => `${prompt} answer ${index + 1}`))
+  } finally {
+    await testInfo.attach('day-return-events', {
+      body: JSON.stringify(await page.evaluate(() => (window as any).__dayReturnEvents), null, 2),
+      contentType: 'application/json',
+    })
+  }
+})
+
 test('Cmd+S skips a typed question while its field is focused', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
   await page.clock.install({ time: NOW })
