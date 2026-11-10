@@ -5,7 +5,7 @@ private var situateModes: [[String: Any]] = []
 private var situateObservers: [NSObjectProtocol] = []
 private var situatePrevious = Set<String>()
 private var situatePreviousSoon: [String: Int] = [:]
-private var situateShowing = false
+private var situatePrompt: SituatePrompt?
 @_silgen_name("balance_replace_task_notifications") private func situateNotice(_ raw: UnsafePointer<CChar>) -> Int32
 
 @_cdecl("balance_situate_update")
@@ -63,21 +63,46 @@ private func hideSituate(_ app: NSRunningApplication) {
 private func enforceSituate(_ app: NSRunningApplication) {
     guard let (mode, target) = situateBlock(app) else { return }
     hideSituate(app)
-    guard !situateShowing else { return }
-    situateShowing = true
-    let alert = NSAlert()
-    alert.messageText = "\(mode["name"] as? String ?? "Situate") is on"
-    alert.informativeText = "Take a moment before opening this app. Your work is still there."
-    alert.addButton(withTitle: "Keep the boundary")
-    alert.addButton(withTitle: "Open quiz")
     NSApp.activate(ignoringOtherApps: true)
-    if alert.runModal() == .alertSecondButtonReturn {
-        var url = URLComponents(string: "balance://situate")!
-        url.queryItems = [URLQueryItem(name: "mode", value: mode["id"] as? String)]
-        if target["category"] as? String == "entertainment" { url.queryItems?.append(URLQueryItem(name: "target", value: target["id"] as? String)) }
-        if let url = url.url { NSWorkspace.shared.open(url) }
+    if let prompt = situatePrompt { prompt.alert.window.makeKeyAndOrderFront(nil); return }
+    var url = URLComponents(string: "balance://situate")!
+    url.queryItems = [URLQueryItem(name: "mode", value: mode["id"] as? String)]
+    if target["category"] as? String == "entertainment" { url.queryItems?.append(URLQueryItem(name: "target", value: target["id"] as? String)) }
+    let prompt = SituatePrompt(app: app, quiz: url.url)
+    prompt.alert.messageText = "\(mode["name"] as? String ?? "Situate") is on"
+    prompt.alert.informativeText = "Take a moment before opening this app. Your work is still there."
+    situatePrompt = prompt
+    prompt.show()
+}
+/// A non-modal alert. `runModal` would stall the main run loop, which also
+/// delivers Siri captures and other distributed notifications.
+private final class SituatePrompt: NSObject {
+    let alert = NSAlert()
+    private let app: NSRunningApplication
+    private let quiz: URL?
+    init(app: NSRunningApplication, quiz: URL?) {
+        self.app = app
+        self.quiz = quiz
+        super.init()
     }
-    situateShowing = false
-    // The app may have come forward behind the alert; it stays hidden until a pass unblocks it.
-    hideSituate(app)
+    func show() {
+        let keep = alert.addButton(withTitle: "Keep the boundary")
+        let open = alert.addButton(withTitle: "Open quiz")
+        keep.target = self; keep.action = #selector(keepBoundary)
+        open.target = self; open.action = #selector(openQuiz)
+        alert.layout()
+        alert.window.hidesOnDeactivate = false
+        alert.window.level = .floating
+        alert.window.center()
+        alert.window.makeKeyAndOrderFront(nil)
+    }
+    @objc private func keepBoundary() { finish(nil) }
+    @objc private func openQuiz() { finish(quiz) }
+    private func finish(_ url: URL?) {
+        alert.window.orderOut(nil)
+        if situatePrompt === self { situatePrompt = nil }
+        if let url { NSWorkspace.shared.open(url) }
+        // The app may have come forward behind the prompt; it stays hidden until a pass unblocks it.
+        hideSituate(app)
+    }
 }

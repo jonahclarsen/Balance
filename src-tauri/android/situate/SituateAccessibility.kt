@@ -25,6 +25,8 @@ class SituateAccessibility : AccessibilityService() {
     private fun trace(message: String) { if (tracing) android.util.Log.i("BalanceSituate", message) }
     private var gate: LinearLayout? = null
     private var gateTitle: TextView? = null
+    private var gatePackage = ""
+    private var gateLeaving: Runnable? = null
     private var quizUrl = ""
     private var quizRequestedAt = 0L
     private var observer: FileObserver? = null
@@ -162,7 +164,12 @@ class SituateAccessibility : AccessibilityService() {
                     generation++
                 }
                 trace("decision package=$pkg blocked=${mode != null} generation=$generation")
-                if (mode == null || !interactive()) hideGate() else showGate(pkg, mode)
+                if (!interactive()) hideGate()
+                else if (mode != null) showGate(pkg, mode)
+                // Leaving for another app: the launcher or next app reports its window
+                // when the transition starts, so wait for it to cover the blocked app.
+                else if (gate != null && pkg != gatePackage) releaseGateAfterTransition()
+                else hideGate()
             }
         }
     }
@@ -176,7 +183,14 @@ class SituateAccessibility : AccessibilityService() {
         quizUrl = uri.build().toString()
         val title = mode.getString("name") + " is on"
         gateTitle?.text = title
-        if (gate != null) return
+        gatePackage = pkg
+        gate?.let { view ->
+            gateLeaving?.let { main.removeCallbacks(it); gateLeaving = null }
+            view.animate().cancel()
+            view.alpha = 1f
+            setGateTouchable(view, true)
+            return
+        }
         val themed = ContextThemeWrapper(this, applicationInfo.theme)
         val layout = object : LinearLayout(themed) {
             override fun dispatchKeyEvent(event: KeyEvent): Boolean {
@@ -232,10 +246,36 @@ class SituateAccessibility : AccessibilityService() {
         // which emits a fresh event and can put a stale gate over Home.
         performGlobalAction(GLOBAL_ACTION_HOME)
     }
+    private fun releaseGateAfterTransition() {
+        val view = gate ?: return
+        if (gateLeaving != null) return
+        val scale = try {
+            android.provider.Settings.Global.getFloat(contentResolver, android.provider.Settings.Global.TRANSITION_ANIMATION_SCALE, 1f)
+        } catch (_: Exception) { 1f }
+        val release = Runnable {
+            if (gate !== view) return@Runnable
+            view.animate().alpha(0f).setDuration(150).withEndAction { if (gate === view) hideGate() }.start()
+        }
+        gateLeaving = release
+        setGateTouchable(view, false)
+        main.postDelayed(release, (400 * scale).toLong())
+    }
+    private fun setGateTouchable(view: View, touchable: Boolean) {
+        val params = view.layoutParams as? WindowManager.LayoutParams ?: return
+        val flags = if (touchable) params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+            else params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        if (flags == params.flags) return
+        params.flags = flags
+        try { getSystemService(WindowManager::class.java).updateViewLayout(view, params) } catch (_: RuntimeException) {}
+    }
     private fun hideGate() {
         val view = gate ?: return
+        gateLeaving?.let { main.removeCallbacks(it) }
+        gateLeaving = null
+        view.animate().cancel()
         gate = null
         gateTitle = null
+        gatePackage = ""
         quizUrl = ""
         quizRequestedAt = 0
         getSystemService(WindowManager::class.java).removeViewImmediate(view)

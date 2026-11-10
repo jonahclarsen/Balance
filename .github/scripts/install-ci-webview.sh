@@ -7,10 +7,26 @@ case "$ci_webview_path" in
   /system/*.apk|/product/*.apk) ;;
   *) echo "Unexpected preinstalled WebView path"; exit 1 ;;
 esac
+# On hosted runners the lavapipe emulator process sometimes exits during a
+# guest reboot (its console port closes and the device never returns). The
+# system and data images keep this script's changes, so start it again.
+emulator_relaunches=0
+emulator_running() { (exec 3<>/dev/tcp/127.0.0.1/5554) 2>/dev/null; }
+relaunch_emulator() {
+  if (( emulator_relaunches >= 2 )) || [[ -z "${BALANCE_EMULATOR_OPTIONS:-}" ]]; then
+    echo "Emulator exited while rebooting"; exit 1
+  fi
+  emulator_relaunches=$((emulator_relaunches + 1))
+  echo "Emulator exited while rebooting; relaunching it (attempt $emulator_relaunches)."
+  # shellcheck disable=SC2086 # the options are a word list
+  setsid nohup "$ANDROID_HOME/emulator/emulator" -port 5554 -avd "${BALANCE_AVD_NAME:-test}" \
+    $BALANCE_EMULATOR_OPTIONS > "emulator-relaunch-$emulator_relaunches.log" 2>&1 < /dev/null &
+}
 wait_for_boot() {
-  timeout 120s adb wait-for-device
-  for attempt in $(seq 1 90); do
-    if [[ "$(adb shell getprop sys.boot_completed | tr -d '\r')" == 1 ]]; then return; fi
+  for attempt in $(seq 1 120); do
+    if [[ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == 1 ]]; then return; fi
+    # Give a reboot a few seconds to drop the console before checking it.
+    if (( attempt > 5 )) && ! emulator_running; then relaunch_emulator; fi
     sleep 2
   done
   echo "Emulator did not finish rebooting"; exit 1
