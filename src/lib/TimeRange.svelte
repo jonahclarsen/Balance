@@ -9,6 +9,7 @@
 <script lang="ts">
   import { onDestroy } from 'svelte'
   import { beginHapticDrag, endHapticDrag, vibrateSteps } from './haptics'
+  import { installHeldModifiers, modifiersFor, type HeldModifiers } from './heldModifiers'
   import { clampMinutes, formatMinutes, MAX_TIMELINE_MINUTES } from './planner'
 
   export let startMinutes: number
@@ -33,7 +34,8 @@
   ].filter(Boolean)
   $: warningTitle = warningReasons.length > 0 ? `This time ${warningReasons.join(' and ')}` : null
 
-  type DragModifiers = { altKey: boolean; shiftKey: boolean }
+  type DragModifiers = HeldModifiers
+  installHeldModifiers()
 
   let dragState:
     | {
@@ -60,7 +62,7 @@
       shiftTargets: getShiftTargets?.() ?? null,
       shiftingTargets: false,
       clientY: event.clientY,
-      modifiers: { altKey: event.altKey, shiftKey: event.shiftKey },
+      modifiers: modifiersFor(event),
       lastSteps: 0,
     }
     // Modifiers are read live, so pressing or releasing Alt or Shift
@@ -74,13 +76,13 @@
   function continueDrag(event: PointerEvent) {
     if (!dragState) return
     dragState.clientY = event.clientY
-    dragState.modifiers = { altKey: event.altKey, shiftKey: event.shiftKey }
+    dragState.modifiers = modifiersFor(event)
     applyDrag()
   }
 
   function updateDragModifiers(event: KeyboardEvent) {
     if (!dragState) return
-    const modifiers = { altKey: event.altKey, shiftKey: event.shiftKey }
+    const modifiers = modifiersFor(event)
     if (modifiers.altKey === dragState.modifiers.altKey && modifiers.shiftKey === dragState.modifiers.shiftKey) return
     dragState.modifiers = modifiers
     applyDrag()

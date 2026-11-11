@@ -2514,13 +2514,6 @@ body.mobile-checkbox-dragging {
   gap: 14px;
 }
 
-.mobile-time-editor p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 12px;
-  text-align: center;
-}
-
 .time-range.expanded {
   width: 100%;
   min-height: 76px;

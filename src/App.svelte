@@ -23,6 +23,7 @@
   import { startListStorageMaintenance } from './lib/listStorageMaintenance'
   import { startFreezeDiagnostics } from './lib/freezeDiagnostics'
   import { installMobileKeyboardScroll } from './lib/mobileKeyboardScroll'
+  import { installMouseButtonPresses } from './lib/mouseButtonPresses'
   import GoalColorPicker from './lib/GoalColorPicker.svelte'
   import GoalCopyButton from './lib/GoalCopyButton.svelte'
   import RecentPage from './lib/RecentPage.svelte'
@@ -908,9 +909,13 @@ return rows`
   $: windowsChrome = activeTheme.id === 'windowsxp' || activeTheme.id === 'windowsvista'
   $: if (isTauri() && !isMobile) applyDefaultZoom(windowsChrome ? 1 : APP_DEFAULT_ZOOM)
   // Retro themes draw their own caption in wide windows, with buttons that
-  // replace the traffic lights. Narrow windows keep the native ones.
-  $: captionVariant = isMobile ? null : windowsChrome ? 'windows' as const : activeTheme.id === 'system1' ? 'mac' as const : null
+  // replace the traffic lights. Narrow windows keep the native ones. Wide
+  // mobile windows (Samsung DeX) get the caption without window buttons.
+  $: captionVariant = windowsChrome ? 'windows' as const : activeTheme.id === 'system1' ? 'mac' as const : null
   let wideWindow = typeof matchMedia === 'function' && matchMedia('(min-width: 761px)').matches
+  // Behaviour follows the layout on screen, not the device: a phone driving a
+  // desktop-sized window (Samsung DeX) is used with a keyboard and mouse.
+  $: phoneLayout = isMobile && !wideWindow
   let windowFullscreen = false
   $: drawsWindowButtons = Boolean(captionVariant) && wideWindow
   // Reapplied on every full-screen change, since macOS rebuilds the title bar then.
@@ -1162,8 +1167,8 @@ return rows`
     if (!row) return
     row.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' })
     keepBelowPinnedParents(row)
-    // Focusing a task on mobile would raise the keyboard, so only scroll there.
-    if (!isMobile) await focusTaskById(plan.id, next.item.id)
+    // Focusing a task in the phone layout would raise the keyboard, so only scroll there.
+    if (!phoneLayout) await focusTaskById(plan.id, next.item.id)
   }
 
   function openMobileDrawerView(nextView: View) {
@@ -2383,6 +2388,7 @@ return rows`
     })
     const stopExtensionWatch = watchExtension()
     const stopMobileKeyboardScroll = installMobileKeyboardScroll()
+    const stopMouseButtonPresses = isMobile ? installMouseButtonPresses() : () => {}
     let mounted = true
     let stopAutomaticSync: (() => void) | null = null
     let stopListStorageMaintenance: (() => void) | null = null
@@ -2651,6 +2657,7 @@ return rows`
     return () => {
       stopFreezeDiagnostics()
       stopMobileKeyboardScroll()
+      stopMouseButtonPresses()
       stopSituate?.()
       stopExtensionWatch()
       stopKeyboardScroll()
@@ -7116,9 +7123,9 @@ return rows`
     <div class="macos-titlebar-drag-region" data-tauri-drag-region aria-hidden="true"></div>
   {/if}
   {#if captionVariant === 'windows'}
-    <WindowCaption variant="windows" title={WINDOW_CAPTIONS[view].title} icon={WINDOW_CAPTIONS[view].icon} fullscreen={windowFullscreen} />
+    <WindowCaption variant="windows" title={WINDOW_CAPTIONS[view].title} icon={WINDOW_CAPTIONS[view].icon} fullscreen={windowFullscreen} controls={!isMobile} />
   {:else if captionVariant === 'mac'}
-    <WindowCaption variant="mac" title="Balance" fullscreen={windowFullscreen} />
+    <WindowCaption variant="mac" title="Balance" fullscreen={windowFullscreen} controls={!isMobile} />
   {/if}
 
   {#if maximizeClickHandoff}
@@ -7481,8 +7488,8 @@ return rows`
                     historyRevision={$plannerStore.historyRevision}
                     selectedItemIds={selectedItemIdSet}
                     selectionDragging={selectingItems}
-                    mobile={isMobile}
-                    mobileSelectionMode={isMobile && selectedItemIds.length > 0}
+                    mobile={phoneLayout}
+                    mobileSelectionMode={phoneLayout && selectedItemIds.length > 0}
                     onSelectionPointerDown={beginItemSelection}
                     onSelectionPointerMove={handleSelectionPointerMove}
                     onSelectionPointerEnter={extendItemSelection}
@@ -8131,7 +8138,7 @@ return rows`
         {listTemplates}
         {metrics}
         {notes}
-        mobile={isMobile}
+        mobile={phoneLayout}
         activeGroup={activeIdeaGroup}
         onSelectGroup={showIdeaGroup}
         onOpenLink={(link, itemId) => openLink(link, null)}
@@ -8431,7 +8438,7 @@ return rows`
               {/each}
             </div>
 
-            <ThemeTaskPreview mobile={isMobile} />
+            <ThemeTaskPreview mobile={phoneLayout} />
           </div>
         </section>
 
@@ -8547,7 +8554,7 @@ return rows`
                   hue={checkboxPickerColor.hue}
                   lightness={checkboxPickerColor.lightness}
                   ariaLabel="Checked checkbox color"
-                  mobile={isMobile}
+                  mobile={phoneLayout}
                   onChange={updateCheckboxColorFromPicker}
                 />
                 <input
@@ -8567,7 +8574,7 @@ return rows`
                   hue={doneTintPickerColor.hue}
                   lightness={doneTintPickerColor.lightness}
                   ariaLabel="Completed item tint color"
-                  mobile={isMobile}
+                  mobile={phoneLayout}
                   onChange={updateDoneTintFromPicker}
                 />
                 <input

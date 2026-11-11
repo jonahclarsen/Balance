@@ -15,7 +15,7 @@ const CARET_KEYS = new Set([
 
 type PaddedScroller = { value: string; priority: string; base: number; applied: number }
 
-function activeEditor(): HTMLElement | null {
+export function activeEditor(): HTMLElement | null {
   const element = document.activeElement
   if (element instanceof HTMLTextAreaElement) return element.disabled || element.readOnly ? null : element
   if (element instanceof HTMLInputElement) {

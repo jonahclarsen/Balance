@@ -1267,7 +1267,6 @@
         dragPixelsPerStep={12}
         showRemove={false}
       />
-      <p>Drag either time up or down in 15-minute steps.</p>
     </div>
   </OverlayModal>
 {/if}
