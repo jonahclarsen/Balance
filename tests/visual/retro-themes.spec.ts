@@ -360,8 +360,12 @@ test('Windows XP keeps the focused text of a highlighted list row readable', asy
     localStorage.setItem('balance:deviceAppearance.v1', JSON.stringify({ version: 1, themeId: 'windowsxp', colorScheme: 'light' }))
   }, createScreenshotState('2026-10-14'))
   await page.reload()
-  await page.getByTitle('Open Evening reset').first().click()
   const dialog = page.getByRole('dialog', { name: 'Evening reset' })
+  // Today scrolls to the next task after loading, which can move the link mid-tap.
+  await expect(async () => {
+    await page.getByTitle('Open Evening reset').first().click({ timeout: 2000 })
+    await expect(dialog).toBeVisible({ timeout: 1000 })
+  }).toPass()
   const text = dialog.locator('.plan-row .item-text').filter({ hasText: 'Phone on the charger' })
   await text.click()
   await expect(dialog.locator('.plan-row.selected')).toContainText('Phone on the charger')
