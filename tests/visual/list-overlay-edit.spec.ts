@@ -1049,14 +1049,20 @@ test('an open list modal keeps the day behind it from scrolling on mobile', asyn
 test('moving through a short list modal leaves the day behind it in place on mobile', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'mobile', 'The page itself scrolls only on phones')
   const dialog = await openLongGroceriesOverlay(page, 0, 3)
-  await page.evaluate(() => window.scrollTo(0, 120))
-  const before = await page.evaluate(() => window.scrollY)
+  // A real day is taller than the screen; give the page behind room to scroll.
+  await page.evaluate(() => {
+    const spacer = document.createElement('div')
+    spacer.style.height = '2000px'
+    document.querySelector('.app-shell')!.append(spacer)
+    window.scrollTo(0, 120)
+  })
+  expect(await page.evaluate(() => window.scrollY)).toBe(120)
 
-  await dialog.getByRole('listitem', { name: 'Plan item: Item 02' }).getByText('Item 02').click()
-  await page.keyboard.press('ArrowDown')
+  await dialog.getByText('Item 02', { exact: true }).tap()
+  await dialog.getByText('Item 03', { exact: true }).tap()
   await page.keyboard.press('ArrowUp')
   await page.waitForTimeout(400)
-  expect(await page.evaluate(() => window.scrollY)).toBe(before)
+  expect(await page.evaluate(() => window.scrollY)).toBe(120)
 })
 
 
