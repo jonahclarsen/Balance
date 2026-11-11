@@ -3403,6 +3403,18 @@ body.mobile-checkbox-dragging {
   flex: 0 0 auto;
 }
 
+@media (max-width: 760px) {
+  /* Sit just below the phone header instead of under it. */
+  .app-error-banner {
+    top: calc(52px + 8px + env(safe-area-inset-top));
+    z-index: 65;
+  }
+
+  .app-error-banner.android {
+    top: calc(52px + 8px + max(24px, env(safe-area-inset-top)));
+  }
+}
+
 @media (max-width: 600px) {
   .app-error-banner {
     align-items: flex-start;

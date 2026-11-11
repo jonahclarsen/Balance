@@ -6990,7 +6990,7 @@ return rows`
 {/if}
 
 {#if $persistenceError}
-  <div class="app-error-banner persistence-error-banner" role="alert">
+  <div class="app-error-banner persistence-error-banner" class:android={isAndroid} role="alert">
     <span class="app-error-banner-icon" aria-hidden="true">!</span>
     <div class="app-error-banner-text">
       <strong>Database save failed</strong>
@@ -7003,7 +7003,7 @@ return rows`
 {/if}
 
 {#if availableUpdate && !$persistenceError && $automaticSyncStatus.initialSyncComplete && !$automaticSyncStatus.lastError}
-  <div class="app-error-banner update-available-banner" role="status" aria-live="polite">
+  <div class="app-error-banner update-available-banner" class:android={isAndroid} role="status" aria-live="polite">
     <span class="app-error-banner-icon" aria-hidden="true">↑</span>
     <div class="app-error-banner-text">
       <strong>Balance {availableUpdate.version} is available</strong>
