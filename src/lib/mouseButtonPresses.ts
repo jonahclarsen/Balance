@@ -4,8 +4,8 @@
 // the page reflows before the button is released; the click then lands on
 // whatever slid under the pointer, or nowhere. A finger's tap only moves focus
 // as it lifts, so touch never had this problem. For mouse presses on buttons
-// this keeps the editor focused until the click has run, then closes the
-// keyboard the way a tap would.
+// this keeps the editor focused until the click arrives, then releases it just
+// before the click's handlers run, the moment a tap would have.
 import { activeEditor } from './mobileKeyboardScroll'
 
 const PRESSABLE = [
@@ -36,12 +36,8 @@ export function installMouseButtonPresses(): () => void {
   function handleClick() {
     const editor = pending
     pending = null
-    if (!editor) return
-    // Wait for the click's own handlers; one that moved focus elsewhere (a
-    // dialog, another task) keeps it there.
-    setTimeout(() => {
-      if (document.activeElement === editor) editor.blur()
-    })
+    // Handlers that focus something, the same editor included, still can.
+    if (editor && document.activeElement === editor) editor.blur()
   }
 
   window.addEventListener('pointerdown', handlePointerDown, true)

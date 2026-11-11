@@ -98,7 +98,7 @@ test.describe('phone-sized Android window with a mouse', () => {
       button.id = 'press-fixture'
       button.textContent = 'Press'
       button.style.cssText = 'position:fixed;left:20px;bottom:20px;z-index:99999'
-      button.addEventListener('click', () => { button.dataset.pressed = String(document.activeElement?.hasAttribute('data-plan-text-focus-target')) })
+      button.addEventListener('click', () => { button.dataset.pressed = 'true' })
       document.body.append(button)
     })
     const button = page.locator('#press-fixture')
