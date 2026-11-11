@@ -40,13 +40,19 @@ test('gated day rows and their children drop out while a project is active at no
   expect(filtered.items[0].children).toEqual([])
 })
 
-test('a day with open projects but none active by noon asks for a pick, counted from 7 a.m. that day', () => {
+test('planning today or later with open projects but none active right now asks for a pick, counted from 7 a.m. that day', () => {
   const endsMorning = new Date(2026, 9, 21, 7).toISOString()
   const projects = [project({ id: 'ending', activeUntil: endsMorning }), project({ id: 'idle' }), project({ id: 'done', activeUntil: endsMorning, completedAt: '2026-10-20' })]
-  expect(needsProjectPick(projects, '2026-10-20')).toBe(false)
-  expect(needsProjectPick(projects, '2026-10-21')).toBe(true)
+  const evening = new Date(2026, 9, 20, 21).getTime()
+  // Active tonight, so tomorrow plans without a pick even though it lapses tomorrow morning.
+  expect(needsProjectPick(projects, '2026-10-21', '2026-10-20', evening)).toBe(false)
+  const nextMorning = new Date(2026, 9, 21, 8).getTime()
+  expect(needsProjectPick(projects, '2026-10-21', '2026-10-21', nextMorning)).toBe(true)
+  expect(needsProjectPick(projects, '2026-10-22', '2026-10-21', nextMorning)).toBe(true)
+  // Past days never ask.
+  expect(needsProjectPick(projects, '2026-10-20', '2026-10-21', nextMorning)).toBe(false)
   expect(endedProjectsOn(projects, '2026-10-21').map(({ id }) => id)).toEqual(['ending'])
-  expect(needsProjectPick([project({ completedAt: '2026-10-20' })], '2026-10-21')).toBe(false)
+  expect(needsProjectPick([project({ completedAt: '2026-10-20' })], '2026-10-21', '2026-10-21', nextMorning)).toBe(false)
   expect(new Date(projectActiveUntilOn('2026-10-21', 2)).getTime()).toBe(new Date(2026, 9, 23, 7).getTime())
 })
 

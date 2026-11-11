@@ -3857,7 +3857,7 @@ return rows`
     }
     const resurfaced = dueResurfacedNote($plannerStore.noteResurfacing, $plannerStore.notes, date)
     if (resurfaced && !(await askResurfacedNote(resurfaced.note.id, date))) return false
-    if (needsProjectPick($plannerStore.projects, date) && !(await askProjectPick(date))) return false
+    if (needsProjectPick($plannerStore.projects, date, todayISO()) && !(await askProjectPick(date))) return false
 
     const steps = templateQuizSteps(
       templateForGeneration(template, $plannerStore.templateItemConditions, $plannerStore.projects, date),

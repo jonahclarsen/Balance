@@ -170,9 +170,11 @@ export function endedProjectsOn(projects: Project[], date: string): Project[] {
   return projects.filter((project) => isProjectOpen(project) && project.activeUntil && Date.parse(project.activeUntil) <= noonOn(date))
 }
 
-// Generating a day with open projects but none active by noon asks for new ones.
-export function needsProjectPick(projects: Project[], date: string): boolean {
-  return projects.some(isProjectOpen) && !hasActiveProjectOn(projects, date)
+// Planning today or a later day with open projects but none active right now
+// asks for new ones, so tomorrow can be planned before today's pick lapses.
+// Past days never ask.
+export function needsProjectPick(projects: Project[], date: string, today: string, now = Date.now()): boolean {
+  return date >= today && projects.some(isProjectOpen) && activeProjects(projects, now).length === 0
 }
 
 function withoutNoActiveProjectItems(items: TemplateItem[], gatedIds: Set<Id>): TemplateItem[] {

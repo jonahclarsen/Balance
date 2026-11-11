@@ -870,8 +870,8 @@ test('undo in an unsaved project field undoes typing, and undoing an add leaves 
   expect((await readState(page)).projects.find((project: any) => project.name === 'Synthetic kept').description).toBe('One\n\nTwo')
 })
 
-test('generating a day with no project active by noon settles ended projects and picks new ones', async ({ page }) => {
-  // 9 p.m. in Vancouver on the 9th, generating the 10th.
+test('generating a day with no project active right now settles ended projects and picks new ones', async ({ page }) => {
+  // Projects picked at 9 p.m. in Vancouver on the 9th for one day.
   await page.clock.install({ time: new Date('2026-09-10T04:00:00Z') })
   await page.goto('/')
   await openView(page, 'Projects')
@@ -885,6 +885,8 @@ test('generating a day with no project active by noon settles ended projects and
     for (const project of state.projects.filter((project: any) => project.name !== 'Synthetic next')) plannerStore.setProjectActiveDays(project.id, 1)
     plannerStore.setActivePlanDate('2026-09-10')
   })
+  // 8 a.m. on the 10th: both ended at 7 a.m.
+  await page.clock.setSystemTime(new Date('2026-09-10T15:00:00Z'))
 
   await generateDay(page)
   const pick = page.getByRole('dialog', { name: 'Pick projects', exact: true })
@@ -946,7 +948,14 @@ test('generating a day with no project active by noon settles ended projects and
   await expect(newSession.locator('li', { hasText: 'Synthetic new' })).toContainText('2d')
   await openView(page, 'Today')
 
-  // With a project active by noon, generating again asks nothing.
+  // With a project active right now, a day after it lapses still plans without a pick.
+  await page.evaluate(async () => {
+    const path = '/src/lib/store.ts'
+    const { plannerStore } = await import(/* @vite-ignore */ path)
+    plannerStore.setActivePlanDate('2026-09-13')
+  })
   await generateDay(page)
+  await expect(page.getByRole('region', { name: 'Daily plan' })).toBeVisible()
   await expect(pick).toBeHidden()
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('balance.appState.v1')!).plans.map((plan: any) => plan.date))).toContain('2026-09-13')
 })
