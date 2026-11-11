@@ -350,3 +350,24 @@ for (const [themeId, name] of [['windowsxp', 'Windows XP'], ['windowsvista', 'Wi
     }
   })
 }
+
+test('Windows XP keeps the focused text of a highlighted list row readable', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-10-14T14:20:00') })
+  await page.goto('/')
+  await page.evaluate(state => {
+    localStorage.clear()
+    localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+    localStorage.setItem('balance:deviceAppearance.v1', JSON.stringify({ version: 1, themeId: 'windowsxp', colorScheme: 'light' }))
+  }, createScreenshotState('2026-10-14'))
+  await page.reload()
+  await page.getByTitle('Open Evening reset').first().click()
+  const dialog = page.getByRole('dialog', { name: 'Evening reset' })
+  const text = dialog.locator('.plan-row .item-text').filter({ hasText: 'Phone on the charger' })
+  await text.click()
+  await expect(dialog.locator('.plan-row.selected')).toContainText('Phone on the charger')
+  await expect(text).toBeFocused()
+  // Regression: the white edit box kept the highlight's white text.
+  const colors = await text.evaluate(el => [getComputedStyle(el).color, getComputedStyle(el).backgroundColor])
+  expect(colors[0]).not.toBe(colors[1])
+  expect(colors[0]).toBe('rgb(0, 0, 0)')
+})

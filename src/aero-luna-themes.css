@@ -1222,9 +1222,16 @@
   box-shadow: none;
   color: var(--win-select-text);
 }
-:root[data-theme='windowsxp'] :is(.plan-row.selected, .template-main.selected) :is(.item-text, .item-text-display, .template-text),
-:root[data-theme='windowsxp'] :is(.plan-row.selected, .template-main.selected) :is(.item-text, .item-text-display, .template-text) a:is(*, :hover) {
+:root[data-theme='windowsxp'] :is(.plan-row.selected, .template-main.selected) :is(.item-text, .item-text-display, .template-text):not(:focus),
+:root[data-theme='windowsxp'] :is(.plan-row.selected, .template-main.selected) :is(.item-text, .item-text-display, .template-text):not(:focus) a:is(*, :hover) {
   color: var(--win-select-text);
+}
+:root[data-theme='windowsxp'] :is(.plan-row.selected, .template-main.selected) .edit-shortcut-hint {
+  color: var(--win-select-text);
+}
+/* A focused field is a white edit box inside the blue row, so it keeps ink text. */
+:root[data-theme='windowsxp'] :is(.plan-row.selected, .template-main.selected) :is(.item-text, .item-text-display, .template-text):focus {
+  color: var(--ink);
 }
 :root[data-theme='windowsxp'] :is(.plan-row.sticky-parent.selected, .template-main.sticky-parent.selected) {
   --tree-sticky-tint: linear-gradient(var(--win-select), var(--win-select));
@@ -1302,6 +1309,10 @@
 }
 :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) .goal-date-head.today :is(span, strong) {
   color: #0046d5;
+}
+/* Column headers stay light bitmaps in dark mode, so the mark keeps the light red. */
+:root[data-color-scheme='dark']:is([data-theme='windowsxp'], [data-theme='windowsvista']) .goal-date-incomplete-mark {
+  color: #a62716;
 }
 :root:is([data-theme='windowsxp'], [data-theme='windowsvista']) :is(.goal-day-cell, .goal-day-cell.segment-start, .goal-day-cell.segment-end, .goal-day-cell.segment-start.segment-end, .goal-recent-day) {
   border-radius: 0;
