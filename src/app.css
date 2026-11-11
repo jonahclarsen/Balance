@@ -1458,6 +1458,13 @@ nav button.active {
   color: var(--accent-strong);
 }
 
+/* Dark palettes keep --accent deep enough for white-text fills; their light
+   --accent-strong is the one that reads as text on the dark page. Old OS themes
+   paint their own button faces and text. */
+:root[data-color-scheme='dark']:not([data-theme='windows98'], [data-theme='system1'], [data-theme='windowsxp'], [data-theme='windowsvista']) .primary.outlined {
+  color: var(--accent-strong);
+}
+
 .workspace {
   /* Pinned task parents meet the scrollport's top edge, as the tab rail does. */
   --tree-sticky-base: -28px;
@@ -4214,15 +4221,21 @@ body.mobile-checkbox-dragging {
   text-decoration: underline;
 }
 
+/* Yellow and green hues are far lighter than blue at the same HSL lightness, so
+   the face is pinned to one perceptual lightness to keep its white text legible. */
 .goal-add-button {
-  border-color: hsl(var(--goal-hue) 58% 48%);
-  background: hsl(var(--goal-hue) 58% 48%);
+  border-color: hsl(var(--goal-hue) 58% 40%);
+  border-color: oklch(from hsl(var(--goal-hue) 58% 48%) 0.52 c h);
+  background: hsl(var(--goal-hue) 58% 40%);
+  background: oklch(from hsl(var(--goal-hue) 58% 48%) 0.52 c h);
   white-space: nowrap;
 }
 
 .goal-add-button:hover {
-  border-color: hsl(var(--goal-hue) 58% 40%);
-  background: hsl(var(--goal-hue) 58% 40%);
+  border-color: hsl(var(--goal-hue) 58% 34%);
+  border-color: oklch(from hsl(var(--goal-hue) 58% 48%) 0.46 c h);
+  background: hsl(var(--goal-hue) 58% 34%);
+  background: oklch(from hsl(var(--goal-hue) 58% 48%) 0.46 c h);
 }
 
 .goal-form-status {
