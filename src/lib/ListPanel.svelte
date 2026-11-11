@@ -207,6 +207,8 @@
       scrollToPosition(scrollContainer, targetTop, behavior, targetBottomCollapse)
       return
     }
+    // A modal list that fits needs no scrolling; the page behind it must stay put.
+    if (row.closest('.overlay-backdrop')) return
     // On mobile the page scrolls beneath the sticky app header, so measure the
     // visible area from its bottom edge, as the modal does from its body.
     const header = document.querySelector<HTMLElement>('.mobile-app-header')?.getBoundingClientRect()

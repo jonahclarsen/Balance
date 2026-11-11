@@ -30,18 +30,18 @@ async function openGroceriesOverlay(page: import('@playwright/test').Page) {
   return dialog
 }
 
-async function openLongGroceriesOverlay(page: import('@playwright/test').Page, completedCount = 0) {
+async function openLongGroceriesOverlay(page: import('@playwright/test').Page, completedCount = 0, length = 52) {
   await openGroceriesOverlay(page)
   // These cases exercise navigation through a long generated list. Creation
   // is covered above; seed the remaining rows instead of repeating 51 UI
   // creation journeys in every scrolling test (especially costly in WebKit).
-  await page.evaluate((completedCount) => {
+  await page.evaluate(({ completedCount, length }) => {
     const state = JSON.parse(localStorage.getItem('balance.appState.v1')!)
     const template = state.listTemplates.find((entry: { name: string }) => entry.name === 'Groceries')
     const list = state.lists.find((entry: { listTemplateId: string }) => entry.listTemplateId === template.id)
     const firstItem = list.items[0]
     const firstTemplateItem = template.items[0]
-    list.items = Array.from({ length: 52 }, (_, index) => {
+    list.items = Array.from({ length }, (_, index) => {
       const text = `Item ${String(index + 1).padStart(2, '0')}`
       return { ...firstItem, id: index === 0 ? firstItem.id : `long-list-${index}`, text, html: text, done: index < completedCount, children: [] }
     })
@@ -50,11 +50,11 @@ async function openLongGroceriesOverlay(page: import('@playwright/test').Page, c
       text: item.text, html: item.text, children: [],
     }))
     localStorage.setItem('balance.appState.v1', JSON.stringify(state))
-  }, completedCount)
+  }, { completedCount, length })
   await page.reload()
   const dialog = page.getByRole('dialog', { name: 'Groceries' })
   await expect(dialog).toBeVisible()
-  await expect(dialog.getByRole('listitem')).toHaveCount(52)
+  await expect(dialog.getByRole('listitem')).toHaveCount(length)
   return dialog
 }
 
@@ -1044,6 +1044,19 @@ test('an open list modal keeps the day behind it from scrolling on mobile', asyn
   await page.keyboard.press('Escape')
   await expect(page.getByRole('dialog', { name: 'Groceries' })).toHaveCount(0)
   await expect(page.locator('html')).not.toHaveCSS('overflow', 'hidden')
+})
+
+test('moving through a short list modal leaves the day behind it in place on mobile', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile', 'The page itself scrolls only on phones')
+  const dialog = await openLongGroceriesOverlay(page, 0, 3)
+  await page.evaluate(() => window.scrollTo(0, 120))
+  const before = await page.evaluate(() => window.scrollY)
+
+  await dialog.getByRole('listitem', { name: 'Plan item: Item 02' }).getByText('Item 02').click()
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('ArrowUp')
+  await page.waitForTimeout(400)
+  expect(await page.evaluate(() => window.scrollY)).toBe(before)
 })
 
 
