@@ -8127,6 +8127,7 @@ return rows`
         showingHistory={view === 'projectHistory'}
         onShowHistory={openProjectHistory}
         onHideHistory={openProjects}
+        onPick={() => void askProjectPick(todayISO())}
         onOpenLink={(link) => openLink(link, null)}
       />
     {/if}

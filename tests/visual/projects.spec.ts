@@ -959,3 +959,20 @@ test('generating a day with no project active right now settles ended projects a
   await expect(pick).toBeHidden()
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('balance.appState.v1')!).plans.map((plan: any) => plan.date))).toContain('2026-09-13')
 })
+
+test('the Projects page opens the project pick on demand', async ({ page }) => {
+  // Noon in Vancouver on the 9th.
+  await page.clock.install({ time: new Date('2026-09-09T19:00:00Z') })
+  await page.goto('/')
+  await openView(page, 'Projects')
+  await page.getByRole('button', { name: 'Pick', exact: true }).click()
+  const pick = page.getByRole('dialog', { name: 'Pick projects', exact: true })
+  await pick.getByRole('textbox', { name: 'New project name' }).fill('Synthetic picked')
+  await pick.getByRole('button', { name: 'Add', exact: true }).click()
+  await pick.getByRole('button', { name: '1 day', exact: true }).click()
+  await expect(pick).toBeHidden()
+
+  const { projects } = await readState(page)
+  expect(projects.find((project: any) => project.name === 'Synthetic picked').activeUntil).toBe('2026-09-10T14:00:00.000Z')
+  await expect(page.locator('.project-card.active')).toHaveText(/Synthetic picked/)
+})

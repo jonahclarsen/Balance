@@ -22,6 +22,7 @@
   export let showingHistory = false
   export let onShowHistory: () => void = () => {}
   export let onHideHistory: () => void = () => {}
+  export let onPick: () => void = () => {}
   let name = ''
   let nameHtml = ''
   // Bumped after adding so the still-focused name editor clears its DOM.
@@ -135,7 +136,10 @@
   {:else}
   <header class="page-header projects-header">
     <h2>Projects</h2>
-    <button class="ghost" type="button" on:click={onShowHistory}>History</button>
+    <div class="projects-header-actions">
+      <button class="ghost" type="button" on:click={onPick}>Pick</button>
+      <button class="ghost" type="button" on:click={onShowHistory}>History</button>
+    </div>
   </header>
   {#if linkedProjectId && !projects.some((project) => project.id === linkedProjectId)}<p class="muted">Project unavailable.</p>{/if}
   <form class="project-add" aria-label="Add a new project" on:submit|preventDefault={add}>
@@ -269,6 +273,7 @@
   .page-header h2 { margin: 0; }
   .projects-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .projects-header button { font-size: 14px; padding: 6px 10px; }
+  .projects-header-actions { display: flex; gap: 6px; }
   .history-header { justify-content: flex-start; }
   .projects-back { padding-left: 8px; }
   .projects-back span { margin-right: 4px; font-size: 1.3em; line-height: 0.8; }
