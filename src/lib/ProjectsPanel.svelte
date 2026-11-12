@@ -12,7 +12,7 @@
   import RichTextEditor from './RichTextEditor.svelte'
   import { showCaretOnResize } from './showCaretOnResize'
   import { escapeHTML, htmlToPlainTextWithBreaks, sanitizeInlineHTML, type ItemLink } from './planner'
-  import { isProjectActive, isProjectOpen, PROJECT_ACTIVE_DAY_COUNTS } from './projects'
+  import { filterProjectsByPhrase, isProjectActive, isProjectOpen, PROJECT_ACTIVE_DAY_COUNTS } from './projects'
   export let projects: Project[] = []
   export let linkedProjectId = ''
   // Refreshed by the app each minute so active projects lapse on time.
@@ -31,11 +31,14 @@
   let pickingDays = false
   let highlightedId = ''
   let highlightTimer: ReturnType<typeof setTimeout> | undefined
-  $: open = projects.filter(isProjectOpen)
+  let search = ''
+  $: searching = Boolean(search.trim())
+  $: shown = filterProjectsByPhrase(projects, search)
+  $: open = shown.filter(isProjectOpen)
   $: active = open.filter((project) => isProjectActive(project, now))
   $: inactive = open.filter((project) => !active.includes(project))
-  $: completed = projects.filter((project) => !project.archived && project.completedAt).sort((a, b) => b.completedAt!.localeCompare(a.completedAt!))
-  $: archived = projects.filter((project) => project.archived).sort((a, b) => (b.archivedAt ?? '').localeCompare(a.archivedAt ?? ''))
+  $: completed = shown.filter((project) => !project.archived && project.completedAt).sort((a, b) => b.completedAt!.localeCompare(a.completedAt!))
+  $: archived = shown.filter((project) => project.archived).sort((a, b) => (b.archivedAt ?? '').localeCompare(a.archivedAt ?? ''))
   $: details = projects.find((project) => project.id === detailsId)
   $: detailsActive = details ? active.includes(details) : false
   $: if (detailsId && !details) closeDetails()
@@ -57,6 +60,8 @@
 
   $: if (linkedProjectId) void reveal(linkedProjectId)
   async function reveal(id: string) {
+    // A search could be hiding the linked project.
+    search = ''
     await tick()
     document.getElementById(`project-${id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
     await highlight(id)
@@ -137,6 +142,7 @@
   <header class="page-header projects-header">
     <h2>Projects</h2>
     <div class="projects-header-actions">
+      <input class="projects-search" type="search" aria-label="Search projects" placeholder="Search projects…" bind:value={search} />
       <button class="ghost" type="button" on:click={onPick}>Pick</button>
       <button class="ghost" type="button" on:click={onShowHistory}>History</button>
     </div>
@@ -171,12 +177,18 @@
       <div class="project-list" use:projectReordering={openProject}>{#each active as project (project.id)}<ProjectCard {project} active note={`until ${weekday(project.activeUntil!)}`} highlighted={highlightedId === project.id} onOpen={openProject} />{/each}</div>
     </section>
   {/if}
-  {#if inactive.length || !active.length}
+  {#if inactive.length || (!active.length && !searching)}
     <section class="project-section" aria-labelledby="open-projects-title">
       <h3 id="open-projects-title">Open <span class="count">{inactive.length}</span></h3>
       <div class="project-list" use:projectReordering={openProject}>{#each inactive as project (project.id)}<ProjectCard {project} highlighted={highlightedId === project.id} onOpen={openProject} />{/each}</div>
       {#if !open.length}<p class="muted">None.</p>{/if}
     </section>
+  {/if}
+  {#if searching && !shown.length}
+    <div class="projects-no-match">
+      <p class="muted">No projects match “{search.trim()}”.</p>
+      <button class="ghost" type="button" on:click={() => search = ''}>Clear search</button>
+    </div>
   {/if}
   {#if completed.length}
     <section class="project-section" aria-labelledby="completed-projects-title">
@@ -273,7 +285,15 @@
   .page-header h2 { margin: 0; }
   .projects-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .projects-header button { font-size: 14px; padding: 6px 10px; }
-  .projects-header-actions { display: flex; gap: 6px; }
+  .projects-header-actions { display: flex; align-items: center; justify-content: flex-end; flex: 1 1 auto; gap: 6px; min-width: 0; }
+  .projects-search { flex: 0 1 220px; min-width: 0; min-height: 34px; }
+  @media (max-width: 760px) {
+    .projects-header:not(.history-header) { align-items: stretch; }
+    .projects-search { flex-grow: 1; }
+  }
+  .projects-no-match { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .projects-no-match p { margin: 0; }
+  .projects-no-match button { font-size: 14px; padding: 6px 10px; }
   .history-header { justify-content: flex-start; }
   .projects-back { padding-left: 8px; }
   .projects-back span { margin-right: 4px; font-size: 1.3em; line-height: 0.8; }

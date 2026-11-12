@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { activeProjects, endedProjectsOn, historyDayHeading, needsProjectPick, nextProjectExpiry, outgoingHistoryDay, periodDays, periodFromDays, projectActiveUntil, projectActiveUntilOn, projectHistory, projectHistoryNoteDay, projectHistoryNoteId, projectHistoryPeriods, projectStartOn, templateForGeneration, withActiveUntil } from '../../src/lib/projects'
+import { activeProjects, endedProjectsOn, filterProjectsByPhrase, historyDayHeading, needsProjectPick, nextProjectExpiry, outgoingHistoryDay, periodDays, periodFromDays, projectActiveUntil, projectActiveUntilOn, projectHistory, projectHistoryNoteDay, projectHistoryNoteId, projectHistoryPeriods, projectStartOn, templateForGeneration, withActiveUntil } from '../../src/lib/projects'
 import type { DailyTemplate, Project, TemplateItem } from '../../src/lib/types'
 
 const project = (patch: Partial<Project> = {}): Project => ({ id: 'project', name: 'Project', description: '', color: '#336699', archived: false, createdAt: '', updatedAt: '', ...patch })
@@ -23,6 +23,16 @@ test('only open projects within their active window are active', () => {
   ]
   expect(activeProjects(projects, now).map(({ id }) => id)).toEqual(['active', 'soon'])
   expect(nextProjectExpiry(projects, now)).toBe(Date.parse('2026-10-20T13:00:00Z'))
+})
+
+test('project search matches names and descriptions, ignoring case and outer spaces', () => {
+  const projects = [
+    project({ id: 'name', name: 'Synthetic Garden' }),
+    project({ id: 'description', name: 'Other', description: 'Plant the garden beds' }),
+    project({ id: 'miss', name: 'Unrelated' }),
+  ]
+  expect(filterProjectsByPhrase(projects, '  GARDEN ').map(({ id }) => id)).toEqual(['name', 'description'])
+  expect(filterProjectsByPhrase(projects, ' ')).toBe(projects)
 })
 
 test('gated day rows and their children drop out while a project is active at noon on the day', () => {

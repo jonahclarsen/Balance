@@ -21,6 +21,13 @@ export function isProjectActive(project: Project, now = Date.now()): boolean {
   return isProjectOpen(project) && Boolean(project.activeUntil) && Date.parse(project.activeUntil!) > now
 }
 
+// Matches a phrase in a project's name or description, ignoring case.
+export function filterProjectsByPhrase(projects: Project[], query: string): Project[] {
+  const phrase = query.trim().toLocaleLowerCase()
+  if (!phrase) return projects
+  return projects.filter((project) => project.name.toLocaleLowerCase().includes(phrase) || project.description.toLocaleLowerCase().includes(phrase))
+}
+
 export function activeProjects(projects: Project[], now = Date.now()): Project[] {
   return projects.filter((project) => isProjectActive(project, now))
 }
