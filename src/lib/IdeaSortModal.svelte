@@ -421,6 +421,7 @@
   <span class="sort-announcement" role="status">{refinement ? `Sorted: ${refinement.label}` : ''}</span>
   <div class="paste-review" inert={Boolean(refinement)}>
     <ProgressBar done={sorted} {total} label="Ideas sorted" />
+    <p class="idea-sort-question">{IDEA_SORT_QUESTION}</p>
     <div class="paste-review-list" aria-label="Idea being sorted">
       {#if current}
         {#key current.id}
@@ -472,8 +473,6 @@
         {/key}
       {/if}
     </div>
-
-    <p class="idea-sort-question">{IDEA_SORT_QUESTION}</p>
 
     <div class="paste-review-actions idea-sort-actions">
       {#if editing}

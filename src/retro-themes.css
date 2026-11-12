@@ -359,7 +359,7 @@
   padding: 9px;
 }
 :root[data-theme='system1'] .idea-sort .idea-sort-question {
-  font-size: 22px;
+  font-size: 36px;
 }
 @media (min-width: 761px) {
   :root[data-theme='system1'] .idea-sort .overlay-body {
