@@ -123,8 +123,9 @@ Android's widget can resize vertically and includes active mode controls.
 
 ## Android notification history
 
-The **Device access** checklist at the top of Situate shows missing permissions,
-what stops working, and an **Enable** button for each. It rechecks when you return
+When access is missing, a compact permission notice appears at the top of Situate.
+Tap it to see only the missing permissions, what stops working, and an **Enable**
+button for each. The notice disappears when all access is granted. It rechecks when you return
 from Settings. It also checks battery optimization and, on Samsung, explains the
 separate sleeping-app setting that Android cannot report.
 

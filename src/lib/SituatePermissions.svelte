@@ -16,7 +16,10 @@
   let actionError = ''
   let checking = false
   let disposed = false
+  let expanded = false
   $: missing = status ? access.filter(item => !status![item.id]) : []
+  $: if (status && missing.length === 0) expanded = false
+  $: message = error || `${missing.length} ${missing.length === 1 ? 'permission' : 'permissions'} missing`
 
   async function refresh() {
     if (checking || document.hidden) return
@@ -26,7 +29,7 @@
       if (!result || access.some(item => typeof result[item.id] !== 'boolean') || typeof result.samsung !== 'boolean') throw new Error('Invalid permission status')
       if (!disposed) { status = result; error = '' }
     } catch {
-      if (!disposed) { status = null; error = 'Couldn’t check device access. Retry or open Settings below.' }
+      if (!disposed) { status = null; error = 'Couldn’t check device access' }
     } finally { checking = false }
   }
   async function openSettings(action: string) {
@@ -49,38 +52,42 @@
   })
 </script>
 
-<section class="device-access" class:missing={missing.length > 0 || !!error} aria-labelledby="device-access-heading">
-  <div class="heading">
-    <h3 id="device-access-heading">Device access</h3>
-    <button type="button" on:click={refresh} disabled={checking}>Recheck</button>
-  </div>
-  <p class="summary" role="status">{error || (!status ? 'Checking access…' : missing.length ? 'Situate needs access' : 'All access granted')}</p>
-  {#each access as item}
-    <div class="access-row" class:needed={status && !status[item.id]}>
-      <div><strong>{item.label}</strong><span>{status ? status[item.id] ? 'Granted' : 'Missing' : 'Not checked'}</span>
-        {#if !status || !status[item.id]}<p>{item.effect}</p>{/if}
+{#if missing.length || error}
+  <section class="device-access" aria-label="Device access">
+    <button class="summary" type="button" aria-label={message} aria-expanded={expanded} aria-controls="situate-missing-access" on:click={() => expanded = !expanded}>
+      <span role="status">{message}</span>
+      <svg class:expanded width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+    </button>
+    {#if expanded}
+      <div id="situate-missing-access" class="details">
+        {#each status ? missing : access as item}
+          <div class="access-row">
+            <div><strong>{item.label}</strong><p>{item.effect}</p></div>
+            <button type="button" aria-label={`Enable ${item.label}`} on:click={() => openSettings(item.id)}>Enable</button>
+          </div>
+        {/each}
+        {#if status?.samsung}
+          <p class="samsung">Samsung: set Balance’s battery use to <strong>Unrestricted</strong> and add it to <strong>Never sleeping apps</strong> in Battery → Background usage limits. Samsung’s sleeping-app setting can’t be checked here.</p>
+        {/if}
+        {#if actionError}<p role="alert">{actionError}</p>{/if}
+        <button class="recheck" type="button" on:click={refresh} disabled={checking}>Recheck</button>
       </div>
-      <button type="button" aria-label={`${status?.[item.id] ? 'Manage' : 'Enable'} ${item.label}`} on:click={() => openSettings(item.id)}>{status?.[item.id] ? 'Manage' : 'Enable'}</button>
-    </div>
-  {/each}
-  {#if status?.samsung}
-    <p class="samsung">Samsung: set Balance’s battery use to <strong>Unrestricted</strong> and add it to <strong>Never sleeping apps</strong> in Battery → Background usage limits. Samsung’s sleeping-app setting can’t be checked here.</p>
-  {/if}
-  {#if actionError}<p role="alert">{actionError}</p>{/if}
-</section>
+    {/if}
+  </section>
+{/if}
 
 <style>
-  .device-access { margin-bottom:20px; padding:16px; border:1px solid var(--line); border-radius:14px; background:var(--paper-strong); }
-  .device-access.missing { border:2px solid var(--danger); }
-  .heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
-  h3 { margin:0; font-size:1.05rem; }
+  .device-access { margin-bottom:16px; border:1px solid color-mix(in srgb, var(--danger) 50%, var(--line)); border-radius:12px; background:var(--paper-strong); overflow:hidden; }
   button { flex:none; font-size:13px; padding:6px 12px; }
-  .summary { margin:8px 0; font-weight:650; }
-  .missing .summary, .needed span, [role="alert"] { color:var(--danger); }
+  .summary { display:flex; align-items:center; justify-content:space-between; gap:12px; width:100%; padding:12px 14px; border:0; border-radius:0; background:transparent; color:var(--danger); text-align:left; }
+  .summary svg { flex:none; }
+  .summary svg.expanded { transform:rotate(180deg); }
+  .details { padding:0 14px 14px; }
   .access-row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 0; border-top:1px solid var(--line); }
   .access-row > div { min-width:0; }
   strong { font-size:14px; }
-  span { display:block; font-size:12px; color:var(--muted); }
   p { margin:4px 0 0; font-size:13px; }
   .samsung { border-top:1px solid var(--line); padding-top:12px; color:var(--muted); }
+  .recheck { margin-top:12px; }
+  [role="alert"] { color:var(--danger); }
 </style>

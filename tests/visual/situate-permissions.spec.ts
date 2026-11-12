@@ -23,39 +23,48 @@ async function fixture(page: Page, failed = false) {
   }, failed)
 }
 
-test('missing access explains failures and opens each relevant setting', async ({ page }) => {
+test('missing permissions stay collapsed until clicked, then open the relevant settings', async ({ page }) => {
   await fixture(page)
-  await expect(page.getByRole('status')).toHaveText('Situate needs access')
-  await expect(page.getByText('Missing', { exact: true })).toHaveCount(6)
+  const notice = page.getByRole('button', { name: '6 permissions missing' })
+  await expect(notice).toHaveAttribute('aria-expanded', 'false')
+  await expect(page.getByRole('button', { name: /^Enable / })).toHaveCount(0)
+  await expect(page.getByText(/Samsung’s sleeping-app setting/)).toHaveCount(0)
+  await page.screenshot({ path: 'artifacts/situate-access-collapsed.png' })
+  await notice.click()
+  await expect(notice).toHaveAttribute('aria-expanded', 'true')
   await expect(page.getByText('Apps aren’t blocked.', { exact: true })).toBeVisible()
-  await expect(page.getByText('Notifications aren’t silenced or saved.')).toBeVisible()
-  await expect(page.getByText(/Samsung’s sleeping-app setting can’t be checked/)).toBeVisible()
-  await page.screenshot({ path: 'artifacts/situate-access-missing.png' })
   for (const button of await page.getByRole('button', { name: /^Enable / }).all()) await button.click()
   expect(await page.evaluate(() => (window as any).__opened)).toEqual(['accessibility', 'notifications', 'usage', 'mode-notifications', 'alarms', 'battery'])
+  await notice.click()
+  await expect(page.getByRole('button', { name: /^Enable / })).toHaveCount(0)
+})
 
+test('granted access disappears and a later revocation starts collapsed with only the missing permission', async ({ page }) => {
+  await fixture(page)
+  await page.getByRole('button', { name: '6 permissions missing' }).click()
   await page.evaluate(() => {
     const runtime = window as any
     for (const key of Object.keys(runtime.__access)) runtime.__access[key] = true
     window.dispatchEvent(new Event('focus'))
   })
-  await expect(page.getByRole('status')).toHaveText('All access granted')
-  await expect(page.getByText('Missing', { exact: true })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: /^Manage / })).toHaveCount(6)
-
+  await expect(page.getByRole('region', { name: 'Device access' })).toHaveCount(0)
   await page.evaluate(() => {
     (window as any).__access.accessibility = false
     document.dispatchEvent(new Event('visibilitychange'))
   })
-  await expect(page.getByRole('status')).toHaveText('Situate needs access')
-  await expect(page.getByText('Apps aren’t blocked.', { exact: true })).toBeVisible()
+  const notice = page.getByRole('button', { name: '1 permission missing', exact: true })
+  await expect(notice).toHaveAttribute('aria-expanded', 'false')
+  await expect(page.getByRole('button', { name: /^Enable / })).toHaveCount(0)
+  await notice.click()
+  await expect(page.getByRole('button', { name: /^Enable / })).toHaveCount(1)
+  await expect(page.getByRole('button', { name: 'Enable Accessibility access', exact: true })).toBeVisible()
+  await expect(page.getByText('Notification access', { exact: true })).toHaveCount(0)
 })
 
-test('failed checks stay explicit and can be retried', async ({ page }) => {
+test('failed checks can be expanded and retried', async ({ page }) => {
   await fixture(page, true)
-  await expect(page.getByRole('status')).toContainText('Couldn’t check device access')
-  await expect(page.getByText('Not checked', { exact: true })).toHaveCount(6)
+  await page.getByRole('button', { name: 'Couldn’t check device access' }).click()
   await page.evaluate(() => { (window as any).__failed = false })
   await page.getByRole('button', { name: 'Recheck' }).click()
-  await expect(page.getByRole('status')).toHaveText('Situate needs access')
+  await expect(page.getByRole('status')).toHaveText('6 permissions missing')
 })
