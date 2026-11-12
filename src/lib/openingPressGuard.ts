@@ -2,12 +2,17 @@
 // WebViews hit-test a tap's click after the finger lifts, so a surface that
 // appeared under the finger on pointerdown or pointerup receives the click.
 // Until a press starts inside the surface, its pointer clicks are swallowed.
-// Keyboard and programmatic clicks carry neither a click count nor coordinates.
+// WebKit gives keyboard clicks coordinates too. An activation key pressed
+// inside the surface is a new press, just like pointerdown.
 export function ignoreOpeningPress(node: HTMLElement, active = true) {
   let pressed = !active
 
   function down() {
     pressed = true
+  }
+
+  function keydown(event: KeyboardEvent) {
+    if (!event.isComposing && (event.key === 'Enter' || event.key === ' ')) down()
   }
 
   function click(event: MouseEvent) {
@@ -20,6 +25,7 @@ export function ignoreOpeningPress(node: HTMLElement, active = true) {
   }
 
   node.addEventListener('pointerdown', down, true)
+  node.addEventListener('keydown', keydown, true)
   node.addEventListener('click', click, true)
   return {
     update(next = true) {
@@ -28,6 +34,7 @@ export function ignoreOpeningPress(node: HTMLElement, active = true) {
     },
     destroy() {
       node.removeEventListener('pointerdown', down, true)
+      node.removeEventListener('keydown', keydown, true)
       node.removeEventListener('click', click, true)
     },
   }

@@ -32,6 +32,40 @@ test('a question with a blank only answer takes a typed answer after the questio
   await expect(page.getByRole('region', { name: 'Daily plan' }).locator('[data-plan-text-input]')).toHaveText(['Focus: snack break'])
 })
 
+test('day generation advances consecutive typed answers with one Return', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop and WebKit')
+  await page.clock.install({ time: NOW })
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  await openView(page, 'Days')
+  await page.getByRole('button', { name: 'New day', exact: true }).last().click()
+  const prompts = ['Morning:', 'Afternoon:', 'Evening:']
+  for (const [index, prompt] of prompts.entries()) {
+    if (index > 0) await page.getByRole('button', { name: '+ Add template item', exact: true }).click()
+    await page.getByRole('button', { name: 'Ask a question when generating the day' }).last().click()
+    await page.keyboard.type(prompt)
+  }
+
+  await generateDay(page)
+  const quiz = page.locator('.day-quiz')
+  for (const [index, prompt] of prompts.entries()) {
+    const input = quiz.getByRole('textbox', { name: prompt })
+    await expect(input).toBeFocused()
+    // No pointer press inside the modal; WebKit synthesizes a click on Next.
+    await page.keyboard.type(`answer ${index + 1}`)
+    await page.keyboard.press('Enter')
+    if (index < prompts.length - 1) {
+      await expect(quiz.locator('.day-quiz-prompt')).toHaveText(prompts[index + 1])
+    } else {
+      await expect(quiz).toBeHidden()
+    }
+  }
+  await expect(page.getByRole('region', { name: 'Daily plan' }).locator('[data-plan-text-input]'))
+    .toHaveText(prompts.map((prompt, index) => `${prompt} answer ${index + 1}`))
+})
+
 test('Cmd+S skips a typed question while its field is focused', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
   await page.clock.install({ time: NOW })
