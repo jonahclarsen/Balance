@@ -23,6 +23,7 @@
   export let onShowHistory: () => void = () => {}
   export let onHideHistory: () => void = () => {}
   export let onPick: () => void = () => {}
+  export let searchShortcutLabel = ''
   let name = ''
   let nameHtml = ''
   // Bumped after adding so the still-focused name editor clears its DOM.
@@ -32,6 +33,11 @@
   let highlightedId = ''
   let highlightTimer: ReturnType<typeof setTimeout> | undefined
   let search = ''
+  let searchInput: HTMLInputElement | undefined
+  export function focusSearch() {
+    searchInput?.focus()
+    searchInput?.select()
+  }
   $: searching = Boolean(search.trim())
   $: shown = filterProjectsByPhrase(projects, search)
   $: open = shown.filter(isProjectOpen)
@@ -142,7 +148,7 @@
   <header class="page-header projects-header">
     <h2>Projects</h2>
     <div class="projects-header-actions">
-      <input class="projects-search" type="search" aria-label="Search projects" placeholder="Search projects…" bind:value={search} />
+      <input class="projects-search" type="search" aria-label="Search projects" placeholder={`Search projects…${searchShortcutLabel ? ` (${searchShortcutLabel})` : ''}`} bind:this={searchInput} bind:value={search} />
       <button class="ghost" type="button" on:click={onPick}>Pick</button>
       <button class="ghost" type="button" on:click={onShowHistory}>History</button>
     </div>
@@ -174,13 +180,13 @@
   {#if active.length}
     <section class="project-section" aria-labelledby="active-projects-title">
       <h3 id="active-projects-title">Active <span class="count">{active.length}</span></h3>
-      <div class="project-list" use:projectReordering={openProject}>{#each active as project (project.id)}<ProjectCard {project} active note={`until ${weekday(project.activeUntil!)}`} highlighted={highlightedId === project.id} onOpen={openProject} />{/each}</div>
+      <div class="project-list" use:projectReordering={openProject}>{#each active as project (project.id)}<ProjectCard {project} {search} active note={`until ${weekday(project.activeUntil!)}`} highlighted={highlightedId === project.id} onOpen={openProject} />{/each}</div>
     </section>
   {/if}
   {#if inactive.length || (!active.length && !searching)}
     <section class="project-section" aria-labelledby="open-projects-title">
       <h3 id="open-projects-title">Open <span class="count">{inactive.length}</span></h3>
-      <div class="project-list" use:projectReordering={openProject}>{#each inactive as project (project.id)}<ProjectCard {project} highlighted={highlightedId === project.id} onOpen={openProject} />{/each}</div>
+      <div class="project-list" use:projectReordering={openProject}>{#each inactive as project (project.id)}<ProjectCard {project} {search} highlighted={highlightedId === project.id} onOpen={openProject} />{/each}</div>
       {#if !open.length}<p class="muted">None.</p>{/if}
     </section>
   {/if}
@@ -193,13 +199,13 @@
   {#if completed.length}
     <section class="project-section" aria-labelledby="completed-projects-title">
       <h3 id="completed-projects-title">Completed <span class="count">{completed.length}</span></h3>
-      <div class="project-list">{#each completed as project (project.id)}<ProjectCard {project} note={shortDate(project.completedAt!)} highlighted={highlightedId === project.id} onOpen={openProject} />{/each}</div>
+      <div class="project-list">{#each completed as project (project.id)}<ProjectCard {project} {search} note={shortDate(project.completedAt!)} highlighted={highlightedId === project.id} onOpen={openProject} />{/each}</div>
     </section>
   {/if}
   {#if archived.length}
     <section class="project-section" aria-labelledby="archived-projects-title">
       <h3 id="archived-projects-title">Archived <span class="count">{archived.length}</span></h3>
-      <div class="project-list">{#each archived as project (project.id)}<ProjectCard {project} note={project.archivedAt ? shortDate(project.archivedAt) : ''} highlighted={highlightedId === project.id} onOpen={openProject} />{/each}</div>
+      <div class="project-list">{#each archived as project (project.id)}<ProjectCard {project} {search} note={project.archivedAt ? shortDate(project.archivedAt) : ''} highlighted={highlightedId === project.id} onOpen={openProject} />{/each}</div>
     </section>
   {/if}
   {/if}

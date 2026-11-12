@@ -39,7 +39,7 @@
       title: 'General',
       shortcuts: [
         { keys: ['mod', 'K'], label: 'Open / close search', alt: ['alt', 'C'] },
-        { keys: ['mod', 'F'], label: 'Find in current view / search goals' },
+        { keys: ['mod', 'F'], label: 'Find in current view / search goals or projects' },
         { keys: ['enter'], label: 'Next match (in Find)' },
         { keys: ['shift', 'enter'], label: 'Previous match (in Find)' },
         { keys: ['mod', 'G'], label: 'Next find match (while Find is open)', alt: ['F3'] },

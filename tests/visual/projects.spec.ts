@@ -650,7 +650,7 @@ test('rapid adding keeps the cursor in place, and the name field opens at its en
   expect(projects.find((project: any) => project.name.startsWith('Synthetic one')).name).toBe('Synthetic one plan')
 })
 
-test('find shows a project\'s full description only while it matches', async ({ page }) => {
+test('Mod+F searches projects, showing a full description only while the search matches it', async ({ page }) => {
   await page.goto('/')
   await openView(page, 'Projects')
   await addProject(page, 'Synthetic find')
@@ -666,48 +666,24 @@ test('find shows a project\'s full description only while it matches', async ({ 
   const dotOffset = () => card.evaluate((element) => element.querySelector('.project-dot')!.getBoundingClientRect().top - element.getBoundingClientRect().top)
   const previewDotOffset = await dotOffset()
 
-  const highlighted = () => page.evaluate(() => Array.from(CSS.highlights.get('balance-document-find-match') ?? [], (range) => {
-    if (!(range instanceof Range)) return null
-    const { left, right } = range.getBoundingClientRect()
-    return { text: range.toString(), onScreen: left >= 0 && right <= document.documentElement.clientWidth }
-  }))
-
-  await page.keyboard.press('Meta+f')
-  const find = page.getByLabel('Find text', { exact: true })
+  await page.keyboard.press('ControlOrMeta+f')
+  const search = page.getByRole('searchbox', { name: 'Search projects' })
+  await expect(search).toBeFocused()
+  await expect(page.getByLabel('Find text', { exact: true })).toHaveCount(0)
   for (const word of ['tulip', 'orchid']) {
-    await find.fill(word)
-    await expect(page.locator('.find-status')).toHaveText('1/1')
+    await page.keyboard.type(word)
     await expect(description).toContainText('Second line tulip')
-    await expect.poll(highlighted).toEqual([{ text: word, onScreen: true }])
     expect(await description.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
     expect(Math.abs(await dotOffset() - previewDotOffset)).toBeLessThanOrEqual(1)
+    await page.keyboard.press('ControlOrMeta+f')
+    await expect(search).toBeFocused()
   }
 
-  // A match elsewhere on the card leaves the description alone.
-  await find.fill('Synthetic find')
-  await expect(page.locator('.find-status')).toHaveText('1/1')
+  // A match on the name leaves the description alone.
+  await search.fill('Synthetic find')
   await expect(description).toHaveText(preview)
-
-  await find.fill('tulip')
-  await expect(description).toContainText('Second line tulip')
-  await find.fill('absent')
-  await expect(page.locator('.find-status')).toHaveText('0/0')
+  await search.fill('')
   await expect(description).toHaveText(preview)
-
-  await find.fill('tulip')
-  await expect(description).toContainText('Second line tulip')
-  await find.fill('')
-  await expect(description).toHaveText(preview)
-
-  await find.fill('tulip')
-  await expect(description).toContainText('Second line tulip')
-  await page.keyboard.press('Escape')
-  await expect(description).toHaveText(preview)
-
-  // Reopening restores the last query and its match.
-  await page.keyboard.press('Meta+f')
-  await expect(description).toContainText('Second line tulip')
-  await expect(page.locator('.find-status')).toHaveText('1/1')
 })
 
 test('long project descriptions truncate within the page and remain editable in full', async ({ page }) => {

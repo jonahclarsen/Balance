@@ -696,6 +696,7 @@ return rows`
   let newGoalNameMismatch = false
   let goalSearch = ''
   let goalSearchInput: HTMLInputElement | null = null
+  let projectsPanel: ProjectsPanel | null = null
   let goalStatsOpen = false
   let highlightedGoalCardId: Id | null = null
   let lockedGoalOrder: Id[] | null = null
@@ -4289,6 +4290,11 @@ return rows`
       if (view === 'goals') {
         documentFindOpen = false
         goalSearchInput?.focus()
+        return
+      }
+      if (view === 'projects' && projectsPanel) {
+        documentFindOpen = false
+        projectsPanel.focusSearch()
         return
       }
       documentFindOpen = true
@@ -8121,6 +8127,8 @@ return rows`
 
     {#if view === 'projects' || view === 'projectHistory'}
       <ProjectsPanel
+        bind:this={projectsPanel}
+        searchShortcutLabel={isMac ? '⌘F' : 'Ctrl+F'}
         projects={$plannerStore.projects}
         {linkedProjectId}
         now={projectClock}

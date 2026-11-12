@@ -9,9 +9,11 @@
   export let active = false
   export let highlighted = false
   export let onOpen: (projectId: string) => void
+  // The Projects search; a description it matches shows in full, as with find.
+  export let search = ''
   $: nameHtml = withDescriptionColon(sanitizeInlineHTML(project.nameHtml ?? escapeHTML(project.name)), Boolean(project.description.trim()))
   $: descriptionPreview = previewLine(project.description)
-  $: descriptionFound = findTextIncludes(project.description, $activeFindQuery)
+  $: descriptionFound = findTextIncludes(project.description, search) || findTextIncludes(project.description, $activeFindQuery)
   // A trailing colon hints that the project has a description; only the card shows it.
   function withDescriptionColon(html: string, hasDescription: boolean) {
     if (!hasDescription) return html
