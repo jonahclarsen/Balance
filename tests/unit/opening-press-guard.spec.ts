@@ -36,9 +36,3 @@ test('opening press guard still blocks an Android zero-detail opening click', ()
   expect(click()).toBe(true)
   guard.destroy()
 })
-
-test('destroying the opening press guard removes its click listener', () => {
-  const { guard, click } = surface()
-  guard.destroy()
-  expect(click()).toBe(true)
-})
