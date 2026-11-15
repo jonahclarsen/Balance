@@ -139,6 +139,7 @@ mod state_changes;
 mod task_notifications;
 mod situate;
 mod window_buttons;
+mod fullscreen;
 #[cfg(any(test, target_os = "android", target_os = "macos"))]
 mod widget;
 
@@ -607,6 +608,7 @@ fn save_macos_main_window_frame(window: &tauri::Window) {
 
     if window.label() != "main"
         || !MAIN_WINDOW_FRAME_RESTORED.load(std::sync::atomic::Ordering::Acquire)
+        || fullscreen::active()
     {
         return;
     }
@@ -11070,6 +11072,7 @@ pub fn run() {
             {
                 let _ = connectivity::offline(app.handle());
                 restore_macos_main_window_frame(app)?;
+                fullscreen::install(app)?;
                 install_paste_and_match_style_menu(app)?;
                 install_macos_alt_shortcut_monitor(app);
                 #[cfg(debug_assertions)]
@@ -11171,6 +11174,8 @@ pub fn run() {
             voice_transcription::transcribe_voice_clips,
             situate::situate_load,
             window_buttons::set_native_window_buttons_hidden,
+            fullscreen::toggle_window_fullscreen,
+            fullscreen::window_fullscreen,
             situate::situate_save,
             situate::situate_permissions,
             situate::situate_notifications,
