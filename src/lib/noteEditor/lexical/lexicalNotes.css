@@ -148,6 +148,11 @@
 
 .lexical-note-editor .note-numbered > .note-block::before {
   content: attr(data-note-item-number) '.';
+  /* Flex end-alignment keeps the period on the column edge when a wide
+     number like "10." overflows; text-align would spill it rightward. */
+  display: flex;
+  justify-content: flex-end;
+  white-space: nowrap;
   box-sizing: border-box;
   width: var(--note-marker-column);
   padding-right: 6px;

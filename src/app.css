@@ -7178,6 +7178,9 @@ textarea.note-title {
 
 .note-numbered > .note-block::before {
   content: attr(data-note-item-number) '.';
+  display: flex;
+  justify-content: flex-end;
+  white-space: nowrap;
   flex-basis: 24px;
   color: var(--muted);
   font-size: 14px;
