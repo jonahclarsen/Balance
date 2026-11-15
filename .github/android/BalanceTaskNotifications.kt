@@ -39,6 +39,8 @@ object BalanceTaskNotifications {
     fun resume(owner: Activity) {
         activity = WeakReference(owner)
         initialize(owner)
+        // Opening a notification removes it without a dismissal callback.
+        BalanceNotificationStack.update(owner)
         resetAndRefresh(owner) { runCITest(owner.applicationContext) }
     }
 
@@ -154,8 +156,8 @@ object BalanceTaskNotifications {
             .setSmallIcon(R.drawable.ic_task_notification)
             .setContentText(text)
             .setStyle(Notification.BigTextStyle().bigText(text))
-            .setContentIntent(open).setAutoCancel(true).build()
-        manager.notify(id, 0, notification)
+            .setContentIntent(open).setAutoCancel(true)
+        BalanceNotificationStack.post(context, id, 0, notification)
     }
 
     private fun runCITest(context: Context) {
@@ -191,6 +193,7 @@ object BalanceTaskNotifications {
             check(PendingIntent.getBroadcast(context, 0, intent, PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE) != null)
             replaceSchedules(context, "[]")
             notifications.cancel(id, 0)
+            BalanceNotificationStack.update(context)
             Log.i("BalanceNotifications", "BALANCE_NOTIFICATION_E2E: OK delivered desktop-synced generated text, cancelled and re-registered")
         } catch (_: Throwable) {
             replaceSchedules(context, "[]")
@@ -199,9 +202,46 @@ object BalanceTaskNotifications {
     }
 }
 
+// Balance's reminders and Situate notices share one group, so Android stacks
+// them into a single expandable notification once two or more are showing.
+object BalanceNotificationStack {
+    private const val GROUP = "balance"
+    private const val SUMMARY = "balance-stack"
+    private const val DISMISSED = "app.balance.local.NOTIFICATION_DISMISSED"
+
+    fun post(context: Context, tag: String?, id: Int, builder: Notification.Builder) {
+        val dismissed = PendingIntent.getBroadcast(context, 0,
+            Intent(context, BalanceTaskNotificationReceiver::class.java).setAction(DISMISSED),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val manager = context.getSystemService(NotificationManager::class.java)
+        manager.notify(tag, id, builder.setGroup(GROUP).setDeleteIntent(dismissed).build())
+        update(context)
+    }
+
+    @Synchronized fun update(context: Context) {
+        val manager = context.getSystemService(NotificationManager::class.java)
+        val count = manager.activeNotifications.count {
+            it.notification.group == GROUP && it.notification.flags and Notification.FLAG_GROUP_SUMMARY == 0
+        }
+        if (count < 2) { manager.cancel(SUMMARY, 0); return }
+        manager.createNotificationChannel(NotificationChannel("sunset-tasks", "Timed tasks", NotificationManager.IMPORTANCE_HIGH))
+        val open = PendingIntent.getActivity(context, 0, Intent(context, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        manager.notify(SUMMARY, 0, Notification.Builder(context, "sunset-tasks")
+            .setSmallIcon(R.drawable.ic_task_notification)
+            .setContentText("$count notifications")
+            .setGroup(GROUP).setGroupSummary(true)
+            // The children already alerted; restacking stays silent.
+            .setGroupAlertBehavior(Notification.GROUP_ALERT_CHILDREN)
+            .setContentIntent(open).setAutoCancel(true).build())
+    }
+
+    fun handles(intent: Intent) = intent.action == DISMISSED
+}
+
 class BalanceTaskNotificationReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        BalanceTaskNotifications.deliver(context, intent)
+        if (BalanceNotificationStack.handles(intent)) BalanceNotificationStack.update(context)
+        else BalanceTaskNotifications.deliver(context, intent)
     }
 }
 

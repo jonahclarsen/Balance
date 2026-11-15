@@ -56,7 +56,7 @@ object BalanceSituate {
             val id = mode.getString("id")
             val intent = Intent(context, MainActivity::class.java).setData(Uri.parse("balance://situate?mode=" + Uri.encode(id))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             val pending = PendingIntent.getActivity(context, id.hashCode(), intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-            try { manager.notify(id.hashCode(), Notification.Builder(context,"situate").setSmallIcon(android.R.drawable.ic_lock_idle_lock).setContentTitle(mode.getString("name") + " " + title).setContentText(mode.optString("description").ifBlank { "Tap to open Situate." }).setContentIntent(pending).setAutoCancel(true).build()) } catch (_: SecurityException) { }
+            try { BalanceNotificationStack.post(context, null, id.hashCode(), Notification.Builder(context,"situate").setSmallIcon(android.R.drawable.ic_lock_idle_lock).setContentTitle(mode.getString("name") + " " + title).setContentText(mode.optString("description").ifBlank { "Tap to open Situate." }).setContentIntent(pending).setAutoCancel(true)) } catch (_: SecurityException) { }
         }
         for (i in 0 until modes.length()) {
             val mode = modes.getJSONObject(i)
