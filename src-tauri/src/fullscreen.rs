@@ -33,8 +33,14 @@ fn toggle(window: &tauri::WebviewWindow) -> tauri::Result<()> {
         ACTIVE.store(enable, std::sync::atomic::Ordering::Release);
         window.set_simple_fullscreen(enable)
     }
-    #[cfg(not(target_os = "macos"))]
-    window.set_fullscreen(enable)
+    #[cfg(all(desktop, not(target_os = "macos")))]
+    return window.set_fullscreen(enable);
+    // Mobile windows are always full screen and have no setter.
+    #[cfg(mobile)]
+    {
+        let _ = (window, enable);
+        Ok(())
+    }
 }
 
 #[tauri::command]
