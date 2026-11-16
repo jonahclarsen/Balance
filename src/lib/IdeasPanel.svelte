@@ -6,13 +6,14 @@
   import VoiceRecordControls from './VoiceRecordControls.svelte'
   import VoiceClipChip from './VoiceClipChip.svelte'
   import { plannerStore } from './store'
+  import { collapsedPlanItemIds, setPlanItemCollapsed } from './collapsedPlanItems'
   import { focusTaskBelow } from './taskCompletionFocus'
   import { ideaUnlockDelay, findIdea, ideaGroupId, ideaGroupKindForKey, ideaGroupMeta, IDEA_GROUPS, IDEA_TRASH_RETENTION_DAYS, scheduledIdeaReviewDefault, type ScheduledIdeaReviewKind } from './ideas'
   import type { ItemLink, ItemTimeWarning } from './planner'
   import { clipsByIdea } from './voiceClips'
   import { voiceRecording, voiceRecordingError } from './voiceRecorder'
   import { canTranscribe, transcribeClips, transcriptionError, transcriptionStatus } from './voiceTranscription'
-  import type { Id, IdeaGroup, IdeaGroupKind, ListTemplate, Metric, Note, VoiceClip } from './types'
+  import type { Id, IdeaGroup, IdeaGroupKind, ListTemplate, Metric, Note, PlanItem, VoiceClip } from './types'
 
   export let groups: IdeaGroup[]
   export let voiceClips: VoiceClip[] = []
@@ -150,7 +151,37 @@
     if (done && !selectedItemId) void focusTaskBelow(found.group.id, [found.item.id])
   }
 
+  async function toggleChildrenFromKeyboard() {
+    const itemId = focusedIdeaId() ?? selectedItemId
+    if (!itemId) return
+    function targetIn(items: PlanItem[], parent: PlanItem | null = null): PlanItem | null {
+      for (const item of items) {
+        if (item.id === itemId) return item.children.length ? item : parent
+        const found = targetIn(item.children, item)
+        if (found) return found
+      }
+      return null
+    }
+    const target = targetIn(activeItems)
+    if (!target) return
+    const collapse = !$collapsedPlanItemIds.has(target.id)
+    setPlanItemCollapsed(target.id, collapse)
+    if (collapse && target.id !== itemId) {
+      select(null)
+      await tick()
+      document.querySelector<HTMLElement>(
+        `.ideas-panel [data-plan-text-focus-target-id="${CSS.escape(target.id)}"]`,
+      )?.focus()
+    }
+  }
+
   function handleKeydown(event: KeyboardEvent) {
+    if (openClip) return
+    if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'r') {
+      event.preventDefault()
+      if (!event.repeat) void toggleChildrenFromKeyboard()
+      return
+    }
     if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'd') {
       toggleDoneFromKeyboard(event)
       return

@@ -90,6 +90,8 @@ test.describe('desktop', () => {
     await page.keyboard.press('y')
     await page.clock.runFor(2100)
     await page.keyboard.press('p')
+    // Advance requestAnimationFrame too: numeric motion is drawn on canvas.
+    await page.clock.runFor(700)
     await page.locator('.refinement').evaluate((element) => {
       for (const animation of element.getAnimations({ subtree: true })) {
         animation.pause()

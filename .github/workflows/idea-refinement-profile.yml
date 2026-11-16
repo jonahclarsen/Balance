@@ -1,0 +1,84 @@
+name: Profile idea sorting animation
+
+on:
+  workflow_dispatch:
+    inputs:
+      baseline_ref:
+        description: Baseline revision
+        required: true
+        default: main
+      candidate_ref:
+        description: Candidate revision
+        required: true
+        default: main
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      BASELINE_REF: ${{ inputs.baseline_ref }}
+      CANDIDATE_REF: ${{ inputs.candidate_ref }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: |
+          pnpm install --frozen-lockfile
+          pnpm exec playwright install --with-deps chromium
+      - name: Prepare matched revisions with the same benchmark
+        run: |
+          set -euo pipefail
+          resolve_ref() {
+            if git rev-parse --verify --end-of-options "${1}^{commit}" >/dev/null 2>&1; then
+              git rev-parse --verify --end-of-options "${1}^{commit}"
+            else
+              git fetch --no-tags origin "$1"
+              git rev-parse --verify 'FETCH_HEAD^{commit}'
+            fi
+          }
+          for variant in baseline candidate; do
+            ref="$BASELINE_REF"
+            if [[ "$variant" == candidate ]]; then ref="$CANDIDATE_REF"; fi
+            sha="$(resolve_ref "$ref")"
+            directory="$RUNNER_TEMP/balance-ideas-$variant"
+            git worktree add --detach "$directory" "$sha"
+            cp tests/performance/idea-refinement.spec.ts "$directory/tests/performance/"
+            cp playwright.idea-refinement-performance.config.ts "$directory/"
+            (cd "$directory" && pnpm install --frozen-lockfile --offline)
+            echo "$variant: $sha" >> "$GITHUB_STEP_SUMMARY"
+          done
+      - name: Alternate three matched rounds with 4x CPU throttling
+        run: |
+          set -euo pipefail
+          output="$PWD/artifacts/idea-refinement-profile"
+          mkdir -p "$output"
+          for round in 1 2 3; do
+            variants="baseline candidate"
+            if (( round % 2 == 0 )); then variants="candidate baseline"; fi
+            for variant in $variants; do
+              (
+                cd "$RUNNER_TEMP/balance-ideas-$variant"
+                IDEA_PROFILE_DIR="$output/round-$round" IDEA_PROFILE_VARIANT="$variant" \
+                  pnpm exec playwright test --config playwright.idea-refinement-performance.config.ts
+              )
+            done
+          done
+      - name: Summarize animation costs
+        run: node .github/scripts/summarize-idea-refinement-profile.mjs >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: idea-refinement-profile
+          path: artifacts/idea-refinement-profile
+          if-no-files-found: error

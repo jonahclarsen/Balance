@@ -3,7 +3,7 @@
   import type { IdeaGroupKind } from './types'
 
   // A short-lived full-window effect for the existing sorting dialog.
-  // All movement is local SVG transforms; no inherited theme tokens animate.
+  // Numeric motion shares one canvas and frame callback; theme tokens never animate.
   export let source: HTMLElement | null = null
   export let sourceRect: DOMRect | null = null
   export let text: string
@@ -27,8 +27,8 @@
   }))
   // Spread the entire captured dialog surface into a field of numeric fragments.
   const rect = sourceRect ?? new DOMRect(0, 0, innerWidth, innerHeight)
-  const letters = Array.from({ length: 120 }, (_, i) => ({
-    character: '', number: numberAt(i + 300),
+  const fragments = Array.from({ length: 120 }, (_, i) => ({
+    number: numberAt(i + 300),
     x: (rect.left + ((i % 15) + .5) * rect.width / 15) / innerWidth * 1000,
     y: (rect.top + (Math.floor(i / 15) + .5) * rect.height / 8) / innerHeight * 640,
     clusterX: 500 + ((i % 15) - 7) * 24,
@@ -40,13 +40,14 @@
     const visibility = backdrop?.style.visibility ?? ''
     if (backdrop) backdrop.style.visibility = 'hidden'
     document.body.append(node)
-    if (source) for (let i = 0; i < 16; i++) {
+    if (source) for (let i = 0; i < 4; i++) {
       const strip = document.createElement('div')
       Object.assign(strip.style, {
         position: 'fixed', left: `${rect.left}px`, top: `${rect.top}px`,
         width: `${rect.width}px`, height: `${rect.height}px`, pointerEvents: 'none',
-        clipPath: `inset(${i * 6.25}% 0 ${100 - (i + 1) * 6.25}% 0)`,
+        clipPath: `inset(${i * 25}% 0 ${100 - (i + 1) * 25}% 0)`,
       })
+      strip.dataset.refinementStrip = ''
       const copy = source.cloneNode(true) as HTMLElement
       copy.removeAttribute('role')
       copy.inert = true
@@ -55,18 +56,82 @@
       node.append(strip)
       strip.animate([
         { transform: 'translate(0,0) scaleX(1)', opacity: 1 },
-        { transform: `translate(${(i % 2 ? 1 : -1) * 24}px,${(i - 8) * 4}px) scaleX(.96)`, opacity: .85, offset: .55 },
-        { transform: `translate(${(i % 2 ? 1 : -1) * 70}px,${(i - 8) * 9}px) scaleX(.6)`, opacity: 0 },
+        { transform: `translate(${(i % 2 ? 1 : -1) * 24}px,${(i - 2) * 4}px) scaleX(.96)`, opacity: .85, offset: .55 },
+        { transform: `translate(${(i % 2 ? 1 : -1) * 70}px,${(i - 2) * 9}px) scaleX(.6)`, opacity: 0 },
       ], { duration: 350, delay: i * 7, fill: 'both', easing: 'cubic-bezier(.3,0,.6,1)' })
     }
-    return { destroy() { node.remove(); if (backdrop) backdrop.style.visibility = visibility } }
+    // Drop captured editor trees once their exit finishes instead of keeping
+    // invisible copies alive for the entire numeric sequence.
+    const cleanup = window.setTimeout(() => {
+      for (const strip of node.querySelectorAll('[data-refinement-strip]')) strip.remove()
+    }, 400)
+    return { destroy() { window.clearTimeout(cleanup); node.remove(); if (backdrop) backdrop.style.visibility = visibility } }
   }
   const target = IDEA_GROUPS.findIndex((group) => group.kind === destination)
   const targetX = 108 + target * 196
+  function drawNumbers(canvas: HTMLCanvasElement) {
+    // Rasterize each numeral once. Hundreds of independent SVG/CSS animations
+    // otherwise invalidate style and paint on every frame of this effect.
+    const context = canvas.getContext('2d')!
+    const scale = Math.min(devicePixelRatio || 1, 1.5)
+    canvas.width = Math.round(innerWidth * scale)
+    canvas.height = Math.round(innerHeight * scale)
+    context.scale(canvas.width / 1000, canvas.height / 640)
+    const style = getComputedStyle(canvas)
+    const atlas = document.createElement('canvas')
+    atlas.width = 640
+    atlas.height = 72
+    const ink = atlas.getContext('2d')!
+    ink.scale(2, 2)
+    ink.fillStyle = style.color
+    ink.font = `500 22px ${style.getPropertyValue('--font-mono')}`
+    ink.textAlign = 'center'
+    for (let i = 0; i < 10; i++) ink.fillText(String(i), i * 32 + 16, 27)
+    function digit(value: number, x: number, y: number, size = 1) {
+      context.drawImage(atlas, value * 64, 0, 64, 72, x - 16 * size, y - 27 * size, 32 * size, 36 * size)
+    }
+    const trajectories = fragments.map((d, i) => [
+      [.32, d.x, d.y, 1],
+      [.53, d.clusterX, d.clusterY, 1],
+      [.76, targetX + (d.clusterX - 500) * .6, 398 + (i % 5) * 7, 1],
+      [.97, targetX + ((i % 3) - 1) * 9, 555, .45],
+      [1, targetX + ((i % 3) - 1) * 9, 565, .2],
+    ])
+    const started = performance.now()
+    let frame = 0
+    function draw(now: number) {
+      const elapsed = now - started
+      context.clearRect(0, 0, 1000, 640)
+      context.globalAlpha = .24
+      for (let i = 0; i < digits.length; i++) {
+        const d = digits[i]!
+        if (d.x > 190 && d.x < 810 && d.y > 470) continue
+        if (elapsed < 713 && d.x > 206 && d.x < 794 && d.y > 230 && d.y < 340) continue
+        digit(d.value, d.x, d.y + Math.sin(elapsed / 440 - (i % 9) * .18) * 2, 20 / 22)
+      }
+      for (let i = 0; i < fragments.length; i++) {
+        const d = fragments[i]!
+        const t = Math.max(0, Math.min(1, (elapsed - (i % 7) * 12) / 1050))
+        if (t < .15 || t >= 1) continue
+        const points = trajectories[i]!
+        const segment = Math.max(1, points.findIndex((p) => t <= p[0]!))
+        const a = points[segment - 1]!, b = points[segment]!
+        const fraction = Math.max(0, Math.min(1, (t - a[0]!) / (b[0]! - a[0]!)))
+        const eased = fraction * fraction * (3 - 2 * fraction)
+        const mix = (column: number) => a[column]! + (b[column]! - a[column]!) * eased
+        context.globalAlpha = t > .97 ? (1 - t) / .03 : 1
+        digit(d.number, mix(1), mix(2), mix(3))
+      }
+      if (elapsed < 1320) frame = requestAnimationFrame(draw)
+    }
+    frame = requestAnimationFrame(draw)
+    return { destroy() { cancelAnimationFrame(frame) } }
+  }
   const hex = (value: number) => `0x${value.toString(16).toUpperCase().padStart(6, '0').slice(-6)}`
 </script>
 
 <div use:takeOver class="refinement" aria-hidden="true" data-destination={destination}>
+  <canvas use:drawNumbers></canvas>
   <svg preserveAspectRatio="none" viewBox="0 0 1000 640" fill="none" xmlns="http://www.w3.org/2000/svg">
     <defs>
       <pattern id="refinement-scanlines" width="4" height="4" patternUnits="userSpaceOnUse">
@@ -87,27 +152,7 @@
       <rect class="paper" x="840" y="30" width="140" height="24" stroke="none" />
       <text x="910" y="50" text-anchor="middle">BALANCE</text>
     </g>
-    <g class="number-field">
-      {#each digits as digit, i}
-        <!-- Clear the idea's two lines without a separate card or text plaque. -->
-        {#if !(digit.x > 190 && digit.x < 810 && digit.y > 470)}
-          <g class:replenish={digit.x > 206 && digit.x < 794 && digit.y > 230 && digit.y < 340}>
-            <text x={digit.x} y={digit.y} style={`--drift: ${i % 2 ? 2 : -2}px; --offset: ${-(i % 9) * 80}ms`}>{digit.value}</text>
-          </g>
-        {/if}
-      {/each}
-    </g>
     <path class="selection" d="M211 239h-16v17M789 239h16v17M211 329h-16v-17M789 329h16v-17" />
-    {#each letters as letter, i}
-      <g
-        class="fragment"
-
-        style={`--start-x:${letter.x}px; --start-y:${letter.y}px; --cluster-x:${letter.clusterX}px; --cluster-y:${letter.clusterY}px; --bend-x:${targetX + (letter.clusterX - 500) * .6}px; --bend-y:${398 + (i % 5) * 7}px; --target-x:${targetX + ((i % 3) - 1) * 9}px; --delay:${(i % 7) * 12}ms`}
-      >
-        <text class="letter">{letter.character}</text>
-        <text class="encoded">{letter.number}</text>
-      </g>
-    {/each}
     <text class="destination" x="500" y="493" text-anchor="middle">{label}</text>
     {#each IDEA_GROUPS as group, i}
       {@const x = 28 + i * 196}
@@ -139,7 +184,8 @@
     background: transparent;
     animation: terminal-shutter 1320ms linear both;
   }
-  svg { background: transparent; animation: field-open 1320ms linear both; display: block; width: 100%; height: 100%; overflow: hidden; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; animation: field-open 1320ms linear both; }
+  svg { position: relative; background: transparent; animation: field-open 1320ms linear both; display: block; width: 100%; height: 100%; overflow: hidden; }
   text { fill: currentColor; font-family: var(--font-mono); font-weight: 500; }
   .paper { fill: var(--paper-strong); }
   .rule, .wordmark, .selection, .lid { stroke: currentColor; stroke-width: 2; }
@@ -147,29 +193,12 @@
   .completion { font-size: 26px; }
   .completion-ticks { stroke: currentColor; stroke-width: 4; }
   .wordmark text { font-size: 24px; font-weight: 800; stroke: none; }
-  .number-field text {
-    font-size: 20px;
-    text-anchor: middle;
-    animation: number-float 1400ms ease-in-out infinite alternate;
-    animation-delay: var(--offset);
-    opacity: .24;
-  }
   .selection {
     stroke-dasharray: 33;
     transform-box: fill-box;
     transform-origin: center;
     animation: select-cluster 1320ms linear both;
   }
-  .fragment {
-    transform: translate(var(--start-x), var(--start-y));
-    animation: refine-fragment 1050ms cubic-bezier(.45, 0, .3, 1) both;
-    animation-delay: var(--delay);
-  }
-  .fragment text { text-anchor: middle; font-size: 26px; }
-  .fragment .encoded { font-size: 22px; }
-  .replenish { animation: refill-field 1320ms steps(1) both; }
-  .letter { animation: encode-letter 1320ms steps(1) both; animation-delay: var(--delay); }
-  .encoded { animation: encode-number 1320ms steps(1) both; animation-delay: var(--delay); }
   .destination { font-size: 22px; animation: destination-arrive 1320ms steps(1) both; }
   .bin-surface { fill: var(--paper-strong); fill-opacity: .92; }
   .bin-number { font-size: 26px; font-weight: 700; }
@@ -189,28 +218,17 @@
     100% { clip-path: inset(49.8% 50%); }
   }
   @keyframes field-open { 0% { clip-path: inset(49.8% 0); } 20%, 100% { clip-path: inset(0); } }
-  @keyframes number-float { to { transform: translateY(var(--drift)); } }
-  @keyframes refill-field { 0% { opacity: 0; } 54%, 100% { opacity: 1; } }
+
   @keyframes select-cluster {
     0%, 20% { stroke-dashoffset: 33; opacity: 0; }
     30% { stroke-dashoffset: 0; opacity: 1; transform: scale(1); }
     43% { stroke-dashoffset: 0; opacity: 1; transform: scale(.26, 1.3); }
     52%, 100% { stroke-dashoffset: 33; opacity: 0; }
   }
-  @keyframes encode-letter { 0% { opacity: 1; } 27%, 100% { opacity: 0; } }
-  @keyframes encode-number { 0% { opacity: 0; } 15%, 100% { opacity: 1; } }
-  @keyframes merge-number { 0% { opacity: 0; } 27% { opacity: 1; } 43%, 100% { opacity: 0; } }
-  @keyframes refine-fragment {
-    0%, 32% { transform: translate(var(--start-x), var(--start-y)); opacity: 1; }
-    53% { transform: translate(var(--cluster-x), var(--cluster-y)); opacity: 1; }
-    76% { transform: translate(var(--bend-x), var(--bend-y)); opacity: 1; }
-    97% { transform: translate(var(--target-x), 555px) scale(.45); opacity: 1; }
-    100% { transform: translate(var(--target-x), 565px) scale(.2); opacity: 0; }
-  }
+
   @keyframes destination-arrive { 0% { opacity: 0; } 43%, 100% { opacity: 1; } }
   @keyframes open-left { 0%, 40%, 84%, 100% { transform: rotate(0); } 55%, 76% { transform: rotate(-42deg); } }
   @keyframes open-right { 0%, 40%, 84%, 100% { transform: rotate(0); } 55%, 76% { transform: rotate(42deg); } }
   @keyframes receive-fill { 0%, 72% { transform: scaleX(.7); } 84%, 100% { transform: scaleX(1); } }
-
 
 </style>

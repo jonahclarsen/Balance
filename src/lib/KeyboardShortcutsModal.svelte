@@ -100,7 +100,7 @@
       shortcuts: [
         { keys: ['mod', 'D'], label: 'Toggle done (keeps selected items selected; Today and Ideas)' },
         { keys: ['mod', 'D'], label: 'Toggle selected checkboxes (in Notes)', alt: ['mod', 'enter'] },
-        { keys: ['mod', 'R'], label: 'Hide / show children of the active or selected items (Today and Notes)' },
+        { keys: ['mod', 'R'], label: 'Hide / show children of the active or selected items (Today, Ideas and Notes)' },
         { keys: ['alt', 'F'], label: 'Open a link from the active task or at the note cursor (web or any Balance destination; first web URL takes priority)' },
         { keys: ['W / O'], label: 'Select previous list item (overlay and List History)' },
         { keys: ['S / L'], label: 'Select next list item (overlay and List History)' },
