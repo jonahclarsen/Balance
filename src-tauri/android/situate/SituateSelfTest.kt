@@ -19,6 +19,8 @@ object SituateSelfTest {
                 check(permissions.get(name) is Boolean) { "Missing permission status: $name" }
             }
             check(permissions.getBoolean("usage") == SituateAppIdentity.permitted(context))
+            for (text in listOf("Your code is 4821", "G-12345678", "Enter 482913 to sign in", "Your Verification Code is below")) check(SituateCodes.contains(text)) { "Code not detected" }
+            for (text in listOf("See you at 5", "Call 123", "Order 123456789", "No code here")) check(!SituateCodes.contains(text)) { "False code match" }
             NotificationArchive(context,directory,namespace).use { archive ->
                 fun fixture(i:Int, modes:List<String> = emptyList()) = JSONObject().put("app",if(i%2==0) "test.social" else "test.mail").put("title","SYNTHETIC_PRIVATE_TITLE").put("text","searchable needle$i").put("received",1000+i).put("modes",JSONArray(modes))
                 for(i in 1..150) archive.store("fixture$i",fixture(i,if(i%3==0) listOf("dolo") else emptyList()))

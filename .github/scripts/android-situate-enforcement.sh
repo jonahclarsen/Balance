@@ -204,6 +204,11 @@ adb shell cmd notification post -t Situate-blocked situate-ci-blocked SYNTHETIC_
 wait_for notification_absent situate-ci-blocked
 sleep 1
 notification_absent situate-ci-blocked
+# Codes come through even from blocked apps.
+adb shell cmd notification post -t Situate-code situate-ci-code SYNTHETIC_CODE_482913
+wait_for notification_present situate-ci-code
+sleep 1
+notification_present situate-ci-code
 rules off
 assert_allowed
 adb shell cmd notification post -t Situate-after-pass situate-ci-after-pass SYNTHETIC_ALLOWED
@@ -220,4 +225,4 @@ adb shell input keyevent KEYCODE_DPAD_UP KEYCODE_DPAD_UP KEYCODE_DPAD_CENTER
 wait_for resumed "$PKG/.*MainActivity"
 assert_allowed
 
-echo 'Situate enforcement passed: foreground activation, pass, expiry, overlap, schedule, rapid reopen, Home/Back, lock/unlock, reconnect, removal, notifications on/off.'
+echo 'Situate enforcement passed: foreground activation, pass, expiry, overlap, schedule, rapid reopen, Home/Back, lock/unlock, reconnect, removal, notifications on/off, codes.'

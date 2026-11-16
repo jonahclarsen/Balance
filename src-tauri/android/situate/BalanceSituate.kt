@@ -143,7 +143,8 @@ class SituateNotifications : NotificationListenerService() {
         val appContext = applicationContext
         BalanceSituate.executor.execute {
             try {
-                val blocked = BalanceSituate.blocked(appContext,sbn.packageName)
+                // Codes (sign-in, verification) always come through, even from blocked apps.
+                val blocked = if (SituateCodes.contains(sbn.notification)) emptyList() else BalanceSituate.blocked(appContext,sbn.packageName)
                 try {
                     NotificationArchive(appContext).use { it.record(sbn, blocked.map { m -> m.getString("id") }, BalanceSituate.blocked(appContext,sbn.packageName,false).map { m -> m.getString("id") }) }
                 } finally {
@@ -152,6 +153,19 @@ class SituateNotifications : NotificationListenerService() {
                 }
             } catch (_: Exception) { /* Never log notification contents or keys. */ }
         }
+    }
+}
+object SituateCodes {
+    private val digits = Regex("(?<!\\d)\\d{4,8}(?!\\d)")
+    private val phrase = Regex("verification\\s+code", RegexOption.IGNORE_CASE)
+    fun contains(text: String) = digits.containsMatchIn(text) || phrase.containsMatchIn(text)
+    fun contains(notification: Notification): Boolean {
+        val extras = notification.extras
+        val parts = mutableListOf<CharSequence?>(notification.tickerText)
+        for (key in listOf(Notification.EXTRA_TITLE, Notification.EXTRA_TITLE_BIG, Notification.EXTRA_TEXT, Notification.EXTRA_BIG_TEXT, Notification.EXTRA_SUB_TEXT, Notification.EXTRA_SUMMARY_TEXT)) parts.add(extras.getCharSequence(key))
+        extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)?.let { parts.addAll(it) }
+        @Suppress("DEPRECATION") extras.getParcelableArray(Notification.EXTRA_MESSAGES)?.forEach { (it as? android.os.Bundle)?.let { message -> parts.add(message.getCharSequence("text")) } }
+        return parts.any { it != null && contains(it.toString()) }
     }
 }
 class SituateExportActivity : Activity() {
