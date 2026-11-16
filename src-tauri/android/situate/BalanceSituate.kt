@@ -158,7 +158,9 @@ class SituateNotifications : NotificationListenerService() {
 object SituateCodes {
     private val digits = Regex("(?<!\\d)\\d{4,8}(?!\\d)")
     private val phrase = Regex("verification\\s+code", RegexOption.IGNORE_CASE)
-    fun contains(text: String) = digits.containsMatchIn(text) || phrase.containsMatchIn(text)
+    // A lone 4-digit number near the current year reads as a year, not a code.
+    fun contains(text: String, year: Int = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)) =
+        phrase.containsMatchIn(text) || digits.findAll(text).any { it.value.length != 4 || it.value.toInt() !in year - 2..year + 6 }
     fun contains(notification: Notification): Boolean {
         val extras = notification.extras
         val parts = mutableListOf<CharSequence?>(notification.tickerText)

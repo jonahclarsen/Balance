@@ -130,8 +130,8 @@ from Settings. It also checks battery optimization and, on Samsung, explains the
 separate sleeping-app setting that Android cannot report.
 
 Grant notification access for logging/silencing and accessibility access for app
-blocking. Notifications with a 4–8 digit number or the words “verification code”
-are never silenced, so sign-in codes still arrive from blocked apps. Also grant **App detection access** (Android Usage access) so Situate
+blocking. Notifications with a 4–8 digit number (other than a year from two years ago
+to six years ahead) or the words “verification code” are never silenced, so sign-in codes still arrive from blocked apps. Also grant **App detection access** (Android Usage access) so Situate
 can recover the current app after a service restart or a missed accessibility
 switch. It checks Android's activity identities once per second while unlocked;
 only the newest app identity and timestamp stay in memory. On a cold start it
