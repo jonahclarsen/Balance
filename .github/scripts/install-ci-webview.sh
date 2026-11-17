@@ -22,6 +22,16 @@ relaunch_emulator() {
   setsid nohup "$ANDROID_HOME/emulator/emulator" -port 5554 -avd "${BALANCE_AVD_NAME:-test}" \
     $BALANCE_EMULATOR_OPTIONS > "emulator-relaunch-$emulator_relaunches.log" 2>&1 < /dev/null &
 }
+# adbd can refuse a root restart for a moment just after boot ("unable to
+# connect for root: closed"); retry until it runs as root.
+adb_root() {
+  for attempt in $(seq 1 10); do
+    if adb root && timeout 30s adb wait-for-device \
+      && [[ "$(adb shell id -u 2>/dev/null | tr -d '\r')" == 0 ]]; then return; fi
+    sleep 3
+  done
+  echo "adbd did not restart as root"; exit 1
+}
 wait_for_boot() {
   for attempt in $(seq 1 120); do
     if [[ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == 1 ]]; then return; fi
@@ -31,11 +41,11 @@ wait_for_boot() {
   done
   echo "Emulator did not finish rebooting"; exit 1
 }
-adb root
+adb_root
 adb disable-verity
 adb reboot
 wait_for_boot
-adb root
+adb_root
 adb remount
 adb shell rm -f "$ci_webview_path"
 # ActivityManager reads this setting during boot. Merely writing the setting
