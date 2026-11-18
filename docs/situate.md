@@ -131,7 +131,10 @@ separate sleeping-app setting that Android cannot report.
 
 Grant notification access for logging/silencing and accessibility access for app
 blocking. Notifications with a 4–8 digit number (other than a year from two years ago
-to six years ahead) or the words “verification code” are never silenced, so sign-in codes still arrive from blocked apps. Also grant **App detection access** (Android Usage access) so Situate
+to six years ahead, part of a phone number, or an amount) or the words “verification code” are never silenced, so sign-in codes still arrive from blocked apps.
+Silencing happens before archiving. When a mode turns on, or Android rebinds the
+listener after unbinding it in the background, notifications already showing from
+apps it blocks are silenced too. Also grant **App detection access** (Android Usage access) so Situate
 can recover the current app after a service restart or a missed accessibility
 switch. It checks Android's activity identities once per second while unlocked;
 only the newest app identity and timestamp stay in memory. On a cold start it

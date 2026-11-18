@@ -33,9 +33,11 @@ object BalanceSituate {
         val file = rules(context)
         return if (file.exists()) JSONObject(nativeStatus(file.readText(), System.currentTimeMillis())) else JSONObject().put("modes", JSONArray())
     }
-    fun blocked(context: Context, packageName: String, activeOnly: Boolean = true): List<JSONObject> {
+    fun blocked(context: Context, packageName: String, activeOnly: Boolean = true): List<JSONObject> =
+        if (packageName == context.packageName || packageName == "com.android.systemui") emptyList() else blocked(status(context), context, packageName, activeOnly)
+    fun blocked(status: JSONObject, context: Context, packageName: String, activeOnly: Boolean = true): List<JSONObject> {
         if (packageName == context.packageName || packageName == "com.android.systemui") return emptyList()
-        val modes = status(context).optJSONArray("modes") ?: JSONArray()
+        val modes = status.optJSONArray("modes") ?: JSONArray()
         return (0 until modes.length()).map { modes.getJSONObject(it) }.filter { mode ->
             val targets = mode.optJSONArray(if(activeOnly) "targets" else "allTargets") ?: JSONArray()
             (0 until targets.length()).any { val t=targets.getJSONObject(it); t.optString("kind")=="app" && t.optString("value")==packageName }
@@ -72,6 +74,8 @@ object BalanceSituate {
             if (announce && !previous.contains(id)) notify(mode, "is on")
         }
         prefs.edit().putStringSet("active", active).putStringSet("soon", soon).apply()
+        // A mode that just came on clears what its apps already put in the shade.
+        if (!previous.containsAll(active)) SituateNotifications.sweep()
         val alarm = context.getSystemService(AlarmManager::class.java)
         val pending = PendingIntent.getBroadcast(context, 32741, Intent(context, SituateReceiver::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val at = maxOf(System.currentTimeMillis()+1000, status.optLong("refreshAt", System.currentTimeMillis()+3600000))
@@ -138,25 +142,57 @@ class SituateReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context,intent: Intent) { val pending=goAsync(); BalanceSituate.executor.execute { try { BalanceSituate.refresh(context) } finally { pending.finish() } } }
 }
 class SituateNotifications : NotificationListenerService() {
-    override fun onListenerConnected() { BalanceSituate.initialize(this) }
+    companion object {
+        @Volatile private var connected: SituateNotifications? = null
+        // Silencing never waits behind archive writes, exports or schedule refreshes.
+        private val silencer = Executors.newSingleThreadExecutor()
+        private val archiver = Executors.newSingleThreadExecutor()
+        /** Silences notifications already showing from apps an active mode blocks. */
+        fun sweep() { val listener = connected ?: return; silencer.execute { listener.sweepActive() } }
+    }
+    override fun onListenerConnected() { connected = this; BalanceSituate.initialize(this); sweep() }
+    override fun onListenerDisconnected() {
+        if (connected === this) connected = null
+        // Android can unbind the listener while Balance is in the background.
+        if (Build.VERSION.SDK_INT >= 24) requestRebind(ComponentName(this, SituateNotifications::class.java))
+    }
+    override fun onDestroy() { if (connected === this) connected = null; super.onDestroy() }
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         val appContext = applicationContext
-        BalanceSituate.executor.execute {
+        silencer.execute {
+            var blocked = emptyList<String>()
+            var targeted = emptyList<String>()
             try {
-                // Codes (sign-in, verification) always come through, even from blocked apps.
-                val blocked = if (SituateCodes.contains(sbn.notification)) emptyList() else BalanceSituate.blocked(appContext,sbn.packageName)
-                try {
-                    NotificationArchive(appContext).use { it.record(sbn, blocked.map { m -> m.getString("id") }, BalanceSituate.blocked(appContext,sbn.packageName,false).map { m -> m.getString("id") }) }
-                } finally {
-                    // A full disk or temporarily unavailable key must not disable silencing.
-                    if (blocked.isNotEmpty()) cancelNotification(sbn.key)
+                val status = BalanceSituate.status(appContext)
+                targeted = BalanceSituate.blocked(status, appContext, sbn.packageName, false).map { it.getString("id") }
+                if (targeted.isNotEmpty()) {
+                    val modes = BalanceSituate.blocked(status, appContext, sbn.packageName).map { it.getString("id") }
+                    if (modes.isNotEmpty() && silences(sbn) { try { activeNotifications } catch (_: Exception) { null } }) { cancelNotification(sbn.key); blocked = modes }
                 }
             } catch (_: Exception) { /* Never log notification contents or keys. */ }
+            // Archive after silencing; a full disk or unavailable key must not delay it.
+            archiver.execute { try { NotificationArchive(appContext).use { it.record(sbn, blocked, targeted) } } catch (_: Exception) { } }
         }
+    }
+    private fun sweepActive() {
+        try {
+            val active = activeNotifications ?: return
+            val status = BalanceSituate.status(applicationContext)
+            val keys = active.filter { BalanceSituate.blocked(status, applicationContext, it.packageName).isNotEmpty() && silences(it) { active } }.map { it.key }
+            if (keys.isNotEmpty()) cancelNotifications(keys.toTypedArray())
+        } catch (_: Exception) { }
+    }
+    // Codes (sign-in, verification) always come through, even from blocked apps.
+    // Cancelling a group summary also cancels its children, so keep a summary over a code.
+    private fun silences(sbn: StatusBarNotification, active: () -> Array<StatusBarNotification>?): Boolean {
+        if (SituateCodes.contains(sbn.notification)) return false
+        if ((sbn.notification.flags and Notification.FLAG_GROUP_SUMMARY) == 0) return true
+        return active().orEmpty().none { it.key != sbn.key && it.groupKey == sbn.groupKey && SituateCodes.contains(it.notification) }
     }
 }
 object SituateCodes {
-    private val digits = Regex("(?<!\\d)\\d{4,8}(?!\\d)")
+    // Phone numbers ("416-555-1234") and amounts ("$2500") are not codes.
+    private val digits = Regex("(?<![\\d+\$€£¥])(?<!\\d[-.\\s/,])\\d{4,8}(?![\\d%])(?![-.\\s/,]\\d)")
     private val phrase = Regex("verification\\s+code", RegexOption.IGNORE_CASE)
     // A lone 4-digit number near the current year reads as a year, not a code.
     fun contains(text: String, year: Int = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)) =

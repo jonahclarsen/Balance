@@ -209,6 +209,13 @@ adb shell cmd notification post -t Situate-code situate-ci-code SYNTHETIC_CODE_4
 wait_for notification_present situate-ci-code
 sleep 1
 notification_present situate-ci-code
+# What arrives while Android has unbound the listener is silenced on reconnect; codes stay.
+adb shell cmd notification disallow_listener "$LISTENER"
+adb shell cmd notification post -t Situate-missed situate-ci-missed SYNTHETIC_BLOCKED
+wait_for notification_present situate-ci-missed
+adb shell cmd notification allow_listener "$LISTENER"
+wait_for notification_absent situate-ci-missed
+notification_present situate-ci-code
 rules off
 assert_allowed
 adb shell cmd notification post -t Situate-after-pass situate-ci-after-pass SYNTHETIC_ALLOWED
@@ -225,4 +232,4 @@ adb shell input keyevent KEYCODE_DPAD_UP KEYCODE_DPAD_UP KEYCODE_DPAD_CENTER
 wait_for resumed "$PKG/.*MainActivity"
 assert_allowed
 
-echo 'Situate enforcement passed: foreground activation, pass, expiry, overlap, schedule, rapid reopen, Home/Back, lock/unlock, reconnect, removal, notifications on/off, codes.'
+echo 'Situate enforcement passed: foreground activation, pass, expiry, overlap, schedule, rapid reopen, Home/Back, lock/unlock, reconnect, removal, notifications on/off, reconnect sweep, codes.'

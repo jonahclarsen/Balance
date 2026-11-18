@@ -20,7 +20,7 @@ object SituateSelfTest {
             }
             check(permissions.getBoolean("usage") == SituateAppIdentity.permitted(context))
             for (text in listOf("Your code is 4821", "G-12345678", "Enter 482913 to sign in", "Your Verification Code is below")) check(SituateCodes.contains(text)) { "Code not detected" }
-            for (text in listOf("See you at 5", "Call 123", "Order 123456789", "No code here")) check(!SituateCodes.contains(text)) { "False code match" }
+            for (text in listOf("See you at 5", "Call 123", "Order 123456789", "No code here", "+1 416-555-1234", "(416) 555 1234", "416.555.1234", "Sent you $2500", "Up 1500%")) check(!SituateCodes.contains(text)) { "False code match" }
             for (text in listOf("Back in 2024", "Plans for 2026", "By 2032")) check(!SituateCodes.contains(text, 2026)) { "Year read as a code" }
             for (text in listOf("Code 2023", "Code 2033", "Code 12026", "Code 0202")) check(SituateCodes.contains(text, 2026)) { "Code read as a year" }
             NotificationArchive(context,directory,namespace).use { archive ->
