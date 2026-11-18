@@ -107,8 +107,9 @@ for (const themeId of ['graphite', 'windowsvista']) {
       const selection = document.getSelection()
       return Boolean(selection?.isCollapsed && element.contains(selection.anchorNode))
     })).toBe(true)
+    // focus() put the caret at the start, and moving keeps it there.
     await page.keyboard.press('x')
-    await expect(editor).toHaveText('Moving taskx')
+    await expect(editor).toHaveText('xMoving task')
     await expect(page.locator('[data-plan-text-input-id="child"]')).toHaveText('Child task')
     await page.keyboard.press('ControlOrMeta+z')
     await expect(editor).toHaveText('Moving task')

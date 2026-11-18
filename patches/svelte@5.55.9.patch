@@ -1,0 +1,48 @@
+diff --git a/src/internal/client/dom/blocks/each.js b/src/internal/client/dom/blocks/each.js
+index 5f8adee1b5d9258d27441711b6b9487f1cc3575f..a71c5dc16d41672c8c2073d4f56d5195a3f853fe 100644
+--- a/src/internal/client/dom/blocks/each.js
++++ b/src/internal/client/dom/blocks/each.js
+@@ -523,7 +523,13 @@ function reconcile(state, array, anchor, flags, get_key) {
+ 
+ 		if (effect !== current) {
+ 			if (seen !== undefined && seen.has(effect)) {
+-				if (matched.length < stashed.length) {
++				// Balance patch: when both choices move as many rows, leave the
++				// focused row in place. Detaching it blurs the editor, which
++				// costs a full focus change in WKWebView on every Alt+Down.
++				if (
++					matched.length < stashed.length ||
++					(matched.length === stashed.length && holds_focus(stashed))
++				) {
+ 					// more efficient to move later items to the front
+ 					var start = stashed[0];
+ 					var j;
+@@ -723,6 +729,28 @@ function move(effect, next, anchor) {
+ 	}
+ }
+ 
++/**
++ * Balance patch: whether any of these items' DOM contains the focused element.
++ * @param {Effect[]} effects
++ */
++function holds_focus(effects) {
++	var focused = document.activeElement;
++	if (focused === null || focused === document.body) return false;
++
++	for (var effect of effects) {
++		var node = effect.nodes?.start ?? null;
++		var end = effect.nodes?.end;
++
++		while (node !== null) {
++			if (node.contains(focused)) return true;
++			if (node === end) break;
++			node = /** @type {TemplateNode | null} */ (get_next_sibling(node));
++		}
++	}
++
++	return false;
++}
++
+ /**
+  * @param {EachState} state
+  * @param {Effect | null} prev

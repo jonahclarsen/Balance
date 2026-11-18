@@ -1,0 +1,2 @@
+patchedDependencies:
+  svelte@5.55.9: patches/svelte@5.55.9.patch
