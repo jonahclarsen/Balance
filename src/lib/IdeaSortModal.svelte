@@ -6,8 +6,7 @@
   import RichTextEditor from './RichTextEditor.svelte'
   import VoiceClipChip from './VoiceClipChip.svelte'
   import VoiceIdeaModal from './VoiceIdeaModal.svelte'
-  import IdeaRefinement from './IdeaRefinement.svelte'
-  import { IDEA_GROUPS, IDEA_UNLOCK_MS, findIdea, ideaGroupMeta, IDEA_SORT_QUESTION } from './ideas'
+  import { IDEA_UNLOCK_MS, findIdea, ideaGroupMeta, IDEA_SORT_QUESTION } from './ideas'
   import { renderItemDisplayHTML, type ItemLink, type ItemTextSegment } from './planner'
   import { openClickedLink, openRenderedLinkFromShortcut } from './externalLinks'
   import type { Id, IdeaGroup, IdeaGroupKind, IdeaItem, IdeaSnapshot, PlanItem, VoiceClip } from './types'
@@ -72,10 +71,9 @@
   let shaking: Action | null = null
   let shakeTimer: number | null = null
   let openClipId: Id | null = null
-  let refinement: { source: HTMLElement | null; sourceRect: DOMRect | null; text: string; destination: IdeaGroupKind; label: string; progress: number; distribution: number[]; serial: number } | null = null
-  let refinementTimer: number | null = null
-  let refinementSerial = 0
-  let finishing = false
+  // The first card appears plainly; every later one warps in.
+  let warpReady = false
+  let warpFilter: SVGFilterElement
 
   $: sorted = sortedBefore + history.length
   $: queued = queue[index]
@@ -87,45 +85,49 @@
   $: openClip = openClipId ? voiceClips.find((candidate) => candidate.id === openClipId) ?? null : null
   $: options = step === 'yes' ? (['possible', 'genuine'] as const) : step === 'no' ? (['trash', 'afterlife'] as const) : []
   $: resetCard(index)
-  // Switching pages should never leave an unseen animation holding generation.
-  $: if (!active && refinement) endRefinement()
 
-  function endRefinement() {
-    if (refinementTimer !== null) window.clearTimeout(refinementTimer)
-    refinementTimer = null
-    refinement = null
-    if (finishing) {
-      finishing = false
-      onFinish(true)
+  // A brief trippy warp as the next card arrives: per-channel displacement
+  // through animated noise, settling in 300-500 ms. Purely visual; the
+  // decision has already saved and the next key works at once.
+  function warpIn(card: HTMLElement) {
+    if (!warpReady || !warpFilter || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      warpReady = true
+      return
     }
-  }
-
-  function refine(destination: IdeaGroupKind, label = ideaGroupMeta(destination).label) {
-    if (!current || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
-    endRefinement()
-    const kinds = IDEA_GROUPS.map(({ kind }) => kind)
-    const counts = kinds.map((kind) => groups.find((group) => group.kind === kind)?.items.length ?? 0)
-    const source = findIdea(groups, current.id)?.group.kind
-    if (source) counts[kinds.indexOf(source)]! -= 1
-    counts[kinds.indexOf(destination)]! += 1
-    const count = Math.max(1, counts.reduce((sum, value) => sum + value, 0))
-    const surface = document.querySelector<HTMLElement>('.idea-sort[role="dialog"]')
-    refinement = {
-      source: surface?.cloneNode(true) as HTMLElement ?? null, sourceRect: surface?.getBoundingClientRect() ?? null,
-      text: current.text, destination, label, serial: ++refinementSerial,
-      progress: (sortedBefore + history.length + 1) / total,
-      distribution: counts.map((value) => value / count),
+    const duration = 300 + Math.random() * 200
+    const turn = Math.random() < .5 ? -1 : 1
+    const noise = warpFilter.querySelector('feTurbulence')!
+    const maps = warpFilter.querySelectorAll('feDisplacementMap')
+    const hue = warpFilter.querySelector('feColorMatrix[type="hueRotate"]')!
+    noise.setAttribute('seed', String(Math.floor(Math.random() * 1000)))
+    card.style.filter = 'url(#idea-sort-warp)'
+    const motion = card.animate([
+      { transform: `perspective(700px) rotateY(${turn * 28}deg) skewX(${turn * -16}deg) scale(.82, 1.12)`, opacity: .15 },
+      { transform: `perspective(700px) rotateY(${turn * -7}deg) skewX(${turn * 5}deg) scale(1.04, .97)`, opacity: 1, offset: .55 },
+      { transform: 'none', opacity: 1 },
+    ], { duration, easing: 'cubic-bezier(.2, .7, .3, 1)' })
+    const started = performance.now()
+    let frame = 0
+    const draw = (now: number) => {
+      const t = Math.min(1, (now - started) / duration)
+      const left = (1 - t) ** 2
+      const wobble = 1 + .45 * Math.sin(t * Math.PI * 5)
+      const strength = 90 * left * wobble
+      noise.setAttribute('baseFrequency', `${.004 + .02 * left + .006 * Math.sin(t * 9)} ${.03 + .09 * left}`)
+      maps[0]!.setAttribute('scale', String(strength))
+      maps[1]!.setAttribute('scale', String(-strength * .7))
+      maps[2]!.setAttribute('scale', String(strength * 1.5))
+      hue.setAttribute('values', String(turn * 220 * left))
+      if (t < 1) frame = requestAnimationFrame(draw)
+      else stop()
     }
-    refinementTimer = window.setTimeout(endRefinement, 1320)
-  }
-
-  function finish() {
-    if (refinement) {
-      finishing = true
-      // The last card also offers a real Back while its flourish is running.
-      step = 'question'
+    const stop = () => {
+      cancelAnimationFrame(frame)
+      motion.cancel()
+      card.style.filter = ''
     }
-    else onFinish(true)
+    frame = requestAnimationFrame(draw)
+    return { destroy: stop }
   }
 
   function renderIdeaHTML(item: PlanItem) {
@@ -185,7 +187,6 @@
 
   function choose(kind: IdeaGroupKind) {
     if (!current || refuse(kind)) return
-    refine(kind)
     record(snapshot(current.id))
     onDecide(current.id, kind)
     advance()
@@ -193,15 +194,13 @@
 
   function advance() {
     if (index >= queue.length - 1) {
-      finish()
+      onFinish(true)
       return
     }
     index += 1
   }
 
   function goBack() {
-    finishing = false
-    endRefinement()
     if (step !== 'question') {
       step = 'question'
       return
@@ -220,14 +219,12 @@
     const previousId = queue[index - 1]!.id
     const snapshots = [...snapshot(previousId), ...snapshot(current.id)]
     if (!onAppendToPrevious(current.id, previousId)) return
-    refine(findIdea(groups, previousId)?.group.kind ?? 'proposition', 'Append to previous')
     record(snapshots)
     dropCurrent()
   }
 
   function cut() {
     if (!current || untranscribed || refuse('cut')) return
-    refine('proposition', 'Clipboard')
     record(snapshot(current.id))
     onCut(current.id)
     dropCurrent()
@@ -235,7 +232,6 @@
 
   function addToDay() {
     if (!current || !onAddToDay || untranscribed || refuse('day')) return
-    refine('proposition', 'Today')
     record(snapshot(current.id))
     onAddToDay(current.id)
     dropCurrent()
@@ -246,7 +242,6 @@
     const snapshots = snapshot(current.id)
     const noteId = onAddToNote(current.id)
     if (!noteId) return
-    refine('proposition', 'New note')
     record(snapshots, noteId)
     dropCurrent()
   }
@@ -255,7 +250,7 @@
     if (!current) return
     const removedId = current.id
     queue = queue.filter((item) => item.id !== removedId)
-    if (index >= queue.length) finish()
+    if (index >= queue.length) onFinish(true)
     else resetCard(index)
   }
 
@@ -328,20 +323,6 @@
       return
     }
     const key = event.key.toLowerCase()
-    const sortKey = ['b', 'e', 'm', 'y', 'n', 'g', 'p', 'x', 'd', 'a', 't'].includes(key) || event.key === 'ArrowLeft'
-    // A deliberate next shortcut can cut the flourish short. Repeated keydown
-    // is already ignored above, and pointer controls wait for the reveal.
-    if (finishing && event.key !== 'Escape' && key !== 'b' && event.key !== 'ArrowLeft') {
-      if (sortKey) {
-        event.preventDefault()
-        event.stopPropagation()
-      }
-      return
-    }
-    if (sortKey) {
-      finishing = false
-      endRefinement()
-    }
     let handled = true
     if (event.key === 'Escape') onFinish(false)
     else if (key === 'b' || event.key === 'ArrowLeft') goBack()
@@ -364,7 +345,6 @@
   }
 
   onDestroy(() => {
-    if (refinementTimer !== null) window.clearTimeout(refinementTimer)
     for (const timer of unlockTimers) window.clearTimeout(timer)
     if (shakeTimer !== null) window.clearTimeout(shakeTimer)
     if (readTimer !== null) window.clearTimeout(readTimer)
@@ -417,15 +397,14 @@
       <button class="primary" type="button" on:click={startSorting}>Start (Enter)</button>
     </div>
   {:else}
-  <div class="idea-sort-stage" class:refining={Boolean(refinement)}>
-  <span class="sort-announcement" role="status">{refinement ? `Sorted: ${refinement.label}` : ''}</span>
-  <div class="paste-review" inert={Boolean(refinement)}>
+  <div class="paste-review">
     <ProgressBar done={sorted} {total} label="Ideas sorted" />
     <p class="idea-sort-question">{IDEA_SORT_QUESTION}</p>
     <div class="paste-review-list" aria-label="Idea being sorted">
       {#if current}
         {#key current.id}
           <div
+            use:warpIn
             class="paste-review-card paste-review-item idea-sort-card current"
             class:done={current.done}
             data-idea-id={current.id}
@@ -525,14 +504,22 @@
 
     <p class="paste-review-hint">{sorted}/{total} sorted</p>
   </div>
-  {#if refinement}
-    {#key refinement.serial}
-      <IdeaRefinement {...refinement} />
-    {/key}
-  {/if}
-  </div>
   {/if}
 </OverlayModal>
+
+<svg class="idea-sort-warp" aria-hidden="true" width="0" height="0">
+  <filter id="idea-sort-warp" bind:this={warpFilter} x="-25%" y="-25%" width="150%" height="150%" color-interpolation-filters="sRGB">
+    <feTurbulence type="fractalNoise" baseFrequency="0.01 0.05" numOctaves="2" result="noise" />
+    <!-- Each colour channel is displaced by its own amount, then recombined. -->
+    {#each ['1 0 0 0 0  0 0 0 0 0  0 0 0 0 0', '0 0 0 0 0  0 1 0 0 0  0 0 0 0 0', '0 0 0 0 0  0 0 0 0 0  0 0 1 0 0'] as channel, i (i)}
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="0" xChannelSelector="R" yChannelSelector="G" />
+      <feColorMatrix type="matrix" values={`${channel}  0 0 0 1 0`} result={`channel-${i}`} />
+    {/each}
+    <feBlend in="channel-0" in2="channel-1" mode="screen" result="red-green" />
+    <feBlend in="red-green" in2="channel-2" mode="screen" />
+    <feColorMatrix type="hueRotate" values="0" />
+  </filter>
+</svg>
 
 {#if active && openClip && current}
   {#key openClip.id}
@@ -547,20 +534,11 @@
 {/if}
 
 <style>
-  .idea-sort-stage {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-  }
-  .paste-review { flex: 1; min-height: 0; }
-  .refining > .paste-review { pointer-events: none; }
-  .sort-announcement {
+  .idea-sort-warp {
     position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
+    width: 0;
+    height: 0;
     overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
+    pointer-events: none;
   }
 </style>
