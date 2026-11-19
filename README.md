@@ -21,9 +21,11 @@ Current slice:
 
 ## Retro themes
 
-Settings → Color theme includes **Mac System 1**, **Windows XP**, and **Windows Vista**, with light and dark appearances and matching native widget palettes. Windows 98 is retired from selection and Random; its renderer remains for saved historical days.
+Settings → Color theme includes **Mac System 1**, **Windows XP**, **Windows Vista**, and **Wii Sports**, with light and dark appearances and matching native widget palettes. Windows 98 is retired from selection and Random; its renderer remains for saved historical days.
 
 Mac System 1 bundles Giles Booth's Chicago 12 and Geneva 9 bitmap recreations, with Jamie Place's Monaco for numeric fields. XP uses the original Tahoma UI face and Trebuchet MS captions where installed. Vista uses Segoe UI where installed, with Microsoft's open-source Selawik as its distributable fallback. The optional `public/fonts/local/` folder is ignored by Git and can hold already-licensed local Segoe UI WOFF files (`segoeui-regular.woff` and `segoeui-semibold.woff`); never commit those files. Exact font rendering can still vary with the OS and window zoom.
+
+Wii Sports draws Balance as one of the game's menu screens from textures decoded from the disc. Its face is FOT-NewRodin Pro DB where a licensed copy is in `public/fonts/local/NewRodin-DB.woff2` (never commit it), with M PLUS 1 as the distributable fallback.
 
 XP and Vista include their original Bliss/Aurora wallpapers and native Windows icons, with rebuilt Luna/Aero modal chrome. Artwork provenance and typography references are in [docs/retro-themes.md](docs/retro-themes.md). The fonts' attribution and licenses are under `public/fonts/`. Run the focused desktop `tests/visual/retro-themes.spec.ts` to check the actual rendered Mac font, selection contrast, theme persistence, and synthetic page screenshots.
 

@@ -254,7 +254,7 @@ test('Mac System 1 typography and selection readability across the app', async (
   }
 })
 
-for (const themeId of ['system1', 'windowsxp', 'windowsvista']) {
+for (const themeId of ['system1', 'windowsxp', 'windowsvista', 'wiisports']) {
   test(`${themeId} paints nothing for the IMAX click handoff`, async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== 'desktop', 'The click handoff is macOS desktop only')
     await page.addInitScript(() => Object.defineProperty(navigator, 'platform', { get: () => 'MacIntel' }))
@@ -350,6 +350,104 @@ for (const [themeId, name] of [['windowsxp', 'Windows XP'], ['windowsvista', 'Wi
     }
   })
 }
+
+test('Wii Sports can be selected, survives reload, frames each view, and every texture loads', async ({ page, browserName, isMobile }, testInfo) => {
+  test.slow()
+  await page.clock.install({ time: new Date('2026-10-14T14:20:00') })
+  await page.emulateMedia({ colorScheme: 'light' })
+  await page.goto('/')
+  await page.evaluate(state => {
+    localStorage.clear()
+    localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+    localStorage.setItem('balance:deviceAppearance.v1', JSON.stringify({ version: 1, themeId: 'graphite', colorScheme: 'system' }))
+  }, createScreenshotState('2026-10-14'))
+  await page.reload()
+  await openView(page, 'Settings')
+  const option = page.getByRole('group', { name: 'Color theme', exact: true }).getByRole('button', { name: /^Wii Sports / })
+  await option.click()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'wiisports')
+  await page.reload()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'wiisports')
+  await page.evaluate(() => document.fonts.ready)
+  if (!isMobile && browserName === 'chromium') {
+    // The licensed Rodin is local only; the public build must fall back to the bundled M PLUS 1.
+    const cdp = await page.context().newCDPSession(page)
+    await cdp.send('DOM.enable')
+    await cdp.send('CSS.enable')
+    const { root } = await cdp.send('DOM.getDocument')
+    const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector: '.sidebar .nav-label' })
+    const { fonts } = await cdp.send('CSS.getPlatformFontsForNode', { nodeId })
+    await testInfo.attach('rendered-sidebar-fonts', { body: JSON.stringify(fonts), contentType: 'application/json' })
+    expect(fonts.some(font => font.isCustomFont && /Rodin|M PLUS/i.test(font.familyName) && font.glyphCount > 0)).toBe(true)
+    await cdp.detach()
+  }
+  for (const scheme of ['light', 'dark'] as const) {
+    await page.emulateMedia({ colorScheme: scheme })
+    await expect(page.locator('html')).toHaveAttribute('data-color-scheme', scheme)
+    for (const view of ['Today', 'Lists', 'Notes', 'Goals', 'Settings']) {
+      await openView(page, view)
+      await expect(page.getByRole('navigation', { name: 'Primary', exact: true }).or(page.getByRole('button', { name: 'Open navigation', exact: true }))).toBeVisible()
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+      // The frame's caption tab names the screen, as the game's does.
+      if (!isMobile) await expect(page.locator('.wii-caption')).toHaveText(view)
+      await page.evaluate(() => {
+        (document.activeElement as HTMLElement | null)?.blur()
+        for (const el of document.querySelectorAll('*')) if (el.scrollTop) el.scrollTop = 0
+      })
+      await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`wiisports-${scheme}-${view.toLowerCase()}.png`) })
+    }
+    await expect(option).toHaveAttribute('aria-pressed', 'true')
+    await openView(page, 'Today')
+    await page.keyboard.press('Alt+/')
+    const shortcuts = page.getByRole('dialog', { name: 'Keyboard shortcuts' })
+    await expect(shortcuts).toBeVisible()
+    await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`wiisports-${scheme}-dialog.png`) })
+    await shortcuts.getByRole('button', { name: 'Close', exact: true }).click()
+    await expect(shortcuts).not.toBeVisible()
+  }
+  if (!isMobile) {
+    // The bars fill the window's width and the sidebar still shows every destination and Generate day.
+    const frame = await page.locator('.wii-frame-top').boundingBox()
+    expect(frame?.width).toBe(page.viewportSize()!.width)
+    await expect(page.getByRole('navigation', { name: 'Primary', exact: true }).getByRole('button', { name: 'Settings', exact: true })).toBeInViewport({ ratio: 1 })
+    // IMAX gives the frame's space to the page and keeps its own exit in view.
+    await page.getByRole('region', { name: 'Daily plan' }).getByRole('button', { name: 'Enter IMAX mode' }).click()
+    await expect(page.locator('.app-shell')).toHaveClass(/page-maximized/)
+    await expect(page.locator('.wii-frame-top')).toBeHidden()
+    const workspace = await page.locator('.workspace').boundingBox()
+    expect(workspace!.height).toBeGreaterThan(page.viewportSize()!.height * 0.8)
+    await page.getByRole('button', { name: 'Exit IMAX mode' }).click()
+    await expect(page.locator('.wii-frame-top')).toBeVisible()
+  }
+  // Every texture the stylesheet names must exist; a missing one only shows as a gap.
+  const urls = await page.evaluate(() => {
+    const found = new Set<string>()
+    for (const sheet of Array.from(document.styleSheets)) {
+      let rules: CSSRuleList
+      try { rules = sheet.cssRules } catch { continue }
+      const walk = (list: CSSRuleList) => {
+        for (const rule of Array.from(list)) {
+          if ('cssRules' in rule) walk((rule as CSSGroupingRule).cssRules)
+          for (const match of rule.cssText.matchAll(/url\(["']?(\/(?:themes\/wiisports|fonts\/MPLUS1)[^"')]+)["']?\)/g)) found.add(match[1])
+        }
+      }
+      walk(rules)
+    }
+    return [...found]
+  })
+  expect(urls.length).toBeGreaterThan(15)
+  for (const url of urls) {
+    const response = await page.request.get(url)
+    expect(response.status(), url).toBe(200)
+    // The dev server answers unknown paths with the app's HTML, so check the type too.
+    expect(response.headers()['content-type'], url).toMatch(/^(image|font)\//)
+  }
+  const checkbox = page.locator('.plan-row .check:not(:checked)').first()
+  const itemId = await checkbox.evaluate(el => el.closest('[data-plan-item-id]')?.getAttribute('data-plan-item-id'))
+  expect(itemId).toBeTruthy()
+  await checkbox.check()
+  await expect(page.locator(`[data-plan-item-id="${itemId}"] .check`)).toBeChecked()
+})
 
 test('Windows XP keeps the focused text of a highlighted list row readable', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-10-14T14:20:00') })

@@ -1,0 +1,103 @@
+{
+  "notice": "Wii Sports artwork remains the property of Nintendo. These files are decoded from the owner's own disc for a personal theme and are not relicensed under the application code license.",
+  "source": "Wii Sports (USA, RSPE01), disc filesystem extracted with wit",
+  "script": "scripts/wii-sports-theme-assets/build.py",
+  "directory": "public/themes/wiisports",
+  "files": {
+    "bracket-night.png": {
+      "source": "US/SportsStatic/local.carc: cPadCursor.arc timg/cPadCursor_00.tpl",
+      "method": "Dark appearance, not in the game: the same corners in pale cyan",
+      "sha256": "bb793d45adfa6900337bad217fa3d02a4a47ecb4cdb6ea987924162dad7b7eb1"
+    },
+    "bracket.png": {
+      "source": "US/SportsStatic/local.carc: cPadCursor.arc timg/cPadCursor_00.tpl",
+      "method": "Four mirrored corners in the material colours of cPadCursor_00.brlyt (100,100,100 and white)",
+      "sha256": "9d880b2a14f27c6b507b831758a2ef7f0d11a10af0633379549e571693710f96"
+    },
+    "button-hot.png": {
+      "source": "US/RPSportsCommon/local.carc: sportsTop.arc timg/ist_button_04.tpl",
+      "method": "Texture multiplied by (0.676, 0.965, 1.0), the selected-button colour measured from the running game",
+      "sha256": "e15d4d4ac5ada9f2fb5e31e0601b909adf465a9a91d64037de2431185099d4ea"
+    },
+    "button-night-hot.png": {
+      "source": "US/RPSportsCommon/local.carc: sportsTop.arc timg/ist_button_04.tpl",
+      "method": "Dark appearance, not in the game: face recoloured cyan by luminance",
+      "sha256": "748c1a60b9d255b9791c493fb1ad7e06c651598ec0ec90534cbb1642a77a5499"
+    },
+    "button-night.png": {
+      "source": "US/RPSportsCommon/local.carc: sportsTop.arc timg/ist_button_04.tpl",
+      "method": "Dark appearance, not in the game: outline lightened, face darkened by luminance",
+      "sha256": "639dff0035d89962625dffc217cc2e76c7badf2c6b9682729f7ef8bc536f9491"
+    },
+    "button.png": {
+      "source": "US/RPSportsCommon/local.carc: sportsTop.arc timg/ist_button_04.tpl",
+      "method": "Decoded RGB5A3 texture, unmodified",
+      "sha256": "4616a6c221d6db89be65684d344f0cdd0281f02e234e63afa36860b25b089b15"
+    },
+    "cursor-grab.png": {
+      "source": "Common/SportsStatic/common.carc: nw4r_defcursor_pack.breft defcursor_final64_b",
+      "method": "IA8 hand coloured player-one blue with its shadow, scaled to 40px",
+      "sha256": "c799157d081edf64ec2ed0ce7fb16e976cf8185fb1e6df8e0da7b58bec9cd1be"
+    },
+    "cursor-grab@2x.png": {
+      "source": "Common/SportsStatic/common.carc: nw4r_defcursor_pack.breft defcursor_final64_b",
+      "method": "IA8 hand coloured player-one blue with its shadow, scaled to 80px",
+      "sha256": "d155b9192aa51a246d311e5476313467ec86d5248f959e890d6bbf9a14138cb7"
+    },
+    "cursor-open.png": {
+      "source": "Common/SportsStatic/common.carc: nw4r_defcursor_pack.breft defcursor_final64_c",
+      "method": "IA8 hand coloured player-one blue with its shadow, scaled to 40px",
+      "sha256": "cf1517fdb986eaef06ebf79463dabf8947e410aee3c885f80eb9f61cfa61808c"
+    },
+    "cursor-open@2x.png": {
+      "source": "Common/SportsStatic/common.carc: nw4r_defcursor_pack.breft defcursor_final64_c",
+      "method": "IA8 hand coloured player-one blue with its shadow, scaled to 80px",
+      "sha256": "0947660e5ec11c0a8f49fd0848de9091a2b95c0dff2f50db138b27581a3ad32d"
+    },
+    "cursor.png": {
+      "source": "Common/SportsStatic/common.carc: nw4r_defcursor_pack.breft defcursor_final64_a",
+      "method": "IA8 hand coloured player-one blue with its shadow, scaled to 40px",
+      "sha256": "38213ac8a5b9f46c146ccbe07e5a596e0e7f7066b9f4578cab91c8d6c9c236ae"
+    },
+    "cursor@2x.png": {
+      "source": "Common/SportsStatic/common.carc: nw4r_defcursor_pack.breft defcursor_final64_a",
+      "method": "IA8 hand coloured player-one blue with its shadow, scaled to 80px",
+      "sha256": "620a0b0d1e32a5d5403c23718821e44f8055662a87c8cbb0cc27bcb4861162e4"
+    },
+    "menu-line.png": {
+      "source": "US/RPSportsCommon/local.carc: menuCommon.arc timg/ist_menuLine_00.tpl",
+      "method": "Decoded texture, unmodified",
+      "sha256": "782ce1760a5808ba31e9a6869fe83084e14fb3d637ccf813ea33be0394bbb8a3"
+    },
+    "tab-hot.png": {
+      "source": "US/RPCommon/local.carc: playerSelect.arc timg/ist_tab_00.tpl",
+      "method": "Texture multiplied by the selected-tab teal measured from the running game",
+      "sha256": "7f2ca93790efde67a3a22e615eb84f353e8203d96241221382a982bebf6a5402"
+    },
+    "tab.png": {
+      "source": "US/RPCommon/local.carc: playerSelect.arc timg/ist_tab_00.tpl",
+      "method": "Decoded texture, unmodified",
+      "sha256": "72d26b1114e699d78d21dcbe8db30ceed58e4ce150db9db3d97694a51c7e2ee1"
+    },
+    "tile-hot.png": {
+      "source": "US/RPSportsCommon/local.carc: sportsTop.arc timg/ist_button_06.tpl",
+      "method": "Texture multiplied by (0.676, 0.965, 1.0), the selected-button colour measured from the running game",
+      "sha256": "15bf0612631c43f6b61e0014d14e95ae608f3a3f3b6aa38465df1b0b00266767"
+    },
+    "tile-night-hot.png": {
+      "source": "US/RPSportsCommon/local.carc: sportsTop.arc timg/ist_button_06.tpl",
+      "method": "Dark appearance, not in the game: face recoloured cyan by luminance",
+      "sha256": "c02b15ab7040f4c07a44bbea7598bfe2fe969f9519fc4103204736899c887438"
+    },
+    "tile-night.png": {
+      "source": "US/RPSportsCommon/local.carc: sportsTop.arc timg/ist_button_06.tpl",
+      "method": "Dark appearance, not in the game: outline lightened, face darkened by luminance",
+      "sha256": "ef8a1c422f95c4b7ed05c052c3a1473fc46c9410ddb81708cf360517af5ef74c"
+    },
+    "tile.png": {
+      "source": "US/RPSportsCommon/local.carc: sportsTop.arc timg/ist_button_06.tpl",
+      "method": "Decoded RGB5A3 texture, unmodified",
+      "sha256": "82a03a74bb4ff136d58dc8f938fafec01aed3cfcbc66f3ef50d3fe1433f7e959"
+    }
+  }
+}

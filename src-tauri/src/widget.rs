@@ -9,7 +9,7 @@ const DEFAULT_THEME_ID: &str = "iridescent";
 // Historical day records can reference these IDs forever. Never delete or
 // rename an ID or its web/macOS/Android renderer. Retire it from current
 // selection instead; see the balance-themes skill.
-const ACTIVE_RANDOM_THEME_IDS: [&str; 14] = [
+const ACTIVE_RANDOM_THEME_IDS: [&str; 15] = [
     "iridescent",
     "graphite",
     "crimson",
@@ -24,6 +24,7 @@ const ACTIVE_RANDOM_THEME_IDS: [&str; 14] = [
     "system1",
     "windowsxp",
     "windowsvista",
+    "wiisports",
 ];
 const FNV_OFFSET_64: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME_64: u64 = 0x0000_0100_0000_01b3;
@@ -214,7 +215,7 @@ fn normalize_theme_id(theme_id: &str) -> &str {
     match theme_id {
         "iridescent" | "graphite" | "forest" | "ocean" | "violet" | "orange" | "earth"
         | "crimson" | "banana" | "pink" | "midnight" | "windows98" | "system1" | "windowsxp"
-        | "windowsvista" => theme_id,
+        | "windowsvista" | "wiisports" => theme_id,
         "berry" => "banana",
         _ => DEFAULT_THEME_ID,
     }
@@ -605,7 +606,13 @@ mod tests {
 
     #[test]
     fn retro_widget_snapshots_keep_the_selected_theme() {
-        for theme in ["windows98", "system1", "windowsxp", "windowsvista"] {
+        for theme in [
+            "windows98",
+            "system1",
+            "windowsxp",
+            "windowsvista",
+            "wiisports",
+        ] {
             let snapshot = snapshot_from_plan("2026-10-14", None, theme);
             assert_eq!(snapshot.theme_id, theme);
         }

@@ -34,6 +34,30 @@ These two themes are drawn from the systems' own files, not recreated in CSS. XP
 
 **Fonts.** Tahoma and Trebuchet MS come from macOS. Vista's face is Segoe UI, which isn't redistributed: a licensed local copy loads from the ignored `public/fonts/local/`, on the owner's Mac from Office's WOFF files. The public repository falls back to [Microsoft Selawik 1.01](https://github.com/microsoft/Selawik/releases/tag/1.01) under the SIL Open Font License.
 
+## Wii Sports
+
+Balance drawn as one of the game's menu screens (2006), from the disc's own files rather than recreated in CSS. `scripts/wii-sports-theme-assets/build.py` reads an extracted disc (RSPE01) as data: Yaz0 and U8 archives, TPL textures and the BREFT pointer pack. It writes `public/themes/wiisports` and the provenance record. Sizes, colors and motion come from the layouts beside those textures (`sportsTop_00`, `menuFrame_00`, `messageWindowW_00`, `trainingResult_00`, `playerSelect_00`, `cPadCursor_00` and their `.brlan` animations) and from 1080p captures of the running game.
+
+**The frame.** `WiiSportsFrame.svelte` draws the white bars above and below the blue field in wide windows. The grey tab on the top bar's lower edge names the view, as `menuFrame_00`'s caption does, and the wordmark sits where the game's logo does. The rules along the bars are `ist_menuLine_00`. The bottom bar carries the sidebar's own tagline in the caption tab where the game writes "Back", and its day and goal counts in the black and blue player-name tab; both are the sidebar's elements moved with `position: fixed`, so the bars must not get a `z-index` that would trap them underneath. IMAX hides the frame. macOS keeps its traffic lights, which sit on the top bar above the tab. Phones keep the usual header.
+
+**The field.** The game renders its swooshes from a 3D model (`menu_BG_model`), so the background is the one drawn part: an SVG of rings in the captured blues.
+
+**Buttons.** Every push button is `ist_button_04` as a nine-grid. Under the pointer, focused, pressed in or primary, it takes the selected colour, which is the texture multiplied by (0.676, 0.965, 1.0), measured from the game. The sidebar is the main menu's column of buttons: they grow with the window's height as the game's do, the one under the pointer swells and its brightness dips and returns over 80 frames (`sportsTop_00_activeButton_00`), and the current view wears the pad cursor, `cPadCursor_00`'s four grey corners. Only a hovered button gets a filter; a filter on every button would give each its own surface. Theme and appearance cards are `ist_button_06`, the striped tile of the training menu. Tabs are player select's `ist_tab_00`.
+
+**Windows.** The workspace, Goal Rhythm and every dialog are the white message window: a thick white rim, a thin grey line inside it, and faint scanlines. Text never sits straight on the blue except in dark navy; the game only puts white lettering on its grey tabs and dark panels. Page headers are `trainingResult_00`'s teal title bar.
+
+**The pointer.** On desktop the cursor is nw4r's pointing hand in player one's blue. Like the game it keeps its shape over buttons. Text keeps the I-beam so the caret can be placed, and drag handles get the pack's open hand and fist.
+
+**Contrast.** Three of the game's colours fail 4.5:1 under white lettering at this size and are nudged to the nearest that passes: the caption tab's grey (128 to 118), the title bar's teal (0,150,170 to 10,127,145) and the name tab's blue (0,140,255 to 0,112,214, light appearance only). Focus is a navy ring, which shows on the blue and on the white.
+
+**Dark appearance.** The game has none, so night borrows its darkest screens: player select's navy panels with their blue line, and the black system window. The night button and tile faces are recolors of the same textures; the record marks them as not in the game.
+
+**Font.** The game's face is FOT-NewRodin Pro DB, drawn here from one weight for every weight as the game does. It isn't redistributed: a licensed local copy loads from the ignored `public/fonts/local/NewRodin-DB.woff2`, and the public build falls back to [M PLUS 1](https://github.com/coz-m/MPLUS_FONTS) at weight 560 under the SIL Open Font License (`public/fonts/MPLUS1-OFL.txt`). Rodin's line gap is a full em and its curly quotes, dashes and ellipsis are full-width Japanese forms, so the `@font-face` rules give both faces Latin line metrics, scale them to set about as wide as the faces Balance was laid out for, and restrict them to Latin letters.
+
+**Widgets.** The macOS and Android widgets use the theme's palette on the ordinary card, not a drawn frame.
+
+[wii-sports-theme-assets.json](wii-sports-theme-assets.json) records every texture, its archive path, conversion and SHA-256. Wii Sports artwork remains Nintendo's; the application code license does not relicense it.
+
 Historical theme IDs are permanent, including retired Windows 98. Keep the TypeScript catalog, Rust Random catalog, macOS widget palettes and Android palette generator aligned.
 
 ## Widgets
@@ -48,4 +72,4 @@ macOS clips every widget to its own large rounded rectangle, and apps can't chan
 
 The browser audit uses generated planner data only. Check real screenshots after changing shared CSS, in both appearances: passing click tests do not establish visual fidelity. The theme stylesheet loads after `app.css`, so it wins specificity ties with shared rules.
 
-Mac System 1's bitmap fonts and readability audit remain unchanged. No ROM or Windows executable is needed or run by Balance.
+Mac System 1's bitmap fonts and readability audit remain unchanged. No ROM, disc image or Windows executable is needed or run by Balance.

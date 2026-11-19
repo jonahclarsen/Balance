@@ -844,6 +844,8 @@ private struct WidgetPalette {
                 return WidgetPalette(paper: 0x202631, surface: 0x303846, ink: 0xF4F4EF, muted: 0xC1C7D2, line: 0x727E91, accent: 0x8ABEFF, taskAccent: 0x8ABEFF, doneAccent: 0x9ACB82, timePill: 0x303846, timePillInk: 0xC5DEFF)
             case "windowsvista":
                 return WidgetPalette(paper: 0x17242C, surface: 0x20343E, ink: 0xF1F7FA, muted: 0xBED0D9, line: 0x658B9E, accent: 0x99D9FA, taskAccent: 0x99D9FA, doneAccent: 0x94DAB0, timePill: 0x203E4F, timePillInk: 0xC5ECFF)
+            case "wiisports":
+                return WidgetPalette(paper: 0x0E2334, surface: 0x132C40, ink: 0xEAF5F9, muted: 0xA3BFCB, line: 0x27465A, accent: 0x5FD3E6, taskAccent: 0x5FD3E6, doneAccent: 0x3FBF73, timePill: 0x16404F, timePillInk: 0xEAF7FA)
             case "system1":
                 return WidgetPalette(paper: 0x101010, surface: 0x181818, ink: 0xFFFFFF, muted: 0xBDBDBD, line: 0xBDBDBD, accent: 0xFFFFFF, taskAccent: 0xFFFFFF, doneAccent: 0xBDBDBD, timePill: 0x181818, timePillInk: 0xFFFFFF)
             case "graphite":
@@ -901,6 +903,8 @@ private struct WidgetPalette {
             return WidgetPalette(paper: 0xFFFFFF, surface: 0xECE9D8, ink: 0x000000, muted: 0x454339, line: 0xACA899, accent: 0x0055B8, taskAccent: 0x0055B8, doneAccent: 0x347B2A, timePill: 0xF5F3E9, timePillInk: 0x003B82)
         case "windowsvista":
             return WidgetPalette(paper: 0xFFFFFF, surface: 0xEFF7FB, ink: 0x14232D, muted: 0x455E6D, line: 0x7E9DAD, accent: 0x176B98, taskAccent: 0x176B98, doneAccent: 0x277B50, timePill: 0xE4F1F9, timePillInk: 0x174F70)
+        case "wiisports":
+            return WidgetPalette(paper: 0xF8F9F9, surface: 0xFFFFFF, ink: 0x101518, muted: 0x55636A, line: 0xCFD6D8, accent: 0x0A7890, taskAccent: 0x0A7890, doneAccent: 0x1F8A4C, timePill: 0xD5E7E7, timePillInk: 0x082639)
         case "system1":
             return WidgetPalette(paper: 0xFFFFFF, surface: 0xFFFFFF, ink: 0x000000, muted: 0x404040, line: 0x000000, accent: 0x000000, taskAccent: 0x000000, doneAccent: 0x404040, timePill: 0xFFFFFF, timePillInk: 0x000000)
         case "graphite":

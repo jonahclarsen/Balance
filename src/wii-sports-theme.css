@@ -1,0 +1,757 @@
+/* Wii Sports (2006): Balance drawn as one of the game's menu screens. Buttons, the
+   pad cursor, the pointer and the rules under the frame bars are the game's own
+   textures; sizes and colors come from its layouts (sportsTop_00, menuFrame_00,
+   messageWindowW_00, trainingResult_00, playerSelect_00) and from captures of the
+   running game. Provenance is in docs/wii-sports-theme-assets.json; the reasoning is
+   in docs/retro-themes.md. No inherited variables or viewport backgrounds animate. */
+/* The game's face is FOT-NewRodin Pro DB, which isn't redistributed: a licensed
+   local copy loads from the ignored public/fonts/local/, and the public build falls
+   through to M PLUS 1 (SIL OFL). One weight serves every weight, as in the game.
+   Rodin is wide with a tall x-height and a Japanese line gap of a full em, so both
+   faces are scaled to set about as wide as the faces Balance was laid out for and
+   given ordinary Latin line metrics. Their curly quotes, dashes and ellipsis are
+   full-width Japanese forms, so only Latin letters come from them. */
+@font-face {
+  font-family: 'Wii Rodin';
+  src: local('FOT-NewRodin Pro DB'), local('NewRodinPro-DB'), url('/fonts/local/NewRodin-DB.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  size-adjust: 93%;
+  ascent-override: 98%;
+  descent-override: 24%;
+  line-gap-override: 0%;
+  unicode-range: U+0020-007E, U+00A0-00FF, U+0131, U+0152-0153;
+}
+@font-face {
+  font-family: 'Wii Rodin Fallback';
+  src: url('/fonts/MPLUS1-560-latin.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  size-adjust: 106%;
+  ascent-override: 86%;
+  descent-override: 21%;
+  line-gap-override: 0%;
+  unicode-range: U+0020-007E, U+00A0-00FF, U+0131, U+0152-0153;
+}
+
+/* ---------- Palette ---------- */
+
+:root[data-theme='wiisports'] {
+  --font-interface: 'Wii Rodin', 'Wii Rodin Fallback', ui-rounded, 'SF Pro Rounded', system-ui, sans-serif;
+  --font-content: var(--font-interface);
+  --font-mono: var(--font-interface);
+  --wii-sky: #51abe2;
+  --wii-sky-deep: #3ca4df;
+  --wii-sky-light: #5bb8f0;
+  --wii-navy: #082639;
+  --wii-bar: #ffffff;
+  --wii-bar-ink: #1a1a1a;
+  --wii-caption: #767676;
+  --wii-caption-ink: #ffffff;
+  /* The blue of "Sports" in the game's own logo texture. */
+  --wii-wordmark: #52b4d5;
+  --wii-on-sky: #06263a;
+  --wii-frame: #ffffff;
+  --wii-frame-line: #a3a8a8;
+  --wii-stripe: #f1f3f3;
+  /* The game's 0,150,170 is 3.6:1 under white lettering; this teal is the nearest at 4.5:1. */
+  --wii-title: linear-gradient(#0a7f91, #076c7d);
+  --wii-title-edge: #c4f4fa;
+  --wii-title-ink: #ffffff;
+  --wii-button-ink: #0b0f11;
+  --wii-button-muted: #44575e;
+  --wii-button: url('/themes/wiisports/button.png');
+  --wii-button-hot: url('/themes/wiisports/button-hot.png');
+  --wii-tile: url('/themes/wiisports/tile.png');
+  --wii-tile-hot: url('/themes/wiisports/tile-hot.png');
+  --wii-bracket: url('/themes/wiisports/bracket.png');
+  --wii-name-tab: #000000;
+  --wii-name-tab-2: #008cff;
+  --wii-top: 50px;
+  --wii-bottom: 34px;
+  --wii-field-edge: #082639;
+  --wii-glow: #5fd6e6;
+  --wii-swoosh: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1600 1000' preserveAspectRatio='xMidYMid slice'%3E%3Cg fill='none' stroke='%23fff'%3E%3Ccircle cx='1190' cy='540' r='430' fill='%23fff' fill-opacity='.13' stroke='none'/%3E%3Ccircle cx='1190' cy='540' r='470' stroke-width='26' stroke-opacity='.2'/%3E%3Ccircle cx='1190' cy='540' r='640' stroke-width='120' stroke-opacity='.07'/%3E%3Ccircle cx='1190' cy='540' r='860' stroke-width='60' stroke-opacity='.08'/%3E%3Ccircle cx='1190' cy='540' r='1010' stroke-width='10' stroke-opacity='.16'/%3E%3Cpath d='M-80 250C340 60 820 110 1700 -60' stroke-width='90' stroke-opacity='.07'/%3E%3Cpath d='M-80 330C360 150 840 200 1700 40' stroke-width='8' stroke-opacity='.17'/%3E%3Cellipse cx='260' cy='1010' rx='700' ry='230' stroke-width='70' stroke-opacity='.07' transform='rotate(-7 260 1010)'/%3E%3C/g%3E%3C/svg%3E");
+  --app-background: var(--wii-swoosh) center / cover no-repeat, linear-gradient(100deg, #3ea5e0, #58b6ef 46%, #5cb4ec 70%, #4aa3dc);
+  --paper: #f8f9f9;
+  --paper-strong: #ffffff;
+  --ink: #101518;
+  --muted: #55636a;
+  --line: #cfd6d8;
+  --line-strong: #8f9da3;
+  --accent: #0a7890;
+  --accent-strong: #075e70;
+  --theme-hue: 189;
+  --theme-checkbox: #0a7890;
+  --theme-done: #1f8a4c;
+  --danger: #a81f14;
+  --shadow: 0 5px 14px rgb(0 40 90 / 0.28);
+  --sidebar: #dff1f6;
+  --active-nav: #bfeef4;
+  --row-border: #dde2e3;
+  --drop-inside: #d3f3f8;
+  --time-border: #9fb9c1;
+  --time-bg: #ffffff;
+  --time-warn-bg: #fff4d6;
+  --time-warn-ink: #7a4a00;
+  /* Navy shows on the blue field and on the white windows alike. */
+  --focus-ring: #082639;
+  --radius-modal: 18px;
+  --modal-backdrop: rgb(40 44 48 / 0.56);
+  --list-progress-stop-1: #6fdbe6;
+  --list-progress-stop-2: #6fdbe6;
+  --list-progress-stop-3: #55cbdb;
+  --list-progress-stop-4: #55cbdb;
+  --list-progress-stop-5: #7fe6f0;
+  --list-progress-stop-6: #9cf0f7;
+  --list-progress-stop-7: #6fdbe6;
+  --list-progress-stop-8: #55cbdb;
+}
+
+/* The game has no dark screens of its own, so night borrows its darkest ones: the
+   navy panels of player select and the black system window. */
+:root[data-color-scheme='dark'][data-theme='wiisports'] {
+  --wii-sky: #0d2f52;
+  --wii-sky-deep: #092541;
+  --wii-sky-light: #12406b;
+  --wii-bar: #11181e;
+  --wii-bar-ink: #eef5f7;
+  --wii-caption: #5c6064;
+  --wii-on-sky: #e4f4fb;
+  --wii-frame: #0a1722;
+  --wii-frame-line: #1f6fc4;
+  --wii-stripe: #10283a;
+  --wii-title: linear-gradient(#0a7f91, #076c7d);
+  --wii-title-edge: #5ecfe0;
+  --wii-button-ink: #eaf7fa;
+  --wii-button-muted: #a9cdd6;
+  --wii-button: url('/themes/wiisports/button-night.png');
+  --wii-button-hot: url('/themes/wiisports/button-night-hot.png');
+  --wii-tile: url('/themes/wiisports/tile-night.png');
+  --wii-tile-hot: url('/themes/wiisports/tile-night-hot.png');
+  --wii-bracket: url('/themes/wiisports/bracket-night.png');
+  --wii-name-tab: #000000;
+  --wii-name-tab-2: #0a6fd0;
+  --wii-field-edge: #5ecfe0;
+  --wii-glow: #2aa9bd;
+  --app-background: var(--wii-swoosh) center / cover no-repeat, linear-gradient(100deg, #092541, #0f3a63 46%, #103c66 70%, #0a2947);
+  --paper: #0e2334;
+  --paper-strong: #132c40;
+  --ink: #eaf5f9;
+  --muted: #a3bfcb;
+  --line: #27465a;
+  --line-strong: #4b7289;
+  --accent: #5fd3e6;
+  --accent-strong: #a4ecf6;
+  --theme-checkbox: #0f93ab;
+  --theme-done: #3fbf73;
+  --danger: #ff8a7a;
+  --shadow: 0 5px 16px rgb(0 0 0 / 0.5);
+  --sidebar: #0f2a3e;
+  --active-nav: #14506a;
+  --row-border: #1f3c4f;
+  --drop-inside: #123f52;
+  --time-border: #3c6c82;
+  --time-bg: #0c1e2d;
+  --time-warn-bg: #3a2c10;
+  --time-warn-ink: #f0cf8a;
+  --focus-ring: #b5f1f9;
+  --modal-backdrop: rgb(0 0 0 / 0.66);
+}
+:root[data-color-scheme='dark'][data-theme='wiisports'] {
+  --wii-swoosh: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1600 1000' preserveAspectRatio='xMidYMid slice'%3E%3Cg fill='none' stroke='%237fd0ff'%3E%3Ccircle cx='1190' cy='540' r='430' fill='%237fd0ff' fill-opacity='.06' stroke='none'/%3E%3Ccircle cx='1190' cy='540' r='470' stroke-width='26' stroke-opacity='.1'/%3E%3Ccircle cx='1190' cy='540' r='640' stroke-width='120' stroke-opacity='.035'/%3E%3Ccircle cx='1190' cy='540' r='860' stroke-width='60' stroke-opacity='.04'/%3E%3Ccircle cx='1190' cy='540' r='1010' stroke-width='10' stroke-opacity='.08'/%3E%3Cpath d='M-80 250C340 60 820 110 1700 -60' stroke-width='90' stroke-opacity='.035'/%3E%3Cpath d='M-80 330C360 150 840 200 1700 40' stroke-width='8' stroke-opacity='.09'/%3E%3Cellipse cx='260' cy='1010' rx='700' ry='230' stroke-width='70' stroke-opacity='.035' transform='rotate(-7 260 1010)'/%3E%3C/g%3E%3C/svg%3E");
+}
+
+:root[data-theme='wiisports'],
+:root[data-theme='wiisports'] body {
+  background: var(--wii-sky);
+}
+:root[data-theme='wiisports'] .app-shell {
+  background: var(--app-background);
+}
+:root[data-theme='wiisports'] :is(input, textarea, [contenteditable='true'], .item-text-display)::selection,
+:root[data-theme='wiisports'] :is([contenteditable='true'], .item-text-display) :is(b, strong, i, em, u, s, a, code, span, br)::selection {
+  background: #8fe3ee;
+  color: #04202b;
+}
+
+/* The pointer: one hand everywhere, as in the game. Text keeps its I-beam so the
+   caret can be placed; things that drag get the pack's open hand and fist. */
+@media (hover: hover) and (pointer: fine) {
+  :root[data-theme='wiisports'] {
+    --wii-hand: image-set(url('/themes/wiisports/cursor.png') 1x, url('/themes/wiisports/cursor@2x.png') 2x) 13 2;
+    --wii-hand-open: image-set(url('/themes/wiisports/cursor-open.png') 1x, url('/themes/wiisports/cursor-open@2x.png') 2x) 20 18;
+    --wii-hand-grab: image-set(url('/themes/wiisports/cursor-grab.png') 1x, url('/themes/wiisports/cursor-grab@2x.png') 2x) 20 18;
+    cursor: var(--wii-hand), default;
+  }
+  :root[data-theme='wiisports'] :is(button, select, label, summary, a, input[type='checkbox'], input[type='radio'], input[type='range'], input[type='date'], .check-target, [role='button']) {
+    cursor: var(--wii-hand), pointer;
+  }
+  :root[data-theme='wiisports'] button:disabled {
+    cursor: var(--wii-hand), not-allowed;
+  }
+  :root[data-theme='wiisports'] :is(.drag-handle, .goal-history-resize-handle) {
+    cursor: var(--wii-hand-open), grab;
+  }
+  :root[data-theme='wiisports'] .drag-handle:active {
+    cursor: var(--wii-hand-grab), grabbing;
+  }
+}
+
+/* ---------- The frame: white bars above and below the blue field ---------- */
+
+.wii-frame {
+  display: none;
+}
+
+@media (min-width: 761px) {
+  :root[data-theme='wiisports'],
+  :root[data-theme='wiisports'] body {
+    overflow: hidden;
+  }
+  :root[data-theme='wiisports'] .app-shell {
+    grid-template-rows: var(--wii-top) minmax(0, 1fr) var(--wii-bottom);
+  }
+  :root[data-theme='wiisports'] .app-shell > :is(.sidebar, .content-shell) {
+    grid-row: 2;
+    height: auto;
+    min-height: 0;
+  }
+  /* No z-index: the sidebar's tabs sit in the bottom bar and must paint over it. */
+  :root[data-theme='wiisports'] .wii-frame {
+    position: relative;
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: flex-end;
+    min-width: 0;
+    background: var(--wii-bar);
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  /* The rules along each bar's inner edge are the game's ist_menuLine texture. */
+  :root[data-theme='wiisports'] .wii-frame::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    left: 0;
+    height: 5px;
+    background: url('/themes/wiisports/menu-line.png') 0 0 / 5px 5px repeat-x;
+    pointer-events: none;
+  }
+  :root[data-theme='wiisports'] .wii-frame-top {
+    grid-row: 1;
+    justify-content: space-between;
+  }
+  :root[data-theme='wiisports'] .wii-frame-top::after {
+    bottom: -1px;
+  }
+  :root[data-theme='wiisports'] .wii-frame-bottom {
+    grid-row: 3;
+  }
+  :root[data-theme='wiisports'] .wii-frame-bottom::after {
+    top: -1px;
+    transform: scaleY(-1);
+  }
+  :root[data-color-scheme='dark'][data-theme='wiisports'] .wii-frame::after {
+    opacity: 0.28;
+  }
+  /* menuFrame_00's caption: a grey tab on the bar's lower edge, cut at 45 degrees. */
+  :root[data-theme='wiisports'] .wii-caption {
+    display: flex;
+    align-items: center;
+    min-width: 232px;
+    max-width: 46vw;
+    height: 25px;
+    padding: 0 44px 0 30px;
+    background: var(--wii-caption);
+    color: var(--wii-caption-ink);
+    font-size: 16px;
+    line-height: 25px;
+    clip-path: polygon(0 0, calc(100% - 25px) 0, 100% 100%, 0 100%);
+  }
+  :root[data-theme='wiisports'] .wii-caption > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* Where the game's logo sits. One flat sky blue, slanted like "Sports". */
+  :root[data-theme='wiisports'] .wii-wordmark {
+    align-self: center;
+    margin-right: 26px;
+    color: var(--wii-wordmark);
+    font-size: 27px;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    transform: skewX(-11deg);
+  }
+  :root[data-theme='wiisports'] .macos-titlebar-drag-region {
+    height: 24px;
+  }
+
+  /* The sidebar is the main menu's column of buttons, straight on the blue. */
+  :root[data-theme='wiisports'] .sidebar {
+    gap: 12px;
+    padding: 14px 16px 10px;
+    border-right: 0;
+    background: transparent;
+    color: var(--wii-on-sky);
+    scrollbar-width: thin;
+    scrollbar-color: rgb(8 38 57 / 0.35) transparent;
+  }
+  :root[data-theme='wiisports'] .app-shell.macos-titlebar-overlay .sidebar {
+    padding-top: 14px;
+  }
+  /* IMAX gives the whole window to the page, so the frame steps aside. */
+  :root[data-theme='wiisports'] .app-shell.page-maximized {
+    grid-template-rows: minmax(0, 1fr);
+  }
+  :root[data-theme='wiisports'] .app-shell.page-maximized > .wii-frame {
+    display: none;
+  }
+  :root[data-theme='wiisports'] .app-shell.page-maximized > .content-shell {
+    grid-row: 1;
+  }
+  /* The wordmark in the top bar already says it. */
+  :root[data-theme='wiisports'] .sidebar-brand-heading h1 {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  :root[data-theme='wiisports'] .sidebar-brand {
+    display: grid;
+    gap: 8px;
+  }
+  :root[data-theme='wiisports'] .sidebar-brand:not(:has(.sidebar-active-projects, .situate-pill, .sync-status-indicator)) {
+    display: none;
+  }
+  /* The tagline takes the bottom bar's caption tab, where the game writes "Back". */
+  :root[data-theme='wiisports'] .sidebar-brand-heading + p {
+    position: fixed;
+    z-index: 2;
+    bottom: calc(var(--wii-bottom) - 26px);
+    left: 0;
+    display: flex;
+    align-items: center;
+    height: 25px;
+    margin: 0;
+    padding: 0 44px 0 30px;
+    background: var(--wii-caption);
+    color: var(--wii-caption-ink);
+    font-size: 14px;
+    white-space: nowrap;
+    clip-path: polygon(0 0, 100% 0, calc(100% - 25px) 100%, 0 100%);
+  }
+  /* The player-name tab, bottom right: black, then player one's blue. */
+  :root[data-theme='wiisports'] .sidebar-stats {
+    position: fixed;
+    z-index: 2;
+    right: 0;
+    bottom: calc(var(--wii-bottom) - 26px);
+    display: flex;
+    height: 25px;
+    margin: 0;
+    color: #fff;
+    font-size: 14px;
+    line-height: 25px;
+    white-space: nowrap;
+  }
+  :root[data-theme='wiisports'] .sidebar-stats > span {
+    padding: 0 40px 0 44px;
+    background: var(--wii-name-tab);
+    color: #fff;
+    clip-path: polygon(0 0, calc(100% - 25px) 0, 100% 100%, 25px 100%);
+  }
+  :root[data-theme='wiisports'] .sidebar-stats > span + span {
+    margin-left: -25px;
+    padding: 0 22px 0 44px;
+    background: var(--wii-name-tab-2);
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 25px 100%);
+  }
+  :root[data-color-scheme='light'][data-theme='wiisports'] .sidebar-stats > span + span {
+    /* White on the game's 0,140,255 is 3.3:1; this is the nearest blue at 4.5:1. */
+    background: #0070d6;
+  }
+
+  :root[data-theme='wiisports'] .content-shell {
+    gap: 10px;
+    padding: 14px 16px 12px 2px;
+  }
+  :root[data-theme='wiisports'] .app-shell.sidebar-hidden .content-shell {
+    padding-left: 16px;
+  }
+}
+
+/* ---------- Windows: the game's white message window ---------- */
+
+:root[data-theme='wiisports'] :is(.workspace, .goal-history-panel) {
+  border: 7px solid var(--wii-frame);
+  border-radius: 18px;
+  background: var(--paper) repeating-linear-gradient(transparent 0 2px, var(--wii-stripe) 2px 4px);
+  box-shadow: inset 0 0 0 1.5px var(--wii-frame-line), 0 0 0 1.5px rgb(8 38 57 / 0.35), var(--shadow);
+}
+:root[data-theme='wiisports'] .workspace.before-current-day-workspace {
+  border-right-color: var(--accent);
+}
+:root[data-theme='wiisports'] .workspace.after-current-day-workspace {
+  border-left-color: var(--accent);
+}
+:root[data-theme='wiisports'] .goal-history-panel {
+  overflow: hidden;
+}
+:root[data-theme='wiisports'] .list-panel {
+  border-color: var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+  box-shadow: none;
+}
+
+/* trainingResult_00's title bar: teal, white lettering, a pale line around it. */
+:root[data-theme='wiisports'] .page-header {
+  min-height: 46px;
+  padding: 6px 10px 6px 18px;
+  border: 2px solid var(--wii-title-edge);
+  border-radius: 13px;
+  background: var(--wii-title);
+  box-shadow: 0 0 0 1.5px rgb(8 38 57 / 0.3);
+  color: var(--wii-title-ink);
+  --muted: #d6f6fb;
+  --accent-strong: #ffffff;
+}
+:root[data-theme='wiisports'] .page-header :is(h2, h3, .daily-reminder-button, .eyebrow) {
+  color: var(--wii-title-ink);
+}
+/* Fields in the title bar are white, so their own text keeps the page's ink. */
+:root[data-theme='wiisports'] .page-header :is(input, select, textarea) {
+  --muted: #55636a;
+}
+:root[data-color-scheme='dark'][data-theme='wiisports'] .page-header :is(input, select, textarea) {
+  --muted: #a3bfcb;
+}
+:root[data-theme='wiisports'] .page-header h2 {
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+/* ---------- Push buttons: ist_button_04 as a nine-grid ---------- */
+
+@property --wii-pulse {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 1;
+}
+/* sportsTop_00_activeButton_00: the selected button's brightness dips and returns over 80 frames. */
+@keyframes wii-pulse {
+  50% { --wii-pulse: 0.9; }
+}
+
+:root[data-theme='wiisports'] button:where(:not(.ghost, .check, .time-part, .mobile-time-summary, .daily-reminder-button, .quiet, .plan-goal-badge, .select-handle, .drag-handle, .search-result, .search-section-header, .overlay-caption-close, .note-card, .rail-chip, .swatch, .path-link, .menu-toggle, .notes-back-link, .situate-pill, .theme-option-select, .color-scheme-option, .idea-group-card, .goal-date-head, .goal-day-cell, .goal-recent-day, .imax-click-handoff, .whole-row-selection-target, .search-result-target, .children-toggle, .day-template-option, .mobile-menu-button, .mobile-search-button, .mobile-drawer-backdrop, .sidebar-active-projects button, .celebration-title-toggle, .note-format-group button, .segmented button, .link-context-menu button, .note-empty-editor, .note-version-add, .range-switcher button, .choice button, .menu button, .document-find button, .add-row, .goal-copy-button, .color-picker, .search-group-toggle)) {
+  border: 1px solid transparent;
+  border-radius: 9px;
+  border-image: var(--wii-button) 24 fill / var(--wii-edge, 12px) stretch;
+  background: none;
+  box-shadow: none;
+  color: var(--wii-button-ink);
+  --muted: var(--wii-button-muted);
+  --accent-strong: var(--wii-button-ink);
+  text-shadow: none;
+  transition: transform 33ms linear;
+}
+:root[data-theme='wiisports'] button:where(:not(.ghost, .check, .time-part, .mobile-time-summary, .daily-reminder-button, .quiet, .plan-goal-badge, .select-handle, .drag-handle, .search-result, .search-section-header, .overlay-caption-close, .note-card, .rail-chip, .swatch, .path-link, .menu-toggle, .notes-back-link, .situate-pill, .theme-option-select, .color-scheme-option, .idea-group-card, .goal-date-head, .goal-day-cell, .goal-recent-day, .imax-click-handoff, .whole-row-selection-target, .search-result-target, .children-toggle, .day-template-option, .mobile-menu-button, .mobile-search-button, .mobile-drawer-backdrop, .sidebar-active-projects button, .celebration-title-toggle, .note-format-group button, .segmented button, .link-context-menu button, .note-empty-editor, .note-version-add, .range-switcher button, .choice button, .menu button, .document-find button, .add-row, .goal-copy-button, .color-picker, .search-group-toggle)):is(:hover, :focus-visible, [aria-pressed='true'], .active, .primary):not(:disabled) {
+  border-color: transparent;
+  border-image-source: var(--wii-button-hot);
+  background: none;
+  color: var(--wii-button-ink);
+}
+:root[data-color-scheme='dark'][data-theme='wiisports'] button:where(:not(.ghost, .check, .time-part, .mobile-time-summary, .daily-reminder-button, .quiet, .plan-goal-badge, .select-handle, .drag-handle, .search-result, .search-section-header, .overlay-caption-close, .note-card, .rail-chip, .swatch, .path-link, .menu-toggle, .notes-back-link, .situate-pill, .theme-option-select, .color-scheme-option, .idea-group-card, .goal-date-head, .goal-day-cell, .goal-recent-day, .imax-click-handoff, .whole-row-selection-target, .search-result-target, .children-toggle, .day-template-option, .mobile-menu-button, .mobile-search-button, .mobile-drawer-backdrop, .sidebar-active-projects button, .celebration-title-toggle, .note-format-group button, .segmented button, .link-context-menu button, .note-empty-editor, .note-version-add, .range-switcher button, .choice button, .menu button, .document-find button, .add-row, .goal-copy-button, .color-picker, .search-group-toggle)):is(:hover, :focus-visible, [aria-pressed='true'], .active, .primary):not(:disabled) {
+  /* The night-hot face is bright cyan, so its lettering goes dark again. */
+  --wii-button-ink: #031c24;
+  --wii-button-muted: #0d3d4a;
+}
+:root[data-theme='wiisports'] button:where(:not(.ghost, .check, .time-part, .mobile-time-summary, .daily-reminder-button, .quiet, .plan-goal-badge, .select-handle, .drag-handle, .search-result, .search-section-header, .overlay-caption-close, .note-card, .rail-chip, .swatch, .path-link, .menu-toggle, .notes-back-link, .situate-pill, .theme-option-select, .color-scheme-option, .idea-group-card, .goal-date-head, .goal-day-cell, .goal-recent-day, .imax-click-handoff, .whole-row-selection-target, .search-result-target, .children-toggle, .day-template-option, .mobile-menu-button, .mobile-search-button, .mobile-drawer-backdrop, .sidebar-active-projects button, .celebration-title-toggle, .note-format-group button, .segmented button, .link-context-menu button, .note-empty-editor, .note-version-add, .range-switcher button, .choice button, .menu button, .document-find button, .add-row, .goal-copy-button, .color-picker, .search-group-toggle)):active:not(:disabled) {
+  transform: scale(0.96);
+  transition-duration: 50ms;
+}
+:root[data-theme='wiisports'] button:disabled {
+  opacity: 0.5;
+  filter: grayscale(0.6);
+}
+:root[data-theme='wiisports'] button:focus-visible,
+:root[data-theme='wiisports'] :is(input, select):focus-visible {
+  outline: 2.5px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+:root[data-theme='wiisports'] button .nav-shortcut {
+  color: var(--muted);
+  opacity: 1;
+}
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  /* Only the button under the pointer gets a filter, so idle buttons stay cheap to paint. */
+  :root[data-theme='wiisports'] :is(.primary-nav button, .generate-day-button, .sidebar-quick-actions > button):hover:not(:disabled) {
+    filter: brightness(var(--wii-pulse));
+    animation: wii-pulse 1.33s linear infinite;
+  }
+}
+
+/* ---------- Main menu: the sidebar's column of buttons ---------- */
+
+:root[data-theme='wiisports'] .primary-nav {
+  gap: clamp(5px, 0.8vh, 9px);
+}
+:root[data-theme='wiisports'] .primary-nav button {
+  position: relative;
+  justify-content: center;
+  /* The game's buttons are a seventh of the screen tall; these grow with the window too. */
+  height: clamp(31px, 3.9vh, 46px);
+  padding: 0 12px;
+  font-size: 16px;
+  font-weight: 500;
+}
+:root[data-theme='wiisports'] .primary-nav .nav-shortcut {
+  position: absolute;
+  right: 12px;
+}
+:root[data-theme='wiisports'] .primary-nav .nav-icon {
+  position: absolute;
+  left: 13px;
+  opacity: 0.85;
+}
+:root[data-theme='wiisports'] .primary-nav .nav-child {
+  width: calc(100% - 22px);
+  margin-left: 22px;
+  padding-left: 12px;
+  border-left: 1px solid transparent;
+  border-radius: 9px;
+}
+@media (hover: hover) {
+  :root[data-theme='wiisports'] .primary-nav button:hover:not(.active) {
+    z-index: 2;
+    transform: scale(1.04);
+  }
+}
+/* The pad cursor: cPadCursor_00's four grey corners around the chosen button. */
+:root[data-theme='wiisports'] .primary-nav button.active {
+  z-index: 1;
+}
+:root[data-theme='wiisports'] .primary-nav button.active::after {
+  content: '';
+  position: absolute;
+  inset: -7px;
+  border: 1px solid transparent;
+  border-image: var(--wii-bracket) 24 / 14px;
+  pointer-events: none;
+}
+:root[data-theme='wiisports'] .sidebar-quick-actions {
+  gap: 6px;
+  color: var(--wii-button-ink);
+}
+:root[data-theme='wiisports'] .sidebar-quick-actions > button {
+  --wii-edge: 11px;
+}
+:root[data-theme='wiisports'] .generate-day-button {
+  min-height: 44px;
+  --wii-edge: 15px;
+  font-size: 16px;
+}
+:root[data-theme='wiisports'] .sidebar-footer {
+  color: var(--wii-on-sky);
+  --muted: var(--wii-on-sky);
+}
+:root[data-theme='wiisports'] .generation-template-field > span {
+  color: var(--wii-on-sky);
+}
+:root[data-theme='wiisports'] .sidebar-active-projects button {
+  border: 1.5px solid var(--wii-navy);
+  border-radius: 9px;
+  background: var(--paper-strong);
+  color: var(--ink);
+}
+:root[data-theme='wiisports'] .sidebar .tiny {
+  color: var(--wii-on-sky);
+}
+
+/* ---------- Fields ---------- */
+
+:root[data-theme='wiisports'] :is(input:not([type='checkbox'], [type='radio'], [type='range'], [type='color']), select, textarea:not(.note-title, .item-text, .template-text), .rich-text-field, .goal-rules-editor) {
+  border: 1.5px solid var(--wii-field-edge);
+  border-radius: 8px;
+  background-color: var(--paper-strong);
+  color: var(--ink);
+  box-shadow: inset 0 2px 3px rgb(8 38 57 / 0.12);
+}
+:root[data-theme='wiisports'] :is(input:not([type='checkbox'], [type='radio'], [type='range'], [type='color']), select, textarea:not(.note-title, .item-text, .template-text), .rich-text-field, .goal-rules-editor):focus {
+  outline: none;
+  box-shadow: inset 0 2px 3px rgb(8 38 57 / 0.12), 0 0 0 3px var(--wii-glow);
+}
+:root[data-theme='wiisports'] ::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+
+/* Check boxes are small tiles; a checked one keeps the color chosen in Settings. */
+:root[data-theme='wiisports'] .check {
+  width: 20px;
+  height: 20px;
+  border: 1.5px solid var(--wii-field-edge);
+  border-radius: 6px;
+  background-color: var(--paper-strong);
+  box-shadow: inset 0 -3px 0 rgb(8 38 57 / 0.1), inset 0 2px 0 rgb(255 255 255 / 0.5);
+}
+:root[data-theme='wiisports'] .check:hover {
+  border-color: var(--wii-field-edge);
+  background-color: var(--drop-inside);
+}
+:root[data-theme='wiisports'] .check:checked {
+  border-color: var(--wii-field-edge);
+  background-color: var(--checkbox-checked);
+}
+
+/* ---------- Rows ---------- */
+
+:root[data-theme='wiisports'] .time-range {
+  border-radius: 8px;
+}
+:root[data-theme='wiisports'] :is(.plan-row.selected, .template-main.selected) {
+  background: var(--drop-inside);
+  box-shadow: inset 0 -3px 0 var(--wii-name-tab-2);
+}
+
+/* ---------- Dialogs: the message window over a dimmed screen ---------- */
+
+:root[data-theme='wiisports'] .overlay-card {
+  border: 7px solid var(--wii-frame);
+  background: var(--paper) repeating-linear-gradient(transparent 0 2px, var(--wii-stripe) 2px 4px);
+  box-shadow: inset 0 0 0 1.5px var(--wii-frame-line), 0 0 0 1.5px rgb(8 38 57 / 0.4), 0 14px 40px rgb(0 0 0 / 0.4);
+}
+
+/* ---------- Phone ---------- */
+
+@media (max-width: 760px) {
+  :root[data-theme='wiisports'] .app-shell {
+    background: var(--app-background);
+  }
+  :root[data-theme='wiisports'] .mobile-app-header {
+    border-bottom: 0;
+    background: var(--wii-bar);
+    color: var(--wii-bar-ink);
+    box-shadow: 0 1px 0 #ced3d2, 0 3px 0 #f5faf9, 0 4px 0 #959a99;
+  }
+  :root[data-theme='wiisports'] .sidebar {
+    border-right: 0;
+    background: var(--app-background);
+    background-color: var(--wii-sky);
+    color: var(--wii-on-sky);
+  }
+  :root[data-theme='wiisports'] .sidebar-brand-heading h1,
+  :root[data-theme='wiisports'] .sidebar-brand-heading + p {
+    color: var(--wii-on-sky);
+  }
+  :root[data-theme='wiisports'] .workspace {
+    margin: 8px 6px;
+    border-width: 5px;
+    border-radius: 14px;
+  }
+  :root[data-theme='wiisports'] .page-header h2 {
+    font-size: 18px;
+  }
+}
+
+/* ---------- Tiles: ist_button_06, the striped face of the training and
+   player-count buttons, for anything chosen from a set of cards ---------- */
+
+:root[data-theme='wiisports'] :is(.theme-option, .color-scheme-option) {
+  border: 1px solid transparent;
+  border-radius: 12px;
+  border-image: var(--wii-tile) 30 fill / 15px stretch;
+  background: none;
+  box-shadow: none;
+  color: var(--wii-button-ink);
+  --ink: var(--wii-button-ink);
+  --muted: var(--wii-button-muted);
+  transition: none;
+}
+:root[data-theme='wiisports'] :is(.theme-option, .color-scheme-option):is(:hover, .active) {
+  border-color: transparent;
+  border-image-source: var(--wii-tile-hot);
+  background: none;
+  box-shadow: none;
+}
+:root[data-color-scheme='dark'][data-theme='wiisports'] :is(.theme-option, .color-scheme-option):is(:hover, .active) {
+  --wii-button-ink: #031c24;
+  --wii-button-muted: #0d3d4a;
+}
+:root[data-theme='wiisports'] :is(.theme-option, .color-scheme-option).active::after {
+  content: '';
+  position: absolute;
+  z-index: 1;
+  inset: -7px;
+  border: 1px solid transparent;
+  border-image: var(--wii-bracket) 24 / 14px;
+  pointer-events: none;
+}
+:root[data-theme='wiisports'] :is(.theme-option-select, .color-scheme-option) :is(strong, small) {
+  color: inherit;
+}
+:root[data-theme='wiisports'] .theme-option-select small,
+:root[data-theme='wiisports'] .color-scheme-option small {
+  color: var(--wii-button-muted);
+}
+:root[data-theme='wiisports'] .theme-selected-mark {
+  background: var(--wii-navy);
+  color: #fff;
+}
+
+/* ---------- Tabs: player select's ist_tab_00, teal when chosen ---------- */
+
+:root[data-theme='wiisports'] :is(.rail-chip, .segmented button) {
+  border: 1px solid transparent;
+  border-radius: 0;
+  border-image: url('/themes/wiisports/tab.png') 10 fill / 7px stretch;
+  background: none;
+  color: #0b0f11;
+}
+:root[data-theme='wiisports'] :is(.rail-chip, .segmented button):is(:hover, .active) {
+  border-color: transparent;
+  border-image-source: url('/themes/wiisports/tab-hot.png');
+  background: none;
+  color: #020b0d;
+}
+:root[data-theme='wiisports'] .rail-chip.dashed-edge {
+  border-image: none;
+  border: 1.5px dashed var(--line-strong);
+  border-radius: 8px;
+  color: var(--muted);
+}
+:root[data-theme='wiisports'] .segmented {
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+/* Goal Rhythm's date heads stack a weekday over a date in one short cell. */
+:root[data-theme='wiisports'] .goal-date-head {
+  line-height: 1.1;
+}
+/* Rodin's figures are too wide for an 8px date in a 30px column. */
+:root[data-theme='wiisports'] .goal-date-head strong {
+  font-family: ui-rounded, 'SF Pro Rounded', system-ui, sans-serif;
+}
+/* Rodin sets wider, so in a narrow window the summary gives way before the title does. */
+:root[data-theme='wiisports'] .goal-history-title {
+  flex: none;
+}
+:root[data-theme='wiisports'] .goal-history-summary {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Rodin's figures are four-fifths of an em wide, so a date needs tightening to fit its field. */
+:root[data-theme='wiisports'] input[type='date']:not(.today-date-input) {
+  font-size: 0.86em;
+  letter-spacing: -0.04em;
+}

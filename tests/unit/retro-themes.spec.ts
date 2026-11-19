@@ -3,17 +3,17 @@ import { normalizeReplicatedPreferences, replicatedDayTheme } from '../../src/li
 import { ACTIVE_THEME_PRESETS, THEME_OPTIONS, DEFAULT_PRESET_THEME_ID, normalizePresetThemeId, randomThemeForDate } from '../../src/lib/themes'
 
 test('new presets only remap Random dates they win', () => {
-  const original = ACTIVE_THEME_PRESETS.map(theme => theme.id).filter(id => id !== 'windows98' && id !== 'system1' && id !== 'windowsxp' && id !== 'windowsvista')
+  const original = ACTIVE_THEME_PRESETS.map(theme => theme.id).filter(id => id !== 'windows98' && id !== 'system1' && id !== 'windowsxp' && id !== 'windowsvista' && id !== 'wiisports')
   for (let day = 1; day <= 28; day++) {
     const date = `2026-10-${String(day).padStart(2, '0')}`
     const before = randomThemeForDate(date, original)
     const after = randomThemeForDate(date)
-    expect([before, 'system1', 'windowsxp', 'windowsvista']).toContain(after)
+    expect([before, 'system1', 'windowsxp', 'windowsvista', 'wiisports']).toContain(after)
   }
 })
 
 test('saved day themes retain old, retro, and unknown future IDs', () => {
-  for (const id of ['graphite', 'windows98', 'system1', 'windowsxp', 'windowsvista', 'future-theme']) {
+  for (const id of ['graphite', 'windows98', 'system1', 'windowsxp', 'windowsvista', 'wiisports', 'future-theme']) {
     const normalized = normalizeReplicatedPreferences({ 'dayTheme/2026-10-14': id })
     const stored = replicatedDayTheme(normalized, '2026-10-14')
     expect(stored).toBe(id)

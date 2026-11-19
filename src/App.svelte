@@ -73,6 +73,7 @@
   import MetricQuestionEditor from './lib/MetricQuestionEditor.svelte'
   import RichTextEditor from './lib/RichTextEditor.svelte'
   import NavIcon from './lib/NavIcon.svelte'
+  import WiiSportsFrame from './lib/WiiSportsFrame.svelte'
   import WindowCaption from './lib/WindowCaption.svelte'
   import ControlPanelTasks from './lib/ControlPanelTasks.svelte'
   import SearchModal from './lib/SearchModal.svelte'
@@ -7149,6 +7150,8 @@ return rows`
     <WindowCaption variant="windows" title={WINDOW_CAPTIONS[view].title} icon={WINDOW_CAPTIONS[view].icon} fullscreen={windowFullscreen} controls={!isMobile} />
   {:else if captionVariant === 'mac'}
     <WindowCaption variant="mac" title="Balance" fullscreen={windowFullscreen} controls={!isMobile} />
+  {:else if activeTheme.id === 'wiisports'}
+    <WiiSportsFrame title={WINDOW_CAPTIONS[view].title} />
   {/if}
 
   {#if maximizeClickHandoff}

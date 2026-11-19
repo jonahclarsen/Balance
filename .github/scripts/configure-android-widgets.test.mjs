@@ -388,7 +388,7 @@ class BalanceSyncWorker {
     }
     assert.doesNotMatch(graphiteLayout, /@font\//)
 
-    for (const theme of ['iridescent', 'forest', 'ocean', 'violet', 'orange', 'earth', 'crimson', 'banana', 'pink', 'midnight', 'graphite', 'windows98', 'system1', 'windowsxp', 'windowsvista']) {
+    for (const theme of ['iridescent', 'forest', 'ocean', 'violet', 'orange', 'earth', 'crimson', 'banana', 'pink', 'midnight', 'graphite', 'windows98', 'system1', 'windowsxp', 'windowsvista', 'wiisports']) {
       await readFile(join(root, `res/layout/balance_home_widget_${theme}.xml`), 'utf8')
       await readFile(join(root, `res/drawable/balance_widget_${theme}_progress.xml`), 'utf8')
       await readFile(join(root, `res/drawable/balance_widget_${theme}_progress_glow.xml`), 'utf8')

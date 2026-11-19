@@ -128,6 +128,14 @@ export const THEME_PRESETS = [
     checkboxColor: '#176b98',
     doneColor: '#277b50',
   },
+  {
+    id: 'wiisports',
+    name: 'Wii Sports',
+    description: 'Blue swooshes, aqua buttons, white bars',
+    swatches: ['linear-gradient(135deg, #3ca4df, #5bb8f0)', 'linear-gradient(#f6f9f6, #d5e7e7 30%, #afd3d6)', 'linear-gradient(#a4ebf8, #90dfe8 30%, #7bc9da)'],
+    checkboxColor: '#0a7890',
+    doneColor: '#1f8a4c',
+  },
 ] as const
 
 export type PresetThemeId = (typeof THEME_PRESETS)[number]['id']

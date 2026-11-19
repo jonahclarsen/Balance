@@ -437,6 +437,7 @@ object BalanceWidgets {
         "windows98" -> R.layout.balance_home_widget_windows98
         "windowsxp" -> R.layout.balance_home_widget_windowsxp
         "windowsvista" -> R.layout.balance_home_widget_windowsvista
+        "wiisports" -> R.layout.balance_home_widget_wiisports
         "system1" -> R.layout.balance_home_widget_system1
         "graphite" -> R.layout.balance_home_widget_graphite
         "forest" -> R.layout.balance_home_widget_forest
@@ -582,6 +583,7 @@ const widgetThemes = [
   { id: 'system1', paper: '#FFFFFF', surface: '#FFFFFF', ink: '#000000', muted: '#404040', line: '#000000', accent: '#000000', taskAccent: '#000000', doneAccent: '#404040', timePill: '#FFFFFF', timePillInk: '#000000' },
   { id: 'windowsxp', paper: '#FFFFFF', surface: '#ECE9D8', ink: '#000000', muted: '#454339', line: '#ACA899', accent: '#0055B8', taskAccent: '#0055B8', doneAccent: '#347B2A', timePill: '#F5F3E9', timePillInk: '#003B82' },
   { id: 'windowsvista', paper: '#FFFFFF', surface: '#EFF7FB', ink: '#14232D', muted: '#455E6D', line: '#7E9DAD', accent: '#176B98', taskAccent: '#176B98', doneAccent: '#277B50', timePill: '#E4F1F9', timePillInk: '#174F70' },
+  { id: 'wiisports', paper: '#F8F9F9', surface: '#FFFFFF', ink: '#101518', muted: '#55636A', line: '#CFD6D8', accent: '#0A7890', taskAccent: '#0A7890', doneAccent: '#1F8A4C', timePill: '#D5E7E7', timePillInk: '#082639' },
 ]
 
 const darkWidgetThemes = [
@@ -600,6 +602,7 @@ const darkWidgetThemes = [
   { id: 'system1', paper: '#101010', surface: '#181818', ink: '#FFFFFF', muted: '#BDBDBD', line: '#BDBDBD', accent: '#FFFFFF', taskAccent: '#FFFFFF', doneAccent: '#BDBDBD', timePill: '#181818', timePillInk: '#FFFFFF' },
   { id: 'windowsxp', paper: '#202631', surface: '#303846', ink: '#F4F4EF', muted: '#C1C7D2', line: '#727E91', accent: '#8ABEFF', taskAccent: '#8ABEFF', doneAccent: '#9ACB82', timePill: '#303846', timePillInk: '#C5DEFF' },
   { id: 'windowsvista', paper: '#17242C', surface: '#20343E', ink: '#F1F7FA', muted: '#BED0D9', line: '#658B9E', accent: '#99D9FA', taskAccent: '#99D9FA', doneAccent: '#94DAB0', timePill: '#203E4F', timePillInk: '#C5ECFF' },
+  { id: 'wiisports', paper: '#0E2334', surface: '#132C40', ink: '#EAF5F9', muted: '#A3BFCB', line: '#27465A', accent: '#5FD3E6', taskAccent: '#5FD3E6', doneAccent: '#3FBF73', timePill: '#16404F', timePillInk: '#EAF7FA' },
 ]
 
 const alphaColor = (hex, alpha) => `#${alpha}${hex.slice(1)}`

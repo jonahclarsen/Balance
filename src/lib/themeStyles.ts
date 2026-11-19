@@ -1,6 +1,7 @@
 import retro from '../retro-themes.css?inline'
 import aeroLuna from '../aero-luna-themes.css?inline'
 import windowsShell from '../windows-shell-themes.css?inline'
+import wiiSports from '../wii-sports-theme.css?inline'
 import { suppressNativeTooltips } from './nativeTooltips'
 
 let restoreNativeTooltips: (() => void) | undefined
@@ -11,6 +12,7 @@ const groups = [
   { id: 'retro', themes: ['windows98', 'system1'], css: retro },
   { id: 'aero-luna', themes: ['windowsxp', 'windowsvista'], css: aeroLuna },
   { id: 'windows-shell', themes: ['windowsxp', 'windowsvista'], css: windowsShell },
+  { id: 'wii-sports', themes: ['wiisports'], css: wiiSports },
 ]
 
 export function applyThemeStyles(themeId: string) {
