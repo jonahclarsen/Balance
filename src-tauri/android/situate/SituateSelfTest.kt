@@ -19,10 +19,32 @@ object SituateSelfTest {
                 check(permissions.get(name) is Boolean) { "Missing permission status: $name" }
             }
             check(permissions.getBoolean("usage") == SituateAppIdentity.permitted(context))
-            for (text in listOf("Your code is 4821", "G-12345678", "Enter 482913 to sign in", "Your Verification Code is below")) check(SituateCodes.contains(text)) { "Code not detected" }
-            for (text in listOf("See you at 5", "Call 123", "Order 123456789", "No code here", "+1 416-555-1234", "(416) 555 1234", "416.555.1234", "Sent you $2500", "Up 1500%")) check(!SituateCodes.contains(text)) { "False code match" }
-            for (text in listOf("Back in 2024", "Plans for 2026", "By 2032")) check(!SituateCodes.contains(text, 2026)) { "Year read as a code" }
-            for (text in listOf("Code 2023", "Code 2033", "Code 12026", "Code 0202")) check(SituateCodes.contains(text, 2026)) { "Code read as a year" }
+            for (text in listOf("Your code is 4821", "G-12345678", "Enter 482913 to sign in", "Your Verification Code is below")) check(SituateCodes.extract(text) != null) { "Code not detected" }
+            for (text in listOf("See you at 5", "Call 123", "Order 123456789", "No code here", "+1 416-555-1234", "(416) 555 1234", "416.555.1234", "Sent you $2500", "Up 1500%")) check(SituateCodes.extract(text) == null) { "False code match" }
+            for (text in listOf("Back in 2024", "Plans for 2026", "By 2032")) check(SituateCodes.extract(text, 2026) == null) { "Year read as a code" }
+            for (text in listOf("Code 2023", "Code 2033", "Code 12026", "Code 0202")) check(SituateCodes.extract(text, 2026) != null) { "Code read as a year" }
+            // Real Android notification shapes: stale conversation codes must not
+            // exempt later ordinary messages copied into expanded text/lines.
+            fun message(text: String) = android.os.Bundle().apply { putCharSequence("text", text) }
+            fun conversation(vararg texts: String) = android.app.Notification.Builder(context, "situate")
+                .setSmallIcon(android.R.drawable.ic_lock_idle_lock).setContentTitle("Synthetic sender")
+                .setContentText(texts.last()).setStyle(android.app.Notification.BigTextStyle().bigText(texts.joinToString("\n")))
+                .addExtras(android.os.Bundle().apply { putParcelableArray(android.app.Notification.EXTRA_MESSAGES, texts.map { message(it) }.toTypedArray()) }).build()
+            check(SituateCodes.extract(conversation("Your code is 482913", "See you soon")) == null) { "Historical code bypassed blocking" }
+            check(SituateCodes.extract(conversation("See you soon", "Your code is 482913")) == "482913") { "Newest code was blocked" }
+            val inbox = android.app.Notification.Builder(context, "situate").setSmallIcon(android.R.drawable.ic_lock_idle_lock)
+                .setStyle(android.app.Notification.InboxStyle().addLine("Your code is 482913").addLine("See you soon")).build()
+            check(SituateCodes.extract(inbox) == null) { "Historical inbox code bypassed blocking" }
+            check(SituateCodes.extract("Your code is 004821") == "004821") { "Code formatting changed" }
+            check(SituateCodes.extract("Ordinary message 482913 with private words") == "482913") { "Numeric rule changed" }
+            val codeNotice = SituateCodeNotices.builder(context, "Synthetic app", "004821").build()
+            check(codeNotice.extras.getCharSequence(android.app.Notification.EXTRA_TITLE).toString() == "Sign-in code received")
+            check(codeNotice.extras.getCharSequence(android.app.Notification.EXTRA_TEXT).toString() == "004821 · Synthetic app")
+            check(codeNotice.extras.getCharSequence(android.app.Notification.EXTRA_BIG_TEXT) == null)
+            check(codeNotice.visibility == android.app.Notification.VISIBILITY_PRIVATE)
+            // Exercise the same private cross-process path used by the planner.
+            val remote = SituateArchiveProvider.request(context, "list", "{}")
+            check(JSONObject(remote).has("rows")) { "Archive IPC failed" }
             NotificationArchive(context,directory,namespace).use { archive ->
                 fun fixture(i:Int, modes:List<String> = emptyList()) = JSONObject().put("app",if(i%2==0) "test.social" else "test.mail").put("title","SYNTHETIC_PRIVATE_TITLE").put("text","searchable needle$i").put("received",1000+i).put("modes",JSONArray(modes))
                 for(i in 1..150) archive.store("fixture$i",fixture(i,if(i%3==0) listOf("dolo") else emptyList()))

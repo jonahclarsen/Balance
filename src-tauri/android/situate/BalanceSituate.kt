@@ -5,6 +5,9 @@ import android.content.*
 import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
+import android.os.Handler
+import android.os.Looper
+import android.os.FileObserver
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.view.accessibility.AccessibilityManager
 import android.provider.Settings
@@ -74,8 +77,6 @@ object BalanceSituate {
             if (announce && !previous.contains(id)) notify(mode, "is on")
         }
         prefs.edit().putStringSet("active", active).putStringSet("soon", soon).apply()
-        // A mode that just came on clears what its apps already put in the shade.
-        if (!previous.containsAll(active)) SituateNotifications.sweep()
         val alarm = context.getSystemService(AlarmManager::class.java)
         val pending = PendingIntent.getBroadcast(context, 32741, Intent(context, SituateReceiver::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val at = maxOf(System.currentTimeMillis()+1000, status.optLong("refreshAt", System.currentTimeMillis()+3600000))
@@ -130,9 +131,7 @@ object BalanceSituate {
                 }
                 context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); return "Return to Balance after granting access."
             }
-            "list" -> return NotificationArchive(context).use { it.list(JSONObject(query)).toString() }
-            "open" -> { val id=JSONObject(query).getLong("id"); NotificationArchive(context).use { it.open(id) }; return "{}" }
-            "delete-all" -> { NotificationArchive(context).use { it.clear() }; return "{}" }
+            "list", "open", "delete-all" -> return SituateArchiveProvider.request(context, action, query)
             "export" -> { context.startActivity(Intent(context,SituateExportActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); return "{}" }
             else -> throw IllegalArgumentException("Unknown Situate action")
         }
@@ -147,16 +146,54 @@ class SituateNotifications : NotificationListenerService() {
         // Silencing never waits behind archive writes, exports or schedule refreshes.
         private val silencer = Executors.newSingleThreadExecutor()
         private val archiver = Executors.newSingleThreadExecutor()
+        private val sweepQueued = java.util.concurrent.atomic.AtomicBoolean(false)
         /** Silences notifications already showing from apps an active mode blocks. */
-        fun sweep() { val listener = connected ?: return; silencer.execute { listener.sweepActive() } }
+        private fun sweep() {
+            val listener = connected ?: return
+            if (!sweepQueued.compareAndSet(false, true)) return
+            silencer.execute {
+                sweepQueued.set(false)
+                if (connected === listener) listener.sweepActive()
+            }
+        }
     }
-    override fun onListenerConnected() { connected = this; BalanceSituate.initialize(this); sweep() }
+    private val main = Handler(Looper.getMainLooper())
+    private var observer: FileObserver? = null
+    private val tick = object : Runnable {
+        override fun run() {
+            if (connected !== this@SituateNotifications) return
+            // Re-evaluate schedules and passes without the planner or its alarms.
+            sweep()
+            main.postDelayed(this, 1000)
+        }
+    }
+    override fun onListenerConnected() {
+        stopWatching()
+        connected = this
+        // Only the pure evaluator; never start the planner or widget database here.
+        BalanceSituate.nativeInitialize(applicationContext)
+        @Suppress("DEPRECATION")
+        val watcher = object : FileObserver(noBackupFilesDir.absolutePath, CLOSE_WRITE or MOVED_TO or DELETE) {
+            override fun onEvent(event: Int, path: String?) {
+                if (path == "situate-rules.json") sweep()
+            }
+        }
+        observer = watcher
+        watcher.startWatching()
+        main.post(tick)
+    }
+    private fun stopWatching() {
+        main.removeCallbacks(tick)
+        observer?.stopWatching()
+        observer = null
+    }
     override fun onListenerDisconnected() {
         if (connected === this) connected = null
+        stopWatching()
         // Android can unbind the listener while Balance is in the background.
         if (Build.VERSION.SDK_INT >= 24) requestRebind(ComponentName(this, SituateNotifications::class.java))
     }
-    override fun onDestroy() { if (connected === this) connected = null; super.onDestroy() }
+    override fun onDestroy() { if (connected === this) connected = null; stopWatching(); super.onDestroy() }
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         val appContext = applicationContext
         silencer.execute {
@@ -167,7 +204,11 @@ class SituateNotifications : NotificationListenerService() {
                 targeted = BalanceSituate.blocked(status, appContext, sbn.packageName, false).map { it.getString("id") }
                 if (targeted.isNotEmpty()) {
                     val modes = BalanceSituate.blocked(status, appContext, sbn.packageName).map { it.getString("id") }
-                    if (modes.isNotEmpty() && silences(sbn) { try { activeNotifications } catch (_: Exception) { null } }) { cancelNotification(sbn.key); blocked = modes }
+                    if (modes.isNotEmpty()) {
+                        cancelNotification(sbn.key)
+                        blocked = modes
+                        SituateCodeNotices.post(appContext, sbn)
+                    }
                 }
             } catch (_: Exception) { /* Never log notification contents or keys. */ }
             // Archive after silencing; a full disk or unavailable key must not delay it.
@@ -178,34 +219,79 @@ class SituateNotifications : NotificationListenerService() {
         try {
             val active = activeNotifications ?: return
             val status = BalanceSituate.status(applicationContext)
-            val keys = active.filter { BalanceSituate.blocked(status, applicationContext, it.packageName).isNotEmpty() && silences(it) { active } }.map { it.key }
-            if (keys.isNotEmpty()) cancelNotifications(keys.toTypedArray())
+            val blocked = active.filter { BalanceSituate.blocked(status, applicationContext, it.packageName).isNotEmpty() }
+            if (blocked.isNotEmpty()) cancelNotifications(blocked.map { it.key }.toTypedArray())
+            blocked.forEach { SituateCodeNotices.post(applicationContext, it) }
         } catch (_: Exception) { }
     }
-    // Codes (sign-in, verification) always come through, even from blocked apps.
-    // Cancelling a group summary also cancels its children, so keep a summary over a code.
-    private fun silences(sbn: StatusBarNotification, active: () -> Array<StatusBarNotification>?): Boolean {
-        if (SituateCodes.contains(sbn.notification)) return false
-        if ((sbn.notification.flags and Notification.FLAG_GROUP_SUMMARY) == 0) return true
-        return active().orEmpty().none { it.key != sbn.key && it.groupKey == sbn.groupKey && SituateCodes.contains(it.notification) }
-    }
 }
+
 object SituateCodes {
     // Phone numbers ("416-555-1234") and amounts ("$2500") are not codes.
     private val digits = Regex("(?<![\\d+\$€£¥])(?<!\\d[-.\\s/,])\\d{4,8}(?![\\d%])(?![-.\\s/,]\\d)")
     private val phrase = Regex("verification\\s+code", RegexOption.IGNORE_CASE)
     // A lone 4-digit number near the current year reads as a year, not a code.
-    fun contains(text: String, year: Int = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)) =
-        phrase.containsMatchIn(text) || digits.findAll(text).any { it.value.length != 4 || it.value.toInt() !in year - 2..year + 6 }
-    fun contains(notification: Notification): Boolean {
+    fun extract(text: String, year: Int = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)): String? {
+        val codes = digits.findAll(text).map { it.value }.filter {
+            it.length != 4 || it.toInt() !in year - 2..year + 6
+        }.distinct().take(8).toList()
+        return if (codes.isNotEmpty()) codes.joinToString(" · ") else if (phrase.containsMatchIn(text)) "" else null
+    }
+    fun extract(notification: Notification): String? {
         val extras = notification.extras
+        // Only the newest message can produce a code notice. Expanded text may
+        // repeat historical messages, including old sign-in codes.
+        @Suppress("DEPRECATION")
+        val messages = extras.getParcelableArray(Notification.EXTRA_MESSAGES)
+            ?.mapNotNull { it as? android.os.Bundle }
+        if (!messages.isNullOrEmpty()) return extract(messages.last().getCharSequence("text")?.toString().orEmpty())
+        val lines = extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)
+        if (!lines.isNullOrEmpty()) return extract(lines.last().toString())
         val parts = mutableListOf<CharSequence?>(notification.tickerText)
         for (key in listOf(Notification.EXTRA_TITLE, Notification.EXTRA_TITLE_BIG, Notification.EXTRA_TEXT, Notification.EXTRA_BIG_TEXT, Notification.EXTRA_SUB_TEXT, Notification.EXTRA_SUMMARY_TEXT)) parts.add(extras.getCharSequence(key))
-        extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)?.let { parts.addAll(it) }
-        @Suppress("DEPRECATION") extras.getParcelableArray(Notification.EXTRA_MESSAGES)?.forEach { (it as? android.os.Bundle)?.let { message -> parts.add(message.getCharSequence("text")) } }
-        return parts.any { it != null && contains(it.toString()) }
+        val matches = parts.mapNotNull { it?.toString()?.let { text -> extract(text) } }
+        return matches.firstOrNull { it.isNotEmpty() } ?: matches.firstOrNull()
     }
 }
+
+/** Replaces blocked code-bearing notifications without copying their message bodies. */
+object SituateCodeNotices {
+    private const val CHANNEL = "situate-codes"
+    // Accessed only on the listener's silencer executor; no disk or planner data.
+    private val seen = object : LinkedHashMap<String, Long>(128, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Long>?): Boolean = size > 500
+    }
+    internal fun builder(context: Context, app: String, code: String): Notification.Builder {
+        val open = PendingIntent.getActivity(context, 0,
+            Intent(context, MainActivity::class.java).setData(Uri.parse("balance://situate")),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        return Notification.Builder(context, CHANNEL)
+            .setSmallIcon(android.R.drawable.ic_lock_idle_lock)
+            .setContentTitle("Sign-in code received")
+            .setContentText(if (code.isEmpty()) app else "$code · $app")
+            .setVisibility(Notification.VISIBILITY_PRIVATE)
+            .setOnlyAlertOnce(true).setAutoCancel(true).setContentIntent(open)
+    }
+    fun post(context: Context, sbn: StatusBarNotification) {
+        val code = SituateCodes.extract(sbn.notification) ?: return
+        // Group summaries and children can repeat the same code. Forward once,
+        // including when a persistent notification resists Android cancellation.
+        val identity = java.security.MessageDigest.getInstance("SHA-256")
+            .digest((sbn.packageName + "\u0000" + code).toByteArray()).joinToString("") { "%02x".format(it) }
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (seen[identity]?.let { now - it < 10 * 60 * 1000 } == true) return
+        val manager = context.getSystemService(NotificationManager::class.java)
+        if (!manager.areNotificationsEnabled()) return
+        manager.createNotificationChannel(NotificationChannel(CHANNEL, "Sign-in codes", NotificationManager.IMPORTANCE_HIGH))
+        val app = try { context.packageManager.getApplicationLabel(context.packageManager.getApplicationInfo(sbn.packageName, 0)).toString() }
+            catch (_: Exception) { sbn.packageName }
+        try {
+            BalanceNotificationStack.post(context, "situate-code-$identity", 0, builder(context, app, code))
+            seen[identity] = now
+        } catch (_: SecurityException) { }
+    }
+}
+
 class SituateExportActivity : Activity() {
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)

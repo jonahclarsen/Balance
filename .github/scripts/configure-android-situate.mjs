@@ -3,7 +3,7 @@ import { join } from 'node:path'
 const root = process.argv[2] ?? 'src-tauri/gen/android/app/src/main'
 const source = join(root, 'java/app/balance/local')
 await mkdir(source, { recursive: true })
-for (const file of ['SituateAppIdentity.kt', 'SituateAccessibility.kt', 'BalanceSituate.kt', 'NotificationArchive.kt', 'SituateSelfTest.kt']) await copyFile(`src-tauri/android/situate/${file}`, join(source, file))
+for (const file of ['SituateAppIdentity.kt', 'SituateAccessibility.kt', 'BalanceSituate.kt', 'NotificationArchive.kt', 'SituateSelfTest.kt', 'SituateArchiveProvider.kt']) await copyFile(`src-tauri/android/situate/${file}`, join(source, file))
 const activityPath = join(source, 'MainActivity.kt')
 let activity = await readFile(activityPath, 'utf8')
 if (!activity.includes('BalanceSituate.resume(this)')) {
@@ -37,6 +37,17 @@ if (!manifest.includes('.SituateNotifications')) {
 }
 // Usage access supplies a second identity signal without screen-content access.
 if (!manifest.includes('android.permission.PACKAGE_USAGE_STATS')) manifest = manifest.replace('<application', '<uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />\n<application')
+// Resolve source app labels (and archive launch fallbacks) on Android 11+.
+// Limit package visibility to launchable apps, without QUERY_ALL_PACKAGES.
+const labelQuery = '<intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent>'
+if (!manifest.includes(labelQuery)) {
+  manifest = manifest.includes('</queries>') ? manifest.replace('</queries>', labelQuery + '</queries>')
+    : manifest.replace('<application', '<queries>' + labelQuery + '</queries>\n<application')
+}
+// Archive access stays in the listener process, including its in-memory actions.
+if (!manifest.includes('.SituateArchiveProvider')) manifest = manifest.replace('</application>', '<provider android:name=".SituateArchiveProvider" android:authorities="${applicationId}.situate.archive" android:exported="false" android:process=":situate_notifications" />\n</application>')
+manifest = manifest.replace(/(<service\b[^>]*android:name="\.SituateNotifications")([^>]*>)/, (_, start, rest) => start + rest.replace(/ android:process="[^"]*"/, '').replace('>', ' android:process=":situate_notifications">'))
+manifest = manifest.replace(/(<activity\b[^>]*android:name="\.SituateExportActivity")([^>]*\/>)/, (_, start, rest) => start + rest.replace(/ android:process="[^"]*"/, '').replace(/\s*\/>$/, ' android:process=":situate_notifications" />'))
 // Keep the blocker alive when the planner/WebView process is killed or stalled.
 manifest = manifest.replace(/(<service\b[^>]*android:name="\.SituateAccessibility")([^>]*>)/, (_, start, rest) => start + rest.replace(/ android:process="[^"]*"/, '').replace('>', ' android:process=":situate">'))
 if (!manifest.includes('permission.SITUATE_INTERNAL')) manifest = manifest.replace('<application', '<permission android:name="${applicationId}.permission.SITUATE_INTERNAL" android:protectionLevel="signature" />\n<uses-permission android:name="${applicationId}.permission.SITUATE_INTERNAL" />\n<application')

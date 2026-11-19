@@ -1,7 +1,7 @@
 // CI emulator only: the smoke test has created an isolated synthetic database.
 // Registration alone misses workers that never schedule their next pass.
 import assert from 'node:assert/strict'
-import { writeFile } from 'node:fs/promises'
+import { open, writeFile } from 'node:fs/promises'
 import { adb, appPid, findWorkManagerJobIds, packageName, waitFor } from './android-sync-profile-helpers.mjs'
 
 assert(process.env.CI, 'Run this test only against the disposable CI emulator')
@@ -48,6 +48,10 @@ try {
   }
   console.log('[background-sync] Two passes completed without reopening Balance; each persisted its successor.')
 } finally {
-  await writeFile('background-sync-log.txt', adb(['logcat', '-d'], { allowFailure: true }))
+  // The preceding Situate matrix can fill more than spawnSync's 1 MiB buffer.
+  // Stream the complete emulator log instead of buffering or truncating it.
+  const log = await open('background-sync-log.txt', 'w')
+  try { adb(['logcat', '-d'], { allowFailure: true, stdio: ['ignore', log.fd, 'pipe'] }) }
+  finally { await log.close() }
   await writeFile('jobscheduler.txt', adb(['shell', 'dumpsys', 'jobscheduler'], { allowFailure: true }))
 }

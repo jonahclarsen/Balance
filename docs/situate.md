@@ -130,11 +130,23 @@ from Settings. It also checks battery optimization and, on Samsung, explains the
 separate sleeping-app setting that Android cannot report.
 
 Grant notification access for logging/silencing and accessibility access for app
-blocking. Notifications with a 4–8 digit number (other than a year from two years ago
-to six years ahead, part of a phone number, or an amount) or the words “verification code” are never silenced, so sign-in codes still arrive from blocked apps.
+blocking. Notifications from blocked apps are cancelled, including messages containing codes.
+A 4–8 digit number (other than a year from two years ago to six years ahead,
+part of a phone number, or an amount), or the words “verification code”, produces
+a Balance **Sign-in code received** notification instead. It shows only the extracted
+number(s) and app name, with no sender or message text. If the phrase is present
+but no matching number is available, it shows only the app name. Balance needs
+notification permission for these replacement notices. Repeated copies of the same
+code from one app are forwarded once per ten minutes, including grouped copies.
+For bundled conversations, only the newest message can produce a code notice; an old code does not produce another notice for later messages.
 Silencing happens before archiving. When a mode turns on, or Android rebinds the
 listener after unbinding it in the background, notifications already showing from
-apps it blocks are silenced too. Also grant **App detection access** (Android Usage access) so Situate
+apps it blocks are silenced too. The notification listener and its archive run in a
+separate process from the planner and app blocker, so a busy or restarted planner
+does not interrupt notification cancellation. The listener watches rule edits and
+checks schedules and pass expiry once per second independently of the planner.
+Android delivers listener callbacks after posting notifications, so cancellation
+cannot guarantee that an initial sound, vibration, or banner is prevented. Also grant **App detection access** (Android Usage access) so Situate
 can recover the current app after a service restart or a missed accessibility
 switch. It checks Android's activity identities once per second while unlocked;
 only the newest app identity and timestamp stay in memory. On a cold start it
@@ -192,7 +204,8 @@ The Android lifecycle workflow also tests Situate with the R8-shrunk APK on API
 31, 34, and 36. Its disposable emulator checks activation over an already-open
 app, pass dismissal and expiry, overlapping modes, scheduled activation, repeated
 launches, Back/Home, lock/unlock, accessibility reconnection, target removal, and
-notification blocking/unblocking. Dispatch `android-lifecycle-tests.yml` on a test
+notification blocking/unblocking, cancellation while the planner is stalled or killed,
+rule-edit sweeps, and notification-listener reconnection. Dispatch `android-lifecycle-tests.yml` on a test
 branch with `scenario=situate` for a focused run; pushing a branch alone does not start the Android build workflow.
 
 The blocking implementation was informed by static inspection of AppBlock 7.22.0
