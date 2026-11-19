@@ -22,6 +22,8 @@
   export let onOpenLink: (link: ItemLink) => void
   // Hidden while another page is open; the sort resumes where it left off.
   export let active = true
+  // Add idea is open on top and owns the keyboard.
+  export let suspended = false
   export let onDecide: (itemId: Id, kind: IdeaGroupKind) => void
   export let onAppendToPrevious: (itemId: Id, previousId: Id) => boolean
   export let onEdit: (itemId: Id, html: string, text: string) => void
@@ -55,7 +57,9 @@
   let editText = ''
   // Every way an idea leaves the queue counts as sorted, so the total stays
   // fixed and progress only moves forward until Back undoes a decision.
-  const total = sortedBefore + queue.length
+  let total = sortedBefore + queue.length
+  // Ideas added while sorting, which join the end of the queue and stay there through Back.
+  let appended: IdeaItem[] = []
   // Each decision records where its ideas were, so Back can undo it instead of
   // leaving the idea in both its old and new place.
   type Undo = { index: number; queue: IdeaItem[]; snapshots: IdeaSnapshot[]; noteId: Id | null }
@@ -85,6 +89,13 @@
   $: openClip = openClipId ? voiceClips.find((candidate) => candidate.id === openClipId) ?? null : null
   $: options = step === 'yes' ? (['possible', 'genuine'] as const) : step === 'no' ? (['trash', 'afterlife'] as const) : []
   $: resetCard(index)
+
+  export function append(item: IdeaItem) {
+    if (queue.some(({ id }) => id === item.id)) return
+    queue = [...queue, item]
+    appended = [...appended, item]
+    total += 1
+  }
 
   // A brief trippy warp as the next card arrives: per-channel displacement
   // through animated noise, settling in 300-500 ms. Purely visual; the
@@ -209,7 +220,7 @@
     if (!last) return
     history = history.slice(0, -1)
     onRestore(last.snapshots, last.noteId)
-    queue = last.queue
+    queue = [...last.queue, ...appended.filter((item) => !last.queue.some(({ id }) => id === item.id))]
     index = last.index
     resetCard(index)
   }
@@ -294,7 +305,7 @@
 
   function handleKeydown(event: KeyboardEvent) {
     // The Voice idea dialog owns the keyboard while it's open.
-    if (!active || openClip || event.metaKey || event.ctrlKey || event.repeat) return
+    if (!active || suspended || openClip || event.metaKey || event.ctrlKey || event.repeat) return
     if (introOpen) {
       if (event.altKey) return
       if (event.key === 'Enter') startSorting()

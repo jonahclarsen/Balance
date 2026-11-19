@@ -1075,3 +1075,39 @@ test('Cmd+R folds focused and selected ideas, and returns focus from a child to 
   await expect(parent).toBeVisible()
   await expect(child).toBeVisible()
 })
+
+test('Add idea opens over the generation sorter and the idea joins the end of its queue', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
+  await open(page)
+  await storeCall(page, `
+    plannerStore.addIdea('Synthetic first')
+    plannerStore.addIdea('Synthetic second')
+  `)
+
+  await generateDay(page)
+  await expectIdea(page, 1, 2)
+  await page.keyboard.press('Alt+A')
+  const input = page.getByRole('textbox', { name: 'New idea' })
+  await expect(input).toBeFocused()
+  // Letters typed here are sort keys too; the sorter must ignore them.
+  await page.keyboard.type('Synthetic tiny note')
+  await page.keyboard.press('Enter')
+  await expect(input).toBeHidden()
+  await expectIdea(page, 1, 3)
+  await expect(sorter(page).locator('.idea-sort-card')).toContainText('Synthetic first')
+  await expect(sorter(page).getByRole('button', { name: 'Back (B)' })).toBeDisabled()
+
+  // Back restores an earlier queue without dropping the added idea.
+  await page.keyboard.press('n')
+  await page.keyboard.press('t')
+  await expectIdea(page, 2, 3)
+  await page.keyboard.press('b')
+  await expectIdea(page, 1, 3)
+  for (const text of ['Synthetic first', 'Synthetic second', 'Synthetic tiny note']) {
+    await expect(sorter(page).locator('.idea-sort-card')).toContainText(text)
+    await page.keyboard.press('n')
+    await page.keyboard.press('t')
+  }
+  await expect(sorter(page)).toBeHidden()
+  expect(await groups(page)).toMatchObject({ proposition: [], trash: ['Synthetic first', 'Synthetic second', 'Synthetic tiny note'] })
+})

@@ -465,7 +465,16 @@
   // A sort belongs to the page it was opened on: it hides while another page is
   // open and picks up where it left off on return.
   // Sorts run during day generation can also pick ideas for the new day.
-  let ideaSort: { queue: import('./lib/types').IdeaItem[]; title: string; view: View; sortedBefore: number; addToDay?: (itemId: Id) => void; intro?: { days: number }; readDelayMs: number; resolve: (completed: boolean) => void } | null = null
+  type IdeaSortOptions = {
+    addToDay?: (itemId: Id) => void
+    sortedBefore?: number
+    intro?: { days: number }
+    readDelayMs?: number
+    // Sorts of Proposition Party take ideas saved in Add idea while open, last.
+    onNewIdea?: (itemId: Id) => void
+  }
+  let ideaSort: IdeaSortOptions & { queue: import('./lib/types').IdeaItem[]; title: string; view: View; resolve: (completed: boolean) => void } | null = null
+  let ideaSortModal: IdeaSortModal | null = null
   $: ideaSortVisible = Boolean(ideaSort && view === ideaSort.view)
   let ideaImportOpen = false
   let activeIdeaGroup = readActiveIdeaGroup()
@@ -3354,6 +3363,11 @@ return rows`
         plannerStore.patchIdeaItem(pending.group.id, pending.item.id, { text, html: quickAddHTML })
       } else {
         quickAddPendingId = plannerStore.addIdea(text, 'proposition', quickAddHTML)
+        const added = quickAddPendingId ? findIdea($plannerStore.ideaBuckets, quickAddPendingId) : null
+        if (added && ideaSort?.onNewIdea) {
+          ideaSortModal?.append(added.item)
+          ideaSort.onNewIdea(added.item.id)
+        }
       }
       // Closing the dialog acknowledges Save. Android can reclaim the WebView
       // immediately afterward, before a persistence debounce or lifecycle event.
@@ -3371,10 +3385,10 @@ return rows`
 
   // Sorting starts at the bottom of the list and works up, so Proposition
   // Party, which grows from the top, is sorted oldest first.
-  function askIdeaSort(queue: import('./lib/types').IdeaItem[], title: string, addToDay?: (itemId: Id) => void, sortedBefore = 0, intro?: { days: number }, readDelayMs = 0): Promise<boolean> {
+  function askIdeaSort(queue: import('./lib/types').IdeaItem[], title: string, options: IdeaSortOptions = {}): Promise<boolean> {
     ideaSort?.resolve(false)
     return new Promise((resolve) => {
-      ideaSort = { queue: [...queue].reverse(), title, view, sortedBefore, addToDay, intro, readDelayMs, resolve }
+      ideaSort = { ...options, queue: [...queue].reverse(), title, view, resolve }
     })
   }
 
@@ -3421,7 +3435,7 @@ return rows`
 
   function sortPropositions() {
     const queue = ideaGroupItems($plannerStore.ideaBuckets, 'proposition')
-    if (queue.length > 0) void askIdeaSort(queue, 'Sort Proposition Party')
+    if (queue.length > 0) void askIdeaSort(queue, 'Sort Proposition Party', { onNewIdea: () => {} })
   }
 
   function importIdeas(items: PlanItem[]) {
@@ -3429,7 +3443,7 @@ return rows`
     showIdeaGroup('proposition')
     const ids = new Set(plannerStore.importIdeas(items))
     const queue = ideaGroupItems($plannerStore.ideaBuckets, 'proposition').filter((item) => ids.has(item.id))
-    if (queue.length > 0) void askIdeaSort(queue, 'Sort imported ideas')
+    if (queue.length > 0) void askIdeaSort(queue, 'Sort imported ideas', { onNewIdea: () => {} })
   }
 
   function handleQuickAddKeydown(_editor: HTMLDivElement, event: KeyboardEvent) {
@@ -3847,14 +3861,16 @@ return rows`
     const propositions = ideaGroupItems($plannerStore.ideaBuckets, 'proposition')
       .filter((item) => item.dayAssignmentDate !== date)
     const addToDay = (itemId: Id) => plannerStore.assignIdeaToDay(itemId, date)
-    if (propositions.length > 0 && !(await askIdeaSort(
-      propositions, 'Sort new ideas', addToDay, plannerStore.showDayGenerationIdeas(date, propositions.map(({ id }) => id)),
-    ))) return false
+    if (propositions.length > 0 && !(await askIdeaSort(propositions, 'Sort new ideas', {
+      addToDay,
+      sortedBefore: plannerStore.showDayGenerationIdeas(date, propositions.map(({ id }) => id)),
+      onNewIdea: (itemId) => plannerStore.showDayGenerationIdeas(date, [itemId]),
+    }))) return false
     // Scheduled reviews block generation like new ideas do. Each decision
     // restamps its idea, so closing midway resumes with the rest.
     for (const review of dueIdeaReviews($plannerStore.ideaBuckets)) {
       const queue = review.items.filter((item) => item.dayAssignmentDate !== date)
-      if (queue.length > 0 && !(await askIdeaSort(queue, IDEA_REVIEW_LABELS[review.kind], addToDay, 0, { days: review.days }))) return false
+      if (queue.length > 0 && !(await askIdeaSort(queue, IDEA_REVIEW_LABELS[review.kind], { addToDay, intro: { days: review.days } }))) return false
     }
     const resurfaced = dueResurfacedNote($plannerStore.noteResurfacing, $plannerStore.notes, date)
     if (resurfaced && !(await askResurfacedNote(resurfaced.note.id, date))) return false
@@ -4227,13 +4243,6 @@ return rows`
       return
     }
 
-    // The sort modal owns the keyboard while open (its own window listener),
-    // apart from the sidebar's view shortcuts, which leave it like the buttons do.
-    if (ideaSortVisible) {
-      if (event.altKey && !primaryModifier && !event.shiftKey) handleSidebarShortcut(event)
-      return
-    }
-
     if (event.altKey && !primaryModifier && !event.shiftKey && event.code === 'KeyA') {
       event.preventDefault()
       if (!event.repeat) void openQuickAdd()
@@ -4255,6 +4264,14 @@ return rows`
 
     // Quick add owns the keyboard while open; its editor handles Enter and Escape.
     if (quickAddOpen) return
+
+    // The sort modal owns the keyboard while open (its own window listener),
+    // apart from Add idea above and the sidebar's view shortcuts, which leave
+    // it like the buttons do.
+    if (ideaSortVisible) {
+      if (event.altKey && !primaryModifier && !event.shiftKey) handleSidebarShortcut(event)
+      return
+    }
 
     if (templateReview) {
       if (event.key === 'Enter' || event.key === 'ArrowRight') {
@@ -6030,7 +6047,7 @@ return rows`
     if (cut) writePlanItemsToSystemClipboard({ items, cut: false, sourceDate: plan.date })
     const queue = ideaIds.flatMap((id) => findIdea($plannerStore.ideaBuckets, id)?.item ?? [])
     // askIdeaSort works bottom-up; reverse so the cards follow the pasted order.
-    await askIdeaSort([...queue].reverse(), 'Sort pasted items', (itemId) => plannerStore.assignIdeaToDay(itemId, plan.date), 0, undefined, PASTE_REVIEW_READ_MS)
+    await askIdeaSort([...queue].reverse(), 'Sort pasted items', { addToDay: (itemId) => plannerStore.assignIdeaToDay(itemId, plan.date), readDelayMs: PASTE_REVIEW_READ_MS })
     const reserved = ideaIds.flatMap((id) => {
       const found = findIdea($plannerStore.ideaBuckets, id)
       return found && found.group.kind !== 'trash' && found.item.dayAssignmentDate === plan.date ? [found] : []
@@ -8967,10 +8984,12 @@ return rows`
           queue={ideaSort.queue}
           groups={$plannerStore.ideaBuckets}
           title={ideaSort.title}
+          bind:this={ideaSortModal}
           sortedBefore={ideaSort.sortedBefore}
           linkSegments={(text) => linkifyItemText(text, listTemplates, metrics, notes)}
           onOpenLink={(link) => openLink(link, null)}
           active={ideaSortVisible}
+          suspended={quickAddOpen}
           onDecide={(itemId, kind) => plannerStore.moveIdeaToGroup(itemId, kind)}
           onAppendToPrevious={(itemId, previousId) => plannerStore.appendIdeaToPrevious(itemId, previousId)}
           onEdit={(itemId, html, text) => { const found = findIdea($plannerStore.ideaBuckets, itemId); if (found) plannerStore.patchIdeaItem(found.group.id, itemId, { text, html }) }}
