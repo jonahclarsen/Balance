@@ -45,6 +45,9 @@ failed() {
   adb shell dumpsys accessibility > situate-accessibility.txt || true
   adb shell dumpsys window windows > situate-windows.txt || true
   adb shell dumpsys notification > situate-notification.txt || true
+  adb shell dumpsys activity processes "$PKG" > situate-processes.txt || true
+  adb shell pidof "$PKG:situate_notifications" > situate-listener-pid.txt || true
+  adb logcat -d -v threadtime > situate-full-logcat.txt || true
 }
 trap 'failed "$LINENO"' ERR
 wait_for() {
