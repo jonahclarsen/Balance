@@ -934,7 +934,7 @@ test('idea deletion keeps content in Trash until it is deleted there', async ({ 
     const child = state.ideaBuckets.find(b => b.kind === 'trash').items[0]
     plannerStore.deleteIdeaItem('bucket_trash', child.id)
   `)
-  expect(await groups(page)).toMatchObject({ trash: [] })
+  expect(await groups(page)).toEqual({ proposition: ['Synthetic second', 'Synthetic first'] })
   await storeCall(page, `
     let state
     plannerStore.subscribe(value => { state = value })()
@@ -1110,4 +1110,40 @@ test('Add idea opens over the generation sorter and the idea joins the end of it
   }
   await expect(sorter(page)).toBeHidden()
   expect(await groups(page)).toMatchObject({ proposition: [], trash: ['Synthetic first', 'Synthetic second', 'Synthetic tiny note'] })
+})
+
+test('Search opens over the idea sorter and keeps the letters typed into it', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
+  await open(page)
+  await storeCall(page, `
+    plannerStore.addIdea('Synthetic first')
+    plannerStore.addIdea('Synthetic second')
+  `)
+
+  await generateDay(page)
+  await expectIdea(page, 1, 2)
+  await page.keyboard.press('Alt+C')
+  const search = page.getByRole('dialog', { name: 'Search Balance' })
+  await expect(search).toBeVisible()
+  // Letters typed here are sort keys too; the sorter must ignore them.
+  await page.keyboard.type('nty')
+  await expect(search.getByLabel('Search everything')).toHaveValue('nty')
+  await page.keyboard.press('Escape')
+  await expect(search).toBeHidden()
+  await expectIdea(page, 1, 2)
+  await expect(sorter(page).locator('.idea-sort-card')).toContainText('Synthetic first')
+  expect(await groups(page)).toEqual({ proposition: ['Synthetic second', 'Synthetic first'] })
+
+  // The shortcuts list owns the keyboard the same way.
+  await page.keyboard.press('Shift+?')
+  const shortcuts = page.getByRole('dialog', { name: 'Keyboard shortcuts' })
+  await expect(shortcuts).toBeVisible()
+  await page.keyboard.press('n')
+  await page.keyboard.press('Escape')
+  await expect(shortcuts).toBeHidden()
+  await expectIdea(page, 1, 2)
+
+  await page.keyboard.press('n')
+  await page.keyboard.press('t')
+  await expectIdea(page, 2, 2)
 })

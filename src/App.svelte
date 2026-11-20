@@ -4228,6 +4228,8 @@ return rows`
     if (shortcutsHelpOpen) {
       if (event.key === 'Escape') {
         event.preventDefault()
+        // Stopped so a sorter underneath doesn't also see it.
+        event.stopPropagation()
         shortcutsHelpOpen = false
       }
       return
@@ -4268,10 +4270,24 @@ return rows`
     if (quickAddOpen) return
 
     // The sort modal owns the keyboard while open (its own window listener),
-    // apart from Add idea above and the sidebar's view shortcuts, which leave
-    // it like the buttons do.
+    // apart from Add idea above, Search, which opens over it, and the
+    // sidebar's view shortcuts, which leave it like the buttons do.
     if (ideaSortVisible) {
-      if (event.altKey && !primaryModifier && !event.shiftKey) handleSidebarShortcut(event)
+      const searchShortcut = (primaryModifier && !event.altKey && !event.shiftKey && key === 'k') ||
+        (event.altKey && !primaryModifier && !event.shiftKey && event.code === 'KeyC')
+      if (searchShortcut) {
+        event.preventDefault()
+        searchOpen = !searchOpen
+      } else if (searchOpen) {
+        // Stopped so the sorter, resumed as Search closes, doesn't also see it.
+        if (event.key === 'Escape') {
+          event.preventDefault()
+          event.stopPropagation()
+          searchOpen = false
+        }
+      } else if (event.altKey && !primaryModifier && !event.shiftKey) {
+        handleSidebarShortcut(event)
+      }
       return
     }
 
@@ -8993,7 +9009,7 @@ return rows`
           linkSegments={(text) => linkifyItemText(text, listTemplates, metrics, notes)}
           onOpenLink={(link) => openLink(link, null)}
           active={ideaSortVisible}
-          suspended={quickAddOpen}
+          suspended={quickAddOpen || searchOpen || shortcutsHelpOpen}
           onDecide={(itemId, kind) => plannerStore.moveIdeaToGroup(itemId, kind)}
           onAppendToPrevious={(itemId, previousId) => plannerStore.appendIdeaToPrevious(itemId, previousId)}
           onEdit={(itemId, html, text) => { const found = findIdea($plannerStore.ideaBuckets, itemId); if (found) plannerStore.patchIdeaItem(found.group.id, itemId, { text, html }) }}
