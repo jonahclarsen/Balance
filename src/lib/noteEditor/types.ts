@@ -105,7 +105,6 @@ export interface NoteEditorView {
   setBlockKind(kind: NoteItemKind): void
   toggleMark(mark: NoteInlineMark): void
   toggleChecked(): void
-  shuffleChecklist(): void
   indent(): void
   outdent(): void
   moveBlock(direction: 'up' | 'down'): void

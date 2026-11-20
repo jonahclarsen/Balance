@@ -3367,6 +3367,25 @@ function createPlannerStore() {
       )
     },
 
+    shuffleListTemplateItems(templateId: Id) {
+      commitEntities('shuffle_list_template_items', { templateId }, (state) =>
+        updateListTemplate(state, templateId, (template) => {
+          if (template.items.length < 2) return template
+          const items = [...template.items]
+          // Shuffle the top-level groups together with their nested rows.
+          do {
+            for (let index = items.length - 1; index > 0; index--) {
+              const other = Math.floor(Math.random() * (index + 1))
+              const item = items[index]
+              items[index] = items[other]
+              items[other] = item
+            }
+          } while (items.every((item, index) => item === template.items[index]))
+          return { ...template, updatedAt: nowISO(), items }
+        }),
+      )
+    },
+
     moveListTemplateItem(templateId: Id, sourceId: Id, targetId: Id, placement: 'before' | 'after' | 'inside') {
       commitEntities('move_list_template_item', { templateId, sourceId, targetId, placement }, (state) =>
         updateListTemplate(state, templateId, (template) => {

@@ -113,6 +113,30 @@ async function openLists(page: import('@playwright/test').Page) {
   await openView(page, 'Lists')
 }
 
+test('shuffling from Lists reorders future checklists and supports undo', async ({ page }) => {
+  await page.goto('/')
+  await openLists(page)
+  await page.getByRole('button', { name: '+ New list' }).click()
+  await page.getByLabel('List name', { exact: true }).fill('Packing')
+  const rows = page.locator('[data-list-template-text-input]')
+  const shuffle = page.getByRole('button', { name: 'Shuffle list' })
+  await expect(shuffle).toBeDisabled()
+  await rows.first().fill('Jacket')
+  await page.getByRole('button', { name: '+ Add list item' }).click()
+  await rows.nth(1).fill('Shoes')
+
+  await shuffle.click()
+  await expect(rows).toHaveText(['Shoes', 'Jacket'])
+  await page.keyboard.press('ControlOrMeta+Z')
+  await expect(rows).toHaveText(['Jacket', 'Shoes'])
+  await page.keyboard.press('ControlOrMeta+Shift+Z')
+  await expect(rows).toHaveText(['Shoes', 'Jacket'])
+
+  await page.getByRole('button', { name: "View Today's List" }).click()
+  const checklist = page.getByRole('dialog', { name: 'Packing' })
+  await expect(checklist.locator('.item-text')).toHaveText(['Shoes', 'Jacket'])
+})
+
 test('list template word cap blocks typing past the max', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())

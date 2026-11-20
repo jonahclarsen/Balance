@@ -7850,6 +7850,14 @@ return rows`
             </button>
             <button
               class="ghost"
+              type="button"
+              disabled={selectedListTemplate.items.length < 2}
+              on:click={() => plannerStore.shuffleListTemplateItems(selectedListTemplate.id)}
+            >
+              Shuffle list
+            </button>
+            <button
+              class="ghost"
               class:active={listArchiveOpen}
               type="button"
               aria-expanded={listArchiveOpen}

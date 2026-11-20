@@ -1179,41 +1179,6 @@ test('note checklist children fold with the caret and Command-R', async ({ page 
   await expect(parent.locator('.note-check:checked')).toHaveCount(4)
 })
 
-test('shuffling a checklist preserves its rows and can be undone', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name === 'mobile', 'uses desktop keyboard indentation and undo')
-  await page.goto('/')
-  await openNotesView(page)
-  await page.getByRole('button', { name: '+ New note' }).click()
-  const toolbar = page.getByRole('toolbar', { name: 'Note formatting' })
-  await toolbar.getByRole('button', { name: 'Checklist' }).click()
-
-  const rows = page.locator('.note-text')
-  for (const [index, text] of ['First', 'Nested', 'Second', 'After'].entries()) {
-    const row = rows.nth(index)
-    await row.fill(text)
-    if (text !== 'After') {
-      await placeCaretAtEnd(row)
-      await pressNoteKey(row, 'Enter')
-    }
-  }
-
-  await toolbar.getByRole('button', { name: 'Text', exact: true }).click()
-  await pressNoteKey(rows.nth(1), 'Tab')
-  const first = page.locator('.note-item[aria-label="Note block: First"]')
-  const firstCheck = first.locator(':scope > .note-block > .note-check')
-  await firstCheck.check()
-  await placeCaretAtEnd(rows.nth(2))
-  await toolbar.getByRole('button', { name: 'Shuffle list' }).click()
-
-  await expect(rows).toHaveText(['Second', 'First', 'Nested', 'After'])
-  await expect(first.getByLabel('Note block: Nested')).toHaveCount(1)
-  await expect(firstCheck).toBeChecked()
-  await page.keyboard.press('ControlOrMeta+Z')
-  await expect(rows).toHaveText(['First', 'Nested', 'Second', 'After'])
-  await page.keyboard.press('ControlOrMeta+Shift+Z')
-  await expect(rows).toHaveText(['Second', 'First', 'Nested', 'After'])
-})
-
 test('note checklist state cascades through descendants and reconciles ancestors', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'desktop checklist indentation is covered here')
   await page.goto('/')

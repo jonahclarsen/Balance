@@ -216,11 +216,6 @@
     view?.focus()
   }
 
-  function shuffleChecklist() {
-    view?.shuffleChecklist()
-    view?.focus()
-  }
-
   function applyMark(mark: NoteInlineMark) {
     view?.toggleMark(mark)
     view?.focus()
@@ -262,7 +257,6 @@
     <button type="button" disabled={!ready} class:active={selection.activeKind === 'bullet'} aria-label="Bulleted list" title="Bulleted list (- then Space)" on:mousedown|preventDefault on:click={() => applyKind('bullet')}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="2.5" fill="currentColor" stroke="none" /></svg></button>
     <button type="button" disabled={!ready} class:active={selection.activeKind === 'numbered'} aria-label="Numbered list" title="Numbered list (1. then Space)" on:mousedown|preventDefault on:click={() => applyKind('numbered')}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8 9 3-3v12m-3 0h6" /><circle cx="18" cy="18" r="1" fill="currentColor" stroke="none" /></svg></button>
     <button type="button" disabled={!ready} class:active={selection.activeKind === 'checklist'} aria-label="Checklist" title="Checklist ([] then Space)" on:mousedown|preventDefault on:click={() => applyKind('checklist')}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 4 4L19 6" /></svg></button>
-    <button type="button" disabled={!ready || selection.activeKind !== 'checklist'} aria-label="Shuffle list" title="Shuffle checklist" on:mousedown|preventDefault on:click={shuffleChecklist}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h2c5 0 6 12 11 12h5m-3-3 3 3-3 3M3 18h2c2 0 3-2 4-4m4-4c1-2 2-4 4-4h4m-3-3 3 3-3 3" /></svg></button>
   </div>
   <div class="note-format-group" aria-label="Inline formatting">
     <button type="button" disabled={!ready} class:active={selection.marks.bold} aria-label="Bold" aria-pressed={selection.marks.bold ? 'true' : 'false'} title={`Bold (${modifierLabel}B)`} on:mousedown|preventDefault on:click={() => applyMark('bold')}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 12h6a3 3 0 0 0 0-6H7v12h7a3 3 0 0 0 0-6" /></svg></button>
