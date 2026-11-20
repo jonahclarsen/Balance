@@ -4178,6 +4178,7 @@ return rows`
   }
 
   function handleGlobalKeydown(event: KeyboardEvent) {
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z' && document.querySelector('.sort-view')) return
     if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || event.key === 'Escape') stopKeyboardScroll()
     if (document.querySelector('dialog[data-image-dialog][open]')) return
     if ($selectedImage && event.target === $selectedImage.editor && (event.key === 'Backspace' || event.key === 'Delete' || event.key === 'Escape' || event.key.startsWith('Arrow'))) return
