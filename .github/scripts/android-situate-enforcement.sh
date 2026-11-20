@@ -45,6 +45,7 @@ failed() {
   adb shell dumpsys accessibility > situate-accessibility.txt || true
   adb shell dumpsys window windows > situate-windows.txt || true
   adb shell dumpsys notification > situate-notification.txt || true
+  adb shell run-as "$PKG" cat no_backup/situate-rules.json > situate-rules-at-failure.txt || true
 }
 trap 'failed "$LINENO"' ERR
 wait_for() {
@@ -232,18 +233,9 @@ notification_absent situate-ci-blocked
 # The notification listener must remain independent of the planner's main thread.
 listener_pid=$(adb shell pidof "$PKG:situate_notifications" | tr -d '\r')
 [[ -n "$listener_pid" ]]
-planner_was_running=$(adb shell pidof "$PKG" | tr -d '\r') || true
 adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null
 planner_stopped=$(adb shell pidof "$PKG" | tr -d '\r')
 [[ "$planner_stopped" =~ ^[0-9]+$ && "$planner_stopped" != "$listener_pid" ]]
-# A cold-started planner saves its own Situate rules to Android during startup
-# (startSituate), replacing this script's file. Stopping it before that save
-# lets it overwrite the rules below once resumed, so wait for it first.
-planner_rules_saved() { ! adb shell run-as "$PKG" grep -q ci-boundary no_backup/situate-rules.json; }
-if [[ -z "$planner_was_running" ]]; then
-  for _ in $(seq 1 240); do planner_rules_saved && break; sleep 0.25; done
-  planner_rules_saved
-fi
 signal_planner STOP
 rules on
 adb shell cmd notification post -t Situate-stalled situate-ci-stalled SYNTHETIC_BLOCKED
@@ -267,6 +259,10 @@ for _ in $(seq 1 120); do
 done
 planner_gone
 planner_stopped=""
+# Once resumed, the planner saves its own Situate rules to Android (on startup,
+# sync or a schedule tick), replacing this script's file. With it gone, restore
+# the test rules: the listener alone must silence what follows.
+rules on
 [[ "$(adb shell pidof "$PKG:situate_notifications" | tr -d '\r')" == "$listener_pid" ]]
 for attempt in $(seq 1 5); do
   adb shell cmd notification post -t Situate-burst "situate-ci-burst-$attempt" SYNTHETIC_BLOCKED
