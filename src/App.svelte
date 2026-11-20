@@ -57,7 +57,7 @@
   import IdeaSortModal from './lib/IdeaSortModal.svelte'
   import { dayTemplateShortcutLetters } from './lib/dayTemplateShortcuts'
   import IdeaImportModal from './lib/IdeaImportModal.svelte'
-  import { countIdeas, dueIdeaReviews, ideaGroupItems, findIdea, IDEA_GROUPS, readActiveIdeaGroup, saveActiveIdeaGroup } from './lib/ideas'
+  import { countIdeas, dueIdeaReviews, ideaGroupItems, findIdea, IDEA_GROUPS, readActiveIdeaGroup, saveActiveIdeaGroup, noteIdeasSeen, ideasSeenRecently } from './lib/ideas'
   import { canTranscribe, transcribeClips, transcriptionStatus } from './lib/voiceTranscription'
   import { IDEA_REVIEW_LABELS, type IdeaReviewKind } from './lib/ideaLinks'
   import NotesPanel from './lib/NotesPanel.svelte'
@@ -2505,6 +2505,8 @@ return rows`
     window.addEventListener('blur', trackActiveDayUse)
     window.addEventListener('pagehide', persistTodayItemPosition)
     document.addEventListener('visibilitychange', refreshCurrentDay)
+    document.addEventListener('visibilitychange', handleIdeasVisibilityChange)
+    window.addEventListener('pagehide', handleIdeasPageHide)
     document.addEventListener('visibilitychange', handleCelebrationVisibilityChange)
 
     selectedTemplateId = localStorage.getItem(DAY_TEMPLATE_SELECTION_KEY) ?? selectedTemplateId
@@ -2698,6 +2700,8 @@ return rows`
       window.removeEventListener('blur', trackActiveDayUse)
       window.removeEventListener('pagehide', persistTodayItemPosition)
       document.removeEventListener('visibilitychange', refreshCurrentDay)
+      document.removeEventListener('visibilitychange', handleIdeasVisibilityChange)
+      window.removeEventListener('pagehide', handleIdeasPageHide)
       document.removeEventListener('visibilitychange', handleCelebrationVisibilityChange)
       if (goalHistoryUpdateTimer !== null) window.clearTimeout(goalHistoryUpdateTimer)
       clearCelebrationPreviewTimer()
@@ -3361,6 +3365,23 @@ return rows`
       closeQuickAdd()
       return
     }
+    // Erasing an idea being edited and saving deletes it.
+    if (!text && quickAddEditing) {
+      const found = quickAddPendingId ? findIdea($plannerStore.ideaBuckets, quickAddPendingId) : null
+      if (found) plannerStore.deleteIdeaItem(found.group.id, found.item.id)
+      lastQuickAddedIdea = null
+      quickAddSaving = true
+      try {
+        await plannerStore.flushPendingOperations()
+        quickAddSaving = false
+        closeQuickAdd()
+      } catch (error) {
+        console.error('Could not delete idea', error)
+      } finally {
+        quickAddSaving = false
+      }
+      return
+    }
     if (!text) return
     quickAddSaving = true
     try {
@@ -3433,6 +3454,28 @@ return rows`
   function showIdeaGroup(kind: IdeaGroupKind) {
     activeIdeaGroup = kind
     saveActiveIdeaGroup(kind)
+    // A group chosen on the way into Ideas (a link, an import) is a fresh visit.
+    noteIdeasSeen()
+  }
+
+  // After a while away, Ideas opens at Proposition Party instead of the group left open.
+  let ideasViewShown = false
+  $: syncIdeasVisit(view === 'ideas' && !document.hidden)
+
+  function syncIdeasVisit(shown: boolean) {
+    if (shown === ideasViewShown) return
+    ideasViewShown = shown
+    if (!shown) noteIdeasSeen()
+    else if (!ideasSeenRecently() && !ideaSort && activeIdeaGroup !== 'proposition') showIdeaGroup('proposition')
+  }
+
+  function handleIdeasVisibilityChange() {
+    syncIdeasVisit(view === 'ideas' && !document.hidden)
+  }
+
+  // Quitting on Ideas counts as leaving it then.
+  function handleIdeasPageHide() {
+    if (view === 'ideas') noteIdeasSeen()
   }
 
   async function startIdeaReview(kind: IdeaReviewKind = 'genuine') {
@@ -9180,7 +9223,7 @@ return rows`
         {#if !(quickAddRecorded && $voiceRecording.state === 'recording')}
           <button type="button" on:click={closeQuickAdd} disabled={quickAddSaving}>Cancel</button>
         {/if}
-        <button class="primary" type="submit" disabled={quickAddSaving || (!quickAddText.trim() && ($voiceRecording.state !== 'recording' || quickAddEditing))}>Save</button>
+        <button class="primary" type="submit" disabled={quickAddSaving || (!quickAddText.trim() && !quickAddEditing && $voiceRecording.state !== 'recording')}>Save</button>
       </div>
     </form>
   </OverlayModal>

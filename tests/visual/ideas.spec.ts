@@ -231,6 +231,46 @@ test('quick add reopens the idea saved within the last 5 minutes', async ({ page
   await expect(editLast).toHaveCount(0)
 })
 
+test('erasing the idea being edited and saving deletes it', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
+  await open(page)
+  await page.keyboard.press('Alt+A')
+  await page.keyboard.type('Synthetic mistake')
+  await page.keyboard.press('Enter')
+
+  await page.keyboard.press('Alt+A')
+  await page.keyboard.press('Alt+E')
+  const input = page.getByRole('textbox', { name: 'Idea', exact: true })
+  await expect(input).toHaveText('Synthetic mistake')
+  await page.keyboard.press('ControlOrMeta+A')
+  await page.keyboard.press('Backspace')
+  await expect(input).toHaveText('')
+  await page.getByRole('dialog', { name: 'Edit idea' }).getByRole('button', { name: 'Save' }).click()
+  await expect(input).toBeHidden()
+  expect(await groups(page)).toEqual({ proposition: [], trash: ['Synthetic mistake'] })
+
+  // The deleted idea is no longer offered for editing.
+  await page.keyboard.press('Alt+A')
+  await expect(page.getByRole('dialog', { name: 'Add idea' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Edit last idea' })).toHaveCount(0)
+})
+
+test('Ideas reopens at Proposition Party after half an hour away', async ({ page }) => {
+  await open(page)
+  await openView(page, 'Ideas')
+  await card(page, 'possible').click()
+  await openView(page, 'Today')
+
+  await page.clock.fastForward(20 * 60_000)
+  await openView(page, 'Ideas')
+  await expect(card(page, 'possible')).toHaveAttribute('aria-current', 'true')
+
+  await openView(page, 'Today')
+  await page.clock.fastForward(31 * 60_000)
+  await openView(page, 'Ideas')
+  await expect(card(page, 'proposition')).toHaveAttribute('aria-current', 'true')
+})
+
 test('a backdrop press keeps a half-written idea open', async ({ page }) => {
   await open(page)
   await page.getByRole('button', { name: 'Add idea', exact: true }).click()

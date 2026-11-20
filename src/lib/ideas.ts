@@ -49,6 +49,27 @@ export function saveActiveIdeaGroup(kind: IdeaGroupKind) {
   }
 }
 
+const IDEAS_SEEN_AT_KEY = 'balance.ideasSeenAt.v1'
+// Coming back to Ideas after this long starts again at Proposition Party.
+export const IDEAS_RETURN_TO_PROPOSITIONS_MS = 30 * 60_000
+
+export function noteIdeasSeen(now = Date.now()) {
+  try {
+    localStorage.setItem(IDEAS_SEEN_AT_KEY, String(now))
+  } catch {
+    // Ideas then reopens at Proposition Party.
+  }
+}
+
+export function ideasSeenRecently(now = Date.now()): boolean {
+  try {
+    const seenAt = Number(localStorage.getItem(IDEAS_SEEN_AT_KEY))
+    return seenAt > 0 && now - seenAt < IDEAS_RETURN_TO_PROPOSITIONS_MS
+  } catch {
+    return false
+  }
+}
+
 // Committing an idea takes progressively longer the higher it lands, so the
 // buttons unlock on a delay instead of being explained. The Ideas page applies
 // it only to ideas leaving Proposition Party; the sorter applies it after every answer.
