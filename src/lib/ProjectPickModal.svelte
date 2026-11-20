@@ -102,7 +102,7 @@
   li button { font-size: 13px; padding: 7px 10px; }
   li button[aria-pressed='true'] { background: var(--accent); border-color: var(--accent); color: var(--paper); }
   .pick { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; text-align: left; font-size: 14px; overflow-wrap: anywhere; }
-  .pick small { margin-left: auto; color: var(--muted); font-size: 12px; }
+  .pick small { flex-shrink: 0; white-space: nowrap; margin-left: auto; color: var(--muted); font-size: 12px; }
   .pick[aria-pressed='true'] small { color: inherit; }
   .settled .pick { text-decoration: line-through; opacity: .55; }
   form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
