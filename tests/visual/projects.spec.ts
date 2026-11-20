@@ -1001,10 +1001,54 @@ test('a hover cut releases a project and undo restores the sheet', async ({page}
   await page.getByRole('button',{name:'Back',exact:true}).click()
   await page.getByRole('button',{name:'Sort',exact:true}).click()
   await expect(page.getByText('Drag pieces from the pile')).toBeVisible()
+  const resumedBox=(await sheet.boundingBox())!
+  const pileX=resumedBox.x+(20+90*1.9/2)*zoom
+  const pileY=resumedBox.y+36*zoom
+  await page.mouse.move(pileX,pileY)
+  await page.mouse.down()
+  await page.mouse.move(resumedBox.x+resumedBox.width*.65,resumedBox.y+resumedBox.height*.55,{steps:10})
+  await page.mouse.up()
+  await page.getByRole('button',{name:'Back',exact:true}).click()
+  await addProject(page,'New paper')
+  await page.getByRole('button',{name:'Sort',exact:true}).click()
+  await expect(page.getByText('Trace around each title')).toBeVisible()
+  await page.getByRole('button',{name:'Back',exact:true}).click()
+  await page.locator('.project-card',{hasText:'New paper'}).click()
+  await page.getByRole('button',{name:'Archive',exact:true}).click()
+  await page.getByRole('button',{name:'Sort',exact:true}).click()
+  await expect(page.getByText('Drag pieces from the pile')).toBeVisible()
   await page.getByRole('button',{name:'Save',exact:true}).click()
+  const layout=await page.evaluate(async()=>{
+    const path='/src/lib/store.ts'
+    const {plannerStore}=await import(/* @vite-ignore */ path)
+    let sort:any
+    plannerStore.subscribe((state:any)=>sort=state.projectSorts.find((s:any)=>s.saved))()
+    return sort
+  })
+  expect(layout.titles.map((p:any)=>p.name)).toEqual(['Paper garden'])
+  expect(layout.slips[0].place.x).toBeCloseTo(.65,1)
   await page.getByRole('button',{name:'Copy to history'}).click()
   await page.getByRole('button',{name:'Back',exact:true}).click()
   await page.getByRole('button',{name:'History',exact:true}).click()
-  await page.getByRole('button',{name:'Open saved sort'}).click()
+  const preview=page.locator('a.inline-sort-preview').first()
+  await expect(preview).toHaveCSS('--sort-preview', /data:image/)
+  await preview.click()
   await expect(page.getByRole('button',{name:'Copy link'})).toBeVisible()
+})
+
+
+test('the Wii Sports project search hint fits inside its field', async ({page})=>{
+  await page.goto('/')
+  await page.evaluate(()=>localStorage.setItem('balance:deviceAppearance.v1',JSON.stringify({version:1,themeId:'wiisports',colorScheme:'system'})))
+  await page.reload()
+  await openView(page,'Projects')
+  await expect(page.locator('html')).toHaveAttribute('data-theme','wiisports')
+  await page.evaluate(()=>document.fonts.ready)
+  const fits=await page.getByRole('searchbox',{name:'Search projects'}).evaluate((input:HTMLInputElement)=>{
+    const style=getComputedStyle(input)
+    const ctx=document.createElement('canvas').getContext('2d')!
+    ctx.font=style.font
+    return ctx.measureText(input.placeholder).width <= input.clientWidth-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight)
+  })
+  expect(fits).toBe(true)
 })

@@ -2957,6 +2957,7 @@ function createPlannerStore() {
 
     addProjectHistoryNoteItem(noteId: Id, text = '') {
       const item = createNoteItem(text, 'paragraph')
+      if (text) item.html = sanitizeInlineHTML(`<a href="${escapeHTML(text)}">${escapeHTML(text)}</a>`)
       commitEntities('add_project_history_note_item', { noteId, item }, (state) => {
         const timestamp = nowISO()
         const existing = state.projectHistoryNotes.find((note) => note.id === noteId)
@@ -4515,7 +4516,7 @@ export async function inspectDatabase(): Promise<DatabaseInspection | null> {
       projects: [],
       projectCheckIns: [],
       projectSorts: [],
-    projectHistoryNotes: [],
+      projectHistoryNotes: [],
       dayGenerations: [],
       ideaBuckets: [],
       voiceClips: [],

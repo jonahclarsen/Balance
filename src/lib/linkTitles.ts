@@ -4,7 +4,7 @@ import { parseNavigationURL, type LinkableView } from './navigationLinks'
 import { escapeHTML, isGoalStatsURL, noteIdFromURL, projectIdFromURL, templateReviewFromURL, templateReviewLabel } from './planner'
 import type { AppState, Id } from './types'
 
-type LinkTitleState = Pick<AppState, 'notes' | 'projects' | 'templates' | 'listTemplates' | 'lists' | 'plans' | 'metrics' | 'goals' | 'ideaBuckets'>
+type LinkTitleState = Pick<AppState, 'notes' | 'projects' | 'templates' | 'listTemplates' | 'lists' | 'plans' | 'metrics' | 'goals' | 'ideaBuckets'> & Partial<Pick<AppState, 'projectSorts'>>
 type Tree = { id: Id; children: Tree[] }
 
 const VIEW_TITLES: Record<LinkableView, string> = {
@@ -48,6 +48,10 @@ export function balanceLinkTitle(value: string, state: LinkTitleState): string |
   if (!target) return null
   if (target.kind === 'page') return VIEW_TITLES[target.view]
   if (target.kind === 'day') return new Date(`${target.date}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+  if (target.kind === 'project-sort') {
+    const sort = state.projectSorts?.find(sort => sort.id === target.id && sort.saved)
+    return sort ? `Project sort · ${new Date(sort.startedAt).toLocaleString()}` : null
+  }
   if (target.kind === 'note') return shorten(state.notes.find((note) => note.id === target.id)?.title) || null
   if (target.kind === 'task') {
     for (const container of [...state.plans, ...state.lists, ...state.ideaBuckets]) {
