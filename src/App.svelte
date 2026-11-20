@@ -330,6 +330,7 @@
   let view: View = import.meta.env.VITE_BALANCE_START_VIEW === 'today'
     ? 'today'
     : (resumesLastView && storedWorkspaceViewState?.view) || 'next'
+  let linkedSortId = ''
   let linkedProjectId = ''
 
   function applyDefaultZoom(zoom = APP_DEFAULT_ZOOM) {
@@ -1869,6 +1870,12 @@ return rows`
       view = target.view
     } else if (target.kind === 'day') {
       openDateInToday(target.date)
+    } else if (target.kind === 'project-sort') {
+      if (!$plannerStore.projectSorts.some(sort => sort.saved && sort.id === target.id)) return unavailableLink()
+      view = 'projects'
+      linkedSortId = ''
+      await tick()
+      linkedSortId = target.id
     } else if (target.kind === 'task') {
       const plan = $plannerStore.plans.find(plan => findPlanItem(plan.items, target.id))
       const list = !plan && $plannerStore.lists.find(list => findPlanItem(list.items, target.id))
@@ -8151,7 +8158,7 @@ return rows`
         bind:this={projectsPanel}
         searchShortcutLabel={isMac ? '⌘F' : 'Ctrl+F'}
         projects={$plannerStore.projects}
-        {linkedProjectId}
+        {linkedProjectId} {linkedSortId} onSortOpened={() => linkedSortId = ''}
         now={projectClock}
         showingHistory={view === 'projectHistory'}
         onShowHistory={openProjectHistory}

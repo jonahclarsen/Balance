@@ -6,6 +6,10 @@
   import { plannerStore } from './store'
   import ProjectSort from './ProjectSort.svelte'
   let sorting = false
+  let sortId = ''
+  export let linkedSortId = ''
+  export let onSortOpened = () => {}
+  $: if (linkedSortId) { sortId = linkedSortId; sorting = true; onSortOpened() }
   import ProjectCard from './ProjectCard.svelte'
   import ProjectHistory from './ProjectHistory.svelte'
   import OverlayModal from './OverlayModal.svelte'
@@ -141,7 +145,7 @@
 
 <section class="projects-panel" aria-label="Projects">
   {#if sorting}
-    <ProjectSort projects={projects.filter(isProjectOpen)} onBack={() => sorting = false} />
+    {#key sortId}<ProjectSort liveProjects={projects.filter(isProjectOpen)} initial={$plannerStore.projectSorts.find(s=>s.id===sortId)} onSelect={id=>sortId=id} onBack={() => sorting = false} />{/key}
   {:else if showingHistory}
   <header class="page-header projects-header history-header">
     <button class="ghost projects-back" type="button" on:click={onHideHistory}><span aria-hidden="true">‹</span>Back</button>
@@ -154,7 +158,7 @@
     <div class="projects-header-actions">
       <input class="projects-search" type="search" aria-label="Search projects" placeholder={`Search projects…${searchShortcutLabel ? ` (${searchShortcutLabel})` : ''}`} bind:this={searchInput} bind:value={search} />
       <button class="ghost" type="button" on:click={onPick}>Pick</button>
-      <button class="ghost" type="button" on:click={() => sorting = true}>Sort</button>
+      <button class="ghost" type="button" on:click={() => {sortId=$plannerStore.projectSorts.filter(s=>!s.saved).at(-1)?.id ?? '';sorting=true}}>Sort</button>
       <button class="ghost" type="button" on:click={onShowHistory}>History</button>
     </div>
   </header>
