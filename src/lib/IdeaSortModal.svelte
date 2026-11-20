@@ -22,7 +22,7 @@
   export let onOpenLink: (link: ItemLink) => void
   // Hidden while another page is open; the sort resumes where it left off.
   export let active = true
-  // Add idea is open on top and owns the keyboard.
+  // Add idea, Search or the shortcuts list is open on top and owns the keyboard.
   export let suspended = false
   export let onDecide: (itemId: Id, kind: IdeaGroupKind) => void
   export let onAppendToPrevious: (itemId: Id, previousId: Id) => boolean
