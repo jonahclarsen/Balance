@@ -438,6 +438,7 @@ jobs:
             startup-profile-log.txt
             sync-e2e-*.xml
             sync-e2e-*.png
+            situate-*.txt
           if-no-files-found: ignore
 
   editing-tests:

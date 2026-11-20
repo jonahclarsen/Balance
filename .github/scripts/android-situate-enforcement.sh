@@ -45,6 +45,7 @@ failed() {
   adb shell dumpsys accessibility > situate-accessibility.txt || true
   adb shell dumpsys window windows > situate-windows.txt || true
   adb shell dumpsys notification > situate-notification.txt || true
+  adb shell run-as "$PKG" cat no_backup/situate-rules.json > situate-rules-at-failure.txt || true
 }
 trap 'failed "$LINENO"' ERR
 wait_for() {
@@ -258,6 +259,10 @@ for _ in $(seq 1 120); do
 done
 planner_gone
 planner_stopped=""
+# Once resumed, the planner saves its own Situate rules to Android (on startup,
+# sync or a schedule tick), replacing this script's file. With it gone, restore
+# the test rules: the listener alone must silence what follows.
+rules on
 [[ "$(adb shell pidof "$PKG:situate_notifications" | tr -d '\r')" == "$listener_pid" ]]
 for attempt in $(seq 1 5); do
   adb shell cmd notification post -t Situate-burst "situate-ci-burst-$attempt" SYNTHETIC_BLOCKED
