@@ -523,9 +523,21 @@
 :root[data-theme='wiisports'] .primary-nav .nav-child {
   width: calc(100% - 22px);
   margin-left: 22px;
-  padding-left: 12px;
+  /* Smaller, on one line, and centred between the icon and any shortcut, so "Project History" fits the narrower button. */
+  padding: 0 6px 0 30px;
+  font-size: 13px;
+  white-space: nowrap;
   border-left: 1px solid transparent;
   border-radius: 9px;
+}
+:root[data-theme='wiisports'] .primary-nav .nav-child:has(.nav-shortcut) {
+  padding-right: 35px;
+}
+:root[data-theme='wiisports'] .primary-nav .nav-child .nav-icon {
+  left: 9px;
+}
+:root[data-theme='wiisports'] .primary-nav .nav-child .nav-shortcut {
+  right: 8px;
 }
 @media (hover: hover) {
   :root[data-theme='wiisports'] .primary-nav button:hover:not(.active) {

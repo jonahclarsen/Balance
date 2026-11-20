@@ -418,6 +418,28 @@ test('Wii Sports can be selected, survives reload, frames each view, and every t
     expect(workspace!.height).toBeGreaterThan(page.viewportSize()!.height * 0.8)
     await page.getByRole('button', { name: 'Exit IMAX mode' }).click()
     await expect(page.locator('.wii-frame-top')).toBeVisible()
+    // The narrower sub-item buttons fit their labels on one line, clear of the icon and shortcut.
+    await openView(page, 'Lists')
+    await page.getByRole('button', { name: 'View List History' }).click()
+    await openView(page, 'Projects')
+    await page.getByRole('button', { name: 'History', exact: true }).click()
+    const children = page.getByRole('navigation', { name: 'Primary', exact: true }).locator('.nav-child')
+    await expect(children).toHaveCount(2)
+    const fits = await children.evaluateAll(buttons => buttons.map(button => {
+      const icon = button.querySelector('.nav-icon')!.getBoundingClientRect()
+      const text = Array.from(button.querySelector('.nav-label')!.childNodes).find(node => node.nodeType === Node.TEXT_NODE && node.textContent!.trim())!
+      const range = document.createRange()
+      range.selectNodeContents(text)
+      const label = range.getBoundingClientRect()
+      const right = button.querySelector('.nav-shortcut')?.getBoundingClientRect().left ?? button.getBoundingClientRect().right
+      return { name: text.textContent!.trim(), lines: range.getClientRects().length, clearOfIcon: label.left - icon.right, clearOfRight: right - label.right }
+    }))
+    for (const fit of fits) {
+      expect(fit.lines, fit.name).toBe(1)
+      expect(fit.clearOfIcon, fit.name).toBeGreaterThanOrEqual(2)
+      expect(fit.clearOfRight, fit.name).toBeGreaterThanOrEqual(2)
+    }
+    await openView(page, 'Today')
   }
   // Every texture the stylesheet names must exist; a missing one only shows as a gap.
   const urls = await page.evaluate(() => {
