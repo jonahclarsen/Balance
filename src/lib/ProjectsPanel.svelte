@@ -4,6 +4,8 @@
   import { onDestroy, tick } from 'svelte'
   import type { Project } from './types'
   import { plannerStore } from './store'
+  import ProjectSort from './ProjectSort.svelte'
+  let sorting = false
   import ProjectCard from './ProjectCard.svelte'
   import ProjectHistory from './ProjectHistory.svelte'
   import OverlayModal from './OverlayModal.svelte'
@@ -138,7 +140,9 @@
 </script>
 
 <section class="projects-panel" aria-label="Projects">
-  {#if showingHistory}
+  {#if sorting}
+    <ProjectSort projects={projects.filter(isProjectOpen)} onBack={() => sorting = false} />
+  {:else if showingHistory}
   <header class="page-header projects-header history-header">
     <button class="ghost projects-back" type="button" on:click={onHideHistory}><span aria-hidden="true">‹</span>Back</button>
     <h2>History</h2>
@@ -150,6 +154,7 @@
     <div class="projects-header-actions">
       <input class="projects-search" type="search" aria-label="Search projects" placeholder={`Search projects…${searchShortcutLabel ? ` (${searchShortcutLabel})` : ''}`} bind:this={searchInput} bind:value={search} />
       <button class="ghost" type="button" on:click={onPick}>Pick</button>
+      <button class="ghost" type="button" on:click={() => sorting = true}>Sort</button>
       <button class="ghost" type="button" on:click={onShowHistory}>History</button>
     </div>
   </header>
@@ -287,15 +292,17 @@
 
 <style>
   .projects-panel { min-width: 0; max-width: 640px; }
+  .projects-panel:has(:global(.sort-view)) { max-width: none; }
   .details-overlay { display: contents; }
   .page-header h2 { margin: 0; }
   .projects-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .projects-header button { font-size: 14px; padding: 6px 10px; }
   .projects-header-actions { display: flex; align-items: center; justify-content: flex-end; flex: 1 1 auto; gap: 6px; min-width: 0; }
-  .projects-search { flex: 0 1 220px; min-width: 0; min-height: 34px; }
+  .projects-search { flex: 1 1 24ch; min-width: 0; min-height: 34px; }
   @media (max-width: 760px) {
     .projects-header:not(.history-header) { align-items: stretch; }
-    .projects-search { flex-grow: 1; }
+    .projects-header-actions { flex-wrap: wrap; }
+    .projects-search { flex: 1 0 min(100%, 24ch); }
   }
   .projects-no-match { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
   .projects-no-match p { margin: 0; }

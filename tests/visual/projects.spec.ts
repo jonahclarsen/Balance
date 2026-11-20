@@ -978,3 +978,22 @@ test('searching projects filters every section by name or description', async ({
   await expect(search).toHaveValue('')
   await expect(names).toHaveText(['Synthetic fence', 'Synthetic garden', 'Synthetic shed:'])
 })
+
+test('a hover cut releases a project and undo restores the sheet', async ({page}) => {
+  await page.goto('/')
+  await openView(page, 'Projects')
+  await addProject(page, 'Paper garden')
+  await page.getByRole('button',{name:'Sort',exact:true}).click()
+  const sheet = page.getByLabel('Project sorting tabletop')
+  const box = (await sheet.boundingBox())!
+  const cssWidth = await sheet.evaluate(el=>el.clientWidth)
+  const zoom = box.width/cssWidth
+  const scale = Math.min((cssWidth-32)/90,6)*zoom
+  const left = box.x+(box.width-90*scale)/2
+  const y = box.y+84*zoom+18*scale
+  await page.mouse.move(left-3,y)
+  await page.mouse.move(left+90*scale+3,y,{steps:60})
+  await expect(page.getByText('Drag pieces from the pile')).toBeVisible()
+  await page.keyboard.press('Control+z')
+  await expect(page.getByText('Trace around each title')).toBeVisible()
+})
