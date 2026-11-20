@@ -43,6 +43,10 @@
   --font-content: var(--font-interface);
   --font-mono: var(--font-interface);
   --wii-sky: #51abe2;
+  --wii-scroll-edge: #a2cce4;
+  --wii-scroll-light: #ffffff;
+  --wii-scroll-face: #d8f0fb;
+  --wii-scroll-hot: #9aefff;
   --wii-sky-deep: #3ca4df;
   --wii-sky-light: #5bb8f0;
   --wii-navy: #082639;
@@ -114,6 +118,10 @@
    navy panels of player select and the black system window. */
 :root[data-color-scheme='dark'][data-theme='wiisports'] {
   --wii-sky: #0d2f52;
+  --wii-scroll-edge: #437887;
+  --wii-scroll-light: #afdce8;
+  --wii-scroll-face: #569aaf;
+  --wii-scroll-hot: #79d8eb;
   --wii-sky-deep: #092541;
   --wii-sky-light: #12406b;
   --wii-bar: #11181e;
@@ -197,6 +205,53 @@
   }
   :root[data-theme='wiisports'] .drag-handle:active {
     cursor: var(--wii-hand-grab), grabbing;
+  }
+}
+
+/* A white, cyan-edged control like the menu buttons, on a recessed blue rail. */
+@supports selector(::-webkit-scrollbar) {
+  :root[data-theme='wiisports'] :is(.list-template-tabs, .template-rail) {
+    scrollbar-width: auto;
+  }
+
+  :root[data-theme='wiisports']::-webkit-scrollbar,
+  :root[data-theme='wiisports'] ::-webkit-scrollbar {
+    width: 13px;
+    height: 13px;
+  }
+
+  :root[data-theme='wiisports']::-webkit-scrollbar-track,
+  :root[data-theme='wiisports'] ::-webkit-scrollbar-track {
+    background: color-mix(in srgb, var(--wii-sky-deep) 24%, transparent);
+    border-radius: 8px;
+  }
+
+  :root[data-theme='wiisports']::-webkit-scrollbar-thumb,
+  :root[data-theme='wiisports'] ::-webkit-scrollbar-thumb {
+    background: linear-gradient(135deg, var(--wii-scroll-light), var(--wii-scroll-face));
+    border: 1px solid var(--wii-scroll-edge);
+    border-radius: 8px;
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.65);
+    min-width: 24px;
+    min-height: 24px;
+  }
+
+  :root[data-theme='wiisports']::-webkit-scrollbar-thumb:hover,
+  :root[data-theme='wiisports'] ::-webkit-scrollbar-thumb:hover,
+  :root[data-theme='wiisports']::-webkit-scrollbar-thumb:active,
+  :root[data-theme='wiisports'] ::-webkit-scrollbar-thumb:active {
+    background: linear-gradient(135deg, var(--wii-scroll-light), var(--wii-scroll-hot));
+  }
+
+  :root[data-theme='wiisports']::-webkit-scrollbar-corner,
+  :root[data-theme='wiisports'] ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  :root[data-theme='wiisports'] {
+    scrollbar-color: var(--wii-scroll-face) var(--wii-sky-deep);
   }
 }
 
@@ -297,8 +352,6 @@
     border-right: 0;
     background: transparent;
     color: var(--wii-on-sky);
-    scrollbar-width: thin;
-    scrollbar-color: rgb(8 38 57 / 0.35) transparent;
   }
   :root[data-theme='wiisports'] .app-shell.macos-titlebar-overlay .sidebar {
     padding-top: 14px;

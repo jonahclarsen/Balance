@@ -685,6 +685,46 @@ class LexicalNoteEditorView implements NoteEditorView {
     for (const block of checks) if (block.getDone() !== done) block.setDone(done)
   }
 
+  shuffleChecklist(): void {
+    if (this.isComposing()) return
+    this.runCommand(() => {
+      const target = this.$targetBlock()
+      if (target?.getKind() !== 'checklist') return
+
+      // A checklist is a contiguous run at one nesting level.
+      let first = target
+      let sibling = first.getPreviousSibling()
+      while ($isNoteBlockNode(sibling) && sibling.getKind() === 'checklist') {
+        first = sibling
+        sibling = first.getPreviousSibling()
+      }
+      const rows = [first]
+      sibling = first.getNextSibling()
+      while ($isNoteBlockNode(sibling) && sibling.getKind() === 'checklist') {
+        rows.push(sibling)
+        sibling = sibling.getNextSibling()
+      }
+      if (rows.length < 2) return
+
+      // Sample a different order so each click visibly changes the list.
+      const shuffled = [...rows]
+      do {
+        for (let index = shuffled.length - 1; index > 0; index--) {
+          const other = Math.floor(Math.random() * (index + 1))
+          const row = shuffled[index]
+          shuffled[index] = shuffled[other]
+          shuffled[other] = row
+        }
+      } while (shuffled.every((row, index) => row.is(rows[index])))
+
+      const parent = first.getParentOrThrow()
+      for (const row of shuffled) {
+        if (sibling) sibling.insertBefore(row, false)
+        else parent.append(row)
+      }
+    })
+  }
+
   indent(): void {
     this.runCommand(() => this.$indentOrOutdent(false))
   }
