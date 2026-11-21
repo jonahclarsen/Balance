@@ -41,7 +41,7 @@ cleanup() {
 }
 trap cleanup EXIT
 failed() {
-  echo "Situate assertion failed at line $1"
+  echo "Situate assertion failed at line $1 (emulator $(emulator_time))"
   adb shell dumpsys accessibility > situate-accessibility.txt || true
   adb shell dumpsys window windows > situate-windows.txt || true
   adb shell dumpsys notification > situate-notification.txt || true
@@ -94,9 +94,19 @@ gate_absent() {
   windows=$(adb shell dumpsys window windows) || return 1
   ! printf '%s\n' "$windows" | grep -E 'Window #[0-9]+.*Situate app boundary' >/dev/null
 }
+# Emulator time, to line script steps up with the uploaded logcat.
+emulator_time() { adb shell date +%H:%M:%S.%N 2>/dev/null | tr -d '\r' | cut -c1-12; }
 assert_allowed() {
   wait_for gate_absent
-  for _ in $(seq 1 6); do gate_absent; sleep 0.25; done
+  local cleared
+  cleared=$(emulator_time)
+  for sample in $(seq 1 6); do
+    if ! gate_absent; then
+      echo "Situate gate came back at emulator $(emulator_time) (sample $sample; absent at $cleared, called from line ${BASH_LINENO[0]})"
+      return 1
+    fi
+    sleep 0.25
+  done
 }
 notification_present() { adb shell dumpsys notification --noredact | grep 'NotificationRecord(' | grep "tag=$1" >/dev/null; }
 notification_absent() {
