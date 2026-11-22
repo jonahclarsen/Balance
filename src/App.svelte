@@ -49,6 +49,7 @@
     shouldSuggestTrim,
     summarizeListTiming,
   } from './lib/listTiming'
+  import { getProjectSortLayouts } from './lib/legacyProjectSort'
   import ProjectSortPage from './lib/ProjectSortPage.svelte'
   import ProjectsPanel from './lib/ProjectsPanel.svelte'
   import { activeProjects, needsProjectPick, templateForGeneration } from './lib/projects'
@@ -1874,7 +1875,7 @@ return rows`
     } else if (target.kind === 'day') {
       openDateInToday(target.date)
     } else if (target.kind === 'project-sort') {
-      if (!$plannerStore.projectSortLayouts.some(sort => sort.id === target.id && sort.savedAt)) return unavailableLink()
+      if (!getProjectSortLayouts($plannerStore).some(sort => sort.id === target.id && sort.savedAt)) return unavailableLink()
       sortLinkId = target.id
       if (view === 'projectSort') sortPage?.showSaved(target.id)
       view = 'projectSort'

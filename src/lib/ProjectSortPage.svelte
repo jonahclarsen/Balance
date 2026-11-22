@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { getProjectSortLayouts } from './legacyProjectSort'
   import { onMount } from 'svelte'
   import { invoke, isTauri } from '@tauri-apps/api/core'
   import { plannerStore } from './store'
@@ -42,7 +43,7 @@
   let atEdge = false
   let suspendUntilMove = false
   let selectedTitle = ''
-  $: sorts = $plannerStore.projectSortLayouts
+  $: sorts = getProjectSortLayouts($plannerStore)
   $: saved = sorts.filter((s) => s.savedAt).sort((a, b) => b.startedAt.localeCompare(a.startedAt))
   $: current = sorts.find((s) => s.id === selectedId)
   $: pending = current?.slips.filter((s) => !s.outline).length ?? 0
@@ -90,14 +91,14 @@
     message = ''
     library = false
     selectedId = id
-    const record = $plannerStore.projectSortLayouts.find((s) => s.id === id)
+    const record = getProjectSortLayouts($plannerStore).find((s) => s.id === id)
     if (record && scene) refresh(scene, record, $plannerStore.projects)
   }
   export function showSaved(id: string) {
     select(id)
   }
   function openDraft() {
-    const draft = $plannerStore.projectSortLayouts.find((s) => !s.savedAt)
+    const draft = getProjectSortLayouts($plannerStore).find((s) => !s.savedAt)
     if (draft) {
       select(draft.id)
       return
@@ -124,7 +125,7 @@
     if (
       scene &&
       selectedId === next.id &&
-      $plannerStore.projectSortLayouts.find((s) => s.id === next.id) === next
+      getProjectSortLayouts($plannerStore).find((s) => s.id === next.id) === next
     ) {
       scene.update(next)
       segmentCache = scene.cutting ? sheetSegments(next, scene.sheet) : []

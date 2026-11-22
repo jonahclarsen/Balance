@@ -96,3 +96,41 @@ test('Wii Sports leaves room for the complete Projects search shortcut', async (
     return remaining >= ctx.measureText(input.placeholder).width + 12
   })).toBe(true)
 })
+
+test('saved sorts from the original version still open and link to Project History', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(async () => {
+    const plannerPath = '/src/lib/planner.ts'
+    const { createInitialState } = await import(/* @vite-ignore */ plannerPath)
+    const date = '2026-11-20T12:00:00.000Z'
+    localStorage.setItem('balance.appState.v1', JSON.stringify({
+      ...createInitialState(),
+      projectSorts: [{
+        id: 'legacy-tabletop',
+        startedAt: date,
+        saved: true,
+        titles: [{ id: 'project-garden', name: 'Synthetic garden' }],
+        slips: [{ id: 'project-garden', rows: [[1, 10, 84], [1, 11, 84]], center: { x: 45, y: 11 }, place: { x: 0.5, y: 0.55 } }],
+        cuts: [],
+        preview: 'data:image/webp;base64,c3ludGhldGlj',
+      }],
+      projectHistoryNotes: [{
+        id: 'project-history-backstory',
+        items: [{ id: 'legacy-link', kind: 'paragraph', text: 'Old tabletop', html: '<a href="balance://project-sort/legacy-tabletop">Old tabletop</a>', children: [] }],
+        createdAt: date,
+        updatedAt: date,
+      }],
+    }))
+  })
+  await page.reload()
+  await openView(page, 'Projects')
+  await page.getByRole('button', { name: 'History', exact: true }).click()
+  const link = page.locator('a.history-sort-link').filter({ hasText: 'Old tabletop' })
+  await link.click()
+  await expect(page.getByRole('heading', { name: 'Saved tabletop' })).toBeVisible()
+  await expect(page.getByRole('list', { name: 'Project slips' })).toContainText('Synthetic garden')
+  await page.getByRole('button', { name: 'Copy to history' }).click()
+  await page.getByRole('button', { name: 'Back to Projects' }).click()
+  await page.getByRole('button', { name: 'History', exact: true }).click()
+  await expect(page.locator('a.history-sort-link')).toHaveCount(2)
+})

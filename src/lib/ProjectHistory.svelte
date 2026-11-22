@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { getProjectSortLayouts } from './legacyProjectSort'
   import { sortHistoryPreviews } from './sortHistoryPreviews'
   import type { Id, NoteItem, Project } from './types'
   import type { ItemLink } from './planner'
@@ -58,7 +59,7 @@
   }
 </script>
 
-<div class="project-history" use:sortHistoryPreviews={$plannerStore.projectSortLayouts}>
+<div class="project-history" use:sortHistoryPreviews={getProjectSortLayouts($plannerStore)}>
   <button class="primary history-add" type="button" disabled={!projects.length} on:click={addEntry}>Add</button>
   {#each periods as period (period.day)}
     <section class="history-period" aria-label={historyDayHeading(period.day)}>

@@ -451,6 +451,7 @@ export type AppState = {
   projects: Project[]
   projectCheckIns: ProjectCheckIn[]
   projectSortLayouts: import('./projectSort').ProjectSort[]
+  projectSorts?: import('./legacyProjectSort').LegacyProjectSort[]
   projectHistoryNotes: ProjectHistoryNote[]
   dayGenerations: DayGeneration[]
   // Stored as the ideaBuckets collection, with bucket_<kind> record IDs.

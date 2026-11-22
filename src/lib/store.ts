@@ -1,3 +1,4 @@
+import { getProjectSortLayouts } from './legacyProjectSort'
 import type { ProjectSort } from './projectSort'
 import { navigationURL } from './navigationLinks'
 import { projectHistoryNoteDay, projectHistoryNoteId, projectHistoryPeriods, PROJECT_BACKSTORY_NOTE_ID } from './projects'
@@ -2289,7 +2290,8 @@ function createPlannerStore() {
     putProjectSort(next: ProjectSort, previous?: ProjectSort) {
       commitEntities('update_project_sort', { sortId: next.id }, (state) => {
         const current = state.projectSortLayouts.find(s => s.id === next.id)
-        if (current?.savedAt || current !== previous) return state
+        const visible = current ?? getProjectSortLayouts(state).find(sort => sort.id === next.id)
+        if (visible?.savedAt || visible !== previous) return state
         const projectSortLayouts = current
           ? state.projectSortLayouts.map(s => s.id === next.id ? next : s)
           : [next, ...state.projectSortLayouts]
@@ -2299,7 +2301,7 @@ function createPlannerStore() {
 
     copySortToProjectHistory(sortId: Id) {
       commitEntities('add_sort_to_project_history', { sortId }, (state) => {
-        const sort = state.projectSortLayouts.find(s => s.id === sortId)
+        const sort = getProjectSortLayouts(state).find(s => s.id === sortId)
         if (!sort?.savedAt) return state
         const notedDays = state.projectHistoryNotes.flatMap(note => {
           const day = projectHistoryNoteDay(note.id)

@@ -1,10 +1,11 @@
+import { getProjectSortLayouts } from './legacyProjectSort'
 import { IDEA_REVIEW_LABELS, ideasLinkFromURL } from './ideaLinks'
 import { IDEA_GROUPS } from './ideas'
 import { parseNavigationURL, type LinkableView } from './navigationLinks'
 import { escapeHTML, isGoalStatsURL, noteIdFromURL, projectIdFromURL, templateReviewFromURL, templateReviewLabel } from './planner'
 import type { AppState, Id } from './types'
 
-type LinkTitleState = Pick<AppState, 'notes' | 'projects' | 'projectSortLayouts' | 'templates' | 'listTemplates' | 'lists' | 'plans' | 'metrics' | 'goals' | 'ideaBuckets'>
+type LinkTitleState = Pick<AppState, 'notes' | 'projects' | 'templates' | 'listTemplates' | 'lists' | 'plans' | 'metrics' | 'goals' | 'ideaBuckets'> & Partial<Pick<AppState, 'projectSortLayouts' | 'projectSorts'>>
 type Tree = { id: Id; children: Tree[] }
 
 const VIEW_TITLES: Record<LinkableView, string> = {
@@ -50,7 +51,7 @@ export function balanceLinkTitle(value: string, state: LinkTitleState): string |
   if (target.kind === 'day') return new Date(`${target.date}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
   if (target.kind === 'note') return shorten(state.notes.find((note) => note.id === target.id)?.title) || null
   if (target.kind === 'project-sort') {
-    const sort = state.projectSortLayouts?.find(sort => sort.id === target.id && sort.savedAt)
+    const sort = getProjectSortLayouts(state).find(sort => sort.id === target.id && sort.savedAt)
     return sort ? 'Project sort · ' + new Date(sort.startedAt).toLocaleString() : null
   }
   if (target.kind === 'task') {
