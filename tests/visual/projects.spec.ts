@@ -798,6 +798,18 @@ test('project descriptions take bulleted lists like Notes and keep them as reada
   await description.press('ControlOrMeta+z')
   await expect.poll(saved).toBe('Plan\n- Seeds\n  - Tomatoes\n- Soil')
   await expect(description.locator('.note-bullet')).toHaveCount(3)
+
+  // A line break inside a bullet stays in that bullet after reopening.
+  await description.locator('.note-block', { hasText: 'Soil' }).click()
+  await description.press('End')
+  await description.press('Shift+Enter')
+  await description.pressSequentially('and compost')
+  await description.press('Escape')
+  await expect.poll(saved).toBe('Plan\n- Seeds\n  - Tomatoes\n- Soil\n  and compost')
+  await card.click()
+  await expect(description.locator('.note-bullet')).toHaveCount(3)
+  await expect(description.locator('.note-item')).toHaveCount(4)
+  await expect(description.locator('.note-bullet').last()).toHaveText(/Soil\s*and compost/)
 })
 
 test('project descriptions turn pasted URLs into links like tasks do, and their links open', async ({ page }) => {
