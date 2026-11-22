@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { sortHistoryPreviews } from './sortHistoryPreviews'
   import type { Id, NoteItem, Project } from './types'
   import type { ItemLink } from './planner'
   import { plannerStore } from './store'
@@ -57,7 +58,7 @@
   }
 </script>
 
-<div class="project-history">
+<div class="project-history" use:sortHistoryPreviews={$plannerStore.projectSortLayouts}>
   <button class="primary history-add" type="button" disabled={!projects.length} on:click={addEntry}>Add</button>
   {#each periods as period (period.day)}
     <section class="history-period" aria-label={historyDayHeading(period.day)}>
@@ -110,6 +111,10 @@
 {/if}
 
 <style>
+  .project-history :global(.history-sort-link)::after {
+    content: ''; display: block; width: 132px; height: 84px; margin: 5px 0 4px;
+    background: var(--sort-history-image) left center / contain no-repeat;
+  }
   .project-history { display: grid; gap: 28px; }
   .history-overlay { display: contents; }
   .history-add { justify-self: start; font-size: 14px; padding: 8px 12px; }

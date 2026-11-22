@@ -1,10 +1,10 @@
 // Navigation links contain only stable IDs or dates, never private record text.
-export const LINKABLE_VIEWS = ['situate', 'next', 'today', 'templates', 'listTemplates', 'lists', 'notes', 'projects', 'projectHistory', 'ideas', 'metrics', 'goals', 'settings'] as const
+export const LINKABLE_VIEWS = ['situate', 'next', 'today', 'templates', 'listTemplates', 'lists', 'notes', 'projects', 'projectSort', 'projectHistory', 'ideas', 'metrics', 'goals', 'settings'] as const
 export type LinkableView = typeof LINKABLE_VIEWS[number]
 export type NavigationTarget =
   | { kind: 'page'; view: LinkableView }
   | { kind: 'day'; date: string }
-  | { kind: 'task' | 'day-template' | 'list-template' | 'list' | 'quiz' | 'goal' | 'idea-group' | 'note'; id: string; itemId?: string; date?: string }
+  | { kind: 'task' | 'day-template' | 'list-template' | 'list' | 'quiz' | 'goal' | 'idea-group' | 'note' | 'project-sort'; id: string; itemId?: string; date?: string }
 
 const ID = /^[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)*$/
 export function navigationURL(kind: NavigationTarget['kind'], id: string, itemId?: string, date?: string): string {
@@ -34,12 +34,12 @@ export function parseNavigationURL(raw: string): NavigationTarget | null {
   if (kind === 'day') {
     return !url.search && isCalendarDate(id) ? { kind, date: id } : null
   }
-  if (!['task', 'day-template', 'list-template', 'list', 'quiz', 'goal', 'idea-group', 'note'].includes(kind) || !ID.test(id)) return null
+  if (!['task', 'day-template', 'list-template', 'list', 'quiz', 'goal', 'idea-group', 'note', 'project-sort'].includes(kind) || !ID.test(id)) return null
   const itemId = url.searchParams.get('item') ?? undefined
   const date = url.searchParams.get('date') ?? undefined
   if (date !== undefined && (kind !== 'quiz' || !isCalendarDate(date) || url.searchParams.getAll('date').length > 1)) return null
   if ([...url.searchParams.keys()].some(key => key !== 'item' && key !== 'date') || url.searchParams.getAll('item').length > 1 || (itemId !== undefined && !ID.test(itemId))) return null
-  if (itemId && ['task', 'goal', 'idea-group'].includes(kind)) return null
+  if (itemId && ['task', 'goal', 'idea-group', 'project-sort'].includes(kind)) return null
   return { kind: kind as Exclude<NavigationTarget['kind'], 'page' | 'day'>, id, ...(itemId ? { itemId } : {}), ...(date ? { date } : {}) }
 }
 

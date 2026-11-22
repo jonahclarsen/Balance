@@ -4,12 +4,12 @@ import { parseNavigationURL, type LinkableView } from './navigationLinks'
 import { escapeHTML, isGoalStatsURL, noteIdFromURL, projectIdFromURL, templateReviewFromURL, templateReviewLabel } from './planner'
 import type { AppState, Id } from './types'
 
-type LinkTitleState = Pick<AppState, 'notes' | 'projects' | 'templates' | 'listTemplates' | 'lists' | 'plans' | 'metrics' | 'goals' | 'ideaBuckets'>
+type LinkTitleState = Pick<AppState, 'notes' | 'projects' | 'projectSortLayouts' | 'templates' | 'listTemplates' | 'lists' | 'plans' | 'metrics' | 'goals' | 'ideaBuckets'>
 type Tree = { id: Id; children: Tree[] }
 
 const VIEW_TITLES: Record<LinkableView, string> = {
   situate: 'Situate', next: 'Next', today: 'Today', templates: 'Days', listTemplates: 'Lists', lists: 'List History',
-  notes: 'Notes', projects: 'Projects', projectHistory: 'Project History', ideas: 'Ideas', metrics: 'Quizzes', goals: 'Goals', settings: 'Settings',
+  notes: 'Notes', projects: 'Projects', projectSort: 'Project sort', projectHistory: 'Project History', ideas: 'Ideas', metrics: 'Quizzes', goals: 'Goals', settings: 'Settings',
 }
 
 function findItem<T extends Tree>(items: T[], id: Id): T | null {
@@ -49,6 +49,10 @@ export function balanceLinkTitle(value: string, state: LinkTitleState): string |
   if (target.kind === 'page') return VIEW_TITLES[target.view]
   if (target.kind === 'day') return new Date(`${target.date}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
   if (target.kind === 'note') return shorten(state.notes.find((note) => note.id === target.id)?.title) || null
+  if (target.kind === 'project-sort') {
+    const sort = state.projectSortLayouts?.find(sort => sort.id === target.id && sort.savedAt)
+    return sort ? 'Project sort · ' + new Date(sort.startedAt).toLocaleString() : null
+  }
   if (target.kind === 'task') {
     for (const container of [...state.plans, ...state.lists, ...state.ideaBuckets]) {
       const item = findItem(container.items, target.id)

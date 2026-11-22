@@ -49,6 +49,7 @@
     shouldSuggestTrim,
     summarizeListTiming,
   } from './lib/listTiming'
+  import ProjectSortPage from './lib/ProjectSortPage.svelte'
   import ProjectsPanel from './lib/ProjectsPanel.svelte'
   import { activeProjects, needsProjectPick, templateForGeneration } from './lib/projects'
   import IdeasPanel from './lib/IdeasPanel.svelte'
@@ -192,7 +193,7 @@
     { id: 'dark', name: 'Dark', description: 'Always use dark mode' },
   ]
 
-  type View = 'situate' | 'next' | 'today' | 'templates' | 'listTemplates' | 'lists' | 'notes' | 'projects' | 'projectHistory' | 'ideas' | 'metrics' | 'goals' | 'settings'
+  type View = 'situate' | 'next' | 'today' | 'templates' | 'listTemplates' | 'lists' | 'notes' | 'projects' | 'projectSort' | 'projectHistory' | 'ideas' | 'metrics' | 'goals' | 'settings'
   const WINDOW_CAPTIONS = {
     situate: { title: 'Situate', icon: 'situate' },
     next: { title: 'Next', icon: 'next' },
@@ -202,6 +203,7 @@
     lists: { title: 'List History', icon: 'lists' },
     notes: { title: 'Notes', icon: 'notes' },
     projects: { title: 'Projects', icon: 'projects' },
+    projectSort: { title: 'Project sort', icon: 'projects' },
     projectHistory: { title: 'Project History', icon: 'projects' },
     ideas: { title: 'Ideas', icon: 'ideas' },
     metrics: { title: 'Quizzes', icon: 'metrics' },
@@ -379,6 +381,8 @@
   // entry available while visiting other pages; returning to Lists dismisses it.
   let listHistoryNavigationVisible = false
   // Project History behaves the same way under Projects.
+  let sortLinkId = ''
+  let sortPage: ProjectSortPage | null = null
   let projectHistoryNavigationVisible = false
   let searchOpen = false
   let retainedSearchQuery = ''
@@ -1869,6 +1873,11 @@ return rows`
       view = target.view
     } else if (target.kind === 'day') {
       openDateInToday(target.date)
+    } else if (target.kind === 'project-sort') {
+      if (!$plannerStore.projectSortLayouts.some(sort => sort.id === target.id && sort.savedAt)) return unavailableLink()
+      sortLinkId = target.id
+      if (view === 'projectSort') sortPage?.showSaved(target.id)
+      view = 'projectSort'
     } else if (target.kind === 'task') {
       const plan = $plannerStore.plans.find(plan => findPlanItem(plan.items, target.id))
       const list = !plan && $plannerStore.lists.find(list => findPlanItem(list.items, target.id))
@@ -3651,6 +3660,7 @@ return rows`
       value === 'lists' ||
       value === 'notes' ||
       value === 'projects' ||
+      value === 'projectSort' ||
       value === 'projectHistory' ||
       value === 'ideas' ||
       value === 'metrics' ||
@@ -4402,6 +4412,8 @@ return rows`
       }
       return
     }
+
+    if (view === 'projectSort' && !documentFindOpen && !mobileDrawerOpen && !document.querySelector('[role="dialog"]') && sortPage?.handleKey(event)) return
 
     if (
       view === 'goals' &&
@@ -7407,7 +7419,7 @@ return rows`
       <button data-nav-view="notes" class:active={selectedNavView === 'notes'} type="button" title="Notes (Alt+N)" aria-keyshortcuts="Alt+N" on:click={() => selectMobileDrawerView('notes')}><span class="nav-label"><NavIcon name="notes" />Notes</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('N')}</kbd></button>
       <button data-nav-view="metrics" class:active={selectedNavView === 'metrics'} type="button" title="Quizzes (Alt+V)" aria-keyshortcuts="Alt+V" on:click={() => selectMobileDrawerView('metrics')}><span class="nav-label"><NavIcon name="metrics" />Quizzes</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('V')}</kbd></button>
       <button data-nav-view="goals" class:active={selectedNavView === 'goals'} type="button" title="Goals (Alt+G)" aria-keyshortcuts="Alt+G" on:click={() => selectMobileDrawerView('goals')}><span class="nav-label"><NavIcon name="goals" />Goals</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('G')}</kbd></button>
-      <button data-nav-view="projects" class:active={selectedNavView === 'projects'} type="button" title="Projects (Alt+P)" aria-keyshortcuts="Alt+P" on:click={() => { linkedProjectId = ''; selectMobileDrawerView('projects') }}><span class="nav-label"><NavIcon name="projects" />Projects</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('P')}</kbd></button>
+      <button data-nav-view="projects" class:active={selectedNavView === 'projects' || selectedNavView === 'projectSort'} type="button" title="Projects (Alt+P)" aria-keyshortcuts="Alt+P" on:click={() => { linkedProjectId = ''; selectMobileDrawerView('projects') }}><span class="nav-label"><NavIcon name="projects" />Projects</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('P')}</kbd></button>
       {#if projectHistoryNavigationVisible}
         <button class="nav-child" data-nav-view="projectHistory" class:active={selectedNavView === 'projectHistory'} type="button" title="Project History" on:click={() => selectMobileDrawerView('projectHistory')}><span class="nav-label"><NavIcon name="lists" />Project History</span></button>
       {/if}
@@ -8212,6 +8224,10 @@ return rows`
       {/if}
     {/if}
 
+    {#if view === 'projectSort' && !$databaseLoadPending && !$databaseLoadError}
+      <ProjectSortPage bind:this={sortPage} linkedId={sortLinkId} onBack={openProjects} />
+    {/if}
+
     {#if view === 'projects' || view === 'projectHistory'}
       <ProjectsPanel
         bind:this={projectsPanel}
@@ -8220,6 +8236,7 @@ return rows`
         {linkedProjectId}
         now={projectClock}
         showingHistory={view === 'projectHistory'}
+        onSort={() => { sortLinkId = ''; view = 'projectSort' }}
         onShowHistory={openProjectHistory}
         onHideHistory={openProjects}
         onPick={() => void askProjectPick(todayISO())}

@@ -1,3 +1,6 @@
+import type { ProjectSort } from './projectSort'
+import { navigationURL } from './navigationLinks'
+import { projectHistoryNoteDay, projectHistoryNoteId, projectHistoryPeriods, PROJECT_BACKSTORY_NOTE_ID } from './projects'
 import { entityPatch, jsonEqual, type EntityPatch } from './entityPatch'
 import { parseBrowserState, serializeBrowserState } from './browserState'
 import { generatedItemMarkers, preservedPlanItems, reconcileUneditedPlanItems } from './planGeneration'
@@ -222,6 +225,7 @@ const ENTITY_COLLECTIONS = [
   'noteResurfacing',
   'projects',
   'projectCheckIns',
+  'projectSortLayouts',
   'projectHistoryNotes',
   'dayGenerations',
   'ideaBuckets',
@@ -2279,6 +2283,39 @@ function createPlannerStore() {
         const listTemplates = moveById(state.listTemplates, sourceId, targetId, placement)
         if (listTemplates === state.listTemplates) return state
         return { ...state, listTemplates }
+      })
+    },
+
+    putProjectSort(next: ProjectSort, previous?: ProjectSort) {
+      commitEntities('update_project_sort', { sortId: next.id }, (state) => {
+        const current = state.projectSortLayouts.find(s => s.id === next.id)
+        if (current?.savedAt || current !== previous) return state
+        const projectSortLayouts = current
+          ? state.projectSortLayouts.map(s => s.id === next.id ? next : s)
+          : [next, ...state.projectSortLayouts]
+        return { ...state, projectSortLayouts }
+      }, { undoable: false, reconcileGoals: false })
+    },
+
+    copySortToProjectHistory(sortId: Id) {
+      commitEntities('add_sort_to_project_history', { sortId }, (state) => {
+        const sort = state.projectSortLayouts.find(s => s.id === sortId)
+        if (!sort?.savedAt) return state
+        const notedDays = state.projectHistoryNotes.flatMap(note => {
+          const day = projectHistoryNoteDay(note.id)
+          return day && note.items.some(item => item.text.trim() || item.kind !== 'paragraph' || item.children.length) ? [day] : []
+        })
+        const latest = projectHistoryPeriods(state.projects, notedDays)[0]
+        const noteId = latest ? projectHistoryNoteId(latest.day) : PROJECT_BACKSTORY_NOTE_ID
+        const existing = state.projectHistoryNotes.find(note => note.id === noteId)
+        const url = navigationURL('project-sort', sortId)
+        const timestamp = nowISO()
+        const title = 'Project sort · ' + new Date(sort.startedAt).toLocaleString()
+        const item = { ...createNoteItem(title), html: `<a href="${escapeHTML(url)}">${escapeHTML(title)}</a>` }
+        const projectHistoryNotes = existing
+          ? state.projectHistoryNotes.map(note => note === existing ? { ...note, updatedAt: timestamp, items: [...note.items, item] } : note)
+          : [...state.projectHistoryNotes, { id: noteId, createdAt: timestamp, updatedAt: timestamp, items: [item] }]
+        return { ...state, projectHistoryNotes }
       })
     },
 
@@ -4521,6 +4558,7 @@ export async function inspectDatabase(): Promise<DatabaseInspection | null> {
       metricEntries: [],
       projects: [],
       projectCheckIns: [],
+      projectSortLayouts: [],
       projectHistoryNotes: [],
       dayGenerations: [],
       ideaBuckets: [],
@@ -4667,6 +4705,7 @@ function* normalizeStateSteps(state: AppState): Generator<void, AppState, void> 
     situateRules: state.situateRules ?? [],
     projects: state.projects ?? [],
     projectCheckIns: state.projectCheckIns ?? [],
+    projectSortLayouts: state.projectSortLayouts ?? [],
     projectHistoryNotes: yield* normalizeRecords(state.projectHistoryNotes ?? [], normalize.projectHistoryNotes),
     dayGenerations: state.dayGenerations ?? [],
     ideaBuckets: state.ideaBuckets ?? [],

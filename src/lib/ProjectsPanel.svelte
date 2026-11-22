@@ -22,6 +22,7 @@
   export let showingHistory = false
   export let onShowHistory: () => void = () => {}
   export let onHideHistory: () => void = () => {}
+  export let onSort: () => void = () => {}
   export let onPick: () => void = () => {}
   export let searchShortcutLabel = ''
   let name = ''
@@ -150,6 +151,7 @@
     <div class="projects-header-actions">
       <input class="projects-search" type="search" aria-label="Search projects" placeholder={`Search projects…${searchShortcutLabel ? ` (${searchShortcutLabel})` : ''}`} bind:this={searchInput} bind:value={search} />
       <button class="ghost" type="button" on:click={onPick}>Pick</button>
+      <button class="ghost" type="button" on:click={onSort}>Sort</button>
       <button class="ghost" type="button" on:click={onShowHistory}>History</button>
     </div>
   </header>
@@ -292,7 +294,13 @@
   .projects-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .projects-header button { font-size: 14px; padding: 6px 10px; }
   .projects-header-actions { display: flex; align-items: center; justify-content: flex-end; flex: 1 1 auto; gap: 6px; min-width: 0; }
-  .projects-search { flex: 0 1 220px; min-width: 0; min-height: 34px; }
+  .projects-search { flex: 0 1 260px; min-width: min(100%, 21ch); min-height: 34px; }
+  .projects-header-actions { flex-wrap: wrap; }
+  .projects-header:not(.history-header) { flex-wrap: wrap; }
+  @media (max-width: 540px) {
+    .projects-header-actions { flex-basis: 100%; justify-content: flex-start; }
+    .projects-header-actions .projects-search { flex: 1 1 max(20ch, 45%); }
+  }
   @media (max-width: 760px) {
     .projects-header:not(.history-header) { align-items: stretch; }
     .projects-search { flex-grow: 1; }

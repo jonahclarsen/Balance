@@ -30,6 +30,11 @@
   type Group = { title: string; shortcuts: Shortcut[] }
 
   const groups: Group[] = [
+    { title: 'Project sort', shortcuts: [
+      { keys: ['mod', 'Z'], label: 'Undo the last cut or placement' },
+      { keys: ['Space'], label: 'Cut the next title or select the next slip on the table' },
+      { keys: ['up', 'down', 'left', 'right'], label: 'Move the selected slip' },
+    ] },
     { title: 'Images', shortcuts: [
       { keys: ['enter'], label: 'Paste current compression preview' },
       { keys: ['mod', 'enter'], label: 'Paste original image (in compression dialog)' },

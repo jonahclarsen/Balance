@@ -186,6 +186,7 @@ export function createInitialState(): AppState {
     metricEntries: [],
     projects: [],
     projectCheckIns: [],
+    projectSortLayouts: [],
     projectHistoryNotes: [],
     dayGenerations: [],
     ideaBuckets: [],

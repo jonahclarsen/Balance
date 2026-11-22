@@ -120,6 +120,9 @@ let future = run(futureBinary, 'future', 'write', { operation: generic('future-d
   record('listTemplates', largeListTemplate.id, largeListTemplate),
   record('lists', largeList.id, largeList),
   record('templateListExpansions', 'synthetic-option', { id: 'synthetic-option', listTemplateIds: ['synthetic-list'] }),
+  record('projectSortLayouts', 'paper-test', { id: 'paper-test', startedAt: '2026-09-08T12:00:00Z', slips: [
+    { id: 'a', title: 'Synthetic orchard', outline: [[-45, -25], [45, -24], [44, 25], [-46, 24]], position: { x: 0.4, y: 0.6, z: 1 }, futureInk: 'blue' },
+  ], strokes: [] }),
   record('futureHabitCheckIns', 'f', { id: 'f', amount: 7 }),
   record('ideaBuckets', 'bucket_proposition', { id: 'bucket_proposition', kind: 'proposition',
     items: [{ ...splitItem('reserved-idea', 'Synthetic reserved idea'), dayAssignmentDate: '2026-09-08' }] }),
@@ -144,6 +147,7 @@ let blind = run(blindBinary, 'blind', 'write', { operation: generic('blind-devic
   }, remove: [] } }, remove: [] },
 ])]) })
 let note = blind.entities.find((row) => row.key === 'n').value
+assert.equal(blind.entities.find(row => row.collection === 'projectSortLayouts').value.slips[0].futureInk, 'blue')
 assert.equal(note.futureColor, 'blue')
 assert.equal(note.items[0].futureLink, 'f')
 assert.equal(note.items[0].kind, 'quote')
