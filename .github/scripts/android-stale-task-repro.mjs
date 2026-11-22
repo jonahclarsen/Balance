@@ -157,9 +157,11 @@ async function typeTask(text, { method = 'add', durable = true, composing = fals
       getSelection().addRange(range)
     })()`)
     // On mobile the first Enter inserts a line break; Enter on the resulting
-    // empty last line drops it and starts the next task.
+    // empty last line drops it and starts the next task. Send the key's text so
+    // it performs its editing action (beforeinput insertParagraph) like a real
+    // keyboard; mobile task editors handle Enter there, not on keydown.
     for (let press = 0; press < 2; press += 1) {
-      await client.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 })
+      await client.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r', unmodifiedText: '\r' })
       await client.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 })
     }
   }

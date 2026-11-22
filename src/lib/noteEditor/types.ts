@@ -69,6 +69,8 @@ export type NoteEditorMountOptions = {
   callbacks: NoteEditorHostCallbacks
   context: NoteEditorContext
   placeholder: string
+  // Accessible name of the editing surface (defaults to "Note text").
+  ariaLabel?: string
 }
 
 export interface NoteEditorView {

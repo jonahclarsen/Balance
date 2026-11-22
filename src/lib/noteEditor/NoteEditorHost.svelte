@@ -25,6 +25,7 @@
   // Resolves the element whose scrollTop the view state records (the note
   // document, the workspace, or the page depending on layout).
   export let scrollContainer: () => HTMLElement | null = () => null
+  export let ariaLabel = 'Note text'
   export let viewStatesByNote: ReadonlyMap<Id, NoteViewState> = new Map()
   export let onViewStateChange: (noteId: Id, state: NoteViewState) => void = () => {}
 
@@ -105,6 +106,7 @@
     nextView.mount({
       host,
       placeholder: 'Start writing…',
+      ariaLabel,
       context: { listTemplates, metrics, notes, isMac },
       callbacks: {
         onDocumentChanged: (source) => adapter?.handleDocumentChanged(source),

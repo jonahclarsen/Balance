@@ -9,6 +9,7 @@
   // settle the projects whose stretch ended, then pick the next ones.
   export let projects: Project[]
   export let date: string
+  export let active = true
   export let onAdd: (name: string) => Id | null
   export let onDone: (endings: Record<Id, 'completed' | 'archived' | 'open'>, activeIds: Id[], days: number) => void
   export let onClose: () => void
@@ -46,7 +47,7 @@
   }
 </script>
 
-<OverlayModal title="Pick projects" z={68} maxWidth={480} {onClose}>
+<OverlayModal title="Pick projects" z={68} maxWidth={480} {active} {onClose}>
   <div class="project-pick">
     {#each noteDays as day (day)}
       <section class="session" aria-label={historyDayHeading(day)}>
