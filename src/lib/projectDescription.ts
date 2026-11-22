@@ -1,7 +1,8 @@
 // Project descriptions are edited with the Notes editor but stored as lines of
 // text, one per block: list markers and two-space indents spell out the
 // structure ("- ", "1. ", "[ ] ", "# ", "> "), so older clients, card previews
-// and search keep reading plain text.
+// and search keep reading plain text. A line break inside a list item (Shift+
+// Enter) continues on a line indented to the item's text, as in Markdown.
 
 import { escapeHTML, htmlToPlainTextWithBreaks, sanitizeInlineHTML } from './planner'
 import { createNoteItemId, flattenNoteItems, noteTextFromHTML } from './noteEditor/noteItems'
@@ -19,8 +20,10 @@ export function descriptionFromNoteItems(items: NoteItem[]): SerializedDescripti
     for (const item of list) {
       number = item.kind === 'numbered' ? number + 1 : 0
       const prefix = INDENT.repeat(depth) + marker(item, number)
-      text.push(prefix + htmlToPlainTextWithBreaks(item.html || escapeHTML(item.text)))
-      html.push(escapeHTML(prefix) + (item.html || escapeHTML(item.text)))
+      const continuation = INDENT.repeat(depth) + ' '.repeat(prefix.length - INDENT.length * depth)
+      const itemHTML = item.html || escapeHTML(item.text)
+      htmlToPlainTextWithBreaks(itemHTML).split('\n').forEach((line, index) => text.push((index ? continuation : prefix) + line))
+      itemHTML.split('<br>').forEach((line, index) => html.push(escapeHTML(index ? continuation : prefix) + line))
       visit(item.children, depth + 1)
     }
   }
@@ -59,18 +62,20 @@ export function noteItemsFromDescription(description: string, descriptionHtml: s
   const ids = flattenNoteItems(previous).map((item) => item.id)
   const roots: NoteItem[] = []
   const stack: Array<{ depth: number; item: NoteItem }> = []
+  // The last list item and the column its text starts at, for continuations.
+  let last: { item: NoteItem; column: number } | null = null
 
-  lines.forEach((lineHTML, index) => {
+  for (const lineHTML of lines) {
     let html = lineHTML
     let text = noteTextFromHTML(html)
-    let depth = 0
-    while (text.startsWith(INDENT) && html.startsWith(INDENT)) {
-      depth += 1
-      text = text.slice(INDENT.length)
-      html = html.slice(INDENT.length)
-    }
+    let spaces = 0
+    while (text[spaces] === ' ' && html[spaces] === ' ') spaces += 1
+    text = text.slice(spaces)
+    html = html.slice(spaces)
+    const depth = Math.floor(spaces / INDENT.length)
     let kind: NoteItemKind = 'paragraph'
     let done = false
+    let markerLength = 0
     for (const entry of MARKERS) {
       const match = entry.pattern.exec(text)
       const escaped = match && escapeHTML(match[0])
@@ -79,11 +84,17 @@ export function noteItemsFromDescription(description: string, descriptionHtml: s
       done = Boolean(entry.done)
       html = html.slice(escaped.length)
       text = text.slice(match[0].length)
+      markerLength = match[0].length
       break
+    }
+    if (kind === 'paragraph' && last && spaces === last.column) {
+      last.item.html = `${last.item.html}<br>${html}`
+      last.item.text = noteTextFromHTML(last.item.html)
+      continue
     }
     while (stack.length && stack[stack.length - 1].depth >= depth) stack.pop()
     const item: NoteItem = {
-      id: ids[index] ?? createNoteItemId(),
+      id: ids.shift() ?? createNoteItemId(),
       kind,
       text: noteTextFromHTML(html),
       html: text.trim() ? html : '',
@@ -97,6 +108,7 @@ export function noteItemsFromDescription(description: string, descriptionHtml: s
     if (parent) parent.item.children.push(item)
     else roots.push(item)
     stack.push({ depth, item })
-  })
+    last = markerLength ? { item, column: depth * INDENT.length + markerLength } : null
+  }
   return roots
 }
