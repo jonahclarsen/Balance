@@ -457,7 +457,8 @@
   let celebrationPreviewAnnouncementTimer: number | null = null
   let goalBurst: GoalBurst | null = null
   let goalDoabilityReviews: GoalDoabilityReview[] = []
-  let projectPick: { date: string; resolve: (picked: boolean) => void } | null = null
+  $: projectPickVisible = projectPick?.view === view
+  let projectPick: { date: string; view: View; resolve: (picked: boolean) => void } | null = null
   let dayQuiz: { title: string; steps: TemplateQuizStep[]; resolve: (answers: TemplateQuizAnswers | null) => void } | null = null
   let resurfacing: { noteId: Id; date: string; resolve: (read: boolean) => void } | null = null
   $: resurfacingNote = resurfacing && $plannerStore.notes.find(({ id }) => id === resurfacing?.noteId)
@@ -4003,7 +4004,7 @@ return rows`
   function askProjectPick(date: string): Promise<boolean> {
     projectPick?.resolve(false)
     return new Promise((resolve) => {
-      projectPick = { date, resolve }
+      projectPick = { date, view, resolve }
     })
   }
 
@@ -4443,7 +4444,7 @@ return rows`
     }
 
     // Cmd/Ctrl-Shift and a template's letter generate an empty day with it.
-    if (view === 'today' && !activePlan && !dayQuiz && !projectPick && primaryModifier && event.shiftKey && !event.altKey && event.code.startsWith('Key')) {
+    if (view === 'today' && !activePlan && !dayQuiz && !projectPickVisible && primaryModifier && event.shiftKey && !event.altKey && event.code.startsWith('Key')) {
       const index = dayTemplateShortcuts.indexOf(event.code.slice(3))
       if (templates[index]) {
         event.preventDefault()
@@ -8943,17 +8944,20 @@ return rows`
     {/if}
 
     {#if projectPick}
-      <ProjectPickModal
-        projects={$plannerStore.projects}
-        date={projectPick.date}
-        onAdd={(name) => plannerStore.addProject(name)}
-        onDone={(endings, activeIds, days) => {
-          if (projectPick) plannerStore.reviewProjects(projectPick.date, endings, activeIds, days)
-          finishProjectPick(true)
-        }}
-        onClose={() => finishProjectPick(false)}
-        onOpenLink={(link) => openLink(link, null)}
-      />
+      {#key projectPick}
+        <ProjectPickModal
+          projects={$plannerStore.projects}
+          date={projectPick.date}
+          active={projectPickVisible}
+          onAdd={(name) => plannerStore.addProject(name)}
+          onDone={(endings, activeIds, days) => {
+            if (projectPick) plannerStore.reviewProjects(projectPick.date, endings, activeIds, days)
+            finishProjectPick(true)
+          }}
+          onClose={() => finishProjectPick(false)}
+          onOpenLink={(link) => openLink(link, null)}
+        />
+      {/key}
     {/if}
 
     {#if dayQuiz}
