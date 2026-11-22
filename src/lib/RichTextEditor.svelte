@@ -242,30 +242,12 @@
     }
 
     if (event.key === 'Enter' && !event.metaKey && !event.ctrlKey && !event.altKey && !event.isComposing) {
-      if (singleLine) {
+      // Mobile keyboards can send a paragraph edit without a usable keydown.
+      // Handle plain Enter once, at the edit event, in mobile task editors.
+      if (usesMobileEnter() && !event.shiftKey) return
+      if (singleLine || event.shiftKey || onSplit) {
         event.preventDefault()
-        return
-      }
-
-      if (event.shiftKey || (enterInsertsLineBreak && onSplit && !isCaretAtStart(activeEditor) && !caretFollowsLineBreak(activeEditor))) {
-        event.preventDefault()
-        document.execCommand('insertLineBreak')
-        persistEditor(activeEditor, false)
-        return
-      }
-
-      if (onSplit) {
-        event.preventDefault()
-        const split = splitEditorAtSelection(activeEditor)
-        // The line break before the caret becomes the item boundary instead.
-        if (enterInsertsLineBreak) {
-          split.before = withoutEdgeLineBreaks(split.before.html, 'last')
-          split.after = withoutEdgeLineBreaks(split.after.html, 'first')
-        }
-        const source = split.before.html === '' && split.before.text === '' ? split.after : split.before
-        activeEditor.innerHTML = source.html
-        renderedHTML = source.html
-        await onSplit(split.before, split.after, activeEditor)
+        await applyEnter(activeEditor, event.shiftKey)
         return
       }
     }
@@ -514,10 +496,41 @@
     lastInteractionSelection = saveSelection(activeEditor)
   }
 
+  function usesMobileEnter() {
+    return enterInsertsLineBreak && onSplit && !singleLine
+  }
+
+  async function applyEnter(activeEditor: HTMLDivElement, forceLineBreak: boolean) {
+    if (singleLine) return
+    if (forceLineBreak || (usesMobileEnter() && !isCaretAtStart(activeEditor) && !caretFollowsLineBreak(activeEditor))) {
+      document.execCommand('insertLineBreak')
+      persistEditor(activeEditor, false)
+      return
+    }
+
+    if (!onSplit) return
+    const split = splitEditorAtSelection(activeEditor)
+    // The line break before the caret becomes the item boundary instead.
+    if (enterInsertsLineBreak) {
+      split.before = withoutEdgeLineBreaks(split.before.html, 'last')
+      split.after = withoutEdgeLineBreaks(split.after.html, 'first')
+    }
+    const source = split.before.html === '' && split.before.text === '' ? split.after : split.before
+    activeEditor.innerHTML = source.html
+    renderedHTML = source.html
+    await onSplit(split.before, split.after, activeEditor)
+  }
+
   function handleBeforeInput(event: InputEvent) {
     const activeEditor = event.currentTarget as HTMLDivElement
     onBeforeInput?.(activeEditor, event)
-    if (event.defaultPrevented || event.inputType !== 'insertText' || !event.data) return
+    if (event.defaultPrevented) return
+    if (event.inputType === 'insertParagraph' && event.cancelable && !event.isComposing && usesMobileEnter()) {
+      event.preventDefault()
+      void applyEnter(activeEditor, false)
+      return
+    }
+    if (event.inputType !== 'insertText' || !event.data) return
     if (!insertTextAroundCode(activeEditor, event.data)) return
     event.preventDefault()
     persistEditor(activeEditor, false, { mergeHistory: event.data !== '`' })

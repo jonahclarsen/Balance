@@ -848,34 +848,49 @@ async function keyboardViewport(page: import('@playwright/test').Page, height: n
   }, { height, offsetTop })
 }
 
-test('mobile Enter adds a line and Enter on an empty last line starts the next task', async ({ page }, testInfo) => {
-  test.skip(!isMobileProject(testInfo.project.name), 'Desktop Enter always starts the next task')
-  const taskEditors = page.locator('[data-plan-text-input]')
-  const taskCount = await taskEditors.count()
-  const editor = page
-    .getByRole('listitem', { name: 'Plan item: Another task used to verify mobile drag selection' })
-    .locator('[data-plan-text-input]')
-  await editor.evaluate((element: HTMLElement) => {
-    element.focus()
-    const selection = getSelection()!
-    selection.selectAllChildren(element)
-    selection.collapseToEnd()
+for (const input of ['keyboard', 'beforeinput']) {
+  test(`mobile Enter via ${input} adds one line and starts the next task on an empty last line`, async ({ page }, testInfo) => {
+    test.skip(!isMobileProject(testInfo.project.name), 'Desktop Enter always starts the next task')
+    const taskEditors = page.locator('[data-plan-text-input]')
+    const taskCount = await taskEditors.count()
+    const editor = page
+      .getByRole('listitem', { name: 'Plan item: Another task used to verify mobile drag selection' })
+      .locator('[data-plan-text-input]')
+    await editor.evaluate((element: HTMLElement) => {
+      element.focus()
+      const selection = getSelection()!
+      selection.selectAllChildren(element)
+      selection.collapseToEnd()
+    })
+
+    async function enter() {
+      if (input === 'keyboard') {
+        await page.keyboard.press('Enter')
+        return
+      }
+      const allowed = await editor.evaluate((element) => element.dispatchEvent(new InputEvent('beforeinput', {
+        inputType: 'insertParagraph',
+        bubbles: true,
+        cancelable: true,
+      })))
+      expect(allowed).toBe(false)
+    }
+
+    await enter()
+    await page.keyboard.insertText('second line')
+    await expect(taskEditors).toHaveCount(taskCount)
+    await expect(editor).toHaveText('Another task used to verify mobile drag selectionsecond line')
+    await expect(editor.locator('br')).toHaveCount(1)
+
+    await enter()
+    await expect(taskEditors).toHaveCount(taskCount)
+    await enter()
+    await expect(taskEditors).toHaveCount(taskCount + 1)
+    await expect(editor.locator('br')).toHaveCount(1)
+    await page.keyboard.insertText('Next task')
+    await expect(page.getByRole('listitem', { name: 'Plan item: Next task', exact: true })).toBeVisible()
   })
-
-  await page.keyboard.press('Enter')
-  await page.keyboard.insertText('second line')
-  await expect(taskEditors).toHaveCount(taskCount)
-  await expect(editor).toHaveText('Another task used to verify mobile drag selectionsecond line')
-  await expect(editor.locator('br')).toHaveCount(1)
-
-  await page.keyboard.press('Enter')
-  await expect(taskEditors).toHaveCount(taskCount)
-  await page.keyboard.press('Enter')
-  await expect(taskEditors).toHaveCount(taskCount + 1)
-  await expect(editor.locator('br')).toHaveCount(1)
-  await page.keyboard.insertText('Next task')
-  await expect(page.getByRole('listitem', { name: 'Plan item: Next task', exact: true })).toBeVisible()
-})
+}
 
 test('mobile Enter at the very start of a task starts a new task above it', async ({ page }, testInfo) => {
   test.skip(!isMobileProject(testInfo.project.name), 'Desktop Enter always starts the next task')
