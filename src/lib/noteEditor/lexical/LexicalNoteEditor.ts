@@ -302,7 +302,7 @@ class LexicalNoteEditorView implements NoteEditorView {
     root.spellcheck = true
     root.setAttribute('role', 'textbox')
     root.setAttribute('aria-multiline', 'true')
-    root.setAttribute('aria-label', 'Note text')
+    root.setAttribute('aria-label', options.ariaLabel ?? 'Note text')
     root.dataset.richTextInput = 'true'
     root.dataset.noteTextInput = 'true'
     root.dataset.placeholder = options.placeholder

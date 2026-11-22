@@ -16,8 +16,9 @@
   import { projectReordering } from './projectReordering'
   import { mountInContentShell } from './contentShellOverlay'
   import RichTextEditor from './RichTextEditor.svelte'
+  import ProjectDescriptionEditor from './ProjectDescriptionEditor.svelte'
   import { showCaretOnResize } from './showCaretOnResize'
-  import { escapeHTML, htmlToPlainTextWithBreaks, sanitizeInlineHTML, type ItemLink } from './planner'
+  import { escapeHTML, sanitizeInlineHTML, type ItemLink } from './planner'
   import { filterProjectsByPhrase, isProjectActive, isProjectOpen, PROJECT_ACTIVE_DAY_COUNTS } from './projects'
   export let projects: Project[] = []
   export let linkedProjectId = ''
@@ -55,10 +56,6 @@
   $: detailsActive = details ? active.includes(details) : false
   $: if (detailsId && !details) closeDetails()
 
-  // Descriptions written before descriptionHtml existed are plain text with line breaks.
-  function descriptionHTML(project: Project) {
-    return project.descriptionHtml ?? escapeHTML(project.description).replace(/\n/g, '<br>')
-  }
   function shortDate(iso: string) {
     const date = new Date(iso)
     return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', ...(date.getFullYear() === new Date().getFullYear() ? {} : { year: 'numeric' }) })
@@ -239,26 +236,7 @@
         }}
         onChange={(html, text) => { if (text.trim() && (text.trim() !== project.name || html !== (project.nameHtml ?? escapeHTML(project.name)))) plannerStore.updateProject(project.id, { name: text.trim(), nameHtml: html }) }}
       /></div>
-      <div class="description-field" use:showCaretOnResize><span>Description</span><RichTextEditor
-        className="rich-text-field description-editor"
-        kind="project-description"
-        inputId={`project-description:${project.id}`}
-        html={descriptionHTML(project)}
-        text={project.description}
-        ariaLabel="Description"
-        revision={$plannerStore.historyRevision}
-        onKeyDown={(_editor, event) => {
-          // Enter starts a new line; the description is one block of text.
-          if (event.key !== 'Enter' || event.shiftKey || event.metaKey || event.ctrlKey || event.altKey || event.isComposing) return
-          event.preventDefault()
-          document.execCommand('insertLineBreak')
-        }}
-        onInternalLinkClick={(link) => { closeDetails(); onOpenLink(link) }}
-        onChange={(html) => {
-          const description = htmlToPlainTextWithBreaks(html)
-          if (description !== project.description || html !== descriptionHTML(project)) plannerStore.updateProject(project.id, { description, descriptionHtml: html })
-        }}
-      /></div>
+      <div class="description-field" use:showCaretOnResize><span>Description</span><div class="rich-text-field description-editor"><ProjectDescriptionEditor {project} onOpenLink={(link) => { closeDetails(); onOpenLink(link) }} /></div></div>
       {#if project.archived}
         <p class="project-status">Archived{project.archivedAt ? ` ${shortDate(project.archivedAt)}` : ''}</p>
         <div class="project-actions">
@@ -339,4 +317,5 @@
   .project-actions button { font-size: 14px; padding: 8px 10px; }
   .project-days button { min-width: 40px; font-size: 15px; padding: 8px 0; font-variant-numeric: tabular-nums; }
   .description-field :global(.description-editor) { min-height: 96px; flex-shrink: 1; overflow-y: auto; }
+  .description-field :global(.description-editor:focus-within) { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 </style>
