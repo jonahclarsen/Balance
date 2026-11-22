@@ -177,7 +177,7 @@ const SYNC_LOG_DIRTY_SINCE_MS: &str = "sync_log_dirty_since_ms";
 const REPLICATED_PREFERENCES: &str = "replicated_preferences";
 const DEVICE_APPEARANCE: &str = "device_appearance";
 const DAY_THEME_PREFERENCE_PREFIX: &str = "dayTheme/";
-const ENTITY_COLLECTIONS: [&str; 23] = [
+const ENTITY_COLLECTIONS: [&str; 24] = [
     "images",
     "uneditedPlanItems",
     "templateQuestions",
