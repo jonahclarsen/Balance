@@ -330,7 +330,6 @@
   let view: View = import.meta.env.VITE_BALANCE_START_VIEW === 'today'
     ? 'today'
     : (resumesLastView && storedWorkspaceViewState?.view) || 'next'
-  let linkedSortId = ''
   let linkedProjectId = ''
 
   function applyDefaultZoom(zoom = APP_DEFAULT_ZOOM) {
@@ -1870,12 +1869,6 @@ return rows`
       view = target.view
     } else if (target.kind === 'day') {
       openDateInToday(target.date)
-    } else if (target.kind === 'project-sort') {
-      if (!$plannerStore.projectSorts.some(sort => sort.saved && sort.id === target.id)) return unavailableLink()
-      view = 'projects'
-      linkedSortId = ''
-      await tick()
-      linkedSortId = target.id
     } else if (target.kind === 'task') {
       const plan = $plannerStore.plans.find(plan => findPlanItem(plan.items, target.id))
       const list = !plan && $plannerStore.lists.find(list => findPlanItem(list.items, target.id))
@@ -4228,7 +4221,6 @@ return rows`
   }
 
   function handleGlobalKeydown(event: KeyboardEvent) {
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z' && document.querySelector('.sort-view')) return
     if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || event.key === 'Escape') stopKeyboardScroll()
     if (document.querySelector('dialog[data-image-dialog][open]')) return
     if ($selectedImage && event.target === $selectedImage.editor && (event.key === 'Backspace' || event.key === 'Delete' || event.key === 'Escape' || event.key.startsWith('Arrow'))) return
@@ -8225,7 +8217,7 @@ return rows`
         bind:this={projectsPanel}
         searchShortcutLabel={isMac ? '⌘F' : 'Ctrl+F'}
         projects={$plannerStore.projects}
-        {linkedProjectId} {linkedSortId} onSortOpened={() => linkedSortId = ''}
+        {linkedProjectId}
         now={projectClock}
         showingHistory={view === 'projectHistory'}
         onShowHistory={openProjectHistory}

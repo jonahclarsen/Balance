@@ -45,7 +45,7 @@
         { keys: ['mod', 'G'], label: 'Next find match (while Find is open)', alt: ['F3'] },
         { keys: ['mod', 'shift', 'G'], label: 'Previous find match (while Find is open)', alt: ['shift', 'F3'] },
         { keys: ['mod', 'S'], label: 'Open Goal Stats (while in Goals)' },
-        { keys: ['mod', 'Z'], label: 'Undo and reveal change (undoes typing in unsaved fields or the last cut in Project Sort)' },
+        { keys: ['mod', 'Z'], label: 'Undo and reveal change (undoes typing in unsaved fields)' },
         { keys: ['mod', 'shift', 'Z'], label: 'Redo and reveal change (redoes typing in unsaved fields)', alt: ['mod', 'shift', 'C'] },
         { keys: ['mod', 'shift', 'P'], label: 'Open recovery panel' },
         { keys: ['esc'], label: 'Close backup browser (workspace shortcuts pause while browsing)' },

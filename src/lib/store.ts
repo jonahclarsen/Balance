@@ -222,7 +222,6 @@ const ENTITY_COLLECTIONS = [
   'noteResurfacing',
   'projects',
   'projectCheckIns',
-  'projectSorts',
   'projectHistoryNotes',
   'dayGenerations',
   'ideaBuckets',
@@ -2944,20 +2943,8 @@ function createPlannerStore() {
     },
 
     // Projects > History writing; the first item creates its record.
-    putProjectSort(record: import('./types').ProjectSortRecord) {
-      commitEntities('update_project_sort', { id: record.id }, state => {
-        const previous = state.projectSorts.find(sort => sort.id === record.id)
-        if (previous?.saved) return state
-        const projectSorts = previous
-          ? state.projectSorts.map(sort => sort === previous ? { ...sort, ...record } : sort)
-          : [...state.projectSorts, record]
-        return { ...state, projectSorts }
-      }, { undoable: record.saved })
-    },
-
-    addProjectHistoryNoteItem(noteId: Id, text = '') {
-      const item = createNoteItem(text, 'paragraph')
-      if (text) item.html = sanitizeInlineHTML(`<a href="${escapeHTML(text)}">${escapeHTML(text)}</a>`)
+    addProjectHistoryNoteItem(noteId: Id) {
+      const item = createNoteItem('', 'paragraph')
       commitEntities('add_project_history_note_item', { noteId, item }, (state) => {
         const timestamp = nowISO()
         const existing = state.projectHistoryNotes.find((note) => note.id === noteId)
@@ -4534,7 +4521,6 @@ export async function inspectDatabase(): Promise<DatabaseInspection | null> {
       metricEntries: [],
       projects: [],
       projectCheckIns: [],
-      projectSorts: [],
       projectHistoryNotes: [],
       dayGenerations: [],
       ideaBuckets: [],
@@ -4681,7 +4667,6 @@ function* normalizeStateSteps(state: AppState): Generator<void, AppState, void> 
     situateRules: state.situateRules ?? [],
     projects: state.projects ?? [],
     projectCheckIns: state.projectCheckIns ?? [],
-    projectSorts: state.projectSorts ?? [],
     projectHistoryNotes: yield* normalizeRecords(state.projectHistoryNotes ?? [], normalize.projectHistoryNotes),
     dayGenerations: state.dayGenerations ?? [],
     ideaBuckets: state.ideaBuckets ?? [],

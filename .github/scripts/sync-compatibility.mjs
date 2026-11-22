@@ -116,9 +116,7 @@ console.log('PASS: released day replacement/checkpoint preserves an offline addi
 // A future producer uses only this release's generic storage contract. This
 // executable has no schema/UI for the future collection or nested field.
 run(futureBinary, 'future', 'init', { state: state('future-device') })
-const projectSort = { id: 'sort-synthetic', startedAt: '2026-09-08T12:00:00Z', saved: true, titles: [{ id: 'p', name: 'Synthetic' }], cuts: [], slips: [{ id: 'p', rows: [[0,0,20]], center: { x: 10, y: 0 }, place: { x: .5, y: .5 } }] }
 let future = run(futureBinary, 'future', 'write', { operation: generic('future-device', 1, [
-  record('projectSorts', projectSort.id, projectSort),
   record('listTemplates', largeListTemplate.id, largeListTemplate),
   record('lists', largeList.id, largeList),
   record('templateListExpansions', 'synthetic-option', { id: 'synthetic-option', listTemplateIds: ['synthetic-list'] }),
@@ -160,7 +158,6 @@ assert.deepEqual(blind.entities, beforeCompact)
 future = run(futureBinary, 'future', 'merge', { operations: blind.operations })
 assert.deepEqual(future.entities, blind.entities)
 const reservedIdea = future.entities.find((row) => row.collection === 'ideaBuckets').value.items[0]
-assert.deepEqual(future.entities.find(row => row.collection === 'projectSorts').value, projectSort)
 assert.equal(reservedIdea.dayAssignmentDate, '2026-09-08')
 assert.equal(reservedIdea.text, 'Synthetic edited idea')
 assert.deepEqual(future.entities.find((row) => row.collection === 'templateListExpansions').value, { id: 'synthetic-option', listTemplateIds: ['synthetic-list'] })

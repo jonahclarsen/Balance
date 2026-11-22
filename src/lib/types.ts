@@ -426,16 +426,6 @@ export type DayGeneration = {
   shownIdeaIds: Id[]
 }
 
-export interface ProjectSortRecord {
-  id: string
-  startedAt: string
-  saved: boolean
-  titles: { id: string; name: string }[]
-  cuts: number[]
-  slips: { id: string; rows: number[][]; center: { x: number; y: number }; place?: { x: number; y: number } }[]
-  preview?: string
-}
-
 export type AppState = {
   images: ImageAsset[]
   schemaVersion: 1
@@ -460,7 +450,6 @@ export type AppState = {
   metricEntries: MetricEntry[]
   projects: Project[]
   projectCheckIns: ProjectCheckIn[]
-  projectSorts: ProjectSortRecord[]
   projectHistoryNotes: ProjectHistoryNote[]
   dayGenerations: DayGeneration[]
   // Stored as the ideaBuckets collection, with bucket_<kind> record IDs.
