@@ -1187,3 +1187,59 @@ test('Search opens over the idea sorter and keeps the letters typed into it', as
   await page.keyboard.press('t')
   await expectIdea(page, 2, 2)
 })
+
+test('Option-F on the Ideas page opens the link at the mouse or caret', async ({ page }) => {
+  await open(page)
+  await storeCall(page, `
+    const id = plannerStore.addIdea('Read alpha then beta.')
+    let state
+    plannerStore.subscribe(value => { state = value })()
+    const group = state.ideaBuckets.find(group => group.kind === 'proposition')
+    plannerStore.patchIdeaItem(group.id, id, {
+      html: 'Read <a href="https://example.com/alpha">alpha</a> then <a href="https://example.com/beta">beta</a>.',
+    })
+  `)
+  await page.evaluate(() => {
+    ;(window as any).openedURLs = []
+    window.open = ((url?: string | URL) => {
+      ;(window as any).openedURLs.push(String(url))
+      return null
+    }) as typeof window.open
+  })
+  await openView(page, 'Ideas')
+  const idea = rows(page, 'proposition').first()
+  const opened = () => page.evaluate(() => (window as any).openedURLs)
+
+  // Caret right after "beta", just before the full stop.
+  await idea.click()
+  await idea.evaluate((editor) => {
+    const anchor = editor.querySelectorAll('a')[1]
+    const range = document.createRange()
+    range.setStartAfter(anchor)
+    range.collapse(true)
+    getSelection()!.removeAllRanges()
+    getSelection()!.addRange(range)
+  })
+  await page.mouse.move(0, 0)
+  await page.keyboard.press('Alt+f')
+  await expect.poll(opened).toEqual(['https://example.com/beta'])
+  await expect(idea).toHaveText('Read alpha then beta.')
+
+  // Caret right before "alpha".
+  await idea.evaluate((editor) => {
+    const range = document.createRange()
+    range.setStartBefore(editor.querySelector('a')!)
+    range.collapse(true)
+    getSelection()!.removeAllRanges()
+    getSelection()!.addRange(range)
+  })
+  await page.clock.fastForward(600)
+  await page.keyboard.press('Alt+f')
+  await expect.poll(opened).toEqual(['https://example.com/beta', 'https://example.com/alpha'])
+
+  // The mouse over a link wins over the caret.
+  await idea.getByRole('link', { name: 'beta' }).hover()
+  await page.clock.fastForward(600)
+  await page.keyboard.press('Alt+f')
+  await expect.poll(opened).toEqual(['https://example.com/beta', 'https://example.com/alpha', 'https://example.com/beta'])
+})
