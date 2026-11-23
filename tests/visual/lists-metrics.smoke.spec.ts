@@ -261,6 +261,7 @@ test('quiz links in a list template open the quiz editor instead of the quiz', a
 
   await openLists(page)
   await page.getByRole('button', { name: '+ New list' }).click()
+  await page.getByLabel('List name', { exact: true }).fill('Checkin')
   const listItem = page.locator('[data-list-template-text-input]').first()
   await listItem.fill('log Mood now')
   await listItem.blur()
@@ -269,6 +270,20 @@ test('quiz links in a list template open the quiz editor instead of the quiz', a
   await expect(page.getByRole('dialog', { name: 'Mood' })).toHaveCount(0)
   await expect(page.getByRole('heading', { name: 'Quizzes' })).toBeVisible()
   await expect(page.getByLabel('Quiz name')).toHaveValue('Mood')
+
+  // The Quizzes page takes the selected quiz for today.
+  await page.getByRole('button', { name: "Take Today's Quiz" }).click()
+  await expect(page.getByRole('dialog', { name: 'Mood' })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog', { name: 'Mood' })).toHaveCount(0)
+
+  // Today's list opened from the Lists page takes the quiz, as on Today.
+  await openLists(page)
+  await page.getByRole('button', { name: "View Today's List" }).click()
+  const checklist = page.getByRole('dialog', { name: 'Checkin' })
+  await checklist.getByTitle('Open Mood').first().click()
+  await expect(page.getByRole('dialog', { name: 'Mood' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Lists' })).toBeVisible()
 })
 
 test('a numeric quiz records an answer from its task link and shows it on the graph', async ({ page }) => {

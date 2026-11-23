@@ -145,11 +145,11 @@
   {:else}
   <header class="page-header projects-header">
     <h2>Projects</h2>
-    <div class="projects-header-actions">
+    <div class="page-actions projects-header-actions">
       <input class="projects-search" type="search" aria-label="Search projects" placeholder={`Search projects…${searchShortcutLabel ? ` (${searchShortcutLabel})` : ''}`} bind:this={searchInput} bind:value={search} />
-      <button class="ghost" type="button" on:click={onPick}>Pick</button>
-      <button class="ghost" type="button" on:click={onSort}>Sort</button>
-      <button class="ghost" type="button" on:click={onShowHistory}>History</button>
+      <button class="page-action" type="button" on:click={onPick}>Pick</button>
+      <button class="page-action" type="button" on:click={onSort}>Sort</button>
+      <button class="page-action" type="button" on:click={onShowHistory}>History</button>
     </div>
   </header>
   {#if linkedProjectId && !projects.some((project) => project.id === linkedProjectId)}<p class="muted">Project unavailable.</p>{/if}
@@ -270,9 +270,9 @@
   .details-overlay { display: contents; }
   .page-header h2 { margin: 0; }
   .projects-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  .projects-header button { font-size: 14px; padding: 6px 10px; }
+  .history-header button { font-size: 14px; padding: 6px 10px; }
   .projects-header-actions { display: flex; align-items: center; justify-content: flex-end; flex: 1 1 auto; gap: 6px; min-width: 0; }
-  .projects-search { flex: 0 1 260px; min-width: min(100%, 21ch); min-height: 34px; }
+  .projects-search { flex: 0 1 260px; min-width: min(100%, 21ch); min-height: 36px; }
   .projects-header-actions { flex-wrap: wrap; }
   .projects-header:not(.history-header) { flex-wrap: wrap; }
   @media (max-width: 540px) {

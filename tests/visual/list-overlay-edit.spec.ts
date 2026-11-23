@@ -1016,7 +1016,7 @@ test('list runs are timed against the ideal time set on the template', async ({ 
   await dialog.getByRole('listitem', { name: 'Plan item: Eggs' }).getByRole('checkbox').click()
   await expect(dialog).toHaveCount(0)
   await openView(page, 'Lists')
-  await page.getByRole('button', { name: 'View List History →' }).click()
+  await page.getByRole('button', { name: 'View List History' }).click()
   await expect(page.getByRole('timer')).toHaveText('200%')
   await advanceRunTime(60_000)
   await expect(page.getByRole('timer')).toHaveText('200%')
@@ -1072,7 +1072,7 @@ test('List History keeps the selected row clear of the mobile header', async ({ 
   await page.keyboard.press('Escape')
   await expect(dialog).toHaveCount(0)
   await openView(page, 'Lists')
-  await page.getByRole('button', { name: 'View List History →' }).click()
+  await page.getByRole('button', { name: 'View List History' }).click()
 
   const header = page.locator('.mobile-app-header')
   for (const text of ['Item 06', 'Item 07', 'Item 08']) {

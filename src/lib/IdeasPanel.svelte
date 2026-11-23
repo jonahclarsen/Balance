@@ -350,23 +350,23 @@
 <section class="ideas-panel">
   <header class="page-header">
     <h2>Ideas</h2>
-    <div class="template-panel-actions">
+    <div class="page-actions">
       {#if activeGroup === 'proposition'}
-        <button type="button" disabled={activeItems.length === 0} on:click={onSortPropositions}>Sort</button>
+        <button class="page-action" type="button" disabled={activeItems.length === 0} on:click={onSortPropositions}>Sort</button>
       {:else if activeScheduled}
         {#if mobile}<IdeaReviewCadence kind={activeScheduled} {groups} label={activeMeta.label} />{/if}
-        <button type="button" on:click={onReview}>Review</button>
+        <button class="page-action" type="button" on:click={onReview}>Review</button>
       {:else if activeGroup === 'trash'}
         <span class="idea-group-note">clears after {IDEA_TRASH_RETENTION_DAYS} days</span>
       {/if}
       {#if canTranscribe && untranscribed.length > 0 && $voiceRecording.state === 'idle'}
-        <button class="ghost" type="button" disabled={transcribing.state !== 'idle'} on:click={() => transcribe(untranscribed)}>
+        <button class="page-action" type="button" disabled={transcribing.state !== 'idle'} on:click={() => transcribe(untranscribed)}>
           {#if transcribing.state === 'downloading'}Downloading {Math.round(transcribing.fraction * 100)}%{:else if transcribing.state === 'transcribing'}Transcribing {transcribing.done + 1}/{transcribing.total}{:else if transcribing.state === 'preparing'}Transcribing…{:else}Transcribe {untranscribed.length}{/if}
         </button>
       {/if}
       <!-- A new recording lands in Proposition Party, so show it there. -->
       <VoiceRecordControls onStart={() => onSelectGroup('proposition')} />
-      <button type="button" on:click={onImport}>Import</button>
+      <button class="page-action" type="button" on:click={onImport}>Import</button>
     </div>
   </header>
 
@@ -490,8 +490,6 @@
   .page-header h2 { margin: 0; }
   .add-row-top { margin: 0 0 12px; }
   .idea-group-list > .add-row:first-child:last-child { margin: 0; }
-  .template-panel-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-  .template-panel-actions button { font-size: 14px; padding: 6px 10px; }
   .ideas-layout {
     display: grid;
     grid-template-columns: 230px minmax(0, 1fr);

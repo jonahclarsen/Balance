@@ -1525,28 +1525,37 @@ nav button.active {
 .goal-search-input {
   flex: 0 1 260px;
   min-width: 0;
-  min-height: 38px;
+  min-height: 36px;
+}
+
+/* Every page's top-right actions share one button style. */
+.page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.page-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  gap: 8px;
+  min-height: 36px;
+  padding: 6px 12px;
+  font-size: 14px;
 }
 
 .goals-header-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
   flex: 0 1 340px;
-  gap: 8px;
+  flex-wrap: nowrap;
   min-width: 0;
 }
 
 .goals-header-actions .goal-search-input {
   flex: 1 1 260px;
-}
-
-.goal-stats-button {
-  display: inline-flex;
-  align-items: center;
-  flex: 0 0 auto;
-  gap: 8px;
-  min-height: 38px;
 }
 
 .generate-day-button {
@@ -5370,7 +5379,7 @@ body.mobile-checkbox-dragging {
 
   .goal-search-input {
     width: 100%;
-    min-height: 38px;
+    min-height: 36px;
     flex: 0 0 auto;
   }
 
@@ -5384,7 +5393,11 @@ body.mobile-checkbox-dragging {
     flex: 1 1 auto;
   }
 
-  .goals-header-actions .goal-stats-button .nav-shortcut {
+  .page-actions {
+    justify-content: flex-start;
+  }
+
+  .goals-header-actions .page-action .nav-shortcut {
     display: inline-block;
   }
 
@@ -6207,24 +6220,6 @@ a[href^="balance://page/settings"] {
 }
 
 @media (max-width: 760px) {
-  .metric-page-header {
-    align-items: center;
-    flex-direction: row;
-    gap: 10px;
-    margin-bottom: 14px;
-  }
-
-  .metric-page-header h2 {
-    font-size: 26px;
-  }
-
-  .metric-page-header button {
-    min-height: 40px;
-    margin-left: auto;
-    padding: 7px 10px;
-    font-size: 13px;
-  }
-
   .metric-rail {
     margin-inline: -12px;
     margin-bottom: 14px;
@@ -6314,12 +6309,6 @@ a[href^="balance://page/settings"] {
 }
 
 /* Notes */
-.notes-page-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
 /* Keep Notes' extra magnification local so navigation and Goal Rhythm retain
    the app-wide zoom in native webviews too. */
 .notes-view-workspace {
@@ -6344,20 +6333,6 @@ a[href^="balance://page/settings"] {
     border-left-width: calc(6px * var(--notes-page-zoom-inverse));
     padding: calc(28px * var(--notes-page-zoom-inverse)) calc(22px * var(--notes-page-zoom-inverse));
   }
-}
-
-.notes-trash-header-button {
-  border-color: transparent;
-  background: transparent;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.notes-trash-header-button:hover,
-.notes-trash-header-button:focus-visible {
-  border-color: var(--line);
-  background: var(--paper-strong);
-  color: var(--ink);
 }
 
 .notes-trash-header-button.active,

@@ -1827,6 +1827,10 @@ return rows`
         delete listOverlayBottomCollapsesByList[listId]
         listOverlay = { listId, date, opener }
       })
+    } else if (opener?.container === 'list') {
+      // A quiz inside an open list is taken for that list's day, even from the Lists page.
+      const listDate = $plannerStore.lists.find((list) => list.id === opener.containerId)?.date
+      metricOverlay = { metricId: link.metricId, date: listDate ?? date, opener }
     } else if (view === 'listTemplates') {
       // While authoring a list template, a quiz link edits the quiz instead of taking it.
       if (metrics.some((metric) => metric.id === link.metricId)) {
@@ -7748,11 +7752,11 @@ return rows`
         <div>
           <h2>Lists</h2>
         </div>
-        <div class="template-panel-actions">
+        <div class="page-actions">
           {#if selectedListTemplate}
             {@const template = selectedListTemplate}
             <button
-              class="primary outlined"
+              class="page-action"
               type="button"
               title="Alt+E" aria-keyshortcuts="Alt+E"
               on:click={() => openTodaysList(template)}
@@ -7760,7 +7764,7 @@ return rows`
               View Today's List
             </button>
           {/if}
-          <button class="primary outlined" type="button" on:click={openListHistory}>View List History →</button>
+          <button class="page-action" type="button" on:click={openListHistory}>View List History</button>
         </div>
       </header>
 
@@ -8074,9 +8078,9 @@ return rows`
         <div>
           <h2>Notes</h2>
         </div>
-        <div class="notes-page-actions">
+        <div class="page-actions notes-page-actions">
           <button
-            class="notes-trash-header-button"
+            class="page-action notes-trash-header-button"
             class:active={notesTrashOpen}
             type="button"
             aria-pressed={notesTrashOpen}
@@ -8119,12 +8123,24 @@ return rows`
     {/if}
 
     {#if view === 'metrics'}
-      <header class="page-header metric-page-header">
+      <header class="page-header">
         <div>
           <h2>Quizzes</h2>
         </div>
         {#if metrics.length > 0}
-          <button type="button" on:click={openImportModal}>Import past data</button>
+          <div class="page-actions">
+            {#if selectedMetric}
+              {@const metric = selectedMetric}
+              <button
+                class="page-action"
+                type="button"
+                on:click={() => (metricOverlay = { metricId: metric.id, date: currentDay, opener: null })}
+              >
+                Take Today's Quiz
+              </button>
+            {/if}
+            <button class="page-action" type="button" on:click={openImportModal}>Import past data</button>
+          </div>
         {/if}
       </header>
 
@@ -8278,9 +8294,9 @@ return rows`
         <div>
           <h2>Goals</h2>
         </div>
-        <div class="goals-header-actions">
+        <div class="page-actions goals-header-actions">
           <button
-            class="goal-stats-button"
+            class="page-action"
             type="button"
             title={`Stats (${primaryShortcutLabel('S')})`}
             aria-keyshortcuts={isMac ? 'Meta+S' : 'Control+S'}
