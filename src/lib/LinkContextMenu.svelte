@@ -20,6 +20,7 @@
   let previousFocus: HTMLElement | null = null
   let statusTimer: ReturnType<typeof setTimeout>
   let openedAt = 0
+  let lastPointerType = ''
 
   function close(restore = false) {
     options = []
@@ -64,8 +65,10 @@
   async function open(event: MouseEvent) {
     // Shift preserves the browser's menu, including its spelling tools.
     if (event.shiftKey || !(event.target instanceof Element)) return
-    // A long press in a field keeps the platform's cut/copy/paste menu.
-    const touch = (event as PointerEvent).pointerType === 'touch' || (event as MouseEvent & { sourceCapabilities?: { firesTouchEvents?: boolean } }).sourceCapabilities?.firesTouchEvents
+    // A long press in a field keeps the platform's cut/copy/paste menu and
+    // keyboard. Android WebView's long-press contextmenu carries no touch
+    // pointerType, so also trust the press that started it.
+    const touch = (event as PointerEvent).pointerType === 'touch' || lastPointerType === 'touch' || lastPointerType === 'pen' || (event as MouseEvent & { sourceCapabilities?: { firesTouchEvents?: boolean } }).sourceCapabilities?.firesTouchEvents
     if (touch && event.target.closest('input, textarea, [contenteditable="true"]')) return
     const url = linkAtElement(event.target)
     if (!url) return
@@ -121,7 +124,10 @@
     }
     window.addEventListener('balance-copy-link', copyRequest)
     const context = (event: MouseEvent) => { void open(event) }
-    const dismiss = (event: PointerEvent) => { if (options.length && !menu?.contains(event.target as Node)) close() }
+    const dismiss = (event: PointerEvent) => {
+      lastPointerType = event.pointerType
+      if (options.length && !menu?.contains(event.target as Node)) close()
+    }
     // Scrolling closes the menu, except for the settling scroll from the press
     // that opened it (a long press on a phone's sideways card strip).
     const scroll = (event: Event) => { if (event.type === 'resize' || performance.now() - openedAt > 300) close() }

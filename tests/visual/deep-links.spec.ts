@@ -125,6 +125,25 @@ test('context links choose the nearest object and return to tasks and note parag
   await expect(page.locator('.notes-trash-open')).toHaveCount(1)
 })
 
+test('a touch long press in a task keeps the platform text menu', async ({ page }) => {
+  await seed(page)
+  const editor = page.locator('[data-plan-item-id="collapsed_parent"] [data-plan-text-input]')
+  await editor.click()
+  // Android WebView reports the long press's contextmenu without a touch
+  // pointerType; only the pointerdown that started it says touch.
+  const prevented = await editor.evaluate(element => {
+    const rect = element.getBoundingClientRect()
+    const point = { bubbles: true, cancelable: true, clientX: rect.left + 4, clientY: rect.top + 4 }
+    element.dispatchEvent(new PointerEvent('pointerdown', { ...point, pointerType: 'touch', isPrimary: true }))
+    const menu = new MouseEvent('contextmenu', point)
+    element.dispatchEvent(menu)
+    return menu.defaultPrevented
+  })
+  expect(prevented).toBe(false)
+  await expect(page.getByRole('menuitem', { name: 'Copy link', exact: true })).toHaveCount(0)
+  await expect(editor).toBeFocused()
+})
+
 test('page menus dismiss with Escape and preserve review links', async ({ page }) => {
   const state = await seed(page)
   await openView(page, 'Lists')
