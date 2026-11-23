@@ -9,7 +9,8 @@
   import { collapsedPlanItemIds, setPlanItemCollapsed } from './collapsedPlanItems'
   import { focusTaskBelow } from './taskCompletionFocus'
   import { ideaUnlockDelay, findIdea, ideaGroupId, ideaGroupKindForKey, ideaGroupMeta, IDEA_GROUPS, IDEA_TRASH_RETENTION_DAYS, scheduledIdeaReviewDefault, type ScheduledIdeaReviewKind } from './ideas'
-  import type { ItemLink, ItemTimeWarning } from './planner'
+  import { isURL, itemLinkFromAnchor, linkifyItemText, renderItemDisplayHTML, type ItemLink, type ItemTimeWarning } from './planner'
+  import { openExternalURLFromShortcut, openRenderedLinkFromShortcut } from './externalLinks'
   import { clipsByIdea } from './voiceClips'
   import { voiceRecording, voiceRecordingError } from './voiceRecorder'
   import { canTranscribe, transcribeClips, transcriptionError, transcriptionStatus } from './voiceTranscription'
@@ -129,6 +130,93 @@
     return row?.dataset.planItemId ?? null
   }
 
+  let pointer: { x: number; y: number } | null = null
+
+  function rememberPointer(event: PointerEvent) {
+    pointer = { x: event.clientX, y: event.clientY }
+  }
+
+  function caretAt(x: number, y: number): { node: Node; offset: number } | null {
+    const doc = document as Document & { caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null }
+    if (doc.caretPositionFromPoint) {
+      const position = doc.caretPositionFromPoint(x, y)
+      return position ? { node: position.offsetNode, offset: position.offset } : null
+    }
+    const range = document.caretRangeFromPoint?.(x, y)
+    return range ? { node: range.startContainer, offset: range.startOffset } : null
+  }
+
+  // The link the caret sits in or touches at either end, so a caret just
+  // before or after a link still opens it.
+  function anchorAtCaret(editor: HTMLElement, node: Node, offset: number): HTMLAnchorElement | null {
+    if (!editor.contains(node)) return null
+    const textBefore = (target: Node, targetOffset: number) => {
+      const range = document.createRange()
+      range.setStart(editor, 0)
+      range.setEnd(target, targetOffset)
+      return range.toString().length
+    }
+    const caret = textBefore(node, offset)
+    let touching: HTMLAnchorElement | null = null
+    for (const anchor of editor.querySelectorAll<HTMLAnchorElement>('a[href]')) {
+      const range = document.createRange()
+      range.selectNodeContents(anchor)
+      const start = textBefore(range.startContainer, range.startOffset)
+      const end = start + range.toString().length
+      if (start < caret && caret < end) return anchor
+      if (!touching && (caret === start || caret === end)) touching = anchor
+    }
+    return touching
+  }
+
+  function openAnchor(anchor: HTMLAnchorElement, itemId: Id): boolean {
+    const link = itemLinkFromAnchor(anchor)
+    if (link) {
+      onOpenLink(link, itemId)
+      return true
+    }
+    const href = anchor.getAttribute('href')?.trim() ?? ''
+    if (!isURL(href)) return false
+    openExternalURLFromShortcut(href)
+    return true
+  }
+
+  function ideaEditorAt(node: Node | null | undefined) {
+    const element = node instanceof Element ? node : node?.parentElement
+    const editor = element?.closest<HTMLElement>('.ideas-panel [contenteditable="true"]')
+    const itemId = editor?.closest<HTMLElement>('[data-plan-item-id]')?.dataset.planItemId
+    return editor && itemId ? { editor, itemId } : null
+  }
+
+  // Option-F opens the link under the mouse or at the caret, else the first
+  // link in the idea being edited or selected, as on Today.
+  function openIdeaLink(): boolean {
+    if (pointer) {
+      const hit = document.elementFromPoint(pointer.x, pointer.y)
+      const anchor = hit?.closest<HTMLAnchorElement>('.ideas-panel a[href]')
+      const hovered = ideaEditorAt(anchor ?? hit)
+      if (anchor && hovered && openAnchor(anchor, hovered.itemId)) return true
+      const caret = hovered && caretAt(pointer.x, pointer.y)
+      const near = caret && hovered && anchorAtCaret(hovered.editor, caret.node, caret.offset)
+      if (near && hovered && openAnchor(near, hovered.itemId)) return true
+    }
+    const selection = document.getSelection()
+    const focused = ideaEditorAt(selection?.focusNode)
+    if (focused && selection?.focusNode) {
+      const anchor = anchorAtCaret(focused.editor, selection.focusNode, selection.focusOffset)
+      if (anchor && openAnchor(anchor, focused.itemId)) return true
+    }
+    const active = document.activeElement
+    const itemId = focusedIdeaId() ??
+      (active === document.body || active?.closest('.ideas-panel') ? selectedItemId : null)
+    const item = itemId ? findIdea(groups, itemId)?.item : null
+    if (!item) return false
+    return openRenderedLinkFromShortcut(
+      renderItemDisplayHTML(item.html, item.text, linkifyItemText(item.text, listTemplates, metrics, notes)),
+      (link) => onOpenLink(link, item.id),
+    )
+  }
+
   // Cmd/Ctrl+Shift+A selects the idea being edited, like on Today.
   function selectFocusedIdea(event: KeyboardEvent) {
     const itemId = focusedIdeaId()
@@ -188,6 +276,12 @@
     }
     if ((event.metaKey || event.ctrlKey) && !event.altKey && event.shiftKey && event.key.toLowerCase() === 'a') {
       selectFocusedIdea(event)
+      return
+    }
+    if (event.altKey && !event.metaKey && !event.ctrlKey && !event.shiftKey && event.code === 'KeyF' &&
+        !event.defaultPrevented && openIdeaLink()) {
+      event.preventDefault()
+      event.stopPropagation()
       return
     }
     if (event.ctrlKey || event.altKey || event.repeat || editingText()) return
@@ -251,7 +345,7 @@
   })
 </script>
 
-<svelte:window on:keydown={handleKeydown} />
+<svelte:window on:keydown={handleKeydown} on:pointermove|passive={rememberPointer} />
 
 <section class="ideas-panel">
   <header class="page-header">
