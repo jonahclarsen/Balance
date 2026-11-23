@@ -297,7 +297,16 @@ export function quizProgress(quiz: Question[], answers: Answers): { next?: Quest
 export function nightPassEnd(s: Settings, e: Epoch, now: number): number {
   return Math.min(now + (now >= e.late ? s.lateNightMinutes : s.nightMinutes) * minute, Math.max(now, e.late) + s.lateNightMinutes * minute)
 }
-/** An entertainment pass (targetId) lasts the chosen ACCESS_MINUTES. */
+/** How many minutes the answers cap a pass at, or Infinity when they set no length. */
+function answerLimit(quiz: Question[], answers: Answers): number {
+  return Math.min(...quiz.filter(q => asked(q, answers)).map(q => q.minutes ?? Infinity))
+}
+const nightPass = (mode: Mode, e: Epoch | undefined, targetId: string) => !targetId && mode.id === 'touch-grass' && e?.phase === 'night'
+/** Whether a passed quiz asks how long: always for a site, and for a mode when nothing else sets the length. */
+export function choosesLength(doc: Document, mode: Mode, answers: Answers, now: number, targetId = ''): boolean {
+  return !nightPass(mode, epoch(doc, now), targetId) && answerLimit(questions(doc, mode, now, targetId), answers) === Infinity
+}
+/** A pass lasts the chosen ACCESS_MINUTES, which a site (targetId) requires; a mode pass without one lasts until the mode next turns on. */
 export function grant(doc: Document, modeId: string, answers: Answers, startedAt: number, now = Date.now(), targetId = '', chosen?: number): Document {
   const mode = doc.modes.find(m => m.id === modeId)
   const e = epoch(doc, now)
@@ -305,14 +314,14 @@ export function grant(doc: Document, modeId: string, answers: Answers, startedAt
   const quiz = questions(doc, mode, now, targetId)
   const progress = quizProgress(quiz, answers)
   if (progress.denied || progress.next) throw new Error('Complete the quiz before continuing.')
-  if (targetId && !ACCESS_MINUTES.includes(chosen!)) throw new Error('Choose how long you need.')
-  const limit = Math.min(...quiz.filter(q => asked(q, answers)).map(q => q.minutes ?? Infinity))
-  const minutes = Math.min(limit, targetId ? chosen! : Infinity)
-  const night = !targetId && mode.id === 'touch-grass' && e.phase === 'night' ? nightPassEnd(doc.settings, e, now) : Infinity
-  const until = !mode.scheduled && !targetId && minutes === Infinity && night === Infinity ? Number.MAX_SAFE_INTEGER : Math.min(e.end, night, now + minutes * minute)
+  if ((targetId || chosen !== undefined) && !ACCESS_MINUTES.includes(chosen!)) throw new Error('Choose how long you need.')
+  const minutes = Math.min(answerLimit(quiz, answers), chosen ?? Infinity)
+  const night = nightPass(mode, e, targetId) ? nightPassEnd(doc.settings, e, now) : Infinity
+  // A mode turned on only by hand ignores the schedule, so its pass can outlast the period.
+  const until = Math.min(mode.scheduled || targetId ? e.end : Infinity, night, now + minutes * minute)
   // An entertainment pass covers the site in every mode that blocks it.
   const passed = targetId ? doc.modes.filter(m => m.targets.some(t => t.id === targetId && t.category === 'entertainment') && startedAt >= (doc.manual[m.id] ?? 0)).map(m => m.id) : [modeId]
-  const entries: Grant[] = passed.map(id => ({ mode: id, target: targetId, epoch: Math.max(e.at, doc.manual[id] ?? 0), until }))
+  const entries: Grant[] = passed.map(id => ({ mode: id, target: targetId, epoch: Math.max(e.at, doc.manual[id] ?? 0), until: Math.min(until, Number.MAX_SAFE_INTEGER) }))
   return { ...doc, revision: doc.revision + 1, grants: [...doc.grants.filter(g => !(passed.includes(g.mode) && g.target === targetId)), ...entries] }
 }
 export function enableMode(doc: Document, mode: string, now = Date.now()): Document {

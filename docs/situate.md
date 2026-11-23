@@ -39,7 +39,9 @@ the fallback times are 9:30 p.m. and 2:30 a.m.
 The 7 a.m. Situate reset does not change the planner's day boundary.
 
 Scheduled modes turn on at morning and evening, or only at **Evening**; passing a
-mode's quiz turns it off until the next one. An evening-only mode turned on by hand
+mode's quiz turns it off for 5, 15, or 60 minutes, or until the next one (until you turn
+it on, for a mode turned on only by hand). When the answers already set a length, as
+Touch grass's emergency and night passes do, there is no choice. An evening-only mode turned on by hand
 during the day stays on until morning at most. There is no global switch: set a mode
 to **Only by hand** to keep it off until you turn it on. Overlapping modes must each
 be passed. A **Heads-up** notifies 15 or 5 minutes before an off mode comes back on,

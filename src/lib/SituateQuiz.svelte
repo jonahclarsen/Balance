@@ -2,7 +2,8 @@
   import { fade } from 'svelte/transition'
   import OverlayModal from './OverlayModal.svelte'
   import { situate, quizRequest, answerQuiz } from './situate/store'
-  import { ACCESS_MINUTES, questions, quizProgress, type Answers, type Question } from './situate/core'
+  import { ACCESS_MINUTES, choosesLength, epoch, questions, quizProgress, type Answers, type Question } from './situate/core'
+  import { clockTime } from './situate/ui'
   let answers: Answers = {}
   let error = ''
   let busy = false
@@ -13,8 +14,10 @@
   $: mode = $situate.modes.find(m => m.id === $quizRequest?.mode)
   $: quiz = mode && $quizRequest ? getQuiz() : []
   $: progress = quizProgress(quiz, answers)
-  // An entertainment pass asks how long it is needed once the quiz is passed.
-  $: choosing = !!$quizRequest?.target && !progress.next && !progress.denied
+  // A passed quiz asks how long it is needed, unless the answers or the night set the length.
+  $: choosing = !!mode && !!$quizRequest && !progress.next && !progress.denied && lengthChoice(answers)
+  // A mode pass can also last until the mode would turn back on.
+  $: untilEnd = !!mode && !$quizRequest?.target ? (mode.scheduled ? `Until ${clockTime(epoch($situate, Date.now())?.end ?? Date.now())}` : 'No limit') : ''
   $: shown = progress.next ?? last
   // Count only questions that can still be asked, so a skipped follow-up is not counted.
   $: askable = (q: Question) => !q.when || typeof answers[q.when.id] !== 'boolean' || answers[q.when.id] === q.when.answer
@@ -23,12 +26,15 @@
     try { return questions($situate, mode!, Date.now(), $quizRequest!.target) }
     catch (e) { error = String(e); return [] }
   }
+  function lengthChoice(given: Answers) {
+    try { return choosesLength($situate, mode!, given, Date.now(), $quizRequest!.target) } catch { return false }
+  }
   async function answer(value: boolean) {
     if (!progress.next || busy) return
     last = progress.next
     answers = { ...answers, [progress.next.id]: value }
     const next = quizProgress(quiz, answers)
-    if (!next.next && !next.denied && !$quizRequest?.target) await finish()
+    if (!next.next && !next.denied && !lengthChoice(answers)) await finish()
   }
   let root: HTMLElement
   // Window-wide so they work without focus, but never while typing or in another dialog.
@@ -61,7 +67,7 @@
         <div in:fade={{ duration: 140 }}>
           <p class="muted" aria-hidden="true">&nbsp;</p>
           <h2>How long?</h2>
-          <div class="answers">{#each ACCESS_MINUTES as minutes}<button disabled={busy} type="button" on:click={() => finish(minutes)}>{minutes} min</button>{/each}</div>
+          <div class="answers">{#each ACCESS_MINUTES as minutes}<button disabled={busy} type="button" on:click={() => finish(minutes)}>{minutes} min</button>{/each}{#if untilEnd}<button disabled={busy} type="button" on:click={() => finish()}>{untilEnd}</button>{/if}</div>
         </div>
       {:else if shown}
         {#key shown.id}<div in:fade={{ duration: 140 }}>
@@ -74,5 +80,5 @@
   </OverlayModal>
 {/if}
 <style>
-  .quiz { padding: 18px 4px 28px; } h2 { font-size: 1.5rem; line-height: 1.5; font-weight: 550; } .answers { display: flex; gap: 16px; margin-top: 30px; } .answers kbd { padding: 1px 6px; border: 1px solid var(--line-strong); border-radius: 4px; font-size: 12px; color: var(--muted); } .answers button { flex: 1; min-height: 64px; font-size: 1.2rem; border-radius: 18px; } .quiz { border-top: 4px solid var(--mode); margin-top: -4px; } .muted { color: color-mix(in srgb, var(--mode) 65%, var(--muted)); font-weight: 600; } .done { margin-top: 24px; min-width: 120px; min-height: 48px; border-color: var(--mode); background: var(--mode); color: white; font-weight: 600; } .done:hover { border-color: color-mix(in srgb, var(--mode) 85%, black); background: color-mix(in srgb, var(--mode) 85%, black); }
+  .quiz { padding: 18px 4px 28px; } h2 { font-size: 1.5rem; line-height: 1.5; font-weight: 550; } .answers { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 30px; } .answers kbd { padding: 1px 6px; border: 1px solid var(--line-strong); border-radius: 4px; font-size: 12px; color: var(--muted); } .answers button { flex: 1 1 5em; min-height: 64px; font-size: 1.2rem; border-radius: 18px; } .quiz { border-top: 4px solid var(--mode); margin-top: -4px; } .muted { color: color-mix(in srgb, var(--mode) 65%, var(--muted)); font-weight: 600; } .done { margin-top: 24px; min-width: 120px; min-height: 48px; border-color: var(--mode); background: var(--mode); color: white; font-weight: 600; } .done:hover { border-color: color-mix(in srgb, var(--mode) 85%, black); background: color-mix(in srgb, var(--mode) 85%, black); }
 </style>

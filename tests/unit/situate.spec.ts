@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { defaults, regenerate, reminderWindow, epoch, enableMode, grant, isActive, backOn, headsUp, nextChange, questions, quizProgress, validate, matches, sunset, upgradePresets, timeZoneLocation, type Reminder } from '../../src/lib/situate/core'
+import { choosesLength, defaults, regenerate, reminderWindow, epoch, enableMode, grant, isActive, backOn, headsUp, nextChange, questions, quizProgress, validate, matches, sunset, upgradePresets, timeZoneLocation, type Reminder } from '../../src/lib/situate/core'
 import { reconcileRules, sharedRules } from '../../src/lib/situate/sharing'
 const date = (day:number,hour:number,minute=0) => new Date(2026,9,17+day,hour,minute).getTime()
 // Clock times only: sunset would otherwise follow the machine's time zone.
@@ -116,6 +116,24 @@ test('manual reactivation invalidates a quiz in progress and old grants', () => 
   const activated=enableMode(allowed,'dolo',now+1)
   expect(isActive(activated,d.modes[0],'mac',now+1)).toBe(true)
   expect(() => grant(activated,'dolo',{thrust:true},now,now+2)).toThrow('changed')
+})
+test('a mode pass can last a chosen length, and only when nothing else sets it', () => {
+  const now=date(0,12);const d=enableMode(fixture(),'discord',now)
+  const [dolo,touchGrass,discord]=['dolo','touch-grass','discord'].map(id=>d.modes.find(m=>m.id===id)!)
+  expect(choosesLength(d,dolo,{thrust:true},now)).toBe(true)
+  expect(choosesLength(d,touchGrass,{planned:false,emergency:true},now)).toBe(false)
+  expect(choosesLength(d,touchGrass,{peed:true,bed:true},date(0,23))).toBe(false)
+  expect(() => grant(d,'dolo',{thrust:true},now,now,'',7)).toThrow('how long')
+  const timed=grant(d,'dolo',{thrust:true},now,now,'',5)
+  expect(isActive(timed,dolo,'mac',now+5*60000-1)).toBe(false)
+  expect(isActive(timed,dolo,'mac',now+5*60000)).toBe(true)
+  expect(backOn(timed,dolo,now)).toBe(now+5*60000)
+  // A scheduled mode's pass still ends when its period does; a by-hand mode's does not.
+  const late=date(0,21);const evening=date(0,21,30)
+  expect(grant(d,'dolo',{thrust:true},late,late,'',60).grants.find(g=>g.mode==='dolo')!.until).toBe(evening)
+  const discordPass=grant(d,'discord',{intentional:true},late,late,'',60)
+  expect(isActive(discordPass,discord,'android',date(0,21,45))).toBe(false)
+  expect(isActive(discordPass,discord,'android',date(0,22))).toBe(true)
 })
 test('manual-only mode stays off until explicitly turned on again', () => {
   const now=date(0,12);let d=enableMode(fixture(),'discord',now)
