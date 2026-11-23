@@ -1448,12 +1448,16 @@ nav button.active {
   filter: none;
 }
 
-.primary.outlined {
+.primary.outlined,
+.page-action {
+  border-color: var(--accent);
   background: transparent;
   color: var(--accent);
 }
 
-.primary.outlined:hover {
+.primary.outlined:hover,
+.page-action:hover:not(:disabled) {
+  border-color: var(--accent-strong);
   background: color-mix(in srgb, var(--accent) 10%, transparent);
   color: var(--accent-strong);
 }
@@ -1461,7 +1465,7 @@ nav button.active {
 /* Dark palettes keep --accent deep enough for white-text fills; their light
    --accent-strong is the one that reads as text on the dark page. Old OS themes
    paint their own button faces and text. */
-:root[data-color-scheme='dark']:not([data-theme='windows98'], [data-theme='system1'], [data-theme='windowsxp'], [data-theme='windowsvista']) .primary.outlined {
+:root[data-color-scheme='dark']:not([data-theme='windows98'], [data-theme='system1'], [data-theme='windowsxp'], [data-theme='windowsvista']) :is(.primary.outlined, .page-action) {
   color: var(--accent-strong);
 }
 
