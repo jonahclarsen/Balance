@@ -6,6 +6,8 @@ private var situateObservers: [NSObjectProtocol] = []
 private var situatePrevious = Set<String>()
 private var situatePreviousSoon: [String: Int] = [:]
 private var situatePrompt: SituatePrompt?
+/// The app whose quiz was opened; it comes back to the front once a pass unblocks it.
+private var situateReturn: (app: NSRunningApplication, until: Date)?
 @_silgen_name("balance_replace_task_notifications") private func situateNotice(_ raw: UnsafePointer<CChar>) -> Int32
 
 @_cdecl("balance_situate_update")
@@ -43,6 +45,7 @@ func balanceSituateUpdate(_ raw: UnsafePointer<CChar>, _ announce: Bool) {
             observe(NSWorkspace.didUnhideApplicationNotification) { hideSituate($0) }
         }
         if let app = NSWorkspace.shared.frontmostApplication { enforceSituate(app) }
+        resurfaceSituate()
     }
 }
 private func situateBlock(_ app: NSRunningApplication) -> (mode: [String: Any], target: [String: Any])? {
@@ -59,6 +62,14 @@ private func hideSituate(_ app: NSRunningApplication) {
     for delay in [0.3, 1.0, 2.5] {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { if !app.isHidden && situateBlock(app) != nil { app.hide() } }
     }
+}
+private func resurfaceSituate() {
+    guard let (app, until) = situateReturn else { return }
+    if Date() > until || app.isTerminated { situateReturn = nil; return }
+    guard situateBlock(app) == nil else { return }
+    situateReturn = nil
+    app.unhide()
+    app.activate(options: [.activateAllWindows])
 }
 private func enforceSituate(_ app: NSRunningApplication) {
     guard let (mode, target) = situateBlock(app) else { return }
@@ -96,12 +107,19 @@ private final class SituatePrompt: NSObject {
         alert.window.center()
         alert.window.makeKeyAndOrderFront(nil)
     }
-    @objc private func keepBoundary() { finish(nil) }
-    @objc private func openQuiz() { finish(quiz) }
-    private func finish(_ url: URL?) {
+    @objc private func keepBoundary() {
+        finish()
+        // A normal quit, so the app can still ask to save unsaved work.
+        app.terminate()
+    }
+    @objc private func openQuiz() {
+        finish()
+        situateReturn = (app, Date().addingTimeInterval(15 * 60))
+        if let quiz { NSWorkspace.shared.open(quiz) }
+    }
+    private func finish() {
         alert.window.orderOut(nil)
         if situatePrompt === self { situatePrompt = nil }
-        if let url { NSWorkspace.shared.open(url) }
         // The app may have come forward behind the prompt; it stays hidden until a pass unblocks it.
         hideSituate(app)
     }

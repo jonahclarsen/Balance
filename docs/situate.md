@@ -57,8 +57,9 @@ quizzes, required answers, and conditions on earlier answers can be edited indep
 ## Mac and Chrome
 
 Keep Balance running. Closing its main window while Situate has rules leaves
-it running in the background. App activation monitoring hides blocked apps; it
-does not kill processes or discard work. Quitting Balance stops native app
+it running in the background. App activation monitoring hides blocked apps.
+**Keep the boundary** quits the app normally, so it can still ask to save work;
+**Open quiz** brings the app back to the front once the quiz unblocks it. Quitting Balance stops native app
 monitoring. Add Balance to macOS Login Items if it should start after login.
 Activation notices use macOS notification permission and obey system Focus settings.
 They announce scheduled changes and expired passes, not modes you switch by hand.
