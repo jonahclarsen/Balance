@@ -7758,13 +7758,16 @@ return rows`
             <button
               class="page-action"
               type="button"
-              title="Alt+E" aria-keyshortcuts="Alt+E"
+              title={`View Today's List (${altShortcutLabel('E')})`}
+              aria-keyshortcuts="Alt+E"
               on:click={() => openTodaysList(template)}
             >
-              View Today's List
+              <span>View Today's List</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('E')}</kbd>
             </button>
           {/if}
-          <button class="page-action" type="button" on:click={openListHistory}>View List History</button>
+          <button class="page-action" type="button" title={`View List History (${altShortcutLabel('H')})`} aria-keyshortcuts="Alt+H" on:click={openListHistory}>
+            <span>View List History</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('H')}</kbd>
+          </button>
         </div>
       </header>
 
