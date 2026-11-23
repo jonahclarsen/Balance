@@ -1010,6 +1010,10 @@ return rows`
     listHistoryNavigationVisible = false
   }
 
+  function openTodaysList(template: ListTemplate) {
+    openLink({ kind: 'list', listTemplateId: template.id, label: template.name }, null, currentDay)
+  }
+
   function openListHistory() {
     view = 'lists'
     listHistoryNavigationVisible = true
@@ -4206,7 +4210,9 @@ return rows`
     // Alt+L is an intentionally unlisted alias for Alt+E.
     if (event.code === 'KeyE' || event.code === 'KeyL') {
       event.preventDefault()
-      openLists()
+      if (view === 'listTemplates' && selectedListTemplate) {
+        if (!event.repeat) openTodaysList(selectedListTemplate)
+      } else openLists()
       return true
     }
 
@@ -7748,7 +7754,8 @@ return rows`
             <button
               class="primary outlined"
               type="button"
-              on:click={() => openLink({ kind: 'list', listTemplateId: template.id, label: template.name }, null, currentDay)}
+              title="Alt+E" aria-keyshortcuts="Alt+E"
+              on:click={() => openTodaysList(template)}
             >
               View Today's List
             </button>

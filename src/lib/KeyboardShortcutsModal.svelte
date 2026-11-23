@@ -78,7 +78,7 @@
         { keys: ['alt', 'P'], label: 'Open Projects' },
         { keys: ['alt', 'B'], label: 'Open Ideas' },
         { keys: ['alt', 'D'], label: 'Open Days' },
-        { keys: ['alt', 'E'], label: 'Open Lists' },
+        { keys: ['alt', 'E'], label: 'Open Lists; press again to view today\'s list' },
         { keys: ['alt', 'V'], label: 'Open Quizzes' },
         { keys: ['alt', 'G'], label: 'Open Goals' },
         { keys: ['alt', 'S'], label: 'Open Settings' },

@@ -1100,7 +1100,8 @@ test('Lists opens today’s list in its modal, generating it first', async ({ pa
   await dialog.getByRole('listitem', { name: 'Plan item: Milk' }).getByRole('checkbox').click()
   await expect(dialog).toHaveCount(0)
 
-  await page.getByRole('button', { name: "View Today's List" }).click()
+  // Alt-E on Lists opens today's list, like the button.
+  await page.keyboard.press('Alt+KeyE')
   await expect(dialog.getByRole('listitem', { name: 'Plan item: Milk' }).getByRole('checkbox')).toBeChecked()
 })
 
