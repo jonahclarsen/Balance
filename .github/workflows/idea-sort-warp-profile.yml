@@ -79,9 +79,8 @@ jobs:
             "baseline:full:webkit"
             "candidate:full:webkit"
             "candidate:live-noise:webkit"
-            "baseline:full:chromium-6x-cpu"
-            "candidate:full:chromium-6x-cpu"
-            "candidate:live-noise:chromium-6x-cpu"
+            "candidate:no-filter:webkit"
+            "baseline:no-filter:webkit"
           )
           run_profile() {
             IFS=: read -r build variant project <<< "$1"
