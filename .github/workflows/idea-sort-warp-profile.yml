@@ -1,0 +1,141 @@
+name: Profile idea sorter warp
+
+on:
+  workflow_dispatch:
+    inputs:
+      baseline_ref:
+        description: Ref to compare against
+        default: main
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  profile:
+    name: Warp cost under CPU contention
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies and browsers
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec playwright install chromium webkit
+          git worktree add "$RUNNER_TEMP/baseline" "origin/${{ inputs.baseline_ref || 'main' }}"
+          (cd "$RUNNER_TEMP/baseline" && pnpm install --frozen-lockfile)
+
+      - name: Check the noise field matches feTurbulence
+        run: pnpm exec playwright test --config playwright.idea-sort-warp-performance.config.ts --project=chromium --project=webkit tests/performance/warp-noise-field.spec.ts
+
+      - name: Capture warp frames from both builds
+        run: |
+          set -euo pipefail
+          frames="$RUNNER_TEMP/warp-frames"
+          for build in baseline candidate; do
+            app_dir="$GITHUB_WORKSPACE"
+            if [ "$build" = baseline ]; then app_dir="$RUNNER_TEMP/baseline"; fi
+            BALANCE_WARP_APP_DIR="$app_dir" BALANCE_WARP_CAPTURE_DIR="$frames/$build" \
+              pnpm exec playwright test --config playwright.idea-sort-warp-performance.config.ts \
+              --project=chromium --project=webkit tests/performance/idea-sort-warp.spec.ts
+          done
+          for browser in chromium webkit; do
+            node tests/performance/warp-frames-sheet.mjs "$frames/baseline/$browser" "$frames/candidate/$browser" \
+              "$frames/compare-$browser.png" "Idea sorter warp, $browser, 2x display"
+          done
+
+      - name: Profile three rotated rounds under CPU contention
+        run: |
+          set -euo pipefail
+          results="$RUNNER_TEMP/warp-profile.jsonl"
+          logs="$RUNNER_TEMP/warp-profile.log"
+          : > "$results"
+          : > "$logs"
+          load_pids=()
+          for worker in 1 2; do
+            yes > /dev/null &
+            load_pids+=("$!")
+          done
+          trap 'kill "${load_pids[@]}" 2>/dev/null || true' EXIT INT TERM
+
+          scenarios=(
+            "baseline:full:webkit"
+            "candidate:full:webkit"
+            "candidate:live-noise:webkit"
+            "baseline:full:chromium-6x-cpu"
+            "candidate:full:chromium-6x-cpu"
+            "candidate:live-noise:chromium-6x-cpu"
+          )
+          run_profile() {
+            IFS=: read -r build variant project <<< "$1"
+            app_dir="$GITHUB_WORKSPACE"
+            if [ "$build" = baseline ]; then app_dir="$RUNNER_TEMP/baseline"; fi
+            echo "Running $1 round $2" | tee -a "$logs"
+            output="$(BALANCE_WARP_APP_DIR="$app_dir" BALANCE_WARP_VARIANT="$variant" \
+              pnpm exec playwright test --config playwright.idea-sort-warp-performance.config.ts \
+              --project="$project" tests/performance/idea-sort-warp.spec.ts 2>&1)"
+            printf '%s\n' "$output" >> "$logs"
+            payload="$(printf '%s\n' "$output" | sed -n 's/^IDEA_SORT_WARP //p')"
+            test -n "$payload"
+            jq -cn --arg scenario "$1" --argjson round "$2" --argjson profile "$payload" \
+              '{scenario: $scenario, round: $round, profile: $profile}' >> "$results"
+          }
+          count="${#scenarios[@]}"
+          for round in 1 2 3; do
+            for (( position = 0; position < count; position += 1 )); do
+              run_profile "${scenarios[$(( (position + round - 1) % count ))]}" "$round"
+            done
+          done
+
+          summary="$(jq -s '
+            def median: sort | .[length / 2 | floor];
+            def metric($path): [.[] | getpath($path)] | median;
+            group_by(.scenario)
+            | map({
+                scenario: .[0].scenario,
+                browser_cpu_ms_per_warp: metric(["profile", "browserCpuMsPerWarp"]),
+                frames_per_warp: metric(["profile", "framesPerWarp"]),
+                frame_p90_ms: metric(["profile", "frameMs", "p90"]),
+                frame_max_ms: metric(["profile", "frameMs", "max"]),
+                long_frames_per_warp: metric(["profile", "longFrames"]),
+                first_frame_ms: metric(["profile", "firstFrameMs", "p50"]),
+                renderer_percent: metric(["profile", "rendererUtilizationPercent"])
+              })
+          ' "$results")"
+          printf '%s\n' "$summary" > "$RUNNER_TEMP/warp-profile-summary.json"
+          {
+            echo '## Idea sorter warp profile'
+            echo
+            echo 'Median of three rotated runs; two host CPU hogs, Chromium also throttled 6x; 2x device scale.'
+            echo
+            echo '```json'
+            printf '%s\n' "$summary"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: idea-sort-warp-profile
+          path: |
+            ${{ runner.temp }}/warp-profile.jsonl
+            ${{ runner.temp }}/warp-profile-summary.json
+            ${{ runner.temp }}/warp-profile.log
+            ${{ runner.temp }}/warp-frames
+          if-no-files-found: warn
