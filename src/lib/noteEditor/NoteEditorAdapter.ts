@@ -18,6 +18,7 @@ import {
   noteBlocksFromItems,
   noteItemById,
   noteItemCaretLength,
+  noteChangeCaret,
   noteItemsEqual,
 } from './noteItems'
 import type { NoteEditorCaret, NoteEditorChangeSource, NoteEditorView } from './types'
@@ -96,8 +97,12 @@ export class NoteEditorAdapter {
       this.pendingRemote = { items, historyRevision }
       return
     }
+    const previous = this.items
     this.items = items
-    this.loadIntoView(items, this.preservedCaretFor(items))
+    // Undo and redo move the caret to what they changed so it scrolls into
+    // view; other updates keep the caret where it was.
+    const changed = historyChanged ? noteChangeCaret(previous, items) : null
+    this.loadIntoView(items, changed ?? this.preservedCaretFor(items))
   }
 
   // Apply a deferred remote update once IME composition finished.

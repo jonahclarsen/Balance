@@ -2422,3 +2422,67 @@ test('dragging a note from the list to a side opens it in a split view', async (
   await expect(panes).toHaveCount(1)
   await expect(titles).toHaveValue('Alpha')
 })
+
+test('undo and redo in a long note bring back the changed text with the caret in it', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await openNotesView(page)
+  await page.getByRole('button', { name: '+ New note' }).click()
+  await page.getByLabel('Note title').fill('Long note')
+  await page.locator('.note-text').first().fill('Line 1')
+  await expect.poll(() => storedNoteCount(page)).toBe(1)
+  await page.evaluate(() => {
+    const key = 'balance.appState.v1'
+    const state = JSON.parse(localStorage.getItem(key) || '{}')
+    const template = state.notes[0].items[0]
+    state.notes[0].items = Array.from({ length: 80 }, (_, index) => ({
+      ...template, id: `note_item_long_${index}`, text: `Line ${index + 1}`, html: `Line ${index + 1}`, children: [],
+    }))
+    localStorage.setItem(key, JSON.stringify(state))
+  })
+  await page.reload()
+  await openNotesView(page)
+
+  const editors = page.locator('.note-text')
+  const last = editors.last()
+  await expect(editors).toHaveCount(80)
+  await last.scrollIntoViewIfNeeded()
+  await placeCaretAtEnd(last)
+  await page.keyboard.type(' edited')
+  await expect.poll(() => page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    return state.notes?.[0]?.items.at(-1)?.text
+  })).toBe('Line 80 edited')
+
+  const caretItem = () => page.evaluate(() =>
+    document.getSelection()?.focusNode?.parentElement?.closest<HTMLElement>('[data-note-item-id]')?.dataset.noteItemId)
+
+  // Undo after moving the caret to the top brings the change back into view.
+  await editors.first().scrollIntoViewIfNeeded()
+  await placeCaretAtEnd(editors.first())
+  await expect(last).not.toBeInViewport()
+  await page.keyboard.press('ControlOrMeta+Z')
+  await expect(last).toHaveText('Line 80')
+  await expect(last).toBeInViewport()
+  await expect.poll(caretItem).toBe('note_item_long_79')
+  await page.keyboard.press('ControlOrMeta+Shift+Z')
+  await expect(last).toHaveText('Line 80 edited')
+  await expect.poll(caretItem).toBe('note_item_long_79')
+
+  // Undoing a new block at the bottom keeps the note there instead of jumping.
+  await pressNoteKey(last, 'Enter')
+  await expect(editors).toHaveCount(81)
+  await page.keyboard.type('Brand new')
+  await expect.poll(() => page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    return state.notes?.[0]?.items.length
+  })).toBe(81)
+  for (let attempt = 0; attempt < 3 && await editors.count() > 80; attempt += 1) {
+    await page.keyboard.press('ControlOrMeta+Z')
+    await page.waitForTimeout(300)
+  }
+  await expect(editors).toHaveCount(80)
+  await expect(last).toBeInViewport()
+  await expect.poll(caretItem).toBe('note_item_long_79')
+})

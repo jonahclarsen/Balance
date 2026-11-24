@@ -194,3 +194,36 @@ export function noteBlocksFromItems(items: NoteItem[]): NoteBlock[] {
     children: noteBlocksFromItems(item.children ?? []),
   }))
 }
+
+// Where an undo or redo changed the note: a collapsed caret at the end of the
+// first changed text (an added or edited item), or at the end of the item
+// before a removed one. Null when only structure elsewhere moved.
+export function noteChangeCaret(before: NoteItem[], after: NoteItem[]): { itemId: Id; start: number; end: number } | null {
+  const previous = noteItemById(before)
+  const flat = flattenNoteItems(after)
+  for (const item of flat) {
+    const old = previous.get(item.id)
+    if (old && old.text === item.text && old.html === item.html && old.kind === item.kind && old.done === item.done) continue
+    const offset = old ? changedTextEnd(old.text, item.text) : item.text.length
+    return { itemId: item.id, start: offset, end: offset }
+  }
+  const surviving = new Set(flat.map((item) => item.id))
+  let last: NoteItem | null = null
+  for (const item of flattenNoteItems(before)) {
+    if (!surviving.has(item.id)) break
+    last = item
+  }
+  const target = last ? flat.find((item) => item.id === last!.id) : flat[0]
+  if (!target || surviving.size === previous.size) return null
+  const offset = last ? noteItemCaretLength(target) : 0
+  return { itemId: target.id, start: offset, end: offset }
+}
+
+function changedTextEnd(before: string, after: string): number {
+  let prefix = 0
+  while (prefix < before.length && prefix < after.length && before[prefix] === after[prefix]) prefix += 1
+  let suffix = 0
+  while (suffix < before.length - prefix && suffix < after.length - prefix &&
+    before[before.length - 1 - suffix] === after[after.length - 1 - suffix]) suffix += 1
+  return after.length - suffix
+}

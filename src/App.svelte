@@ -1405,9 +1405,9 @@ return rows`
       projects: 'data-project-id', ideas: 'data-plan-item-id', metrics: 'data-metric-question-id', goals: 'data-goal-id',
     }[nextView]
     const targetId = nextView === 'goals' ? entityId : itemId
-    const row = targetId ? workspaceEl?.querySelector<HTMLElement>(
-      `[${attribute}="${CSS.escape(targetId)}"]${nextView === 'goals' ? '' : `[data-item-container-id="${CSS.escape(entityId)}"]`}`,
-    ) : null
+    // Goals have no container, and a note's rows only belong to the open note.
+    const containerAttribute = nextView === 'goals' || nextView === 'notes' ? '' : `[data-item-container-id="${CSS.escape(entityId)}"]`
+    const row = targetId ? workspaceEl?.querySelector<HTMLElement>(`[${attribute}="${CSS.escape(targetId)}"]${containerAttribute}`) : null
     const containerSelector = {
       today: `[data-plan-item-scope="${CSS.escape(entityId)}"]`, lists: '.list-panel',
       templates: '.template-panel', listTemplates: '.template-panel',
