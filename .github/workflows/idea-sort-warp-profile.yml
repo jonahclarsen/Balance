@@ -1,6 +1,8 @@
 name: Profile idea sorter warp
 
 on:
+  push:
+    branches: [warp-perf]
   workflow_dispatch:
     inputs:
       baseline_ref:
