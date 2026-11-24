@@ -8,8 +8,6 @@
   import VoiceIdeaModal from './VoiceIdeaModal.svelte'
   import { IDEA_UNLOCK_MS, findIdea, ideaGroupMeta, IDEA_SORT_QUESTION } from './ideas'
   import { renderItemDisplayHTML, type ItemLink, type ItemTextSegment } from './planner'
-  import { warpNoiseURL } from './warpNoise'
-  import { WARP_MAX_FREQUENCY_X, WARP_MAX_FREQUENCY_Y, WARP_NOISE_UNITS } from './warpNoiseField'
   import { openClickedLink, openRenderedLinkFromShortcut } from './externalLinks'
   import type { Id, IdeaGroup, IdeaGroupKind, IdeaItem, IdeaSnapshot, PlanItem, VoiceClip } from './types'
 
@@ -80,8 +78,6 @@
   // The first card appears plainly; every later one warps in.
   let warpReady = false
   let warpFilter: SVGFilterElement
-  let warpField: string | null = null
-  void warpNoiseURL().then((url) => { warpField = url })
 
   $: sorted = sortedBefore + history.length
   $: queued = queue[index]
@@ -93,8 +89,6 @@
   $: openClip = openClipId ? voiceClips.find((candidate) => candidate.id === openClipId) ?? null : null
   $: options = step === 'yes' ? (['possible', 'genuine'] as const) : step === 'no' ? (['trash', 'afterlife'] as const) : []
   $: resetCard(index)
-  // Loaded ahead of the first warp that stretches it.
-  $: if (warpFilter && warpField) warpFilter.querySelector('feImage')!.setAttribute('href', warpField)
 
   export function append(item: IdeaItem) {
     if (queue.some(({ id }) => id === item.id)) return
@@ -114,11 +108,9 @@
     const duration = 300 + Math.random() * 200
     const turn = Math.random() < .5 ? -1 : 1
     const noise = warpFilter.querySelector('feTurbulence')!
-    const field = warpFilter.querySelector('feImage')!
     const maps = warpFilter.querySelectorAll('feDisplacementMap')
     const hue = warpFilter.querySelector('feColorMatrix[type="hueRotate"]')!
-    const seed = Math.floor(Math.random() * 1000)
-    noise.setAttribute('seed', String(seed))
+    noise.setAttribute('seed', String(Math.floor(Math.random() * 1000)))
     // Displacement never reaches past half the largest scale (about 98 px), so
     // the filter covers no more than that beside the card.
     const width = card.offsetWidth
@@ -128,17 +120,6 @@
     warpFilter.setAttribute('y', String(-height * .25))
     warpFilter.setAttribute('width', String(width + marginX * 2))
     warpFilter.setAttribute('height', String(height * 1.5))
-    // Place the card somewhere in the precomputed field that stays inside it at
-    // every frequency the warp reaches; very tall cards fall back to live noise.
-    const units = WARP_NOISE_UNITS - 1
-    const fromX = WARP_MAX_FREQUENCY_X * marginX
-    const toX = units - WARP_MAX_FREQUENCY_X * (width + marginX)
-    const fromY = WARP_MAX_FREQUENCY_Y * height * .25
-    const toY = units - WARP_MAX_FREQUENCY_Y * height * 1.25
-    const useField = Boolean(warpField) && fromX <= toX && fromY <= toY
-    const offsetX = fromX + (toX - fromX) * (seed / 1000)
-    const offsetY = fromY + (toY - fromY) * Math.random()
-    for (const map of maps) map.setAttribute('in2', useField ? 'field' : 'noise')
     card.style.filter = 'url(#idea-sort-warp)'
     const motion = card.animate([
       { transform: `perspective(700px) rotateY(${turn * 28}deg) skewX(${turn * -16}deg) scale(.82, 1.12)`, opacity: .15 },
@@ -152,17 +133,7 @@
       const left = (1 - t) ** 2
       const wobble = 1 + .45 * Math.sin(t * Math.PI * 5)
       const strength = 90 * left * wobble
-      const frequencyX = .004 + .02 * left + .006 * Math.sin(t * 9)
-      const frequencyY = .03 + .09 * left
-      if (useField) {
-        // Noise at frequency f is the field stretched by 1/f.
-        field.setAttribute('x', String(-offsetX / frequencyX))
-        field.setAttribute('y', String(-offsetY / frequencyY))
-        field.setAttribute('width', String(WARP_NOISE_UNITS / frequencyX))
-        field.setAttribute('height', String(WARP_NOISE_UNITS / frequencyY))
-      } else {
-        noise.setAttribute('baseFrequency', `${frequencyX} ${frequencyY}`)
-      }
+      noise.setAttribute('baseFrequency', `${.004 + .02 * left + .006 * Math.sin(t * 9)} ${.03 + .09 * left}`)
       maps[0]!.setAttribute('scale', String(strength))
       maps[1]!.setAttribute('scale', String(-strength * .7))
       maps[2]!.setAttribute('scale', String(strength * 1.5))
@@ -559,7 +530,6 @@
 <svg class="idea-sort-warp" aria-hidden="true" width="0" height="0">
   <filter id="idea-sort-warp" bind:this={warpFilter} filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
     <feTurbulence type="fractalNoise" baseFrequency="0.01 0.05" numOctaves="2" result="noise" />
-    <feImage preserveAspectRatio="none" result="field" />
     <!-- Each colour channel is displaced by its own amount, then recombined. -->
     {#each ['1 0 0 0 0  0 0 0 0 0  0 0 0 0 0', '0 0 0 0 0  0 1 0 0 0  0 0 0 0 0', '0 0 0 0 0  0 0 0 0 0  0 0 1 0 0'] as channel, i (i)}
       <feDisplacementMap in="SourceGraphic" in2="noise" scale="0" xChannelSelector="R" yChannelSelector="G" />

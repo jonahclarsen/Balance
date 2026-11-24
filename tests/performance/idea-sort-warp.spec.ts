@@ -18,66 +18,7 @@ test.use({ timezoneId: 'America/Vancouver' })
 const IDEAS = Array.from({ length: WARPS + 2 }, (_, index) =>
   `Synthetic idea ${index}: try a slower morning routine with a walk before checking messages, then note how it feels`)
 
-// Diagnostic variants isolate parts of the warp; only "full" is what ships.
-const VARIANT_SCRIPTS: Record<string, string> = {
-  full: '',
-  'frozen-noise': `
-    const set = Element.prototype.setAttribute
-    Element.prototype.setAttribute = function (name, value) {
-      if (this.localName === 'feTurbulence' && (name === 'baseFrequency' || name === 'seed') && this.dataset.frozen) return
-      if (this.localName === 'feTurbulence' && name === 'baseFrequency') this.dataset.frozen = '1'
-      return set.call(this, name, value)
-    }
-  `,
-  // Stops the precomputed noise field from building, so every warp draws live noise.
-  'live-noise': `window.Worker = class { constructor() { throw new Error('No workers') } }`,
-  // Feeds the displacement a fixed noise image instead of live turbulence.
-  'noise-image': `
-    new MutationObserver(() => {
-      const turbulence = document.querySelector('#idea-sort-warp feTurbulence')
-      if (!turbulence || turbulence.dataset.replaced) return
-      turbulence.dataset.replaced = '1'
-      const canvas = document.createElement('canvas')
-      canvas.width = 512
-      canvas.height = 128
-      const context = canvas.getContext('2d')
-      const pixels = context.createImageData(512, 128)
-      for (let index = 0; index < pixels.data.length; index += 1) pixels.data[index] = (index * 2654435761) % 255
-      context.putImageData(pixels, 0, 0)
-      const image = document.createElementNS('http://www.w3.org/2000/svg', 'feImage')
-      image.setAttribute('href', canvas.toDataURL())
-      image.setAttribute('preserveAspectRatio', 'none')
-      image.setAttribute('x', '-200')
-      image.setAttribute('y', '-100')
-      image.setAttribute('width', '1400')
-      image.setAttribute('height', '400')
-      image.setAttribute('result', 'still-noise')
-      turbulence.after(image)
-      for (const map of document.querySelectorAll('#idea-sort-warp feDisplacementMap')) map.setAttribute('in2', 'still-noise')
-    }).observe(document, { childList: true, subtree: true })
-  `,
-  // Displaces once instead of per colour channel.
-  'one-channel': `
-    new MutationObserver(() => {
-      const filter = document.querySelector('#idea-sort-warp')
-      if (!filter || filter.dataset.trimmed) return
-      filter.dataset.trimmed = '1'
-      const maps = filter.querySelectorAll('feDisplacementMap')
-      for (const element of [...filter.children]) {
-        if (element.localName === 'feTurbulence' || element === maps[0] || element.getAttribute('type') === 'hueRotate') continue
-        if (element.localName === 'feDisplacementMap') continue
-        element.remove()
-      }
-      maps[1].setAttribute('in', 'SourceGraphic'); maps[1].setAttribute('result', 'unused-1')
-      maps[2].setAttribute('result', 'unused-2')
-      maps[1].remove(); maps[2].remove()
-      filter.append(maps[1], maps[2])
-      const hue = filter.querySelector('feColorMatrix[type="hueRotate"]')
-      filter.insertBefore(maps[0], hue)
-      hue.removeAttribute('in')
-    }).observe(document, { childList: true, subtree: true })
-  `,
-}
+// "no-filter" measures the warp's motion alone; "full" is what ships.
 const VARIANT_STYLES: Record<string, string> = {
   'no-filter': '.idea-sort-card { filter: none !important; }',
 }
@@ -109,15 +50,12 @@ async function openSorter(page: Page) {
   if (VARIANT_STYLES[VARIANT]) await page.addStyleTag({ content: VARIANT_STYLES[VARIANT] })
   await page.keyboard.press('ControlOrMeta+Shift+D')
   await expect(page.locator('.idea-sort[role="dialog"] .idea-sort-card')).toHaveCount(1)
-  // Leave time for the noise field to build before the first warp.
-  await page.waitForTimeout(1500)
 }
 
 test('profiles the warp between idea cards', async ({ page, browserName }, testInfo) => {
   test.skip(Boolean(CAPTURE_DIR), 'Capture run')
   await page.clock.setFixedTime(NOW)
-  if (VARIANT_SCRIPTS[VARIANT] === undefined && !VARIANT_STYLES[VARIANT]) throw new Error(`Unknown variant ${VARIANT}`)
-  if (VARIANT_SCRIPTS[VARIANT]) await page.addInitScript(VARIANT_SCRIPTS[VARIANT])
+  if (VARIANT !== 'full' && !VARIANT_STYLES[VARIANT]) throw new Error(`Unknown variant ${VARIANT}`)
   if (testInfo.project.name.includes('6x-cpu')) {
     const session = await page.context().newCDPSession(page)
     await session.send('Emulation.setCPUThrottlingRate', { rate: 6 })

@@ -42,9 +42,6 @@ jobs:
           git worktree add "$RUNNER_TEMP/baseline" "origin/${{ inputs.baseline_ref || 'main' }}"
           (cd "$RUNNER_TEMP/baseline" && pnpm install --frozen-lockfile)
 
-      - name: Check the noise field matches feTurbulence
-        run: pnpm exec playwright test --config playwright.idea-sort-warp-performance.config.ts --project=chromium --project=webkit tests/performance/warp-noise-field.spec.ts
-
       - name: Capture warp frames from both builds
         run: |
           set -euo pipefail
@@ -78,9 +75,10 @@ jobs:
           scenarios=(
             "baseline:full:webkit"
             "candidate:full:webkit"
-            "candidate:live-noise:webkit"
             "candidate:no-filter:webkit"
-            "baseline:no-filter:webkit"
+            "baseline:full:chromium-6x-cpu"
+            "candidate:full:chromium-6x-cpu"
+            "candidate:no-filter:chromium-6x-cpu"
           )
           run_profile() {
             IFS=: read -r build variant project <<< "$1"

@@ -19,6 +19,6 @@ await page.setContent(`<style>
   th { text-align: right; padding-right: 8px; white-space: nowrap } td img { width: 700px; display: block }
 </style><h1>${title}</h1>
 <p>Same timing, turn and duration in both columns; the noise pattern itself is random per card in both, so shapes differ but the kind and strength of the warp should match.</p>
-<table><tr><th></th><th>Before (live feTurbulence)</th><th>After (precomputed field)</th></tr>${rows.join('')}</table>`)
+<table><tr><th></th><th>Before</th><th>After</th></tr>${rows.join('')}</table>`)
 await page.screenshot({ path: output, fullPage: true })
 await browser.close()

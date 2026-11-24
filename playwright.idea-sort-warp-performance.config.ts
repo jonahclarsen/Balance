@@ -7,7 +7,7 @@ const retina = { viewport: { width: 1280, height: 820 }, deviceScaleFactor: 2 }
 
 export default defineConfig({
   testDir: './tests/performance',
-  testMatch: /(?:idea-sort-warp|warp-noise-field)\.spec\.ts/,
+  testMatch: 'idea-sort-warp.spec.ts',
   outputDir: './artifacts/playwright-idea-sort-warp',
   fullyParallel: false,
   workers: 1,
