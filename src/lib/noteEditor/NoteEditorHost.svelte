@@ -62,7 +62,10 @@
     const scroller = host?.isConnected ? scrollContainer() : null
     const scrollTop = scroller?.isConnected ? scroller.scrollTop : previous?.scrollTop ?? 0
     if (scroller?.isConnected) {
-      rememberNoteLeftAtBottom(openedNoteId, scroller.scrollHeight - scroller.clientHeight - scrollTop <= 4)
+      // Mostly at the bottom counts: within a quarter screen, or the last 5%
+      // of a long note (up to one screen).
+      const nearBottom = Math.max(scroller.clientHeight / 4, Math.min(scroller.clientHeight, scroller.scrollHeight * 0.05))
+      rememberNoteLeftAtBottom(openedNoteId, scroller.scrollHeight - scroller.clientHeight - scrollTop <= nearBottom)
     }
     const state = adapter.viewState(scrollTop)
     onViewStateChange(openedNoteId, { scrollTop: state.scrollTop, caret: state.caret ?? previous?.caret ?? null })
