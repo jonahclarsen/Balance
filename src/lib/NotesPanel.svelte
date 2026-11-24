@@ -9,6 +9,7 @@
   import { NOTE_RESURFACE_CHOICES, resurfaceLabel } from './noteResurfacing'
   import ResurfaceIcon from './ResurfaceIcon.svelte'
   import { autoGrow } from './autoGrow'
+  import { NOTE_DRAG_TYPE } from './noteSplit'
   import type { Id, ListTemplate, Metric, Note, NoteItem, NoteItemKind, NoteResurfacing, NoteViewState } from './types'
 
   const NOTE_SCROLL_SPACE_PERCENT_KEY = 'balance:noteScrollSpacePercent'
@@ -53,6 +54,11 @@
   export let onViewStateChange: (noteId: Id, state: NoteViewState) => void = () => {}
   // Called with the note this pane stops showing, also on close and page hide.
   export let onLeave: (noteId: Id) => void = () => {}
+  // Split view: a second pane passes its own id suffix and a close action.
+  export let paneId = ''
+  export let onClosePane: (() => void) | null = null
+  export let onNoteDragStart: ((noteId: Id) => void) | null = null
+  export let onNoteDragEnd: () => void = () => {}
 
   let titleElement: HTMLTextAreaElement | null = null
   let documentElement: HTMLElement | null = null
@@ -102,6 +108,18 @@
     event.stopPropagation()
     drawerPinned = false
     drawerToggle?.focus()
+  }
+
+  function startNoteDrag(event: DragEvent, noteId: Id) {
+    if (!event.dataTransfer || !onNoteDragStart) return
+    event.dataTransfer.setData(NOTE_DRAG_TYPE, noteId)
+    event.dataTransfer.effectAllowed = 'move'
+    onNoteDragStart(noteId)
+    // Close the list once the drag has its image, so the drop zones show.
+    requestAnimationFrame(() => {
+      drawerHovered = false
+      drawerPinned = false
+    })
   }
 
   function selectFromDrawer(noteId: Id) {
@@ -683,10 +701,10 @@
         type="button"
         aria-label={trashOpen ? 'Binned notes' : 'Note list'}
         aria-expanded={drawerOpen}
-        aria-controls="notes-sidebar"
+        aria-controls={`notes-sidebar${paneId}`}
         on:click={() => { drawerPinned = !drawerPinned }}
       ><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" /></svg></button>
-      <aside id="notes-sidebar" class="notes-sidebar" class:notes-trash-open={trashOpen} aria-label="Notes">
+      <aside id={`notes-sidebar${paneId}`} class="notes-sidebar" class:notes-trash-open={trashOpen} aria-label="Notes">
         {#if trashOpen}
           <div class="notes-sidebar-head">
             <h3>Bin</h3>
@@ -725,7 +743,15 @@
             {@const cardResurfaceDays = trashOpen ? undefined : versions.map(({ id }) => resurfaceDaysById.get(id)).find((days) => days !== undefined)}
             {@const updatedAt = trashOpen ? note.deletedAt ?? note.updatedAt : latestUpdate(versions)}
             <div class="note-card-row" data-balance-link={`balance://note/${note.id}`}>
-              <button type="button" class="note-card" class:active={note.id === selectedNote?.id} on:click={() => selectFromDrawer(note.id)}>
+              <button
+                type="button"
+                class="note-card"
+                class:active={note.id === selectedNote?.id}
+                draggable={!trashOpen && onNoteDragStart !== null}
+                on:dragstart={(event) => startNoteDrag(event, note.id)}
+                on:dragend={onNoteDragEnd}
+                on:click={() => selectFromDrawer(note.id)}
+              >
                 <strong>{note.title.trim() || 'Untitled note'}{#if versionLabel}<small class="note-card-version"> · {versionLabel}</small>{/if}</strong>
                 <span>{previewText(note) || 'Empty note'}</span>
                 {#if versions.length > 1}<small class="note-card-versions">{versions.length} versions</small>{/if}
@@ -746,7 +772,7 @@
         {#if trashOpen}
           <h1 class="note-title note-trashed-title">{selectedNote.title.trim() || 'Untitled note'}</h1>
         {:else}
-          <textarea bind:this={titleElement} id="note-title" class="note-title" rows="1" value={selectedNote.title} use:autoSizeTitle={selectedNote.title} placeholder="Untitled note" aria-label="Note title" on:input={(event) => onRename(selectedNote!.id, event.currentTarget.value)} on:keydown={handleTitleKeydown}></textarea>
+          <textarea bind:this={titleElement} id={`note-title${paneId}`} class="note-title" rows="1" value={selectedNote.title} use:autoSizeTitle={selectedNote.title} placeholder="Untitled note" aria-label="Note title" on:input={(event) => onRename(selectedNote!.id, event.currentTarget.value)} on:keydown={handleTitleKeydown}></textarea>
         {/if}
         <div class="note-actions">
           {#if trashOpen}
@@ -765,11 +791,14 @@
             <button type="button" title="Start another version from a copy of this one" on:click={addVersion}>New version</button>
             <button class="ghost danger" type="button" title={selectedVersions.length > 1 ? 'Move every version of this note to the Bin' : undefined} on:click={() => moveToTrash(selectedNote!.id)}>Bin it</button>
           {/if}
+          {#if onClosePane}
+            <button class="ghost note-pane-close" type="button" aria-label="Close pane" title="Close pane" on:click={onClosePane}>×</button>
+          {/if}
         </div>
         {#if resurfacePickerOpen && !trashOpen}
           <div class="note-resurface-picker">
-            <div class="note-resurface-choices" role="group" aria-labelledby="note-resurface-every">
-              <span id="note-resurface-every" class="note-resurface-every">Resurface every</span>
+            <div class="note-resurface-choices" role="group" aria-labelledby={`note-resurface-every${paneId}`}>
+              <span id={`note-resurface-every${paneId}`} class="note-resurface-every">Resurface every</span>
               {#each [null, ...NOTE_RESURFACE_CHOICES] as days (days ?? 'off')}
                 <button type="button" class:primary={days === resurfaceDays} aria-pressed={days === resurfaceDays} on:click={() => chooseResurfacing(days)}>{days === null ? 'Off' : resurfaceLabel(days)}</button>
               {/each}

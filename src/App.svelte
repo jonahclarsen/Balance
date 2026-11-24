@@ -63,6 +63,7 @@
   import { canTranscribe, transcribeClips, transcriptionStatus } from './lib/voiceTranscription'
   import { IDEA_REVIEW_LABELS, type IdeaReviewKind } from './lib/ideaLinks'
   import NotesPanel from './lib/NotesPanel.svelte'
+  import { NOTE_DRAG_TYPE, dropNoteIntoSplit, noteSplitSideAt, type NoteSplit, type NoteSplitSide } from './lib/noteSplit'
   import ImaxButton from './lib/ImaxButton.svelte'
   import OverlayModal from './lib/OverlayModal.svelte'
   import SyncPanel from './lib/SyncPanel.svelte'
@@ -822,6 +823,69 @@ return rows`
   $: rememberSelectedNoteGroup(selectedNoteId, allNotes)
   // When a version disappears (undo, sync), stay on another version of the same note.
   $: if (selectedNoteId && !allNotes.some((note) => note.id === selectedNoteId)) selectedNoteId = fallbackNoteId(notes)
+
+  // A second note can sit beside the selected one; dragging a card from the
+  // notes list to either side of the notes area opens it there.
+  let noteSplit: NoteSplit = null
+  let draggingNoteId: Id | null = null
+  let noteDropSide: NoteSplitSide | null = null
+  let notesSplitElement: HTMLElement | null = null
+  $: splitOpen = Boolean(noteSplit) && !notesTrashOpen
+  $: if (noteSplit && (noteSplit.noteId === selectedNoteId || !notes.some((note) => note.id === noteSplit?.noteId))) noteSplit = null
+
+  function selectPrimaryNote(noteId: Id) {
+    if (noteSplit && noteId === noteSplit.noteId) {
+      noteSplit = notes.some((note) => note.id === selectedNoteId) ? { ...noteSplit, noteId: selectedNoteId } : null
+    }
+    selectedNoteId = noteId
+  }
+
+  function selectSplitNote(noteId: Id) {
+    if (!noteSplit) return
+    if (!noteId) noteSplit = null
+    else if (noteId === selectedNoteId) {
+      selectedNoteId = noteSplit.noteId
+      noteSplit = { ...noteSplit, noteId }
+    } else noteSplit = { ...noteSplit, noteId }
+  }
+
+  function closePrimaryNotePane() {
+    if (!noteSplit) return
+    selectedNoteId = noteSplit.noteId
+    noteSplit = null
+  }
+
+  async function binSplitNote(noteId: Id) {
+    if (binNote(noteId)) noteSplit = null
+    return false
+  }
+
+  function isNoteDrag(event: DragEvent) {
+    return draggingNoteId !== null && Array.from(event.dataTransfer?.types ?? []).includes(NOTE_DRAG_TYPE)
+  }
+
+  function dragNoteOverSplit(event: DragEvent) {
+    if (!isNoteDrag(event) || !notesSplitElement) return
+    event.preventDefault()
+    event.dataTransfer!.dropEffect = 'move'
+    noteDropSide = noteSplitSideAt(event.clientX, notesSplitElement.getBoundingClientRect())
+  }
+
+  function dropNoteOnSplit(event: DragEvent) {
+    if (!isNoteDrag(event) || !notesSplitElement) return
+    event.preventDefault()
+    const noteId = event.dataTransfer!.getData(NOTE_DRAG_TYPE) || draggingNoteId!
+    const side = noteSplitSideAt(event.clientX, notesSplitElement.getBoundingClientRect())
+    const next = dropNoteIntoSplit(selectedNoteId, noteSplit, noteId, side)
+    endNoteDrag()
+    selectedNoteId = next.primaryId
+    noteSplit = next.split
+  }
+
+  function endNoteDrag() {
+    draggingNoteId = null
+    noteDropSide = null
+  }
 
   let lastSelectedNoteGroupId = ''
   function rememberSelectedNoteGroup(noteId: Id, candidates: Note[]) {
@@ -8093,36 +8157,87 @@ return rows`
           <ImaxButton active={viewMaximized} onToggle={(event) => toggleViewMaximized('notes', event)} />
         </div>
       </header>
-      <NotesPanel
-        bind:this={notesPanel}
-        bind:trashOpen={notesTrashOpen}
-        notes={allNotes}
-        {selectedNoteId}
-        {listTemplates}
-        {metrics}
-        historyRevision={$plannerStore.historyRevision}
-        viewStatesByNote={noteViewStatesById}
-        onViewStateChange={rememberNoteViewState}
-        onSelect={(noteId) => (selectedNoteId = noteId)}
-        onCreate={plannerStore.addNote}
-        onTrash={binNote}
-        onAddVersion={plannerStore.addNoteVersion}
-        onRenameVersion={plannerStore.renameNoteVersion}
-        onTrashVersion={plannerStore.trashNote}
-        onRestore={plannerStore.restoreNote}
-        onPermanentlyDelete={confirmPermanentlyDeleteNote}
-        onLeave={discardUnwrittenNote}
-        onEmptyTrash={confirmEmptyNoteTrash}
-        onRename={plannerStore.renameNote}
-        resurfacing={$plannerStore.noteResurfacing}
-        onSetResurfacing={plannerStore.setNoteResurfacing}
-        onSetResurfacingReason={plannerStore.setNoteResurfacingReason}
-        onAddItem={plannerStore.addRootNoteItem}
-        patchItem={plannerStore.patchNoteItem}
-        patchItemsDone={plannerStore.patchNoteItemsDone}
-        replaceItems={plannerStore.replaceNoteItems}
-        onOpenLink={(link) => openLink(link, null)}
-      />
+      <div
+        class="notes-split"
+        class:split={splitOpen}
+        class:split-left={splitOpen && noteSplit?.side === 'left'}
+        role="presentation"
+        bind:this={notesSplitElement}
+        on:dragover={dragNoteOverSplit}
+        on:dragleave={(event) => { if (!(event.relatedTarget instanceof Node && notesSplitElement?.contains(event.relatedTarget))) noteDropSide = null }}
+        on:drop={dropNoteOnSplit}
+      >
+        <NotesPanel
+          bind:this={notesPanel}
+          bind:trashOpen={notesTrashOpen}
+          notes={allNotes}
+          {selectedNoteId}
+          {listTemplates}
+          {metrics}
+          historyRevision={$plannerStore.historyRevision}
+          viewStatesByNote={noteViewStatesById}
+          onViewStateChange={rememberNoteViewState}
+          onSelect={selectPrimaryNote}
+          onCreate={plannerStore.addNote}
+          onTrash={binNote}
+          onAddVersion={plannerStore.addNoteVersion}
+          onRenameVersion={plannerStore.renameNoteVersion}
+          onTrashVersion={plannerStore.trashNote}
+          onRestore={plannerStore.restoreNote}
+          onPermanentlyDelete={confirmPermanentlyDeleteNote}
+          onLeave={discardUnwrittenNote}
+          onEmptyTrash={confirmEmptyNoteTrash}
+          onRename={plannerStore.renameNote}
+          resurfacing={$plannerStore.noteResurfacing}
+          onSetResurfacing={plannerStore.setNoteResurfacing}
+          onSetResurfacingReason={plannerStore.setNoteResurfacingReason}
+          onAddItem={plannerStore.addRootNoteItem}
+          patchItem={plannerStore.patchNoteItem}
+          patchItemsDone={plannerStore.patchNoteItemsDone}
+          replaceItems={plannerStore.replaceNoteItems}
+          onOpenLink={(link) => openLink(link, null)}
+          onClosePane={splitOpen ? closePrimaryNotePane : null}
+          onNoteDragStart={(noteId) => (draggingNoteId = noteId)}
+          onNoteDragEnd={endNoteDrag}
+        />
+        {#if splitOpen && noteSplit}
+          <NotesPanel
+            paneId="-split"
+            notes={allNotes}
+            selectedNoteId={noteSplit.noteId}
+            {listTemplates}
+            {metrics}
+            historyRevision={$plannerStore.historyRevision}
+            viewStatesByNote={noteViewStatesById}
+            onViewStateChange={rememberNoteViewState}
+            onSelect={selectSplitNote}
+            onCreate={plannerStore.addNote}
+            onTrash={binSplitNote}
+            onAddVersion={plannerStore.addNoteVersion}
+            onRenameVersion={plannerStore.renameNoteVersion}
+            onTrashVersion={plannerStore.trashNote}
+            onRestore={plannerStore.restoreNote}
+            onPermanentlyDelete={confirmPermanentlyDeleteNote}
+            onLeave={discardUnwrittenNote}
+            onEmptyTrash={confirmEmptyNoteTrash}
+            onRename={plannerStore.renameNote}
+            resurfacing={$plannerStore.noteResurfacing}
+            onSetResurfacing={plannerStore.setNoteResurfacing}
+            onSetResurfacingReason={plannerStore.setNoteResurfacingReason}
+            onAddItem={plannerStore.addRootNoteItem}
+            patchItem={plannerStore.patchNoteItem}
+            patchItemsDone={plannerStore.patchNoteItemsDone}
+            replaceItems={plannerStore.replaceNoteItems}
+            onOpenLink={(link) => openLink(link, null)}
+            onClosePane={() => (noteSplit = null)}
+            onNoteDragStart={(noteId) => (draggingNoteId = noteId)}
+            onNoteDragEnd={endNoteDrag}
+          />
+        {/if}
+        {#if draggingNoteId && noteDropSide && !notesTrashOpen}
+          <div class="notes-split-drop" class:right={noteDropSide === 'right'} aria-hidden="true"></div>
+        {/if}
+      </div>
     {/if}
 
     {#if view === 'metrics'}

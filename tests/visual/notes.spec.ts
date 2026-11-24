@@ -2372,3 +2372,53 @@ test('note writing space stays bounded when a desktop window becomes narrow', as
     return element.getBoundingClientRect().height / scroller.getBoundingClientRect().height
   })).toBeCloseTo(0.312, 2)
 })
+
+test('dragging a note from the list to a side opens it in a split view', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'touch has no drag and drop; split view is for wide screens')
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await openNotesView(page)
+
+  await page.getByRole('button', { name: '+ New note' }).click()
+  await page.getByLabel('Note title').fill('Alpha')
+  await typeNoteText(page.locator('.note-text'), 'First body')
+  await openNoteList(page)
+  await page.locator('.note-new').click()
+  await page.getByLabel('Note title').fill('Beta')
+  await typeNoteText(page.locator('.note-text'), 'Second body')
+  await expect.poll(() => storedNoteCount(page)).toBe(2)
+
+  const split = page.locator('.notes-split')
+  await openNoteList(page)
+  const box = (await split.boundingBox())!
+  await page.locator('.note-card').filter({ hasText: 'Alpha' }).dragTo(split, {
+    targetPosition: { x: box.width * 0.85, y: box.height / 2 },
+  })
+
+  const panes = page.locator('.notes-split > .notes-workspace')
+  await expect(panes).toHaveCount(2)
+  const titles = page.locator('.notes-split > .notes-workspace .note-title')
+  await expect(titles.nth(0)).toHaveValue('Beta')
+  await expect(titles.nth(1)).toHaveValue('Alpha')
+  const [left, right] = await Promise.all([panes.nth(0).boundingBox(), panes.nth(1).boundingBox()])
+  expect(left!.x + left!.width).toBeLessThanOrEqual(right!.x)
+  await expect(page.locator('.notes-split-drop')).toHaveCount(0)
+
+  // Both panes stay editable.
+  await typeNoteText(panes.nth(1).locator('.note-text').first(), ' more')
+  await expect(panes.nth(1).locator('.note-text').first()).toContainText('First body more')
+
+  // Dropping Alpha on the left swaps the panes instead of opening it twice.
+  await panes.nth(0).locator('.notes-drawer-toggle').hover()
+  await expect(panes.nth(0).locator('.notes-sidebar')).toBeVisible()
+  await panes.nth(0).locator('.note-card').filter({ hasText: 'Alpha' }).dragTo(split, {
+    targetPosition: { x: box.width * 0.15, y: box.height / 2 },
+  })
+  await expect(titles.nth(0)).toHaveValue('Alpha')
+  await expect(titles.nth(1)).toHaveValue('Beta')
+
+  await panes.nth(1).getByRole('button', { name: 'Close pane' }).click()
+  await expect(panes).toHaveCount(1)
+  await expect(titles).toHaveValue('Alpha')
+})
