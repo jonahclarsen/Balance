@@ -91,7 +91,8 @@
   }
 
   function leaveDrawer(event: PointerEvent) {
-    if (event.pointerType === 'touch') return
+    // A pressed button may be starting a note drag; dragging closes the list.
+    if (event.pointerType === 'touch' || event.buttons !== 0) return
     drawerHovered = false
     drawerPinned = false
     const focused = document.activeElement
