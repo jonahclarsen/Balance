@@ -78,7 +78,6 @@ jobs:
             "candidate:no-filter:webkit"
             "baseline:full:chromium-6x-cpu"
             "candidate:full:chromium-6x-cpu"
-            "candidate:no-filter:chromium-6x-cpu"
           )
           run_profile() {
             IFS=: read -r build variant project <<< "$1"
@@ -95,7 +94,7 @@ jobs:
               '{scenario: $scenario, round: $round, profile: $profile}' >> "$results"
           }
           count="${#scenarios[@]}"
-          for round in 1 2 3; do
+          for round in 1 2 3 4 5; do
             for (( position = 0; position < count; position += 1 )); do
               run_profile "${scenarios[$(( (position + round - 1) % count ))]}" "$round"
             done
@@ -120,7 +119,7 @@ jobs:
           {
             echo '## Idea sorter warp profile'
             echo
-            echo 'Median of three rotated runs; two host CPU hogs, Chromium also throttled 6x; 2x device scale.'
+            echo 'Median of five rotated runs; two host CPU hogs, Chromium also throttled 6x; 2x device scale.'
             echo
             echo '```json'
             printf '%s\n' "$summary"

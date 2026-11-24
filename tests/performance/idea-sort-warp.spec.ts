@@ -50,6 +50,8 @@ async function openSorter(page: Page) {
   if (VARIANT_STYLES[VARIANT]) await page.addStyleTag({ content: VARIANT_STYLES[VARIANT] })
   await page.keyboard.press('ControlOrMeta+Shift+D')
   await expect(page.locator('.idea-sort[role="dialog"] .idea-sort-card')).toHaveCount(1)
+  // Let the dev server finish loading modules before the first warp.
+  await page.waitForTimeout(1500)
 }
 
 test('profiles the warp between idea cards', async ({ page, browserName }, testInfo) => {
