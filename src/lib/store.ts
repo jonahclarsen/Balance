@@ -995,7 +995,9 @@ function createPlannerStore() {
       next = reconcileVoiceClips(state, next)
       // Persist the bytes and their first reference in the same operation. A
       // checkpoint can never observe a half-finished image insertion.
-      const nextImageIds = imageReferences(next)
+      const nextImageIds = pendingImages.size || next.images.length
+        ? imageReferences(next)
+        : EMPTY_IMAGE_REFERENCES
       for (const [id, asset] of pendingImages) {
         if (!nextImageIds.has(id)) continue
         if (!next.images.some((image) => image.id === id)) next = { ...next, images: [...next.images, asset] }
@@ -1044,7 +1046,7 @@ function createPlannerStore() {
       // Native checkpoint collection can outlive the frontend's cached asset
       // list. Every newly live id carries its bytes atomically, even if those
       // bytes were already present in a stale frontend cache.
-      const previousImageIds = imageReferences(state)
+      const previousImageIds = nextImageIds.size ? imageReferences(state) : EMPTY_IMAGE_REFERENCES
       for (const id of nextImageIds) {
         if (previousImageIds.has(id)) continue
         const asset = next.images.find((image) => image.id === id)

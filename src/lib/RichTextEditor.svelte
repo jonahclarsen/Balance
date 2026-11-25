@@ -90,6 +90,7 @@
   let windowBlurred = false
   let restoreRequest = 0
   let pendingPasteInput = false
+  let focusListeners: AbortController | null = null
 
   onMount(() => {
     // Own the editable DOM here. A reactive {@html} block would replace it a
@@ -102,6 +103,7 @@
     return () => {
       editor.removeEventListener('balancepaste', pasteListener)
       editor.removeEventListener('balanceformat', formatListener)
+      focusListeners?.abort()
     }
   })
 
@@ -548,6 +550,19 @@
   }
 
   function handleFocus() {
+    // Keep tracking through a window blur, until an in-app interaction
+    // confirms the editor lost focus. Idle rows need no document listeners.
+    if (!focusListeners) {
+      focusListeners = new AbortController()
+      const options = { signal: focusListeners.signal }
+      window.addEventListener('blur', handleWindowBlur, options)
+      window.addEventListener('focus', handleWindowFocus, options)
+      document.addEventListener('visibilitychange', handleDocumentVisibilityChange, options)
+      document.addEventListener('selectionchange', handleDocumentSelectionChange, options)
+      document.addEventListener('focusin', handleDocumentInteraction, options)
+      document.addEventListener('keydown', handleDocumentInteraction, options)
+      document.addEventListener('pointerup', handleDocumentInteraction, options)
+    }
     onFocusChange?.(true)
     if (!restoreSelectionOnNextFocus) return
 
@@ -589,7 +604,12 @@
   function handleDocumentInteraction() {
     // If the editor was deliberately blurred and the user keeps working inside Balance, it was
     // not an app switch. This also clears pending state when the new target is not focusable.
-    if (!windowBlurred && !restoreSelectionOnNextFocus) editorBlurPendingWindowOutcome = false
+    if (windowBlurred || restoreSelectionOnNextFocus) return
+    editorBlurPendingWindowOutcome = false
+    if (document.activeElement !== editor) {
+      focusListeners?.abort()
+      focusListeners = null
+    }
   }
 
   function handleDocumentVisibilityChange() {
@@ -836,9 +856,10 @@
     const range = selection.getRangeAt(0)
     if (!rangeIsInside(activeEditor, range)) return null
 
+    const start = selectionOffsetForRangeBoundary(activeEditor, range.startContainer, range.startOffset)
     const nextSelection = {
-      start: selectionOffsetForRangeBoundary(activeEditor, range.startContainer, range.startOffset),
-      end: selectionOffsetForRangeBoundary(activeEditor, range.endContainer, range.endOffset),
+      start,
+      end: range.collapsed ? start : selectionOffsetForRangeBoundary(activeEditor, range.endContainer, range.endOffset),
     }
     savedSelection = nextSelection
     return nextSelection
@@ -945,15 +966,6 @@
     selection?.addRange(range)
   }
 </script>
-
-<svelte:window on:blur={handleWindowBlur} on:focus={handleWindowFocus} />
-<svelte:document
-  on:focusin={handleDocumentInteraction}
-  on:keydown={handleDocumentInteraction}
-  on:pointerup={handleDocumentInteraction}
-  on:selectionchange={handleDocumentSelectionChange}
-  on:visibilitychange={handleDocumentVisibilityChange}
-/>
 
 <div
   bind:this={editor}
