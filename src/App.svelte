@@ -3503,6 +3503,13 @@ return rows`
     sort?.resolve(completed)
   }
 
+  // A sort opened elsewhere waits on its own page; one opened on Ideas would
+  // cover the idea, so it ends there with every decision so far kept.
+  function viewSortedIdea(itemId: Id) {
+    if (ideaSort?.view === 'ideas') finishIdeaSort(false)
+    void openNavigationLink(navigationURL('task', itemId))
+  }
+
   function cutSortedIdea(itemId: Id) {
     const found = findIdea($plannerStore.ideaBuckets, itemId)
     if (!found) return
@@ -9221,6 +9228,7 @@ return rows`
           sortedBefore={ideaSort.sortedBefore}
           linkSegments={(text) => linkifyItemText(text, listTemplates, metrics, notes)}
           onOpenLink={(link) => openLink(link, null)}
+          onView={viewSortedIdea}
           active={ideaSortVisible}
           suspended={quickAddOpen || searchOpen || shortcutsHelpOpen}
           onDecide={(itemId, kind) => plannerStore.moveIdeaToGroup(itemId, kind)}

@@ -142,6 +142,7 @@
         { keys: ['B'], label: 'Sorting: back one idea', alt: ['left'] },
         { keys: ['M'], label: 'Sorting: append this idea to the previous one' },
         { keys: ['E'], label: 'Sorting: edit the idea' },
+        { keys: ['I'], label: 'Sorting: view the idea on the Ideas page' },
         { keys: ['alt', 'F'], label: 'Sorting: open a link in the idea' },
         { keys: ['mod', 'enter'], label: 'Voice idea: play or pause the selection' },
         { keys: ['Space'], label: 'Voice idea: play or pause, outside the text' },

@@ -20,6 +20,8 @@
   export let sortedBefore = 0
   export let linkSegments: (text: string) => ItemTextSegment[]
   export let onOpenLink: (link: ItemLink) => void
+  // Shows the idea on the Ideas page; the sort waits there for the return.
+  export let onView: (itemId: Id) => void
   // Hidden while another page is open; the sort resumes where it left off.
   export let active = true
   // Add idea, Search or the shortcuts list is open on top and owns the keyboard.
@@ -338,6 +340,7 @@
     if (event.key === 'Escape') onFinish(false)
     else if (key === 'b' || event.key === 'ArrowLeft') goBack()
     else if (key === 'e') void startEdit()
+    else if (key === 'i' && current) onView(current.id)
     else if (key === 'm') appendToPrevious()
     else if (step === 'question' && key === 'y') answer('yes')
     else if (step === 'question' && key === 'n') answer('no')
@@ -510,6 +513,7 @@
         <button type="button" disabled={history.length === 0 && step === 'question'} on:click={goBack}>Back (B)</button>
         <button type="button" disabled={index === 0 || untranscribed} title="Join this idea onto the previous one" on:click={appendToPrevious}>Append to previous (M)</button>
         <button type="button" on:click={() => void startEdit()}>Edit (E)</button>
+        <button type="button" disabled={!current} on:click={() => { if (current) onView(current.id) }}>View (I)</button>
       </div>
     {/if}
 

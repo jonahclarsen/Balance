@@ -959,6 +959,23 @@ for (const method of ['click', 'shortcut']) {
   })
 }
 
+test('I shows the idea being sorted on the Ideas page and the sort waits', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
+  await open(page)
+  await storeCall(page, `
+    plannerStore.addIdea('Synthetic viewed')
+    plannerStore.addIdea('Synthetic other')
+  `)
+  await generateDay(page)
+  await expect(sorter(page).locator('.idea-sort-card')).toContainText('Synthetic viewed')
+  await page.keyboard.press('i')
+  await expect(sorter(page)).toBeHidden()
+  await expect(rows(page, 'proposition').filter({ hasText: 'Synthetic viewed' })).toBeVisible()
+
+  await openView(page, 'Today')
+  await expect(sorter(page).locator('.idea-sort-card')).toContainText('Synthetic viewed')
+})
+
 test('idea deletion keeps content in Trash until it is deleted there', async ({ page }) => {
   await open(page)
   await storeCall(page, `
