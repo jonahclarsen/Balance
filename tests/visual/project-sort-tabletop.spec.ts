@@ -6,7 +6,7 @@ async function add(page: Page, title: string) {
   await page.getByRole('button', { name: 'Add', exact: true }).click()
 }
 
-test('hover cuts the paper, undo restores the whole stroke, and the last slip releases itself', async ({
+test('hover cuts the paper, undo restores the whole stroke, the last slip releases itself, and start over is undoable', async ({
   page,
 }) => {
   await page.goto('/')
@@ -30,6 +30,12 @@ test('hover cuts the paper, undo restores the whole stroke, and the last slip re
   await expect(page.getByText('0 / 2 cut')).toBeVisible()
   await canvas.focus()
   await page.keyboard.press('Space')
+  await expect(page.getByText('0 / 2 placed')).toBeVisible()
+  const startOver = page.getByRole('button', { name: 'Start over' })
+  await startOver.click()
+  await expect(page.getByText('0 / 2 cut')).toBeVisible()
+  await expect(startOver).toBeDisabled()
+  await page.getByRole('button', { name: 'Undo' }).click()
   await expect(page.getByText('0 / 2 placed')).toBeVisible()
 })
 

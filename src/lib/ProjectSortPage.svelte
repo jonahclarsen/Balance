@@ -47,6 +47,10 @@
   $: saved = sorts.filter((s) => s.savedAt).sort((a, b) => b.startedAt.localeCompare(a.startedAt))
   $: current = sorts.find((s) => s.id === selectedId)
   $: pending = current?.slips.filter((s) => !s.outline).length ?? 0
+  $: started =
+    !!current &&
+    (!!current.strokes.length ||
+      current.slips.some((s) => s.position || (s.outline && current.slips.length > 1)))
   $: if (scene && observedLink !== linkedId) {
     observedLink = linkedId
     if (linkedId) select(linkedId)
@@ -104,19 +108,28 @@
       return
     }
     if (!scene) return
-    const seed: ProjectSort = {
-      id: createId('sort'),
-      startedAt: new Date().toISOString(),
-      slips: [],
-      strokes: [],
-    }
-    const next = syncSortProjects(seed, $plannerStore.projects, scene.measure)
-    if (next.slips.length === 1) {
-      const block = layoutSheet(next.slips, scene.measure).blocks[0]
-      next.slips = [{ ...next.slips[0], outline: standardOutline(block) }]
-    }
+    const next = freshSheet(createId('sort'), scene)
     select(next.id)
     write(next)
+  }
+  function freshSheet(id: string, table: SortScene): ProjectSort {
+    const seed: ProjectSort = { id, startedAt: new Date().toISOString(), slips: [], strokes: [] }
+    const next = syncSortProjects(seed, $plannerStore.projects, table.measure)
+    if (next.slips.length === 1) {
+      const block = layoutSheet(next.slips, table.measure).blocks[0]
+      next.slips = [{ ...next.slips[0], outline: standardOutline(block) }]
+    }
+    return next
+  }
+  function startOver() {
+    const t = scene
+    if (!t?.sort || t.sort.savedAt) return
+    finishLine()
+    clearGesture()
+    const old = t.sort
+    checkpoint(old)
+    write(freshSheet(old.id, t), old)
+    message = ''
   }
   function write(next: ProjectSort, prev?: ProjectSort) {
     lastWritten = next
@@ -518,7 +531,9 @@
         </div>
       {:else}
         <div class="tools">
-          <button
+          <button type="button" class="ghost" disabled={!started && !drawing} on:click={startOver}>
+            Start over
+          </button><button
             type="button"
             class="ghost"
             disabled={!before.length && !drawing}
