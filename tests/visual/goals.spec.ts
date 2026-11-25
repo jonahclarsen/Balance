@@ -938,31 +938,31 @@ test('task typing only rescans goals when its match result changes', async ({ pa
   await wakeRow.getByRole('checkbox', { name: 'Complete item' }).check()
 
   await page.evaluate((term) => {
-    const originalIncludes = String.prototype.includes
-    ;(window as Window & { unrelatedGoalIncludes?: number }).unrelatedGoalIncludes = 0
-    String.prototype.includes = function (searchString: string, position?: number) {
+    const originalIndexOf = String.prototype.indexOf
+    ;(window as Window & { unrelatedGoalScans?: number }).unrelatedGoalScans = 0
+    String.prototype.indexOf = function (searchString: string, position?: number) {
       if (String(this).toLocaleLowerCase() === 'wake up' && searchString === term) {
-        ;(window as Window & { unrelatedGoalIncludes?: number }).unrelatedGoalIncludes! += 1
+        ;(window as Window & { unrelatedGoalScans?: number }).unrelatedGoalScans! += 1
       }
-      return originalIncludes.call(this, searchString, position)
+      return originalIndexOf.call(this, searchString, position)
     }
   }, matchTerm)
 
   await targetEditor.fill('prefix ')
   await targetEditor.pressSequentially('ordinary typing')
-  await expect.poll(() => unrelatedGoalIncludes(page)).toBe(0)
+  await expect.poll(() => unrelatedGoalScans(page)).toBe(0)
 
   await stableTargetRow.getByRole('checkbox', { name: 'Complete item' }).check()
   await page.evaluate(() => {
-    ;(window as Window & { unrelatedGoalIncludes?: number }).unrelatedGoalIncludes = 0
+    ;(window as Window & { unrelatedGoalScans?: number }).unrelatedGoalScans = 0
   })
 
   await targetEditor.pressSequentially(matchTerm)
   await expect(stableTargetRow.locator('.plan-goal-badge', { hasText: 'Needle' })).toBeVisible()
-  await expect.poll(() => unrelatedGoalIncludes(page)).toBe(1)
+  await expect.poll(() => unrelatedGoalScans(page)).toBe(1)
 
   await targetEditor.pressSequentially(' suffix')
-  await expect.poll(() => unrelatedGoalIncludes(page)).toBe(1)
+  await expect.poll(() => unrelatedGoalScans(page)).toBe(1)
 })
 
 test('old goal snapshots survive rule edits and archived goals leave rhythm', async ({ page }, testInfo) => {
@@ -2536,8 +2536,8 @@ function addDays(date: string, days: number) {
   return `${year}-${month}-${day}`
 }
 
-async function unrelatedGoalIncludes(page: import('@playwright/test').Page) {
-  return page.evaluate(() => (window as Window & { unrelatedGoalIncludes?: number }).unrelatedGoalIncludes ?? -1)
+async function unrelatedGoalScans(page: import('@playwright/test').Page) {
+  return page.evaluate(() => (window as Window & { unrelatedGoalScans?: number }).unrelatedGoalScans ?? -1)
 }
 
 async function resetActiveScrollTop(page: import('@playwright/test').Page) {
