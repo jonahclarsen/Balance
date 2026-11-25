@@ -5,9 +5,19 @@ import { join } from 'node:path'
 // BLUETOOTH_CONNECT, including for direct AirPods capture, and a
 // microphone foreground service keeps recording behind a notification.
 const root = process.argv[2] ?? 'src-tauri/gen/android/app/src/main'
+const gradlePath = process.argv[3] ?? join(root, '../../build.gradle.kts')
 const source = join(root, 'java/app/balance/local')
 const activityPath = join(source, 'MainActivity.kt')
 const manifestPath = join(root, 'AndroidManifest.xml')
+
+const gradle = await readFile(gradlePath, 'utf8')
+const socketDependency = 'implementation("org.lsposed.hiddenapibypass:hiddenapibypass:6.2")'
+if (!gradle.includes(socketDependency)) {
+  const deps = /^dependencies\s*\{/m
+  if (!deps.test(gradle)) throw new Error(`Could not find dependencies block in ${gradlePath}`)
+  await writeFile(gradlePath, gradle.replace(deps, (marker) => `${marker}
+    ${socketDependency}`))
+}
 
 for (const file of ['BalanceVoiceInput.kt', 'BalanceAirPodsMic.kt']) {
   await copyFile(new URL(`../android/${file}`, import.meta.url), join(source, file))

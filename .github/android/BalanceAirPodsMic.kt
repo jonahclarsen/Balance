@@ -23,6 +23,7 @@ import android.util.Base64
 import androidx.annotation.RequiresApi
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
+import org.lsposed.hiddenapibypass.HiddenApiBypass
 
 /**
  * Reads AAC-ELD from the AirPods over classic L2CAP while Android keeps A2DP
@@ -276,32 +277,26 @@ internal class BalanceAirPodsMic(private val context: Context) {
         fun message(opcode: Byte, body: ByteArray, type: Byte = 4) =
             byteArrayOf(type, 0, 4, 0, opcode, 0) + body
 
-        // Android's public L2CAP client API opens LE channels. AACP uses
-        // classic L2CAP, whose socket constructor varies by platform release.
+        // Android's public L2CAP client API opens LE channels. Look up only
+        // the encrypted classic socket constructor, without changing the
+        // runtime's global non-SDK policy or Bluetooth permission checks.
         fun createSocket(adapter: BluetoothAdapter, device: BluetoothDevice): BluetoothSocket {
-            val int = Int::class.javaPrimitiveType!!
-            val bool = Boolean::class.javaPrimitiveType!!
-            val peer = BluetoothDevice::class.java
-            val uuid = ParcelUuid::class.java
+            val psm = 0x1001
+            val classic = 3
             val candidates = listOf(
-                arrayOf(BluetoothAdapter::class.java, peer, int, bool, bool, int, uuid) to
-                    arrayOf(adapter, device, 3, true, true, 4097, AACP_UUID),
-                arrayOf(peer, int, bool, bool, int, uuid) to
-                    arrayOf(device, 3, true, true, 4097, AACP_UUID),
-                arrayOf(peer, int, int, bool, bool, int, uuid) to
-                    arrayOf(device, 3, -1, true, true, 4097, AACP_UUID),
-                arrayOf(int, int, bool, bool, peer, int, uuid) to
-                    arrayOf(3, -1, true, true, device, 4097, AACP_UUID),
-                arrayOf(int, bool, bool, peer, int, uuid) to
-                    arrayOf(3, true, true, device, 4097, AACP_UUID),
+                arrayOf(adapter, device, classic, true, true, psm, AACP_UUID),
+                arrayOf(device, classic, true, true, psm, AACP_UUID),
+                arrayOf(device, classic, -1, true, true, psm, AACP_UUID),
+                arrayOf(classic, -1, true, true, device, psm, AACP_UUID),
+                arrayOf(classic, true, true, device, psm, AACP_UUID),
             )
-            for ((signature, arguments) in candidates) {
+            for (arguments in candidates) {
                 try {
-                    return BluetoothSocket::class.java.getDeclaredConstructor(*signature).apply {
-                        isAccessible = true
-                    }.newInstance(*arguments)
+                    return HiddenApiBypass.newInstance(BluetoothSocket::class.java, *arguments) as BluetoothSocket
                 } catch (_: ReflectiveOperationException) {
                     // Try the next platform signature.
+                } catch (error: LinkageError) {
+                    throw IllegalStateException("Classic L2CAP unavailable", error)
                 }
             }
             error("Classic L2CAP unavailable")

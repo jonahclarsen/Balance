@@ -12,14 +12,17 @@ test('voice input integration is idempotent and declares headset routing and bac
     await mkdir(source, { recursive: true })
     await writeFile(join(source, 'MainActivity.kt'), 'class MainActivity : TauriActivity() {\n}\n')
     await writeFile(join(root, 'AndroidManifest.xml'), '<manifest>\n    <application>\n    </application>\n</manifest>\n')
-    const run = () => execFileSync(process.execPath, ['.github/scripts/configure-android-voice-input.mjs', root])
-    const paths = ['AndroidManifest.xml', 'java/app/balance/local/MainActivity.kt', 'java/app/balance/local/BalanceVoiceInput.kt', 'java/app/balance/local/BalanceAirPodsMic.kt']
+    const gradlePath = join(root, 'build.gradle.kts')
+    await writeFile(gradlePath, 'dependencies {\n}\n')
+    const run = () => execFileSync(process.execPath, ['.github/scripts/configure-android-voice-input.mjs', root, gradlePath])
+    const paths = ['AndroidManifest.xml', 'java/app/balance/local/MainActivity.kt', 'java/app/balance/local/BalanceVoiceInput.kt', 'java/app/balance/local/BalanceAirPodsMic.kt', 'build.gradle.kts']
     run()
     const first = await Promise.all(paths.map((path) => readFile(join(root, path), 'utf8')))
     run()
     assert.deepEqual(await Promise.all(paths.map((path) => readFile(join(root, path), 'utf8'))), first)
 
-    const [manifest, activity, bridge] = first
+    const [manifest, activity, bridge, , gradle] = first
+    assert.match(gradle, /implementation\("org\.lsposed\.hiddenapibypass:hiddenapibypass:6\.2"\)/)
     for (const permission of ['RECORD_AUDIO', 'MODIFY_AUDIO_SETTINGS', 'BLUETOOTH_CONNECT', 'POST_NOTIFICATIONS', 'FOREGROUND_SERVICE', 'FOREGROUND_SERVICE_MICROPHONE']) {
       assert.match(manifest, new RegExp(`"android\\.permission\\.${permission}"`))
     }
