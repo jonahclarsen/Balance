@@ -669,12 +669,19 @@ test('mobile task options edit, add, and remove time and start task selection', 
   await page.keyboard.press('Escape')
   await expect(trailingRow.locator('.mobile-time-summary')).toBeVisible()
 
+  await page.setViewportSize({ width: 320, height: 840 })
   const selectableText = 'Filler task 1'
   const selectableRow = page.getByRole('listitem', { name: `Plan item: ${selectableText}`, exact: true })
   await selectableRow.getByRole('button', { name: `Task options for ${selectableText}`, exact: true }).click()
   await page.getByRole('menuitem', { name: 'Select tasks' }).click()
   await expect(selectableRow.getByRole('button', { name: `Deselect ${selectableText}`, exact: true })).toBeVisible()
   await expect(page.locator('.mobile-task-menu-button')).toHaveCount(0)
+  const header = page.getByLabel('Mobile app header')
+  await expect(header.getByText('1 selected', { exact: true })).toBeVisible()
+  await expect(header.getByRole('button', { name: 'Copy selected tasks' })).toBeInViewport({ ratio: 1 })
+  await expect(header.getByRole('button', { name: 'Delete selected tasks' })).toBeInViewport({ ratio: 1 })
+  await selectableRow.getByRole('button', { name: `Deselect ${selectableText}`, exact: true }).click()
+  await expect(header.getByRole('button', { name: 'Next day' })).toBeVisible()
 })
 
 test('mobile task options copy and cut whole task trees and remove tasks', async ({ page }, testInfo) => {
