@@ -37,6 +37,17 @@ object SituateSelfTest {
             check(SituateCodes.extract(inbox) == null) { "Historical inbox code bypassed blocking" }
             check(SituateCodes.extract("Your code is 004821") == "004821") { "Code formatting changed" }
             check(SituateCodes.extract("Ordinary message 482913 with private words") == "482913") { "Numeric rule changed" }
+            if (android.os.Build.VERSION.SDK_INT >= 35) {
+                fun plain(text: String) = android.app.Notification.Builder(context, "situate")
+                    .setSmallIcon(android.R.drawable.ic_lock_idle_lock).setContentTitle("Synthetic app").setContentText(text).build()
+                val placeholder = android.content.res.Resources.getSystem().let { r ->
+                    @Suppress("DiscouragedApi") val id = r.getIdentifier("redacted_notification_message", "string", "android")
+                    if (id != 0) r.getString(id) else "Sensitive notification content hidden"
+                }
+                check(SituateRedaction.redacted(plain(placeholder))) { "Redacted notification not detected" }
+                check(SituateRedaction.redacted(conversation("See you soon", placeholder))) { "Redacted message not detected" }
+                check(!SituateRedaction.redacted(plain("See you soon"))) { "Ordinary notification read as redacted" }
+            }
             val codeNotice = SituateCodeNotices.builder(context, "Synthetic app", "004821").build()
             check(codeNotice.extras.getCharSequence(android.app.Notification.EXTRA_TITLE).toString() == "Sign-in code received")
             check(codeNotice.extras.getCharSequence(android.app.Notification.EXTRA_TEXT).toString() == "004821 · Synthetic app")

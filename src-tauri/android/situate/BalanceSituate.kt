@@ -197,6 +197,9 @@ class SituateNotifications : NotificationListenerService() {
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         val appContext = applicationContext
         silencer.execute {
+            // Android hides one-time codes from listeners. Leave those
+            // notifications alone so the code arrives, and don't archive them.
+            if (SituateRedaction.redacted(sbn.notification)) return@execute
             var blocked = emptyList<String>()
             var targeted = emptyList<String>()
             try {
@@ -219,10 +222,37 @@ class SituateNotifications : NotificationListenerService() {
         try {
             val active = activeNotifications ?: return
             val status = BalanceSituate.status(applicationContext)
-            val blocked = active.filter { BalanceSituate.blocked(status, applicationContext, it.packageName).isNotEmpty() }
+            val blocked = active.filter { !SituateRedaction.redacted(it.notification) && BalanceSituate.blocked(status, applicationContext, it.packageName).isNotEmpty() }
             if (blocked.isNotEmpty()) cancelNotifications(blocked.map { it.key }.toTypedArray())
             blocked.forEach { SituateCodeNotices.post(applicationContext, it) }
         } catch (_: Exception) { }
+    }
+}
+
+/** Detects notifications whose text Android replaced because they hold a one-time code. */
+object SituateRedaction {
+    private const val FALLBACK = "Sensitive notification content hidden"
+    @Volatile private var cached: Pair<java.util.Locale, String>? = null
+    private fun placeholder(): String {
+        val system = android.content.res.Resources.getSystem()
+        val locale = system.configuration.locales[0]
+        cached?.let { if (it.first == locale) return it.second }
+        @Suppress("DiscouragedApi")
+        val id = system.getIdentifier("redacted_notification_message", "string", "android")
+        val text = if (id != 0) try { system.getString(id) } catch (_: Exception) { FALLBACK } else FALLBACK
+        cached = locale to text
+        return text
+    }
+    fun redacted(notification: Notification): Boolean {
+        if (Build.VERSION.SDK_INT < 35) return false
+        val extras = notification.extras
+        @Suppress("DEPRECATION")
+        val last = extras.getParcelableArray(Notification.EXTRA_MESSAGES)
+            ?.mapNotNull { it as? android.os.Bundle }?.lastOrNull()?.getCharSequence("text")
+        val texts = listOf(last, extras.getCharSequence(Notification.EXTRA_TEXT), extras.getCharSequence(Notification.EXTRA_BIG_TEXT))
+            .mapNotNull { it?.toString()?.trim() }
+        val hidden = setOf(placeholder(), FALLBACK)
+        return texts.any { it in hidden }
     }
 }
 

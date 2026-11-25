@@ -178,7 +178,9 @@ use AES-GCM with fresh nonces and a separate Android Keystore key. App identitie
 and word-search terms use keyed HMAC indexes. No keys or plaintext notification
 bodies are written to SQLite, synced, backed up, or sent to integrations. Receipt
 and local-open timestamps and blocked flags are unencrypted indexes. OS-delivered
-notification text may already be redacted, and Android may not let a listener
+notification text may already be redacted. Android 15+ hides one-time codes from
+listeners; Situate lets those notifications through and does not archive them.
+Android may not let a listener
 cancel every persistent/system notification.
 
 Search whole words, filter by app or mode, show blocked entries, or sort by when
