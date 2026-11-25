@@ -14,6 +14,8 @@ if (( $(adb shell getprop ro.build.version.sdk | tr -d '\r') >= 33 )); then
   adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS
 fi
 adb shell input keyevent KEYCODE_HOME
+# A freshly installed app may not have created its files directory yet.
+adb shell run-as "$PKG" mkdir -p files
 adb shell run-as "$PKG" touch files/situate-ci-trace
 old_services=$(adb shell settings get secure enabled_accessibility_services | tr -d '\r')
 old_enabled=$(adb shell settings get secure accessibility_enabled | tr -d '\r')
