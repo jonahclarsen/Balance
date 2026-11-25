@@ -1822,6 +1822,9 @@ export function escapeHTML(value: string): string {
 }
 
 export function sanitizeInlineHTML(value: string): string {
+  // Plain text without markup, entities, or parser-normalized characters
+  // already has the same representation as the sanitized DOM.
+  if (!/[<>&"'\r\n\u0000]/.test(value)) return value
   if (!globalThis.document) return escapeHTML(value)
 
   const template = document.createElement('template')

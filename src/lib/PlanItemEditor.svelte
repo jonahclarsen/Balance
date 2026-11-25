@@ -647,7 +647,7 @@
       // focused. Re-focusing and replacing its selection forces another style/
       // layout pass; use the existing node and only restore focus when lost.
       if (document.activeElement !== current) focusTextTarget(current)
-      scrollMovedItemsIntoView('plan', [item.id], direction)
+      scrollMovedItemsIntoView('plan', [item.id], direction, planScopeFor(current))
       return
     }
 

@@ -713,7 +713,7 @@
 
   function renderEditorHTML(sourceHTML: string, sourceText: string, segments: ItemTextSegment[]) {
     const displayHTML = renderItemDisplayHTML(sourceHTML, sourceText, segments)
-    if (!displayHTML || !endsWithLineBreak(displayHTML)) return displayHTML
+    if (!displayHTML.includes('<br>') || !endsWithLineBreak(displayHTML)) return displayHTML
 
     // A final semantic <br> needs one additional contenteditable-only <br> so
     // the browser gives its empty line height and a caret position. This extra

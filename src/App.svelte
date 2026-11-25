@@ -5321,8 +5321,8 @@ return rows`
 
     itemStateContext = nextContext
     const restoreNonce = ++itemContextRestoreNonce
-    const validItemIds = new Set(flattenItemIds(activeItemTree()))
     const savedSelection = nextContext ? itemSelectionsByContext[nextContext] : undefined
+    const validItemIds = new Set(savedSelection ? flattenItemIds(activeItemTree()) : [])
     const restoredItemIds = savedSelection?.selectedItemIds.filter((itemId) => validItemIds.has(itemId)) ?? []
 
     if (nextContext && restoredItemIds.length > 0) {
@@ -5337,7 +5337,7 @@ return rows`
       return
     }
 
-    selectedItemIds = []
+    if (selectedItemIds.length) selectedItemIds = []
     selectedItemContext = ''
     selectionAnchorId = null
     selectionFocusId = null

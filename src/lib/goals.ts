@@ -341,15 +341,31 @@ export function goalCompletionsEqual(left: GoalCompletion[], right: GoalCompleti
   })
 }
 
+// Only the current completion snapshot needs an index. Undo and sync replace
+// the array, and the old index can be collected even while history retains it.
+let indexedCompletions: GoalCompletion[] | undefined
+let completionsByDate = new Map<string, GoalCompletion[]>()
+
 export function goalMatchesForItem(
   goals: Goal[],
   completions: GoalCompletion[],
   date: string,
   itemId: Id,
 ): Goal[] {
+  if (!completions.length || !goals.length) return []
+  if (indexedCompletions !== completions) {
+    indexedCompletions = completions
+    completionsByDate = new Map()
+    for (const completion of completions) {
+      const day = completionsByDate.get(completion.date)
+      if (day) day.push(completion)
+      else completionsByDate.set(completion.date, [completion])
+    }
+  }
+  const day = completionsByDate.get(date)
+  if (!day) return []
   const goalIds = new Set(
-    completions
-      .filter((completion) => completion.date === date && completion.itemIds.includes(itemId))
+    day.filter((completion) => completion.itemIds.includes(itemId))
       .map((completion) => completion.goalId),
   )
   return goals.filter((goal) => goalIds.has(goal.id))
@@ -735,9 +751,10 @@ function matchingTermsForItem(item: PlanItem, goal: Goal): string[] {
 // not accidentally match "adjust". Multi-word and punctuation-bearing terms
 // retain their existing substring behavior.
 function textMatchesGoalTerm(normalizedText: string, term: string): boolean {
-  if (!isSingleWordTerm(term)) return normalizedText.includes(term)
-
   let matchIndex = normalizedText.indexOf(term)
+  if (matchIndex === -1) return false
+  if (!isSingleWordTerm(term)) return true
+
   while (matchIndex !== -1) {
     const precedingCharacter = Array.from(normalizedText.slice(0, matchIndex)).at(-1)
     const followingCharacter = Array.from(normalizedText.slice(matchIndex + term.length))[0]

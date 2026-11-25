@@ -52,7 +52,7 @@
     })
     const observer = new MutationObserver((records) => {
       for (const record of records) for (const node of record.addedNodes) {
-        if (node instanceof Element) hydrateImages(node.parentElement ?? node)
+        if (node instanceof Element) hydrateImages(node)
       }
       if ($selectedImage && !$selectedImage.image.isConnected) selectedImage.set(null)
     })

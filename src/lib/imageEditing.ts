@@ -9,10 +9,14 @@ let dragged: ImageDrag | null = null
 const dropTargets = new WeakMap<HTMLElement, (x: number, y: number, source: ImageDrag, copy: boolean) => void>()
 
 export function hydrateImages(root: ParentNode) {
-  for (const image of root.querySelectorAll<HTMLImageElement>(IMAGE_SELECTOR)) {
-    const src = imageSources.get(image.dataset.balanceImage ?? '')
-    if (src && image.getAttribute('src') !== src) image.src = src
-  }
+  if (imageSources.size === 0) return
+  if (root instanceof HTMLImageElement && root.matches(IMAGE_SELECTOR)) hydrateImage(root)
+  for (const image of root.querySelectorAll<HTMLImageElement>(IMAGE_SELECTOR)) hydrateImage(image)
+}
+
+function hydrateImage(image: HTMLImageElement) {
+  const src = imageSources.get(image.dataset.balanceImage ?? '')
+  if (src && image.getAttribute('src') !== src) image.src = src
 }
 
 type ImageEditingModel = {

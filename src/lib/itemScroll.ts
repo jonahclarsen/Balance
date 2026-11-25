@@ -77,12 +77,12 @@ export function keepBelowPinnedParents(element: HTMLElement, gap = 8) {
 // Keep a moved row (or selected block of rows) away from the viewport edges.
 // Two surrounding rows are included in the required visible region whenever
 // they exist, so repeated Option+Arrow moves retain useful visual context.
-export function scrollMovedItemsIntoView(kind: ItemRowKind, itemIds: Id[], direction: MoveDirection) {
+export function scrollMovedItemsIntoView(kind: ItemRowKind, itemIds: Id[], direction: MoveDirection, scope: ParentNode = document) {
   if (itemIds.length === 0) return
 
   const selector = rowSelectors[kind]
-  const rows = Array.from(document.querySelectorAll<HTMLElement>(selector))
-    .filter((row) => !row.closest('.retained-day[hidden]'))
+  const rows = Array.from(scope.querySelectorAll<HTMLElement>(selector))
+    .filter((row) => scope !== document || !row.closest('.retained-day[hidden], .recent-page[hidden]'))
   const movedIds = new Set(itemIds)
   const movedIndexes = rows
     .map((row, index) => (movedIds.has(rowItemId(row, kind) ?? '') ? index : -1))
