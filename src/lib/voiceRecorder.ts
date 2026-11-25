@@ -4,6 +4,7 @@ import { plannerStore } from './store'
 import { appendVoiceChunk, removeVoiceChunks, unfinishedVoiceRecordings } from './voiceChunkStore'
 import { PEAKS_PER_SECOND } from './voiceClips'
 import type { VoiceClip } from './types'
+import { openAirPodsMicrophone, type AndroidAirPodsInput } from './airPodsMicrophone'
 
 export const VOICE_BITRATE = 128_000
 // WebM/Opus records in Chromium and WebKit and decodes in both.
@@ -18,7 +19,8 @@ export type VoiceRecordingState =
 export const voiceRecording = writable<VoiceRecordingState>({ state: 'idle' })
 export const voiceRecordingError = writable<string | null>(null)
 
-type AndroidVoiceInput = {
+type AndroidVoiceInput = Partial<AndroidAirPodsInput> & {
+  airPodsAvailable?(): boolean
   permissions(): 'granted' | 'missing' | 'pending'
   requestPermissions(): void
   recordingStarted(startedAt: number): void
@@ -96,22 +98,68 @@ const isBluetooth = (device: MediaDeviceInfo) => /bluetooth/i.test(device.label)
 export type VoiceInput = { mic: VoiceMic; headsetAvailable: boolean; label: string }
 export const voiceInput = writable<VoiceInput | null>(null)
 
-type OpenedMicrophone = { stream: MediaStream; mic: VoiceMic; headsetAvailable: boolean }
+type OpenedMicrophone = VoiceInput & {
+  source: AudioNode
+  close(): void
+  watch?(onLost: () => void): void
+  drain?(): Promise<void>
+}
 
-async function openMicrophone(): Promise<OpenedMicrophone> {
+const AIRPODS_FALLBACK = 'AirPods mic unavailable. Using phone mic.'
+
+function airPodsAvailable() {
+  return androidVoiceInput()?.airPodsAvailable?.() ?? false
+}
+
+function useStream(context: AudioContext, stream: MediaStream, mic: VoiceMic, headsetAvailable: boolean): OpenedMicrophone {
+  const close = () => stream.getTracks().forEach((track) => track.stop())
+  try {
+    return {
+      source: context.createMediaStreamSource(stream),
+      close,
+      mic,
+      headsetAvailable,
+      label: stream.getAudioTracks()[0]?.label ?? '',
+    }
+  } catch (error) {
+    close()
+    throw error
+  }
+}
+
+async function openMicrophone(context: AudioContext, phoneFallback = false): Promise<OpenedMicrophone> {
   await allowNativeRecording()
-  // Elsewhere the system's current input (often the headphones already) is used.
-  if (!canChooseVoiceMic()) return { stream: await navigator.mediaDevices.getUserMedia({ audio: true }), mic: 'headset', headsetAvailable: false }
+  const bridge = androidVoiceInput()
+  if (!bridge) return useStream(context, await navigator.mediaDevices.getUserMedia({ audio: true }), 'headset', false)
+
+  const airPods = airPodsAvailable()
+  if (phoneFallback || (airPods && get(voiceMic) === 'headset')) {
+    let stream = await openPhoneMicrophone()
+    if (!phoneFallback && bridge.startAirPodsMic && bridge.readAirPodsMic && bridge.stopAirPodsMic) {
+      // Let the WebView request microphone permission first, then free the
+      // handset input for the native recorder's Android microphone access check.
+      stream.getTracks().forEach((track) => track.stop())
+      try {
+        const direct = await openAirPodsMicrophone(context, bridge as AndroidVoiceInput & AndroidAirPodsInput)
+        if (direct) return { ...direct, mic: 'headset', headsetAvailable: true, label: 'AirPods microphone' }
+      } catch (error) {
+        console.error('Could not open AirPods microphone', error)
+      }
+      stream = await openPhoneMicrophone()
+    }
+    voiceRecordingError.set(AIRPODS_FALLBACK)
+    return useStream(context, stream, 'phone', airPods || (await audioInputs()).some(isBluetooth))
+  }
+
   let headset = (await audioInputs()).find(isBluetooth)
-  // Device names stay hidden until a microphone opens, so without a known
-  // headset the phone's opens first: it leaves music alone.
   if (!headset || get(voiceMic) === 'phone') {
+    // Device names stay hidden until a microphone opens.
     const stream = await openPhoneMicrophone()
     headset = (await audioInputs()).find(isBluetooth)
-    if (!headset || get(voiceMic) === 'phone') return { stream, mic: 'phone', headsetAvailable: Boolean(headset) }
+    if (!headset || get(voiceMic) === 'phone') return useStream(context, stream, 'phone', airPods || Boolean(headset))
     stream.getTracks().forEach((track) => track.stop())
   }
-  return { stream: await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: headset.deviceId } } }), mic: 'headset', headsetAvailable: true }
+  return useStream(context, await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: headset.deviceId } } }), 'headset', true)
 }
 
 function blobToDataURL(blob: Blob): Promise<string> {
@@ -145,8 +193,7 @@ export function peaksFromSamples(samples: Float32Array, sampleRate: number): num
 type Session = {
   id: string
   recorder: MediaRecorder
-  input: MediaStream
-  source: MediaStreamAudioSourceNode
+  input: OpenedMicrophone
   analyser: AnalyserNode
   context: AudioContext
   chunks: Blob[]
@@ -167,30 +214,30 @@ export async function startVoiceRecording() {
   voiceRecording.set({ state: 'starting' })
   // Created before the microphone opens, while the tap still counts as one.
   const context = new AudioContext()
+  let input: OpenedMicrophone | undefined
+  let meter: number | undefined
   try {
-    const opened = await openMicrophone()
-    const input = opened.stream
     // Never awaited: without a user gesture it would wait forever.
     if (context.state === 'suspended') void context.resume()
+    input = await openMicrophone(context)
     const analyser = context.createAnalyser()
     analyser.fftSize = 1024
     const output = context.createMediaStreamDestination()
     output.channelCount = 1
     analyser.connect(output)
-    const source = context.createMediaStreamSource(input)
-    source.connect(analyser)
+    input.source.connect(analyser)
     const mimeType = MIME_TYPES.find((type) => MediaRecorder.isTypeSupported(type))
     const recorder = new MediaRecorder(output.stream, { ...(mimeType ? { mimeType } : {}), audioBitsPerSecond: VOICE_BITRATE })
     const buffer = new Float32Array(analyser.fftSize)
     const startedAt = Date.now()
-    const meter = window.setInterval(() => {
+    const chunks: Blob[] = []
+    const id = createId('voice')
+    meter = window.setInterval(() => {
       analyser.getFloatTimeDomainData(buffer)
       const level = Math.min(1, Math.sqrt(buffer.reduce((sum, value) => sum + value * value, 0) / buffer.length) * 4)
       voiceRecording.set({ state: 'recording', startedAt, level })
     }, 80)
-    const chunks: Blob[] = []
-    const id = createId('voice')
-    const current: Session = { id, recorder, input, source, analyser, context, chunks, meter, startedAt, written: Promise.resolve(), stopping: false, unwatch: () => {} }
+    const current: Session = { id, recorder, input, analyser, context, chunks, meter, startedAt, written: Promise.resolve(), stopping: false, unwatch: () => {} }
     let sequence = 0
     recorder.ondataavailable = (event) => {
       if (event.data.size === 0) return
@@ -199,13 +246,15 @@ export async function startVoiceRecording() {
       current.written = appendVoiceChunk({ recordingId: id, sequence: sequence++, startedAt, mimeType: recorder.mimeType, data: event.data })
         .catch((error) => console.error('Could not keep a recording chunk', error))
     }
-    session = current
     recorder.start(1000)
-    showInput(opened)
+    session = current
+    showInput(current)
     current.unwatch = watchHeadset(current)
     androidVoiceInput()?.recordingStarted(startedAt)
     voiceRecording.set({ state: 'recording', startedAt, level: 0 })
   } catch (error) {
+    window.clearInterval(meter)
+    input?.close()
     void context.close()
     voiceRecording.set({ state: 'idle' })
     voiceRecordingError.set(error instanceof DOMException && error.name === 'NotAllowedError' ? 'Microphone access is off' : 'Could not record')
@@ -213,8 +262,12 @@ export async function startVoiceRecording() {
   }
 }
 
-function showInput({ stream, mic, headsetAvailable }: OpenedMicrophone) {
-  voiceInput.set({ mic, headsetAvailable, label: stream.getAudioTracks()[0]?.label ?? '' })
+function showInput(current: Session) {
+  const { mic, headsetAvailable, label } = current.input
+  voiceInput.set({ mic, headsetAvailable, label })
+  current.input.watch?.(() => {
+    if (session === current && !current.stopping) void reopenMicrophone(current, undefined, true)
+  })
 }
 
 // A headset connecting enables its choice; one disconnecting mid-recording
@@ -222,10 +275,10 @@ function showInput({ stream, mic, headsetAvailable }: OpenedMicrophone) {
 function watchHeadset(current: Session) {
   if (!canChooseVoiceMic()) return () => {}
   const changed = async () => {
-    const headsetAvailable = (await audioInputs()).some(isBluetooth)
+    const headsetAvailable = airPodsAvailable() || (await audioInputs()).some(isBluetooth)
     const shown = get(voiceInput)
     if (session !== current || current.stopping || !shown || get(voiceMicSwitching)) return
-    if (shown.mic === 'headset' && !headsetAvailable) void reopenMicrophone(current)
+    if (shown.mic === 'headset' && !headsetAvailable) void reopenMicrophone(current, undefined, Boolean(current.input.watch))
     else voiceInput.set({ ...shown, headsetAvailable })
   }
   navigator.mediaDevices.addEventListener('devicechange', changed)
@@ -235,29 +288,28 @@ function watchHeadset(current: Session) {
 // The old microphone closes first: Android may not open two at once, and
 // leaving a headset's microphone open would keep its call profile on. The
 // recording carries on through the gap as silence.
-async function reopenMicrophone(current: Session, undoChoice?: () => void) {
+async function reopenMicrophone(current: Session, undoChoice?: () => void, phoneFallback = false) {
   voiceMicSwitching.set(true)
-  current.source.disconnect()
-  current.input.getTracks().forEach((track) => track.stop())
+  current.input.source.disconnect()
+  current.input.close()
   try {
     let opened: OpenedMicrophone
     try {
-      opened = await openMicrophone()
+      opened = await openMicrophone(current.context, phoneFallback)
     } catch (error) {
       if (!undoChoice) throw error
       console.error('Could not switch microphones', error)
       voiceRecordingError.set('Could not switch microphones')
       undoChoice()
-      opened = await openMicrophone()
+      opened = await openMicrophone(current.context, phoneFallback)
     }
-    if (session !== current) {
-      opened.stream.getTracks().forEach((track) => track.stop())
+    if (session !== current || current.stopping) {
+      opened.close()
       return
     }
-    current.input = opened.stream
-    current.source = current.context.createMediaStreamSource(opened.stream)
-    current.source.connect(current.analyser)
-    showInput(opened)
+    current.input = opened
+    opened.source.connect(current.analyser)
+    showInput(current)
   } catch (error) {
     // Without a microphone, keep what was recorded.
     console.error('Could not reopen the microphone', error)
@@ -271,6 +323,7 @@ export async function switchVoiceMic(mic: VoiceMic) {
   const current = session
   if (!current || current.stopping || mic === get(voiceInput)?.mic || get(voiceMicSwitching)) return
   const previous = get(voiceMic)
+  if (get(voiceRecordingError) === AIRPODS_FALLBACK) voiceRecordingError.set(null)
   chooseVoiceMic(mic)
   await reopenMicrophone(current, () => chooseVoiceMic(previous))
 }
@@ -279,7 +332,7 @@ function release(current: Session) {
   window.clearInterval(current.meter)
   current.unwatch()
   voiceInput.set(null)
-  current.input.getTracks().forEach((track) => track.stop())
+  current.input.close()
   void current.context.close()
   session = null
 }
@@ -319,6 +372,7 @@ export async function finishVoiceRecording(typed?: VoiceIdeaText) {
   // The meter would otherwise report recording again.
   window.clearInterval(current.meter)
   voiceRecording.set({ state: 'saving' })
+  if (current.input.drain) await current.input.drain().catch((error) => console.error('Could not drain AirPods audio', error))
   const stopped = new Promise((resolve) => { current.recorder.onstop = resolve })
   current.recorder.stop()
   await stopped

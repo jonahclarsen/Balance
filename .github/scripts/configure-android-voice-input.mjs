@@ -1,15 +1,17 @@
 import { copyFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
-// Voice ideas record through the WebView's getUserMedia. wry asks for the
-// microphone itself; Bluetooth headsets also need BLUETOOTH_CONNECT, and a
+// wry asks for microphone permission. Bluetooth headsets also need
+// BLUETOOTH_CONNECT, including for direct AirPods capture, and a
 // microphone foreground service keeps recording behind a notification.
 const root = process.argv[2] ?? 'src-tauri/gen/android/app/src/main'
 const source = join(root, 'java/app/balance/local')
 const activityPath = join(source, 'MainActivity.kt')
 const manifestPath = join(root, 'AndroidManifest.xml')
 
-await writeFile(join(source, 'BalanceVoiceInput.kt'), await readFile(new URL('../android/BalanceVoiceInput.kt', import.meta.url), 'utf8'))
+for (const file of ['BalanceVoiceInput.kt', 'BalanceAirPodsMic.kt']) {
+  await copyFile(new URL(`../android/${file}`, import.meta.url), join(source, file))
+}
 
 // The recording notification shows the app's logo, traced from app-icon.png.
 const resources = new URL('../android/res/', import.meta.url)

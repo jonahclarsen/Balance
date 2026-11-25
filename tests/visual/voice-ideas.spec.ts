@@ -421,3 +421,62 @@ test('undo passes a transcript by', async ({ page }, testInfo) => {
   // The recording itself was the last edit.
   await expect.poll(async () => (await state(page)).voiceClips).toEqual([])
 })
+
+for (const failure of ['on startup', 'mid-recording'] as const) {
+  test(`AirPods fall back to the phone ${failure} without requesting a hands-free mic`, async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'desktop', 'Fake capture devices are Chromium-only')
+    await page.addInitScript((failure) => {
+      const requests: MediaStreamConstraints[] = []
+      const capture = { fail: failure === 'on startup', starts: 0, stops: 0, requests }
+      const samples = new Int16Array(65 * 64)
+      for (let i = 0; i < samples.length; i++) samples[i] = Math.sin(i / 20) * 8192
+      const pcm = btoa(String.fromCharCode(...new Uint8Array(samples.buffer)))
+      Object.assign(window, {
+        airPodsTest: capture,
+        BalanceVoiceInput: {
+          permissions: () => 'granted',
+          requestPermissions: () => {},
+          recordingStarted: () => {},
+          recordingStopped: () => {},
+          airPodsAvailable: () => true,
+          startAirPodsMic: () => { capture.starts++; return true },
+          readAirPodsMic: () => capture.fail ? null : `64000:${pcm}`,
+          stopAirPodsMic: () => { capture.stops++ },
+        },
+      })
+      const media = navigator.mediaDevices
+      const getUserMedia = media.getUserMedia.bind(media)
+      media.getUserMedia = (constraints = {}) => {
+        requests.push(constraints)
+        return getUserMedia({ audio: true })
+      }
+      media.enumerateDevices = async () => [
+        { kind: 'audioinput', deviceId: 'headset', label: 'Bluetooth headset' },
+        { kind: 'audioinput', deviceId: 'phone', label: 'Speakerphone' },
+      ] as MediaDeviceInfo[]
+    }, failure)
+    await open(page)
+    const ideas = proposition(page)
+    const fallback = ideas.getByText('AirPods mic unavailable. Using phone mic.')
+    await ideas.getByRole('button', { name: 'Record an idea' }).click()
+    if (failure === 'mid-recording') {
+      await expect(ideas.getByRole('button', { name: 'Headset microphone' })).toHaveAttribute('aria-pressed', 'true')
+      await expect(fallback).toHaveCount(0)
+      const bars = ideas.locator('.voice-waveform span')
+      await expect.poll(() => bars.evaluateAll((spans) => spans.some((span) => span.getBoundingClientRect().height > 2))).toBe(true)
+      await page.evaluate(() => { (window as any).airPodsTest.fail = true })
+    }
+    await expect(fallback).toBeVisible()
+    await expect(ideas.getByRole('button', { name: 'Phone microphone' })).toHaveAttribute('aria-pressed', 'true')
+    const capture = await page.evaluate(() => (window as any).airPodsTest)
+    expect(capture.starts).toBe(1)
+    expect(capture.stops).toBe(1)
+    // Every WebView capture is unprocessed, so none opens the hands-free route.
+    expect(capture.requests.length).toBeGreaterThan(0)
+    for (const request of capture.requests) expect(request.audio).toMatchObject({ echoCancellation: false })
+    expect(capture.requests.map((request: any) => request.audio.deviceId)).not.toContainEqual({ exact: 'headset' })
+    await page.waitForTimeout(500)
+    await ideas.getByRole('button', { name: 'Stop recording' }).click()
+    await expect.poll(async () => (await state(page)).voiceClips.length).toBe(1)
+  })
+}

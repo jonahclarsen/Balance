@@ -20,6 +20,8 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
 import java.lang.ref.WeakReference
 
 /**
@@ -28,6 +30,28 @@ import java.lang.ref.WeakReference
  * to Bluetooth devices, and the recording notification needs its own permission.
  */
 internal class BalanceVoiceInput(private val activity: AppCompatActivity) {
+    private val airPods = BalanceAirPodsMic(activity.applicationContext)
+
+    init {
+        activity.lifecycle.addObserver(object : DefaultLifecycleObserver {
+            override fun onDestroy(owner: LifecycleOwner) {
+                airPods.stop()
+            }
+        })
+    }
+
+    @JavascriptInterface
+    fun airPodsAvailable(): Boolean = airPods.available()
+
+    @JavascriptInterface
+    fun startAirPodsMic(): Boolean = runCatching { airPods.start() }.getOrDefault(false)
+
+    @JavascriptInterface
+    fun readAirPodsMic(): String? = runCatching { airPods.read() }.getOrNull()
+
+    @JavascriptInterface
+    fun stopAirPodsMic() = airPods.stop()
+
     @Volatile private var pending = false
     private val launcher = activity.activityResultRegistry.register(
         "balance-voice-permissions",
@@ -76,6 +100,7 @@ internal class BalanceVoiceInput(private val activity: AppCompatActivity) {
     // Called after the clip is saved, so the process stays foreground until then.
     @JavascriptInterface
     fun recordingStopped() {
+        stopAirPodsMic()
         try {
             activity.stopService(Intent(activity, BalanceVoiceRecordingService::class.java))
         } catch (error: RuntimeException) {
