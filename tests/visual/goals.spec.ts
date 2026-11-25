@@ -1917,7 +1917,7 @@ test('long tasks use a vertical desktop goal stack and a wrapping mobile goal ro
 test('goal rhythm uses one smooth scroll surface across its name and timeline panes', async ({ page }, testInfo) => {
   await selectDeviceThemeForTest(page, 'iridescent')
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'iridescent')
-  const historyStart = addDays(todayISO(), -120)
+  const historyStart = addDays(todayISO(), -365)
 
   await page.evaluate((historyStart) => {
     const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
@@ -1980,6 +1980,10 @@ test('goal rhythm uses one smooth scroll surface across its name and timeline pa
   })
   expect(rowGeometry.every(({ top, height }) => top === 0 && height === 0)).toBe(true)
 
+  const oldestCell = timeline.locator(`.goal-day-cell[title^="Scroll goal 1 · ${historyStart} ·"]`)
+  const currentCell = timeline.locator(`.goal-day-cell[title^="Scroll goal 1 · ${todayISO()} ·"]`)
+  await expect(currentCell).toHaveCount(1)
+  await expect(oldestCell).toHaveCount(0)
   const nameBox = await names.boundingBox()
   const scrollBox = await timeline.boundingBox()
   if (!nameBox || !scrollBox) throw new Error('Could not measure Goal Rhythm panes')
@@ -1988,6 +1992,8 @@ test('goal rhythm uses one smooth scroll surface across its name and timeline pa
     element.scrollLeft = 0
     element.scrollTop = 0
   })
+  await expect(oldestCell).toHaveCount(1)
+  await expect(currentCell).toHaveCount(0)
   await page.mouse.move(nameBox.x + nameBox.width / 2, nameBox.y + Math.min(70, nameBox.height / 2))
   await page.mouse.wheel(0, 180)
   await expect.poll(() => timeline.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
@@ -2024,6 +2030,7 @@ test('goal rhythm uses one smooth scroll surface across its name and timeline pa
     element.scrollLeft = element.scrollWidth - element.clientWidth
   })
   await expect.poll(() => goalRhythmPaneGap(page)).toBeLessThanOrEqual(1)
+  await expect(currentCell).toHaveCount(1)
   const namePaneCoverage = await timeline.evaluate((element) => {
     element.scrollTop = element.scrollHeight - element.clientHeight
     const pane = document.querySelector<HTMLElement>('.goal-history-name-backdrop')

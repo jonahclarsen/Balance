@@ -49,6 +49,14 @@
   // enough to avoid delayed paints while scrolling, but still small enough for
   // content-visibility to skip most of the offscreen timeline.
   const DAY_CHUNK_SIZE = 48
+  // Scroll offsets and the 30px date columns both use unzoomed CSS pixels.
+  const CHUNK_WIDTH = DAY_CHUNK_SIZE * 30
+  let timelineWidth = 0
+  let scrollLeft = 0
+  // Keep a full chunk on either side for momentum scrolling. The header
+  // buttons and fixed-width chunk shells always span the entire history.
+  $: firstRenderedChunk = Math.max(0, Math.floor(scrollLeft / CHUNK_WIDTH) - 1)
+  $: lastRenderedChunk = Math.floor((scrollLeft + timelineWidth) / CHUNK_WIDTH) + 1
 
   function chunksOf<T>(values: T[]): T[][] {
     const chunks: T[][] = []
@@ -215,6 +223,7 @@
     const currentDayCenter = scrollEl.scrollLeft
       + (currentDayRect.left - scrollRect.left + currentDayRect.width / 2) / effectiveZoom
     scrollEl.scrollLeft = currentDayCenter - (namePaneWidth + timelineViewportWidth / 2) / effectiveZoom
+    scrollLeft = scrollEl.scrollLeft
   }
 
   function refreshDay() {
@@ -338,7 +347,12 @@
     {/if}
   </header>
 
-  <div class="goal-history-body goal-history-scroll" bind:this={scrollEl}>
+  <div
+    class="goal-history-body goal-history-scroll"
+    bind:this={scrollEl}
+    bind:clientWidth={timelineWidth}
+    on:scroll|passive={(event) => { scrollLeft = event.currentTarget.scrollLeft }}
+  >
     <div class="goal-history-name-backdrop" aria-hidden="true"></div>
     <div class="goal-history-name-header" aria-hidden="true"></div>
     <div class="goal-history-name-pane" bind:this={namePaneEl}>
@@ -436,9 +450,9 @@
         {#each visibleGoals as goal (goal.id)}
           {@const cells = buildGoalDayCells(goal, completions, dates, today)}
           <div class="goal-history-day-row">
-            {#each chunksOf(cells) as cellChunk (cellChunk[0].date)}
+            {#each chunksOf(cells) as cellChunk, chunkIndex (cellChunk[0].date)}
               <div class="goal-history-day-chunk" style={`--goal-chunk-day-count: ${cellChunk.length}`}>
-                {#each cellChunk as cell (cell.date)}
+                {#each (chunkIndex >= firstRenderedChunk && chunkIndex <= lastRenderedChunk ? cellChunk : []) as cell (cell.date)}
                   <div
                     class="goal-day-cell"
                     class:active={cell.active}

@@ -4858,9 +4858,8 @@ time[data-balance-time]:not(.note-time) {
   top: 0;
 }
 
-/* Goal Rhythm can span hundreds of days and thousands of cells. Keep every
-   cell in the DOM and preserve the exact 30px scroll geometry, while letting
-   the browser omit paint/style work for rows outside the vertical viewport. */
+/* Chunk shells preserve horizontal scroll geometry even when their cells are
+   unmounted. Rows outside the vertical viewport can skip layout and paint. */
 .goal-history-day-row {
   content-visibility: auto;
   contain-intrinsic-block-size: 30px;
