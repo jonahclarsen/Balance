@@ -919,6 +919,17 @@ test('generating a day with no project active right now settles ended projects a
   const days = pick.getByRole('group', { name: 'Days active' }).getByRole('button')
   await expect(days.first()).toBeDisabled()
 
+  // Searching filters the open projects; ended and picked ones stay listed.
+  const search = pick.getByRole('searchbox', { name: 'Search projects' })
+  await search.fill('zzz')
+  await expect(pick.locator('.pick')).toHaveText(['Synthetic endedended', 'Synthetic keptended'])
+  await search.fill('next')
+  await pick.getByRole('button', { name: 'Synthetic next' }).click()
+  await search.fill('zzz')
+  await expect(pick.locator('.pick')).toHaveText(['Synthetic endedended', 'Synthetic keptended', 'Synthetic next'])
+  await pick.getByRole('button', { name: 'Synthetic next' }).click()
+  await search.fill('')
+
   // The outgoing session's History writing is editable here.
   const outgoing = pick.getByRole('region', { name: 'wed september 9', exact: true })
   await expect(outgoing.getByRole('heading', { name: 'wed september 9', exact: true })).toBeVisible()
