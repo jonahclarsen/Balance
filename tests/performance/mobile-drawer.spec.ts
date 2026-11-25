@@ -174,8 +174,10 @@ test.beforeEach(async ({ page }, testInfo) => {
     await session.send('Emulation.setCPUThrottlingRate', { rate: 6 })
   }
   await page.goto('/')
-  await expect(page.getByRole('button', { name: 'Open navigation' })).toBeVisible()
-  await expect(page.getByRole('complementary', { name: 'Primary navigation drawer' })).toBeHidden()
+  // Role queries traverse the synthetic timeline even while it is hidden.
+  // Target the controls directly on a CPU-throttled renderer.
+  await expect(page.locator('.mobile-menu-button')).toBeVisible()
+  await expect(page.locator('#primary-sidebar')).toBeHidden()
 })
 
 test('profiles repeated mobile hamburger drawer openings', async ({ page }, testInfo) => {
@@ -310,13 +312,14 @@ test('profiles repeated mobile hamburger drawer openings', async ({ page }, test
   )
   const cycleRenderer = rendererDelta(cycleRendererBefore, await readMetrics())
 
-  await page.getByRole('button', { name: 'Open navigation' }).tap()
+  await page.locator('.mobile-menu-button').tap()
+  await expect(page.locator('.mobile-menu-button')).toHaveAttribute('aria-expanded', 'true')
   await page.waitForTimeout(OPEN_SAMPLE_MS)
   const openIdleBefore = await readMetrics()
   const openIdleFrames = await sampleFrames(page, IDLE_SAMPLE_MS)
   const openIdleRenderer = rendererDelta(openIdleBefore, await readMetrics())
-  await page.getByRole('complementary', { name: 'Primary navigation drawer' })
-    .getByRole('button', { name: 'Close navigation' }).tap()
+  await page.locator('.mobile-drawer-close-button').tap()
+  await expect(page.locator('.mobile-menu-button')).toHaveAttribute('aria-expanded', 'false')
 
   const profile = {
     project: testInfo.project.name,
@@ -353,5 +356,5 @@ test('profiles repeated mobile hamburger drawer openings', async ({ page }, test
     body: JSON.stringify(profile, null, 2),
     contentType: 'application/json',
   })
-  await expect(page.getByRole('complementary', { name: 'Primary navigation drawer' })).toBeHidden()
+  await expect(page.locator('#primary-sidebar')).toBeHidden()
 })
