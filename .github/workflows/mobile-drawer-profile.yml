@@ -3,6 +3,11 @@ name: Profile mobile hamburger drawer
 on:
   workflow_dispatch:
     inputs:
+      runner:
+        description: Runner for the matched Chromium sessions
+        type: choice
+        default: macos-15
+        options: [macos-15, ubuntu-24.04]
       baseline_ref:
         description: Git ref for the baseline run
         required: true
@@ -30,7 +35,7 @@ permissions:
 jobs:
   compare:
     name: Matched mobile drawer comparison under CPU contention
-    runs-on: macos-15
+    runs-on: ${{ inputs.runner || 'macos-15' }}
     timeout-minutes: 35
     env:
       BASELINE_REF: ${{ inputs.baseline_ref }}
@@ -58,7 +63,7 @@ jobs:
       - name: Install dependencies and Chromium
         run: |
           pnpm install --frozen-lockfile
-          pnpm exec playwright install chromium
+          pnpm exec playwright install --with-deps chromium
 
       - name: Prepare matched revisions
         env:
@@ -217,7 +222,7 @@ jobs:
 
   verify:
     name: Typecheck and mobile drawer behavior
-    runs-on: macos-15
+    runs-on: ${{ inputs.runner || 'macos-15' }}
     timeout-minutes: 15
 
     steps:
@@ -238,10 +243,12 @@ jobs:
       - name: Install dependencies and Chromium
         run: |
           pnpm install --frozen-lockfile
-          pnpm exec playwright install chromium
+          pnpm exec playwright install --with-deps chromium
 
       - name: Check source
         run: pnpm check
 
-      - name: Verify mobile drawer behavior
-        run: pnpm exec playwright test tests/visual/mobile-navigation.spec.ts --project mobile
+      - name: Verify mobile drawer and header behavior
+        run: |
+          pnpm exec playwright test tests/visual/mobile-navigation.spec.ts --project mobile
+          pnpm exec playwright test --project mobile --grep 'mobile day buttons remain reachable|mobile task options edit, add, and remove time and start task selection|mobile header quick add|day navigation buttons live'
