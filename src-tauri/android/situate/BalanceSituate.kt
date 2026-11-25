@@ -244,7 +244,6 @@ object SituateRedaction {
         return text
     }
     fun redacted(notification: Notification): Boolean {
-        if (Build.VERSION.SDK_INT < 35) return false
         val extras = notification.extras
         @Suppress("DEPRECATION")
         val last = extras.getParcelableArray(Notification.EXTRA_MESSAGES)
