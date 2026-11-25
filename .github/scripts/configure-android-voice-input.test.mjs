@@ -22,7 +22,7 @@ test('voice input integration is idempotent and declares headset routing and bac
     assert.deepEqual(await Promise.all(paths.map((path) => readFile(join(root, path), 'utf8'))), first)
 
     const [manifest, activity, bridge, , gradle] = first
-    assert.match(gradle, /implementation\("org\.lsposed\.hiddenapibypass:hiddenapibypass:6\.2"\)/)
+    assert.match(gradle, /implementation\("org\.lsposed\.hiddenapibypass:hiddenapibypass:6\.1"\)/)
     for (const permission of ['RECORD_AUDIO', 'MODIFY_AUDIO_SETTINGS', 'BLUETOOTH_CONNECT', 'POST_NOTIFICATIONS', 'FOREGROUND_SERVICE', 'FOREGROUND_SERVICE_MICROPHONE']) {
       assert.match(manifest, new RegExp(`"android\\.permission\\.${permission}"`))
     }

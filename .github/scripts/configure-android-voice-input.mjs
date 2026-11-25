@@ -11,7 +11,8 @@ const activityPath = join(source, 'MainActivity.kt')
 const manifestPath = join(root, 'AndroidManifest.xml')
 
 const gradle = await readFile(gradlePath, 'utf8')
-const socketDependency = 'implementation("org.lsposed.hiddenapibypass:hiddenapibypass:6.2")'
+// 6.2 requires compileSdk 37, newer than the generated Tauri project.
+const socketDependency = 'implementation("org.lsposed.hiddenapibypass:hiddenapibypass:6.1")'
 if (!gradle.includes(socketDependency)) {
   const deps = /^dependencies\s*\{/m
   if (!deps.test(gradle)) throw new Error(`Could not find dependencies block in ${gradlePath}`)
