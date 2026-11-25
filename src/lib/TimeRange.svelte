@@ -10,7 +10,8 @@
   import { onDestroy } from 'svelte'
   import { beginHapticDrag, endHapticDrag, vibrateSteps } from './haptics'
   import { installHeldModifiers, modifiersFor, type HeldModifiers } from './heldModifiers'
-  import { clampMinutes, formatMinutes, MAX_TIMELINE_MINUTES } from './planner'
+  import { formatMinutes } from './planner'
+  import { draggedTimeRange, timeDragDelta, timeDragStepMinutes } from './timeRangeDrag'
 
   export let startMinutes: number
   export let endMinutes: number
@@ -92,10 +93,9 @@
     if (!dragState) return
 
     const steps = Math.round((dragState.originY - dragState.clientY) / dragPixelsPerStep)
-    const stepMinutes = dragState.modifiers.shiftKey ? 5 : 15
+    const stepMinutes = timeDragStepMinutes(dragState.modifiers.shiftKey)
     const origin = dragState.mode === 'start' ? dragState.originStart : dragState.originEnd
-    const snappedMinutes = Math.round(origin / stepMinutes + steps) * stepMinutes
-    const delta = snappedMinutes - origin
+    const delta = timeDragDelta(origin, steps, stepMinutes)
     const adjustStartOnly = dragState.mode === 'start' && dragState.modifiers.altKey
 
     if (steps !== dragState.lastSteps) {
@@ -117,31 +117,8 @@
       onShift?.(dragState.shiftTargets, 0)
     }
 
-    if (dragState.mode === 'start') {
-      if (adjustStartOnly) {
-        const latestStart = Math.floor((dragState.originEnd - stepMinutes) / stepMinutes) * stepMinutes
-        const nextStart = clampMinutes(Math.min(dragState.originStart + delta, latestStart))
-        onChange(nextStart, dragState.originEnd)
-        return
-      }
-
-      const duration = dragState.originEnd - dragState.originStart
-      const latestStart = Math.max(0, Math.floor((MAX_TIMELINE_MINUTES - duration) / stepMinutes) * stepMinutes)
-      const nextStart = clampMinutes(Math.min(dragState.originStart + delta, latestStart))
-      onChange(nextStart, nextStart + duration)
-      return
-    }
-
-    const desiredEnd = dragState.originEnd + delta
-    const minimumEnd = dragState.originStart + stepMinutes
-
-    if (desiredEnd >= minimumEnd) {
-      onChange(dragState.originStart, clampMinutes(desiredEnd))
-      return
-    }
-
-    const nextStart = clampMinutes(desiredEnd - stepMinutes)
-    onChange(nextStart, nextStart + stepMinutes)
+    const next = draggedTimeRange(dragState.mode, dragState.originStart, dragState.originEnd, delta, stepMinutes, adjustStartOnly)
+    onChange(next.startMinutes, next.endMinutes)
   }
 
   function endDrag() {

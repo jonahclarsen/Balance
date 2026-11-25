@@ -289,6 +289,26 @@
   height: auto;
 }
 
+/* Time pills: a task's time range, sized to sit in a line of text. */
+.lexical-note-editor time.note-time {
+  display: inline-flex;
+  vertical-align: baseline;
+  margin: 0 .12em;
+  font-size: .88em;
+  line-height: 1.3;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.lexical-note-editor time.note-time .time-part {
+  padding: 0 2px;
+}
+
+.lexical-note-editor time.note-time .time-end-side {
+  padding-right: 5px;
+}
+
 /* Slash menu (P-31) ------------------------------------------------------- */
 
 .lexical-slash-menu {

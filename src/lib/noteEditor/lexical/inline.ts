@@ -1,12 +1,13 @@
 // Inline content <-> persisted HTML, and plain-text caret offsets.
 //
 // Export writes exactly the allowlisted vocabulary (<strong>, <em>, <u>, <code>,
-// <br>, <a>, <img data-balance-image>) straight from the Lexical model — no
+// <br>, <a>, <img data-balance-image>, <time data-balance-time>) straight from the Lexical model — no
 // DOM parsing per keystroke. Import turns sanitized inline HTML into nodes.
 //
-// Internal offsets count text characters and one per line break or image.
-// Public NoteEditorCaret offsets still count zero per image; translate at the
-// adapter boundary so editing ranges can distinguish either side of an image.
+// Internal offsets count text characters and one per line break, image or
+// time pill. Public NoteEditorCaret offsets count like `NoteItem.text`: zero
+// per image and the label's length per time pill; translate at the adapter
+// boundary so editing ranges can distinguish either side of an embed.
 
 import {
   $createLineBreakNode,
@@ -20,12 +21,15 @@ import {
 } from 'lexical'
 import { escapeHTML } from '../../planner'
 import { imageHTML, type ImageLayout } from '../../imageMarkup'
+import { noteTimeHTML, parseNoteTime } from '../../noteTimeMarkup'
 import {
   $createNoteImageNode,
   $createNoteLinkNode,
   $createNoteTextNode,
+  $createNoteTimeNode,
   $isNoteImageNode,
   $isNoteLinkNode,
+  $isNoteTimeNode,
   ALLOWED_FORMATS,
   FORMAT_BOLD,
   FORMAT_CODE,
@@ -75,6 +79,9 @@ export function $nodesFromInlineHTML(html: string): LexicalNode[] {
           Number(child.getAttribute('height')) || 1,
           (layout === 'left' || layout === 'right' ? layout : 'inline') as ImageLayout,
         ))
+      } else if (tag === 'TIME' && parseNoteTime(child)) {
+        const time = parseNoteTime(child)!
+        out.push($createNoteTimeNode(time.startMinutes, time.endMinutes))
       } else walk(child, format, out)
     }
   }
@@ -141,6 +148,13 @@ function serializeChildren(element: ElementNode, state: { offset: number }, from
         setMarks(0)
         html += imageHTML(child.__imageId, child.__width, child.__height, child.__layout)
       }
+    } else if ($isNoteTimeNode(child)) {
+      const start = state.offset++
+      if (start >= from && start < to) {
+        setMarks(0)
+        const { startMinutes, endMinutes } = child.getRange()
+        html += noteTimeHTML(startMinutes, endMinutes)
+      }
     } else if ($isNoteLinkNode(child)) {
       const inner = serializeChildren(child, state, from, to)
       if (!inner) continue
@@ -176,7 +190,7 @@ export function $inlineLeaves(content: ElementNode): Leaf[] {
         offset += 1
       } else if ($isElementNode(child)) walk(child)
       else {
-        const length = $isNoteImageNode(child) ? 1 : 0
+        const length = $isEmbed(child) ? 1 : 0
         leaves.push({ node: child, start: offset, end: offset + length })
         offset += length
       }
@@ -237,12 +251,17 @@ export function $textBefore(content: ElementNode, offset: number): string {
   return text
 }
 
-export function $hasImage(content: ElementNode): boolean {
+// An image or time pill: one caret character with no Lexical text.
+export function $isEmbed(node: LexicalNode): boolean {
+  return $isNoteImageNode(node) || $isNoteTimeNode(node)
+}
+
+export function $hasEmbed(content: ElementNode): boolean {
   let found = false
   const walk = (element: ElementNode) => {
     for (const child of element.getChildren()) {
       if (found) return
-      if ($isNoteImageNode(child)) found = true
+      if ($isEmbed(child)) found = true
       else if ($isElementNode(child)) walk(child)
     }
   }
@@ -250,9 +269,9 @@ export function $hasImage(content: ElementNode): boolean {
   return found
 }
 
-// Empty for Enter/Backspace purposes: no visible text and no image.
+// Empty for Enter/Backspace purposes: no visible text, image or time.
 export function $isContentEmpty(content: ElementNode): boolean {
-  return $plainText(content).trim() === '' && !$hasImage(content)
+  return $plainText(content).trim() === '' && !$hasEmbed(content)
 }
 
 function isAncestorOrSelf(ancestor: LexicalNode, node: LexicalNode): boolean {
@@ -298,16 +317,33 @@ export function $offsetOfPoint(content: NoteContentNode, point: PointType): numb
 
 export type PointSpec = { key: string; offset: number; type: 'text' | 'element' }
 
+// Public width of an embed leaf: images count nothing, time pills their label.
+function publicWidth(node: LexicalNode): number {
+  return $isNoteTimeNode(node) ? node.label().length : 0
+}
+
 export function $publicOffset(content: NoteContentNode, offset: number): number {
-  return offset - $inlineLeaves(content).filter((leaf) => $isNoteImageNode(leaf.node) && leaf.end <= offset).length
+  let shift = 0
+  for (const leaf of $inlineLeaves(content)) {
+    if (leaf.end > offset) break
+    if ($isEmbed(leaf.node)) shift += publicWidth(leaf.node) - 1
+  }
+  return offset + shift
 }
 
 export function $internalOffset(content: NoteContentNode, offset: number): number {
-  let internal = offset
+  let shift = 0
   for (const leaf of $inlineLeaves(content)) {
-    if ($isNoteImageNode(leaf.node) && leaf.start <= internal) internal += 1
+    if (!$isEmbed(leaf.node)) continue
+    const publicStart = leaf.start + shift
+    if (publicStart > offset) break
+    const width = publicWidth(leaf.node)
+    // Inside a pill's label: snap to its nearer side.
+    if (offset < publicStart + width) return offset - publicStart < width / 2 ? leaf.start : leaf.end
+    // A public offset at an image lies after it.
+    shift += width - 1
   }
-  return Math.min($caretLength(content), internal)
+  return Math.min($caretLength(content), offset - shift)
 }
 
 // Resolve a caret offset to a Lexical point, preferring text positions.

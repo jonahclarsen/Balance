@@ -1,6 +1,7 @@
 import { balanceURLMatches, parseNavigationURL, navigationURL } from './navigationLinks'
 import { IDEA_REVIEW_LABELS, ideasLinkFromURL, type IdeaReviewKind } from './ideaLinks'
 import { sanitizeImage } from './imageMarkup'
+import { noteTimeHTML, parseNoteTime } from './noteTimeMarkup'
 import { isUnboldedBold, textStyleTags } from './textStyleTags'
 import type {
   AppState,
@@ -2031,6 +2032,10 @@ function sanitizeNode(node: Node): string {
   }
 
   if (tag === 'img') return sanitizeImage(element)
+  if (tag === 'time') {
+    const time = parseNoteTime(element)
+    return time ? noteTimeHTML(time.startMinutes, time.endMinutes) : children
+  }
   if (tag === 'br') return '<br>'
   if (tag === 'b' || tag === 'strong') return isUnboldedBold(element) ? children : `<strong>${children}</strong>`
   if (tag === 'i' || tag === 'em') return `<em>${children}</em>`

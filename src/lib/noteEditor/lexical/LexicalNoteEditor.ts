@@ -87,6 +87,7 @@ import type { NoteBlock } from '../noteItems'
 import type {
   NoteEditorCaret,
   NoteEditorChangeSource,
+  NoteEditorMerge,
   NoteEditorContext,
   NoteEditorHostCallbacks,
   NoteEditorMountOptions,
@@ -108,10 +109,11 @@ import {
 import {
   $caretLength,
   $caretText,
-  $hasImage,
+  $hasEmbed,
   $inlineLeaves,
   $internalOffset,
   $isContentEmpty,
+  $isEmbed,
   $nodesFromInlineHTML,
   $offsetOfPoint,
   $plainText,
@@ -172,6 +174,7 @@ import {
   type BlockPoint,
 } from './structure'
 import { SLASH_PATTERN, SlashMenu, type SlashCommand } from './slashMenu'
+import { $handleTimePillKey, $toggleTimePill, noteTimeDrags } from './timePills'
 import { scrollParent, touchSelectionScroll } from './touchSelectionScroll'
 import './lexicalNotes.css'
 
@@ -270,6 +273,7 @@ class LexicalNoteEditorView implements NoteEditorView {
   private composing = false
   private lastInputType: string | null = null
   private pendingSource: NoteEditorChangeSource | null = null
+  private pendingMerge: NoteEditorMerge | null = null
 
   private htmlCache = new Map<NodeKey, HtmlCacheEntry>()
   private lastRead = new WeakMap<NoteBlock, NodeKey>()
@@ -334,6 +338,10 @@ class LexicalNoteEditorView implements NoteEditorView {
     }))
     this.attachDOMListeners(root)
     this.teardown.push(touchSelectionScroll(root))
+    this.teardown.push(noteTimeDrags(root, editor, (merge) => {
+      this.pendingSource = 'command'
+      this.pendingMerge = merge
+    }))
     const images = imageEditing(root, () => this.resyncImages(), {
       insertHTML: (html, range) => {
         this.resyncImages()
@@ -674,6 +682,13 @@ class LexicalNoteEditorView implements NoteEditorView {
 
   // Mod+D / Mod+Enter: toggle every checklist row the selection touches. A
   // mixed selection is checked first, like the Today list.
+  toggleTime(): void {
+    this.runCommand(() => {
+      this.selectAllMarker = null
+      $toggleTimePill()
+    })
+  }
+
   private $toggleSelectedChecks() {
     const selection = $currentRange()
     const edges = selection ? $selectionEdges(selection) : null
@@ -948,6 +963,8 @@ class LexicalNoteEditorView implements NoteEditorView {
   }) {
     const source = this.pendingSource ?? 'typing'
     this.pendingSource = null
+    const merge = this.pendingMerge ?? undefined
+    this.pendingMerge = null
     const inputType = this.lastInputType
     this.lastInputType = null
     const silent = tags.has(SILENT_TAG)
@@ -967,7 +984,7 @@ class LexicalNoteEditorView implements NoteEditorView {
 
     if (!silent && changed && !this.isComposing()) {
       if (inputType === 'insertText' && this.tryAutoformat(editorState)) return
-      this.callbacks?.onDocumentChanged(source)
+      this.callbacks?.onDocumentChanged(source, merge)
     }
     if (changed) this.refreshInternalLinks()
     editorState.read(() => {
@@ -1037,7 +1054,7 @@ class LexicalNoteEditorView implements NoteEditorView {
           setData(dom, 'noteItemDepth', String(depth))
           const content = $readContent(block)
           const text = content ? $plainText(content) : ''
-          const empty = !content || (text === '' && !$hasImage(content) && !content.getChildren().some($isLineBreakNode))
+          const empty = !content || (text === '' && !$hasEmbed(content) && !content.getChildren().some($isLineBreakNode))
           setAttr(dom, 'aria-label', `Note block: ${text.trim() ? text : 'Empty'}`)
           const blockDom = dom.firstElementChild as HTMLElement | null
           if (kind === 'numbered') {
@@ -1124,7 +1141,7 @@ class LexicalNoteEditorView implements NoteEditorView {
       const point = $blockPoint(selection.anchor)
       if (!point) return null
       const content = $readContent(point.block)
-      if (!content || $hasImage(content)) return null
+      if (!content || $hasEmbed(content)) return null
       const text = $textWithBreaks(content)
       for (const trigger of MARKDOWN_TRIGGERS) {
         const match = trigger.pattern.exec(text)
@@ -1408,6 +1425,12 @@ class LexicalNoteEditorView implements NoteEditorView {
       return true
     }
 
+    if ($handleTimePillKey(event, (merge) => {
+      this.pendingSource = 'command'
+      this.pendingMerge = merge
+      this.selectAllMarker = null
+    })) return true
+
     if (event.key === 'Tab' && !mod && !event.altKey) {
       event.preventDefault()
       if (event.shiftKey && editor.getEditorState().read(() => this.$isAtTopWithNothingToOutdent())) {
@@ -1612,7 +1635,7 @@ class LexicalNoteEditorView implements NoteEditorView {
     const { block, offset } = point
     const content = $contentOf(block)
 
-    if (unit === 'line' && isBackward && $plainText(content) === '' && !$hasImage(content) && !content.getChildren().some($isLineBreakNode)) {
+    if (unit === 'line' && isBackward && $plainText(content) === '' && !$hasEmbed(content) && !content.getChildren().some($isLineBreakNode)) {
       // Meta+Backspace on an empty block removes it (P-24).
       this.pendingSource = 'command'
       const order = $blocksInOrder()
@@ -1638,7 +1661,7 @@ class LexicalNoteEditorView implements NoteEditorView {
     }
     const length = $caretLength(content)
     const tail = offset >= length ? '' : this.$tailText(block, offset)
-    const trailingImage = leaves.some((leaf) => $isNoteImageNode(leaf.node) && leaf.start >= offset && offset < length)
+    const trailingImage = leaves.some((leaf) => $isEmbed(leaf.node) && leaf.start >= offset && offset < length)
     if (tail.trim() !== '' || trailingImage) return false
     if (unit === 'line' && offset < length) return false
     return this.$deleteAtEnd(block)

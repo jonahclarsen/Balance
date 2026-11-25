@@ -1199,9 +1199,11 @@ function createPlannerStore() {
     const prefix = NOTE_DOCUMENT_ACTIONS[collection]
     const isTextPatch = 'text' in patch || 'html' in patch
     const mergeOptions =
-      isTextPatch && options.mergeHistory !== false
-        ? { mergeKey: `${prefix}-item-text:${noteId}:${itemId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS }
-        : {}
+      options.mergeKey && options.mergeHistory !== false
+        ? { mergeKey: options.mergeKey, mergeWindowMs: options.mergeWindowMs ?? TEXT_MERGE_WINDOW_MS }
+        : isTextPatch && options.mergeHistory !== false
+          ? { mergeKey: `${prefix}-item-text:${noteId}:${itemId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS }
+          : {}
     commitEntities(`patch_${prefix}_item`, { noteId, itemId, patch }, (state) =>
       updateNoteDocument(state, collection, noteId, (note) => {
         let items = updatePlanItem(note.items, itemId, (item) => applyPatch(item, patch)) as NoteItem[]

@@ -119,6 +119,7 @@
         { keys: ['alt', '['], label: 'Move task start earlier / later', alt: ['alt', ']'] },
         { keys: ['mod', '['], label: 'Move task end earlier / later', alt: ['mod', ']'] },
         { keys: ['altOrMod', 'shift', '[ / ]'], label: 'Shift task time earlier / later' },
+        { keys: ['alt', 'shift', 'T'], label: 'Add / remove time at the caret (in Notes; the keys above adjust it)' },
         { keys: ['alt', 'up'], label: 'Move item; hold to repeat (↑ pauses once before checked)', alt: ['alt', 'down'] },
         { keys: ['meta', 'ctrl', 'up'], label: 'Move note line up / down (in Notes)', alt: ['meta', 'ctrl', 'down'] },
         { keys: ['tab'], label: 'Indent', alt: ['shift', 'tab'] },

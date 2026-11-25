@@ -21,10 +21,10 @@ import {
   noteChangeCaret,
   noteItemsEqual,
 } from './noteItems'
-import type { NoteEditorCaret, NoteEditorChangeSource, NoteEditorView } from './types'
+import type { NoteEditorCaret, NoteEditorChangeSource, NoteEditorMerge, NoteEditorView } from './types'
 
 export type NoteEditorStore = {
-  patchNoteItem: (noteId: Id, itemId: Id, patch: Partial<NoteItem>, options?: { mergeHistory?: boolean }) => void
+  patchNoteItem: (noteId: Id, itemId: Id, patch: Partial<NoteItem>, options?: { mergeHistory?: boolean; mergeKey?: string; mergeWindowMs?: number }) => void
   patchNoteItemsDone: (noteId: Id, itemIds: Id[], done: boolean) => void
   replaceNoteItems: (noteId: Id, items: NoteItem[], summary?: string) => void
 }
@@ -115,9 +115,9 @@ export class NoteEditorAdapter {
 
   // The view reports a user edit. Synchronous: the store already coalesces
   // typing for undo and debounces persistence, so nothing is left unsaved.
-  handleDocumentChanged(source: NoteEditorChangeSource = 'typing'): void {
+  handleDocumentChanged(source: NoteEditorChangeSource = 'typing', merge?: NoteEditorMerge): void {
     if (this.applying || !this.noteId) return
-    this.commit(source)
+    this.commit(source, merge)
   }
 
   // Nothing is buffered, but hosts call this on blur/close/tab switch so any
@@ -132,7 +132,7 @@ export class NoteEditorAdapter {
     return { scrollTop, caret: caret ? { itemId: caret.itemId, start: caret.start, end: caret.end } : null }
   }
 
-  private commit(source: NoteEditorChangeSource | 'flush'): void {
+  private commit(source: NoteEditorChangeSource | 'flush', merge?: NoteEditorMerge): void {
     const summary = source
     const noteId = this.noteId as Id
     const blocks = this.view.readBlocks()
@@ -156,7 +156,8 @@ export class NoteEditorAdapter {
         const item = findNoteItem(items, diff.itemId)
         if (item) {
           this.store.patchNoteItem(noteId, diff.itemId, { text: item.text, html: item.html },
-            source === 'paste' || source === 'image' || source === 'quote' || source === 'code' ? { mergeHistory: false } : {})
+            merge ? { mergeKey: `note-item:${noteId}:${diff.itemId}:${merge.key}`, mergeWindowMs: merge.windowMs }
+              : source === 'paste' || source === 'image' || source === 'quote' || source === 'code' ? { mergeHistory: false } : {})
         } else this.store.replaceNoteItems(noteId, items, summary)
         break
       }

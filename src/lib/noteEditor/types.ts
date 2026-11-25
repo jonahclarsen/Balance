@@ -30,12 +30,16 @@ export type NoteEditorSelectionState = {
 // their own undo step instead of merging into the surrounding typing.
 export type NoteEditorChangeSource = 'typing' | 'paste' | 'image' | 'command' | 'quote' | 'code'
 
+// Edits sharing a key (within the window of each other) form one undo step,
+// apart from surrounding typing: a time pill drag, or a burst of time keys.
+export type NoteEditorMerge = { key: string; windowMs: number }
+
 export type NoteEditorHostCallbacks = {
   // The document changed because of a user action (typing, command, paste…).
   // The adapter reads `view.readBlocks()` and commits. Implementations call
   // this once per transaction, after the DOM/state is settled. Omitting the
   // source means 'typing'.
-  onDocumentChanged: (source?: NoteEditorChangeSource) => void
+  onDocumentChanged: (source?: NoteEditorChangeSource, merge?: NoteEditorMerge) => void
   // IME composition finished (the adapter applies any deferred remote update).
   onCompositionEnd: () => void
   // Caret / selection moved or formatting state changed (may be called often).
@@ -107,6 +111,8 @@ export interface NoteEditorView {
   setBlockKind(kind: NoteItemKind): void
   toggleMark(mark: NoteInlineMark): void
   toggleChecked(): void
+  // Adds a time pill at the caret, or removes the one beside it.
+  toggleTime(): void
   indent(): void
   outdent(): void
   moveBlock(direction: 'up' | 'down'): void

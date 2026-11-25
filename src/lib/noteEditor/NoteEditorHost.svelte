@@ -33,6 +33,7 @@
     (typeof navigator !== 'undefined' && (navigator.platform || navigator.userAgent)) || '',
   )
   const modifierLabel = isMac ? '⌘' : 'Ctrl+'
+  const altLabel = isMac ? '⌥' : 'Alt+'
 
   let host: HTMLElement
   let view: NoteEditorView | null = null
@@ -112,7 +113,7 @@
       ariaLabel,
       context: { listTemplates, metrics, notes, isMac },
       callbacks: {
-        onDocumentChanged: (source) => adapter?.handleDocumentChanged(source),
+        onDocumentChanged: (source, merge) => adapter?.handleDocumentChanged(source, merge),
         onCompositionEnd: () => adapter?.compositionEnded(),
         onSelectionChanged: (state) => {
           selection = state
@@ -221,6 +222,11 @@
     view?.focus()
   }
 
+  function toggleTime() {
+    view?.toggleTime()
+    view?.focus()
+  }
+
   function applyMark(mark: NoteInlineMark) {
     view?.toggleMark(mark)
     view?.focus()
@@ -267,6 +273,9 @@
     <button type="button" disabled={!ready} class:active={selection.marks.bold} aria-label="Bold" aria-pressed={selection.marks.bold ? 'true' : 'false'} title={`Bold (${modifierLabel}B)`} on:mousedown|preventDefault on:click={() => applyMark('bold')}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 12h6a3 3 0 0 0 0-6H7v12h7a3 3 0 0 0 0-6" /></svg></button>
     <button type="button" disabled={!ready} class:active={selection.marks.italic} aria-label="Italic" aria-pressed={selection.marks.italic ? 'true' : 'false'} title={`Italic (${modifierLabel}I)`} on:mousedown|preventDefault on:click={() => applyMark('italic')}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 6h8M6 18h8M14 6l-4 12" /></svg></button>
     <button type="button" disabled={!ready} class:active={selection.marks.underline} aria-label="Underline" aria-pressed={selection.marks.underline ? 'true' : 'false'} title={`Underline (${modifierLabel}U)`} on:mousedown|preventDefault on:click={() => applyMark('underline')}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 5v7a6 6 0 0 0 12 0V5M5 21h14" /></svg></button>
+  </div>
+  <div class="note-format-group" aria-label="Insert">
+    <button type="button" disabled={!ready} aria-label="Time" title={`Time (${altLabel}⇧T)`} on:mousedown|preventDefault on:click={toggleTime}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.2 4.2 3.8 6.1m14-1.9 2.4 1.9M12 7.5v5l3 1.8M7 20.5l1.2-1.8m8.8 1.8-1.2-1.8M20 12.5a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z" /></svg></button>
   </div>
   <span class="note-format-hint">Type <kbd><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" role="img" aria-label="Slash"><path d="M8 2 4 10" /></svg></kbd> for more</span>
 </div>

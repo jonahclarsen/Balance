@@ -11,7 +11,8 @@
 // Any kind can hold children of any kind at any depth, so a paragraph under a
 // heading or a quote under a bullet is representable and round-trips exactly.
 // Inline content is limited to the persisted vocabulary: text with
-// bold / italic / underline / code, line breaks, links and Balance images.
+// bold / italic / underline / code, line breaks, links, Balance images and
+// time pills.
 
 import {
   $applyNodeReplacement,
@@ -30,6 +31,8 @@ import {
 } from 'lexical'
 import type { NoteItemKind } from '../../types'
 import type { ImageLayout } from '../../imageMarkup'
+import { formatMinutes } from '../../planner'
+import { noteTimeLabel } from '../../noteTimeMarkup'
 
 export const LIST_KINDS: ReadonlySet<NoteItemKind> = new Set(['bullet', 'numbered', 'checklist'])
 
@@ -529,6 +532,118 @@ export function $isNoteImageNode(node: LexicalNode | null | undefined): node is 
 }
 
 // ---------------------------------------------------------------------------
+// Time pill (inline decorator, one caret character). The editor drags and
+// keys its edges; `updateDOM` patches labels in place so a drag keeps its
+// pointer capture.
+// ---------------------------------------------------------------------------
+
+type SerializedNoteTimeNode = Spread<{ startMinutes: number; endMinutes: number }, SerializedLexicalNode>
+
+export class NoteTimeNode extends DecoratorNode<null> {
+  __startMinutes: number
+  __endMinutes: number
+
+  static getType(): string {
+    return 'note-time'
+  }
+
+  static clone(node: NoteTimeNode): NoteTimeNode {
+    return new NoteTimeNode(node.__startMinutes, node.__endMinutes, node.__key)
+  }
+
+  constructor(startMinutes = 540, endMinutes = 600, key?: NodeKey) {
+    super(key)
+    this.__startMinutes = startMinutes
+    this.__endMinutes = endMinutes
+  }
+
+  static importJSON(json: SerializedNoteTimeNode): NoteTimeNode {
+    return $createNoteTimeNode(json.startMinutes, json.endMinutes)
+  }
+
+  exportJSON(): SerializedNoteTimeNode {
+    return { ...super.exportJSON(), startMinutes: this.__startMinutes, endMinutes: this.__endMinutes }
+  }
+
+  createDOM(): HTMLElement {
+    const pill = document.createElement('time')
+    pill.className = 'time-range note-time'
+    pill.contentEditable = 'false'
+    const side = (edge: 'start' | 'end') => {
+      const wrapper = document.createElement('span')
+      wrapper.className = `time-side time-${edge}-side`
+      const part = document.createElement('span')
+      part.className = 'time-part'
+      part.dataset.noteTimeEdge = edge
+      wrapper.append(part)
+      return wrapper
+    }
+    const dash = document.createElement('span')
+    dash.className = 'dash'
+    dash.textContent = '-'
+    pill.append(side('start'), dash, side('end'))
+    this.paint(pill)
+    return pill
+  }
+
+  private paint(pill: HTMLElement) {
+    pill.setAttribute('data-balance-time', `${this.__startMinutes}-${this.__endMinutes}`)
+    pill.title = 'Drag to move. Alt: start only. Shift: 5 minutes.'
+    const [start, end] = pill.querySelectorAll<HTMLElement>('.time-part')
+    if (start) start.textContent = formatMinutes(this.__startMinutes)
+    if (end) end.textContent = formatMinutes(this.__endMinutes)
+  }
+
+  updateDOM(prevNode: NoteTimeNode, dom: HTMLElement): boolean {
+    if (prevNode.__startMinutes !== this.__startMinutes || prevNode.__endMinutes !== this.__endMinutes) this.paint(dom)
+    return false
+  }
+
+  getRange(): { startMinutes: number; endMinutes: number } {
+    const node = this.getLatest()
+    return { startMinutes: node.__startMinutes, endMinutes: node.__endMinutes }
+  }
+
+  setRange(startMinutes: number, endMinutes: number): void {
+    const current = this.getLatest()
+    if (current.__startMinutes === startMinutes && current.__endMinutes === endMinutes) return
+    const node = this.getWritable()
+    node.__startMinutes = startMinutes
+    node.__endMinutes = endMinutes
+  }
+
+  decorate(): null {
+    return null
+  }
+
+  isInline(): true {
+    return true
+  }
+
+  // Arrow keys step over it like a character instead of selecting it.
+  isKeyboardSelectable(): boolean {
+    return false
+  }
+
+  getTextContent(): string {
+    return ''
+  }
+
+  label(): string {
+    const { startMinutes, endMinutes } = this.getRange()
+    return noteTimeLabel(startMinutes, endMinutes)
+  }
+}
+
+export function $createNoteTimeNode(startMinutes: number, endMinutes: number): NoteTimeNode {
+  return $applyNodeReplacement(new NoteTimeNode(startMinutes, endMinutes))
+}
+
+export function $isNoteTimeNode(node: LexicalNode | null | undefined): node is NoteTimeNode {
+  return node instanceof NoteTimeNode
+}
+
+// ---------------------------------------------------------------------------
 // Text: renders marks as real <strong>/<em>/<u>/<code> elements (the persisted
 // vocabulary) instead of Lexical's default span + theme class for underline.
 // ---------------------------------------------------------------------------
@@ -600,6 +715,7 @@ export const NOTE_NODES = [
   NoteChildrenNode,
   NoteLinkNode,
   NoteImageNode,
+  NoteTimeNode,
   NoteTextNode,
   {
     replace: TextNode,

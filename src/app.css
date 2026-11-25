@@ -2385,6 +2385,19 @@ body.mobile-checkbox-dragging {
   cursor: ns-resize;
 }
 
+/* A note's time pill outside the editor (previews, search, history). */
+time[data-balance-time]:not(.note-time) {
+  padding: 0 5px;
+  border: 1px solid var(--time-border);
+  border-radius: 6px;
+  background: var(--time-bg);
+  color: var(--accent-strong);
+  font-family: var(--font-mono);
+  font-size: .88em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .time-part.warning {
   color: var(--time-warn-ink);
 }
