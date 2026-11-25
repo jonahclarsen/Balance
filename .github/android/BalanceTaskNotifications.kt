@@ -29,6 +29,7 @@ object BalanceTaskNotifications {
     private var activity = WeakReference<Activity>(null)
     private val executor = Executors.newSingleThreadExecutor()
     @Volatile private var ciTesting = false
+    @Volatile private var resetThisProcess = false
     init { System.loadLibrary("balance_lib") }
     @JvmStatic external fun nativeInitialize(context: Context)
     @JvmStatic external fun nativeRefresh(appDataPath: String): Boolean
@@ -41,7 +42,12 @@ object BalanceTaskNotifications {
         initialize(owner)
         // Opening a notification removes it without a dismissal callback.
         BalanceNotificationStack.update(owner)
-        resetAndRefresh(owner) { runCITest(owner.applicationContext) }
+        // Only a new process can follow lost alarms: reboot, update and exact
+        // alarm grants arrive at the restore receiver, and a force-stop kills the
+        // process. Later resumes reuse the registry instead of re-registering
+        // every alarm while holding the scheduling lock.
+        if (resetThisProcess) refresh(owner) { runCITest(owner.applicationContext) }
+        else resetAndRefresh(owner) { runCITest(owner.applicationContext) }
     }
 
     // Callers waiting on the queued refresh. Resume and window focus arrive
@@ -136,6 +142,7 @@ object BalanceTaskNotifications {
 
     @Synchronized fun resetAndRefresh(context: Context, complete: () -> Unit = {}) {
         if (ciTesting) { complete(); return }
+        resetThisProcess = true
         // AlarmManager discards alarms on reboot; fingerprints must be cleared
         // so the same durable records are scheduled again.
         val registry = context.getSharedPreferences(STORE, Context.MODE_PRIVATE)
