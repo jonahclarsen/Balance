@@ -371,6 +371,26 @@ test.describe('P-26/27 indent, outdent, move', () => {
     })
   }
 
+  test('Alt+Up / Down move every selected row together and keep the selection', async ({ harness }) => {
+    await harness.boot({ select: 'Nested lists' })
+    const note = harness.noteByTitle('Nested lists')
+    const [groceries, errands, stepOne, stepTwo, stepThree] = note.items
+    const order = (stored: Note) => stored.items.slice(0, 5).map((item) => item.id).join()
+    await harness.selectAcross(stepTwo.id, 1, stepThree.id, 2)
+    await harness.page.keyboard.press('Alt+ArrowUp')
+    await harness.waitForNote(note.id, (stored) => order(stored) === [groceries.id, errands.id, stepTwo.id, stepThree.id, stepOne.id].join())
+    await harness.page.keyboard.press('Alt+ArrowUp')
+    await harness.waitForNote(note.id, (stored) => order(stored) === [groceries.id, stepTwo.id, stepThree.id, errands.id, stepOne.id].join())
+    await harness.page.keyboard.press('Alt+ArrowDown')
+    await harness.waitForNote(note.id, (stored) => order(stored) === [groceries.id, errands.id, stepTwo.id, stepThree.id, stepOne.id].join())
+
+    // Mixed depths move the shallowest rows, with their children.
+    await harness.selectAcross(stepThree.id, 1, stepOne.children[1].id, 1)
+    await harness.page.keyboard.press('Alt+ArrowUp')
+    await harness.waitForNote(note.id, (stored) => order(stored) === [groceries.id, errands.id, stepThree.id, stepOne.id, stepTwo.id].join())
+    expect((await harness.storedNote(note.id))!.items[3].children.map((child) => child.id)).toEqual(stepOne.children.map((child) => child.id))
+  })
+
   test('Meta+Control+Up / Down move bullet, numbered, nested and checklist rows', async ({ harness }) => {
     await harness.boot({ select: 'Nested lists' })
     const lists = harness.noteByTitle('Nested lists')

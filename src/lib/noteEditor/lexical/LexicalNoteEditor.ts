@@ -1552,13 +1552,42 @@ class LexicalNoteEditorView implements NoteEditorView {
     if (changed) $selectPoints(edges.anchor, edges.focus)
   }
 
+  // Every row the selection touches moves together, past the neighbouring
+  // sibling of the group. Rows at mixed depths move as their ancestors at the
+  // shallowest selected depth. A selection ending at the start of a row
+  // leaves that row out.
   private $moveCurrent(direction: 'up' | 'down') {
     const selection = $currentRange()
     if (!selection) return
-    const point = $blockPoint(selection.focus)
-    if (!point) return
-    $moveBlock(point.block, direction)
-    $selectEnd(point.block)
+    const edges = $selectionEdges(selection)
+    if (!edges) return
+    if (edges.start.block.is(edges.end.block)) {
+      $moveBlock(edges.focus.block, direction)
+      if (selection.isCollapsed()) $selectEnd(edges.focus.block)
+      else $selectPoints(edges.anchor, edges.focus)
+      return
+    }
+    let rows = $blocksBetween(edges.start.block, edges.end.block)
+    if (edges.end.offset === 0) rows = rows.slice(0, -1)
+    const depth = Math.min(...rows.map($depthOf))
+    const group: NoteBlockNode[] = []
+    for (const row of rows) {
+      let top = row
+      while ($depthOf(top) > depth) top = $parentBlock(top)!
+      if (!group.some((block) => block.is(top))) group.push(top)
+    }
+    const first = group[0]
+    const last = group[group.length - 1]
+    if (direction === 'up') {
+      const previous = first.getPreviousSibling()
+      if (!$isNoteBlockNode(previous)) return
+      last.insertAfter(previous)
+    } else {
+      const next = last.getNextSibling()
+      if (!$isNoteBlockNode(next)) return
+      first.insertBefore(next)
+    }
+    $selectPoints(edges.anchor, edges.focus)
   }
 
   // Enter (P-21). Also reached from beforeinput insertParagraph (Safari/iOS).
