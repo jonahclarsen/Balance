@@ -151,6 +151,14 @@
       ],
     },
     {
+      title: 'Resurfaced note',
+      shortcuts: [
+        { keys: ['V'], label: 'View the note', alt: ['enter'] },
+        { keys: ['D'], label: 'Done' },
+        { keys: ['O'], label: 'Open the note' },
+      ],
+    },
+    {
       title: 'Template review (from a review link)',
       shortcuts: [
         { keys: ['left'], label: 'Discard item (instant)', alt: ['del'] },

@@ -11,17 +11,34 @@
   export let onDone: () => void
   export let onOpen: () => void
   export let onClose: () => void
+  // Search, Add idea or the shortcuts list is open on top and owns the keyboard.
+  export let suspended = false
 
   // A reminder of why it comes back shows first, before the note itself.
   let viewing = !record.reason?.trim()
+
+  function handleKeydown(event: KeyboardEvent) {
+    if (suspended || event.metaKey || event.ctrlKey || event.altKey || event.repeat) return
+    const target = event.target as HTMLElement | null
+    if (target?.closest('input, textarea, [contenteditable="true"]')) return
+    const key = event.key.toLowerCase()
+    if (!viewing && (key === 'v' || event.key === 'Enter')) viewing = true
+    else if (viewing && key === 'd') onDone()
+    else if (viewing && key === 'o') onOpen()
+    else return
+    event.preventDefault()
+    event.stopPropagation()
+  }
 </script>
+
+<svelte:window on:keydown={handleKeydown} />
 
 <OverlayModal title={note.title.trim() || 'Untitled note'} linkURL={navigationURL('note', note.id)} z={70} {onClose}>
   {#if !viewing}
     <div class="resurfaced-note">
       <p class="resurfaced-note-reason">{record.reason}</p>
       <div class="resurfaced-note-next">
-        <button class="primary" type="button" on:click={() => (viewing = true)}>View note</button>
+        <button class="primary" type="button" on:click={() => (viewing = true)}>View note (V)</button>
       </div>
     </div>
   {:else}
@@ -32,8 +49,8 @@
         {/each}
       </div>
       <div class="resurfaced-note-next">
-        <button class="primary" type="button" on:click={onDone}>Done</button>
-        <button type="button" on:click={onOpen}>Open note</button>
+        <button class="primary" type="button" on:click={onDone}>Done (D)</button>
+        <button type="button" on:click={onOpen}>Open note (O)</button>
       </div>
     </div>
   {/if}

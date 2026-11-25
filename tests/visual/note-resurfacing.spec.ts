@@ -54,10 +54,10 @@ test('a resurfacing note blocks day generation until it is read', async ({ page 
   const dialog = page.getByRole('dialog', { name: 'Remember why' })
   await expect(dialog).toContainText('You keep rushing again.')
   await expect(dialog).not.toContainText('Slow down.')
-  await dialog.getByRole('button', { name: 'View note' }).click()
+  await page.keyboard.press('v')
   await expect(dialog).toContainText('Slow down.')
   await expect(dialog.getByRole('button', { name: /≈|Never/ })).toHaveCount(0)
-  await dialog.getByRole('button', { name: 'Open note' }).click()
+  await page.keyboard.press('o')
   await expect(dialog).toBeHidden()
   await expect(page.getByRole('textbox', { name: 'Note title' })).toHaveValue('Remember why')
   const [record] = (await stored(page)).noteResurfacing
