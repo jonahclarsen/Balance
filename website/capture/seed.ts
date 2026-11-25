@@ -20,6 +20,7 @@ import {
 } from '../../src/lib/planner'
 import { createGoal, reconcileGoalCompletionsForDate } from '../../src/lib/goals'
 import { projectActiveUntil } from '../../src/lib/projects'
+import { noteTimeHTML } from '../../src/lib/noteTimeMarkup'
 import type { AppState, DailyTemplate, NoteItem, NoteItemKind, PlanItem, TemplateItem } from '../../src/lib/types'
 
 // Deterministic so reruns produce the same pictures.
@@ -251,7 +252,7 @@ export function createScreenshotState(today: string): AppState {
   const trip = createNote('Camping weekend')
   trip.items = [
     noteLine('Campsite', 'heading'),
-    noteLine('Lakeside site, two nights. Arrive before sunset.'),
+    { ...noteLine(''), html: `Lakeside site, two nights. Check-in ${noteTimeHTML(900, 960)}`, text: 'Lakeside site, two nights. Check-in 3pm–4pm' },
     noteLine('Bring', 'heading'),
     noteLine('Tent and footprint', 'checklist', true),
     noteLine('Sleeping bags', 'checklist', true),
