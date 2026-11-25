@@ -3,7 +3,7 @@
   import type { ItemLink } from './planner'
   import OverlayModal from './OverlayModal.svelte'
   import ProjectHistoryNoteEditor from './ProjectHistoryNoteEditor.svelte'
-  import { endedProjectsOn, historyDayHeading, isProjectOpen, outgoingHistoryDay, PROJECT_ACTIVE_DAY_COUNTS, projectHistoryNoteId } from './projects'
+  import { endedProjectsOn, filterProjectsByPhrase, historyDayHeading, isProjectOpen, outgoingHistoryDay, PROJECT_ACTIVE_DAY_COUNTS, projectHistoryNoteId } from './projects'
 
   // Asked while generating a day that would start with no active project:
   // settle the projects whose stretch ended, then pick the next ones.
@@ -18,6 +18,7 @@
   let endings: Record<Id, 'completed' | 'archived'> = {}
   let selected = new Set<Id>()
   let name = ''
+  let search = ''
 
   // Ended projects lead and keep their place while being settled.
   const endedIds = new Set(endedProjectsOn(projects, date).map(({ id }) => id))
@@ -26,6 +27,9 @@
   $: open = projects.filter(isProjectOpen)
   $: rows = [...open.filter(({ id }) => endedIds.has(id)), ...open.filter(({ id }) => !endedIds.has(id))]
   $: pickable = rows.filter(({ id }) => !endings[id])
+  // Picked and ended projects stay listed while filtering.
+  $: matching = new Set(filterProjectsByPhrase(rows, search).map(({ id }) => id))
+  $: shown = rows.filter(({ id }) => matching.has(id) || selected.has(id) || endedIds.has(id))
 
   function toggle(id: Id) {
     selected = new Set(selected.has(id) ? [...selected].filter((other) => other !== id) : [...selected, id])
@@ -55,8 +59,11 @@
         <ProjectHistoryNoteEditor noteId={projectHistoryNoteId(day)} {onOpenLink} />
       </section>
     {/each}
+    {#if rows.length > 1}
+      <input class="search" type="search" bind:value={search} placeholder="Search projects…" aria-label="Search projects" />
+    {/if}
     <ul>
-      {#each rows as project (project.id)}
+      {#each shown as project (project.id)}
         <li class:settled={endings[project.id]}>
           <button
             class="pick"
@@ -106,6 +113,7 @@
   .pick small { flex-shrink: 0; white-space: nowrap; margin-left: auto; color: var(--muted); font-size: 12px; }
   .pick[aria-pressed='true'] small { color: inherit; }
   .settled .pick { text-decoration: line-through; opacity: .55; }
+  .search { min-width: 0; padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper-strong); color: var(--ink); font: inherit; font-size: 14px; }
   form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
   form input { min-width: 0; padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper-strong); color: var(--ink); font: inherit; font-size: 14px; }
   form button { font-size: 13px; padding: 7px 12px; }
