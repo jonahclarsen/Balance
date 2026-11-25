@@ -29,6 +29,10 @@ object BalanceTaskNotifications {
     private var activity = WeakReference<Activity>(null)
     private val executor = Executors.newSingleThreadExecutor()
     @Volatile private var ciTesting = false
+    @Volatile private var resetThisProcess = false
+    // Digest of the schedule list last applied in this process. Every database
+    // read republishes reminders; an unchanged list needs no AlarmManager work.
+    private var lastApplied: String? = null
     init { System.loadLibrary("balance_lib") }
     @JvmStatic external fun nativeInitialize(context: Context)
     @JvmStatic external fun nativeRefresh(appDataPath: String): Boolean
@@ -41,7 +45,12 @@ object BalanceTaskNotifications {
         initialize(owner)
         // Opening a notification removes it without a dismissal callback.
         BalanceNotificationStack.update(owner)
-        resetAndRefresh(owner) { runCITest(owner.applicationContext) }
+        // Only a new process can follow lost alarms: reboot, update and exact
+        // alarm grants arrive at the restore receiver, and a force-stop kills the
+        // process. Later resumes reuse the registry instead of re-registering
+        // every alarm while holding the scheduling lock.
+        if (resetThisProcess) refresh(owner) { runCITest(owner.applicationContext) }
+        else resetAndRefresh(owner) { runCITest(owner.applicationContext) }
     }
 
     // Callers waiting on the queued refresh. Resume and window focus arrive
@@ -80,13 +89,16 @@ object BalanceTaskNotifications {
     @Synchronized private fun replaceSchedules(context: Context, json: String, fromNative: Boolean = false) {
         if (fromNative && ciTesting && !json.contains("synthetic-notification-ci")) return
         val manager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val exact = Build.VERSION.SDK_INT < 31 || manager.canScheduleExactAlarms()
+        val digest = MessageDigest.getInstance("SHA-256").digest("$exact\u0000$json".toByteArray())
+            .joinToString("") { "%02x".format(it) }
+        if (digest == lastApplied) return
         val notifications = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         notifications.createNotificationChannel(NotificationChannel(CHANNEL, "Timed tasks", NotificationManager.IMPORTANCE_HIGH))
         val registry = context.getSharedPreferences(STORE, Context.MODE_PRIVATE)
         val old = registry.getStringSet("ids", emptySet())!!.toSet()
         val records = JSONArray(json)
         val wanted = mutableSetOf<String>()
-        val exact = Build.VERSION.SDK_INT < 31 || manager.canScheduleExactAlarms()
         val update = registry.edit()
         for (index in 0 until records.length()) {
             val record = records.getJSONObject(index)
@@ -113,6 +125,7 @@ object BalanceTaskNotifications {
             update.remove(id)
         }
         update.putStringSet("ids", wanted).apply()
+        lastApplied = digest
         if (wanted.isNotEmpty()) Handler(Looper.getMainLooper()).post { requestPermissions(context) }
     }
 
@@ -136,6 +149,8 @@ object BalanceTaskNotifications {
 
     @Synchronized fun resetAndRefresh(context: Context, complete: () -> Unit = {}) {
         if (ciTesting) { complete(); return }
+        resetThisProcess = true
+        lastApplied = null
         // AlarmManager discards alarms on reboot; fingerprints must be cleared
         // so the same durable records are scheduled again.
         val registry = context.getSharedPreferences(STORE, Context.MODE_PRIVATE)
