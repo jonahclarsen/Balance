@@ -310,13 +310,13 @@ test('profiles repeated mobile hamburger drawer openings', async ({ page }, test
   )
   const cycleRenderer = rendererDelta(cycleRendererBefore, await readMetrics())
 
-  await page.getByRole('button', { name: 'Open navigation' }).click()
+  await page.getByRole('button', { name: 'Open navigation' }).tap()
   await page.waitForTimeout(OPEN_SAMPLE_MS)
   const openIdleBefore = await readMetrics()
   const openIdleFrames = await sampleFrames(page, IDLE_SAMPLE_MS)
   const openIdleRenderer = rendererDelta(openIdleBefore, await readMetrics())
   await page.getByRole('complementary', { name: 'Primary navigation drawer' })
-    .getByRole('button', { name: 'Close navigation' }).click()
+    .getByRole('button', { name: 'Close navigation' }).tap()
 
   const profile = {
     project: testInfo.project.name,
