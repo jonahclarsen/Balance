@@ -67,7 +67,10 @@
   type Undo = { index: number; queue: IdeaItem[]; snapshots: IdeaSnapshot[]; noteId: Id | null }
   let history: Undo[] = []
   // Commitment buttons unlock on a delay measured from the Yes or No answer, in
-  // every sort including Genuinely Worth Doing reviews.
+  // every sort including Genuinely Worth Doing reviews. Possibly and Genuinely
+  // count their full delay from when the card appeared, and still take a third
+  // of it after Yes.
+  let shownAt = Date.now()
   let answeredAt = Date.now()
   let unlockTimers: number[] = []
   let unlockTick = 0
@@ -149,6 +152,7 @@
 
   function resetCard(_index: number) {
     step = 'question'
+    shownAt = Date.now()
     openClipId = null
     editing = false
     if (readTimer !== null) window.clearTimeout(readTimer)
@@ -158,6 +162,7 @@
 
   function startSorting() {
     introOpen = false
+    shownAt = Date.now()
   }
 
   function answer(next: 'yes' | 'no') {
@@ -166,14 +171,20 @@
     for (const timer of unlockTimers) window.clearTimeout(timer)
     unlockTimers = []
     for (const kind of ['trash', 'afterlife', 'possible', 'genuine'] as const) {
-      const delay = IDEA_UNLOCK_MS[kind]
+      const delay = unlockAt(kind) - answeredAt
       if (delay > 0) unlockTimers.push(window.setTimeout(() => { unlockTick += 1 }, delay))
     }
   }
 
+  function unlockAt(kind: IdeaGroupKind): number {
+    const delay = IDEA_UNLOCK_MS[kind]
+    if (kind !== 'possible' && kind !== 'genuine') return answeredAt + delay
+    return Math.max(shownAt + delay, answeredAt + delay / 3)
+  }
+
   function locked(action: Action, _tick: number, _reading: boolean): boolean {
     if (reading) return true
-    return action in IDEA_UNLOCK_MS && Date.now() < answeredAt + IDEA_UNLOCK_MS[action as IdeaGroupKind]
+    return action in IDEA_UNLOCK_MS && Date.now() < unlockAt(action as IdeaGroupKind)
   }
 
   // Shakes and refuses an action that is still locked.
