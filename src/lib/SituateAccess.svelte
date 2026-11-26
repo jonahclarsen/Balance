@@ -10,8 +10,14 @@
   let error = ''
   let timer: number | undefined
   // Rules loaded or changed elsewhere replace the draft unless an edit is pending.
-  $: incoming = JSON.stringify($situate.accessQuiz)
-  $: if (incoming !== saved && JSON.stringify(draft) === saved) { draft = JSON.parse(incoming); saved = incoming }
+  // Only react to the store changing, not to `saved` moving ahead of it while a save is in flight.
+  let lastIncoming = saved
+  $: adopt(JSON.stringify($situate.accessQuiz))
+  function adopt(incoming: string) {
+    if (incoming === lastIncoming) return
+    lastIncoming = incoming
+    if (incoming !== saved && JSON.stringify(draft) === saved) { draft = JSON.parse(incoming); saved = incoming }
+  }
   $: queue(draft)
   function queue(value: Question[]) {
     if (JSON.stringify(value) === saved) return
