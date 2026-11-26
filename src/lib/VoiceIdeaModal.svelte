@@ -5,13 +5,13 @@
   import { autoGrow } from './autoGrow'
   import { escapeHTML, htmlToPlainTextWithBreaks } from './planner'
   import { IDEA_GROUPS, IDEA_UNLOCK_MS } from './ideas'
-  import { alignTranscript, formatClipDuration, isTimed, timeRangeForSelection, tokenAtTime, type TimedToken } from './voiceClips'
+  import { alignTranscript, formatClipDuration, isTimed, timeRangeForSelection, tokenAtTime } from './voiceClips'
   import { decodeClip } from './voiceRecorder'
   import { canTranscribe, transcriptionStatus } from './voiceTranscription'
   import type { IdeaGroupKind, IdeaItem, VoiceClip } from './types'
 
-  // Reading a transcript beside its audio: selecting text moves the waveform to
-  // where it was said, and a tap on the waveform selects the word spoken there.
+  // Reading a transcript beside its audio: tapping a word plays from there, and
+  // the word being spoken is marked as it plays.
   export let clip: VoiceClip
   export let idea: IdeaItem
   export let onEdit: (text: string, html: string) => void
@@ -31,14 +31,15 @@
   let input: HTMLTextAreaElement
   let waveform: VoiceWaveform
   let playhead = 0
-  let range: { start: number; end: number } | null = null
   let playing = false
   let audio: AudioBuffer | null = null
   let context: AudioContext | null = null
   let source: AudioBufferSourceNode | null = null
   let playStartedAt = 0
   let playFrom = 0
-  let playUntil = 0
+  let lastTapAt = 0
+  let lastSelection = [-1, -1]
+  let tapSeek: { start: number; at: number } | null = null
   let frame = 0
   let unlockTick = 0
   const unlockTimers = targets.map((target) => window.setTimeout(() => { unlockTick += 1 }, IDEA_UNLOCK_MS[target.kind]))
@@ -86,24 +87,23 @@
     frame = 0
   }
 
-  async function play(from: number, until = durationSeconds) {
+  async function play(from: number) {
     stop()
     await ensureAudio()
     if (!audio || !context) return
-    const start = from >= until - 0.05 ? 0 : from
+    const start = from >= durationSeconds - 0.05 ? 0 : from
     source = context.createBufferSource()
     source.buffer = audio
     source.connect(context.destination)
     source.onended = () => { stop() }
-    source.start(0, start, until - start)
+    source.start(0, start)
     playStartedAt = context.currentTime
     playFrom = start
-    playUntil = until
     playing = true
     const follow = () => {
       if (!playing || !context) return
-      playhead = Math.min(playUntil, playFrom + context.currentTime - playStartedAt)
-      waveform?.reveal(playhead, false)
+      playhead = Math.min(durationSeconds, playFrom + context.currentTime - playStartedAt)
+      waveform?.follow(playhead)
       frame = requestAnimationFrame(follow)
     }
     follow()
@@ -114,42 +114,49 @@
       stop()
       return
     }
-    void (range ? play(range.start, range.end) : play(playhead))
+    waveform?.reveal(playhead, false)
+    void play(playhead)
   }
 
-  // The waveform follows the text selection as you read.
-  function syncFromSelection() {
+  // The playhead follows the caret as you read; a tap on a word also jumps
+  // playback there. Typing while it plays leaves playback alone.
+  function syncFromSelection(tapped = false) {
     if (!input || !clip.transcript) return
+    const changed = input.selectionStart !== lastSelection[0] || input.selectionEnd !== lastSelection[1]
+    lastSelection = [input.selectionStart, input.selectionEnd]
+    if (!changed && !tapped) return
     const selected = timeRangeForSelection(tokens, input.selectionStart, input.selectionEnd)
     if (!selected) return
-    range = input.selectionStart === input.selectionEnd ? null : selected
-    if (!playing) playhead = selected.start
+    if (playing) {
+      const repeat = tapSeek && tapSeek.start === selected.start && performance.now() - tapSeek.at < 500
+      if (tapped && input.selectionStart === input.selectionEnd && !repeat) {
+        tapSeek = { start: selected.start, at: performance.now() }
+        waveform?.reveal(selected.start, false)
+        void play(selected.start)
+      }
+      return
+    }
+    playhead = selected.start
     waveform?.reveal(selected.start)
   }
 
+  // Touch browsers can place the caret after the tap's events, so a selection
+  // change right after a tap counts as the tap.
   function handleSelectionChange() {
-    if (document.activeElement === input) syncFromSelection()
+    if (document.activeElement === input) syncFromSelection(performance.now() - lastTapAt < 500)
   }
 
-  async function selectToken(token: TimedToken | null, end: TimedToken | null = token, focus = true) {
-    if (!token || !end || !input) return
-    if (focus) input.focus({ preventScroll: true })
-    input.setSelectionRange(token.from, end.to)
+  function handleTap() {
+    lastTapAt = performance.now()
+    syncFromSelection(true)
+  }
+
+  async function seek(seconds: number) {
+    playhead = seconds
+    waveform?.reveal(seconds)
+    if (playing) void play(seconds)
     await tick()
     document.querySelector('.voice-idea-mirror mark')?.scrollIntoView({ block: 'nearest' })
-  }
-
-  function seek(seconds: number) {
-    playhead = seconds
-    range = null
-    if (playing) void play(seconds)
-    if (clip.transcript) void selectToken(tokenAtTime(tokens, seconds), undefined, !matchMedia('(pointer: coarse)').matches)
-  }
-
-  function selectRange(start: number, end: number) {
-    range = { start, end }
-    playhead = start
-    if (clip.transcript) void selectToken(tokenAtTime(tokens, start), tokenAtTime(tokens, end))
   }
 
   function handleKeydown(event: KeyboardEvent) {
@@ -189,9 +196,9 @@
       placeholder={clip.transcript ? '' : canTranscribe ? '' : 'Transcribes on a Mac'}
       aria-label="Idea text"
       on:input={edit}
-      on:select={syncFromSelection}
-      on:pointerup={syncFromSelection}
-      on:keyup={syncFromSelection}
+      on:select={() => syncFromSelection()}
+      on:click={handleTap}
+      on:keyup={() => syncFromSelection()}
     ></textarea>
   </div>
 
@@ -206,7 +213,7 @@
       </button>
     {/if}
   </div>
-  <VoiceWaveform bind:this={waveform} peaks={clip.peaks} {durationSeconds} {playhead} {range} onSeek={seek} onSelectRange={selectRange} />
+  <VoiceWaveform bind:this={waveform} peaks={clip.peaks} {durationSeconds} {playhead} onSeek={seek} />
 
   {#if onMove}
   <div class="idea-move-strip" role="group" aria-label="Move idea to">

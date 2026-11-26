@@ -35,6 +35,24 @@ async function open(page: Page) {
 
 const proposition = (page: Page) => page.locator('.ideas-panel')
 
+function silentWav(seconds: number, sampleRate = 8000): Buffer {
+  const samples = seconds * sampleRate
+  const wav = Buffer.alloc(44 + samples, 128)
+  wav.write('RIFF', 0)
+  wav.writeUInt32LE(36 + samples, 4)
+  wav.write('WAVEfmt ', 8)
+  wav.writeUInt32LE(16, 16)
+  wav.writeUInt16LE(1, 20)
+  wav.writeUInt16LE(1, 22)
+  wav.writeUInt32LE(sampleRate, 24)
+  wav.writeUInt32LE(sampleRate, 28)
+  wav.writeUInt16LE(1, 32)
+  wav.writeUInt16LE(8, 34)
+  wav.write('data', 36)
+  wav.writeUInt32LE(samples, 40)
+  return wav
+}
+
 test('a recorded idea persists, sorts before transcription and leaves with its idea', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop', 'Fake capture devices are Chromium-only')
   await open(page)
@@ -280,28 +298,8 @@ test('the Add idea dialog records an idea with its typed text', async ({ page },
 test('the transcript and waveform follow each other', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'Pointer selection is covered on desktop')
   await open(page)
-  // A short real recording stands in for a long one so the waveform must scroll.
-  const dataURL = await page.evaluate(async () => {
-    const context = new AudioContext()
-    const oscillator = context.createOscillator()
-    const destination = context.createMediaStreamDestination()
-    oscillator.connect(destination)
-    oscillator.start()
-    const recorder = new MediaRecorder(destination.stream, { mimeType: 'audio/webm;codecs=opus' })
-    const chunks: Blob[] = []
-    recorder.ondataavailable = (event) => chunks.push(event.data)
-    const stopped = new Promise((resolve) => { recorder.onstop = resolve })
-    recorder.start()
-    await new Promise((resolve) => setTimeout(resolve, 600))
-    recorder.stop()
-    await stopped
-    oscillator.stop()
-    const reader = new FileReader()
-    return new Promise<string>((resolve) => {
-      reader.onload = () => resolve(String(reader.result))
-      reader.readAsDataURL(new Blob(chunks, { type: 'audio/webm;codecs=opus' }))
-    })
-  })
+  // Thirty seconds of silence, long enough to play through and scroll.
+  const dataURL = `data:audio/wav;base64,${silentWav(30).toString('base64')}`
   const words = Array.from({ length: 30 }, (_, index) => ({ text: `word${index}`, start: index, end: index + 0.8 }))
   const ideaId = await storeCall(page, `
     const ideaId = plannerStore.addVoiceIdea({ dataURL: arg.dataURL, durationMs: 30000, peaks: Array.from({ length: 600 }, (_, i) => (i * 37) % 255) })
@@ -328,12 +326,37 @@ test('the transcript and waveform follow each other', async ({ page }, testInfo)
   // Wait for the smooth scroll to center the word; a busy machine can stall it midway.
   await expect.poll(() => waveform.evaluate((node) => Math.abs(node.scrollLeft - (25 * 60 - node.clientWidth / 2)))).toBeLessThan(2)
 
-  // Clicking the waveform selects the word spoken there.
+  // Clicking the waveform moves the playhead and marks the word, without selecting it.
   const box = (await waveform.boundingBox())!
   const scrollLeft = await waveform.evaluate((node) => node.scrollLeft)
   await page.mouse.click(box.x + 20 * 60 - scrollLeft + 10, box.y + box.height / 2)
   await expect(waveform).toHaveAttribute('aria-valuenow', '20')
-  expect(await textarea.evaluate((node: HTMLTextAreaElement) => node.value.slice(node.selectionStart, node.selectionEnd))).toBe('word20')
+  await expect(dialog.locator('.voice-idea-mirror mark')).toHaveText('word20')
+
+  // Selected text plays from its start to the end, not just the selection.
+  await textarea.evaluate((node: HTMLTextAreaElement, at) => {
+    node.setSelectionRange(at, at + 5)
+    node.dispatchEvent(new Event('select'))
+  }, text.indexOf('word2 '))
+  await expect(waveform).toHaveAttribute('aria-valuenow', '2')
+  await dialog.getByRole('button', { name: 'Play' }).click()
+  await expect.poll(() => waveform.getAttribute('aria-valuenow').then(Number), { timeout: 5000 }).toBeGreaterThanOrEqual(4)
+  await expect(dialog.getByRole('button', { name: 'Pause' })).toBeVisible()
+
+  // Tapping a word while it plays jumps playback there.
+  await textarea.evaluate((node: HTMLTextAreaElement, at) => {
+    node.setSelectionRange(at, at)
+    node.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+  }, text.indexOf('word15') + 2)
+  await expect.poll(() => waveform.getAttribute('aria-valuenow').then(Number)).toBeGreaterThanOrEqual(15)
+  await expect(dialog.getByRole('button', { name: 'Pause' })).toBeVisible()
+
+  // Scrolling the waveform while it plays stays where it was put.
+  await waveform.evaluate((node) => node.dispatchEvent(new WheelEvent('wheel', { deltaX: -400 })))
+  await waveform.evaluate((node) => { node.scrollLeft = 0 })
+  await page.waitForTimeout(500)
+  expect(await waveform.evaluate((node) => node.scrollLeft)).toBe(0)
+  await dialog.getByRole('button', { name: 'Pause' }).click()
 
   // Edits save to the idea.
   await textarea.evaluate((node: HTMLTextAreaElement) => node.setSelectionRange(node.value.length, node.value.length))
