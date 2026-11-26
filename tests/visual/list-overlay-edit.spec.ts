@@ -1187,7 +1187,7 @@ test('completion focuses the visible copy of a list retained on another page', a
   await expect(dialog.locator('.plan-row.selected')).toContainText('Eggs')
 })
 
-test('a shuffled list keeps the setting and generates its items out of template order', async ({ page }) => {
+test('a random-order list keeps the setting and generates its items out of template order', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -1201,12 +1201,12 @@ test('a shuffled list keeps the setting and generates its items out of template 
     if (index > 0) await page.getByRole('button', { name: '+ Add list item' }).click()
     await listItems.nth(index).fill(name)
   }
-  const shuffle = page.getByRole('checkbox', { name: 'Shuffle' })
+  const shuffle = page.getByRole('checkbox', { name: 'Random order' })
   await shuffle.check()
 
   await page.reload()
   await openView(page, 'Lists')
-  await expect(page.getByRole('checkbox', { name: 'Shuffle' })).toBeChecked()
+  await expect(page.getByRole('checkbox', { name: 'Random order' })).toBeChecked()
 
   // A seeded generator keeps the order reproducible while ids stay unique.
   await page.evaluate(() => {

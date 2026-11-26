@@ -7928,7 +7928,7 @@ return rows`
                 checked={selectedListTemplate.shuffle ?? false}
                 on:change={(event) => plannerStore.setListTemplateShuffle(selectedListTemplate.id, event.currentTarget.checked)}
               />
-              Shuffle
+              Random order
             </label>
             {#if selectedListTiming?.expectedRunMs != null}
               <span
