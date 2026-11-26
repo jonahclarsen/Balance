@@ -161,6 +161,10 @@ test('domains use label boundaries, app identifiers use exact equality', () => {
   expect(matches(t,'domain','NOTREDDIT.com')).toBe(false)
   expect(matches(t,'domain','reddit.com.evil.test')).toBe(false)
   expect(matches(t,'app','reddit.com')).toBe(false)
+  const fb=fixture().modes[0].targets.find(t=>t.value==='facebook.com')!
+  expect(matches(fb,'domain','www.facebook.com')).toBe(true)
+  for (const host of ['business.facebook.com','adsmanager.facebook.com','developers.facebook.com']) expect(matches(fb,'domain',host)).toBe(false)
+  expect(matches({...fb,value:'business.facebook.com'},'domain','business.facebook.com')).toBe(true)
 })
 test('polar sunset absence uses clock fallback', () => {
   expect(sunset(new Date(2026,5,21),89,0)).toBeNull()

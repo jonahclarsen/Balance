@@ -342,12 +342,15 @@ export function enableMode(doc: Document, mode: string, now = Date.now()): Docum
   if (found.reminder) throw new Error('Reminder modes follow their hours')
   return { ...doc, revision: doc.revision + 1, manual: { ...doc.manual, [mode]: now }, grants: doc.grants.filter(g => g.mode !== mode) }
 }
+// Work tools on a blocked site's subdomains stay open unless a target names them.
+const WORK_SUBDOMAINS: Record<string, string[]> = { 'facebook.com': ['business', 'adsmanager', 'developers'] }
 export function matches(target: Target, kind: Target['kind'], value: string): boolean {
   if (kind !== target.kind) return false
   if (kind !== 'domain') return target.value === value
   const host = value.toLowerCase().replace(/\.$/, '')
   const domain = target.value.toLowerCase().replace(/\.$/, '')
-  return host === domain || host.endsWith(`.${domain}`)
+  if (host !== domain && !host.endsWith(`.${domain}`)) return false
+  return !(WORK_SUBDOMAINS[domain] ?? []).some(s => host === `${s}.${domain}` || host.endsWith(`.${s}.${domain}`))
 }
 export function validate(doc: Document): void {
   if (doc.version !== 1 || !Array.isArray(doc.modes) || doc.modes.length > 30 || !Array.isArray(doc.accessQuiz)) throw new Error('Unsupported Situate rules')

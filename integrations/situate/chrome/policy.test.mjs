@@ -7,6 +7,15 @@ test('domain matching prevents suffix bypasses without blocking unrelated domain
  const d=fixture();assert.deepEqual(blockedBy(d,'https://www.youtube.com/watch?v=private'),[{mode:'dolo',name:'Dolo',target:'yt'}])
  for(const url of ['https://notyoutube.com/','https://youtube.com.evil.test/','https://example.com/?url=youtube.com','file:///youtube.com']) assert.deepEqual(blockedBy(d,url),[])
 })
+test('Facebook work tools stay open while facebook.com is blocked',()=>{
+ const d=fixture();d.modes[0].targets=[{id:'fb',kind:'domain',value:'facebook.com',category:'social'}]
+ assert.equal(blockedBy(d,'https://www.facebook.com/').length,1)
+ for(const url of ['https://business.facebook.com/events_manager2','https://adsmanager.facebook.com/','https://developers.facebook.com/docs']) assert.deepEqual(blockedBy(d,url),[])
+ assert.deepEqual(blockedBy(d,'https://www.facebook.com/plugins/x','','https://business.facebook.com/latest'),[])
+ assert.equal(blockedBy(d,'https://www.facebook.com/plugins/x','','https://example.com/').length,1)
+ d.modes[0].targets.push({id:'biz',kind:'domain',value:'business.facebook.com',category:'custom'})
+ assert.equal(blockedBy(d,'https://business.facebook.com/').length,1)
+})
 test('a stale unlocked snapshot restores targets instead of extending a pass',()=>{
  const d=fixture();d.modes[0].targets=[];d.modes[0].active=false;d.refreshAt=1
  assert.equal(effectiveStatus(d).aiBlocked,true);assert.equal(blockedBy(d,'https://youtube.com').length,1)

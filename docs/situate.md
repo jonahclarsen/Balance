@@ -76,7 +76,8 @@ Its public manifest key keeps the ID stable.
 The extension reads only a small local Situate status file through Chrome native
 messaging. No web server, Discord token, message content, browsing-history log,
 or planner database is involved. Website permissions cover custom domains and
-embedded media. It checks pages and single-page navigation once per second.
+embedded media. Blocking facebook.com leaves Meta's work tools open (business, adsmanager
+and developers.facebook.com, including Events Manager) unless a target names them. It checks pages and single-page navigation once per second.
 A stale connected feed restores the configured boundaries until Balance refreshes
 it. Before the first successful connection, the popup reports setup is incomplete.
 

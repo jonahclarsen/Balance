@@ -13,6 +13,6 @@ chrome.runtime.onMessage.addListener((message,sender,reply) => {
   if (message.type !== 'check' || !sender.tab || !sender.url) return false
   // Only the sender's own browser-provided URL is inspected, never an arbitrary URL from a page.
   // The page may only name a thread's parent channel, which can add a block but never lift one.
-  status().then(s => reply({ blocked:blockedBy(s,sender.url,typeof message.parent === 'string' ? message.parent : ''), stale:!!s?.stale, ready:!!s }))
+  status().then(s => reply({ blocked:blockedBy(s,sender.url,typeof message.parent === 'string' ? message.parent : '',sender.frameId ? sender.tab.url ?? '' : ''), stale:!!s?.stale, ready:!!s }))
   return true
 })

@@ -4,13 +4,20 @@ export function effectiveStatus(status, now = Date.now()) {
   if (status.enabled && status.refreshAt <= now) return { ...status, aiBlocked: true, stale: true, modes: status.modes.map(m => ({ ...m, active: true, targets: m.allTargets ?? m.targets })) }
   return status
 }
-export function domainMatches(host, domain) {
-  host = host.toLowerCase().replace(/\.$/, ''); domain = domain.toLowerCase().replace(/\.$/, '')
-  return host === domain || host.endsWith(`.${domain}`)
+// Work tools on a blocked site's subdomains stay open unless a target names them.
+const WORK_SUBDOMAINS = { 'facebook.com': ['business', 'adsmanager', 'developers'] }
+const clean = host => host.toLowerCase().replace(/\.$/, '')
+const workHost = (host, domain) => (WORK_SUBDOMAINS[domain] ?? []).some(s => host === `${s}.${domain}` || host.endsWith(`.${s}.${domain}`))
+export function domainMatches(host, domain, top = '') {
+  host = clean(host); domain = clean(domain); top = clean(top)
+  if (host !== domain && !host.endsWith(`.${domain}`)) return false
+  // Frames a work tool embeds from the blocked site belong to that tool.
+  return !workHost(host, domain) && !(top && workHost(top, domain))
 }
-export function blockedBy(status, rawURL, parent = '') {
-  let url
+export function blockedBy(status, rawURL, parent = '', topURL = '') {
+  let url, top = ''
   try { url = new URL(rawURL) } catch { return [] }
+  try { top = topURL ? new URL(topURL).hostname : '' } catch {}
   if (!['http:', 'https:'].includes(url.protocol)) return []
   // Discord paths are /channels/<guild>/<channel>[/threads/<thread>].
   const segments = url.hostname === 'discord.com' || url.hostname.endsWith('.discord.com') ? url.pathname.split('/').filter(Boolean) : []
@@ -23,7 +30,7 @@ export function blockedBy(status, rawURL, parent = '') {
   return (current?.modes ?? []).flatMap(mode => [
     ...(mode.id === 'touch-grass' && mode.active && [channel, thread].some(open => open && (current.frankThreads ?? []).includes(open)) ? [{ mode:mode.id, name:mode.name, target:'' }] : []),
     // A chosen channel blocks only the threads opened inside it.
-    ...(mode.targets ?? []).filter(t => t.kind === 'domain' ? domainMatches(url.hostname,t.value) : t.kind === 'discord' && owner && t.value === owner)
+    ...(mode.targets ?? []).filter(t => t.kind === 'domain' ? domainMatches(url.hostname,t.value,top) : t.kind === 'discord' && owner && t.value === owner)
       .map(target => ({ mode:mode.id, name:mode.name, target: target.category === 'entertainment' ? target.id : '' })),
   ])
 }
