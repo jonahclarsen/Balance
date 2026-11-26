@@ -91,7 +91,13 @@ class BalanceSyncWorker(context: Context, params: WorkerParameters) : Worker(con
         if (offline) return Result.retry()
         running = true
         return try {
-            if (runNativeSync(applicationContext.applicationInfo.dataDir) == 0) {
+            val synced = runNativeSync(
+                applicationContext.applicationInfo.dataDir,
+                java.io.File(applicationContext.noBackupFilesDir, "situate-rules.json").path,
+            )
+            if (synced == 0 || synced == SITUATE_CHANGED) {
+                // Blocking watches the rules file itself; this redraws the rest.
+                if (synced == SITUATE_CHANGED) BalanceSituate.refresh(applicationContext, false)
                 scheduleNext(applicationContext)
                 Log.i(LOG_TAG, "Background relay sync and widget refresh completed")
                 Result.success()
@@ -117,7 +123,8 @@ class BalanceSyncWorker(context: Context, params: WorkerParameters) : Worker(con
 
         init { System.loadLibrary("balance_lib") }
 
-        @JvmStatic external fun runNativeSync(appDataPath: String): Int
+        private const val SITUATE_CHANGED = 2
+        @JvmStatic external fun runNativeSync(appDataPath: String, situateRulesPath: String): Int
         @JvmStatic external fun nativeBeginScheduling()
         @JvmStatic external fun nativeFinishScheduling()
 

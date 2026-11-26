@@ -506,6 +506,92 @@ pub(crate) fn active() -> bool {
         .and_then(|p| read(p).ok().flatten())
         .is_some()
 }
+#[cfg(any(test, target_os = "android"))]
+/// The replicated fields of a document, as `sharedRules` in src/lib/situate/sharing.ts.
+fn shared_rules(doc: &Value) -> Value {
+    let mut rules = doc["syncBase"].as_object().cloned().unwrap_or_default();
+    rules.insert("id".into(), json!("rules"));
+    for key in ["settings", "accessQuiz", "modes", "manual"] {
+        match doc.get(key) {
+            Some(value) => rules.insert(key.into(), value.clone()),
+            None => rules.remove(key),
+        };
+    }
+    let grants = doc["grants"].as_array().into_iter().flatten().map(|grant| {
+        let mut grant = grant.clone();
+        let id = format!("{}|{}", grant["mode"].as_str().unwrap_or(""), grant["target"].as_str().unwrap_or(""));
+        if let Some(fields) = grant.as_object_mut() {
+            fields.insert("id".into(), json!(id));
+        }
+        grant
+    });
+    rules.insert("grants".into(), Value::Array(grants.collect()));
+    Value::Object(rules)
+}
+#[cfg(any(test, target_os = "android"))]
+fn reminders(rules: &Value) -> serde_json::Map<String, Value> {
+    rules["modes"].as_array().into_iter().flatten()
+        .filter(|mode| !mode["reminder"].is_null())
+        .map(|mode| (mode["id"].as_str().unwrap_or("").to_string(), mode["reminder"].clone()))
+        .collect()
+}
+#[cfg(any(test, target_os = "android"))]
+/// The rules a phone takes from the replicated record without its WebView, or
+/// None when the window must reconcile them: unpublished local edits need a
+/// merge, and schedule or reminder changes need their times regenerated.
+pub(crate) fn adopt_remote_rules(doc: &Value, remote: &Value, now: i64) -> Option<Value> {
+    let base = doc.get("syncBase").filter(|base| base.is_object())?;
+    if remote == base || &shared_rules(doc) != base || remote["settings"] != doc["settings"] {
+        return None;
+    }
+    if reminders(remote) != reminders(doc) || !remote["modes"].is_array() || !remote["grants"].is_array() {
+        return None;
+    }
+    let mut next = doc.clone();
+    for key in ["accessQuiz", "modes", "manual"] {
+        next[key] = remote[key].clone();
+    }
+    next["grants"] = remote["grants"].as_array().into_iter().flatten()
+        .filter(|grant| number(&grant["until"]) > now)
+        .map(|grant| {
+            let mut grant = grant.clone();
+            if let Some(fields) = grant.as_object_mut() {
+                fields.remove("id");
+            }
+            grant
+        })
+        .collect();
+    next["syncBase"] = remote.clone();
+    next["revision"] = json!(number(&doc["revision"]) + 1);
+    Some(next)
+}
+/// Android's background sync hands blocking the rules it just received, so a
+/// mode switched on another device takes effect without opening Balance.
+#[cfg(target_os = "android")]
+pub(crate) fn adopt_background_sync(
+    data_dir: &Path,
+    enforcement: &Path,
+    remote: Option<Value>,
+) -> Result<bool, String> {
+    let Some(remote) = remote else {
+        return Ok(false);
+    };
+    let _guard = LOCK.lock().map_err(|e| e.to_string())?;
+    let path = DIRECTORY.get().cloned().unwrap_or_else(|| data_dir.join("situate/rules.json"));
+    let Some(doc) = read(&path)? else {
+        return Ok(false);
+    };
+    let Some(next) = adopt_remote_rules(&doc, &remote, crate::current_timestamp_ms()) else {
+        return Ok(false);
+    };
+    // Enforcement first, as in situate_save.
+    write(enforcement, &next)?;
+    write(&path, &next)?;
+    if let Some(app) = APP.get() {
+        let _ = app.emit("situate-rules-changed", next["revision"].clone());
+    }
+    Ok(true)
+}
 #[cfg(target_os = "macos")]
 fn publish_mac(value: &Value, announce: bool) {
     extern "C" {
@@ -620,6 +706,50 @@ mod tests {
     }
     fn fixture() -> Value {
         json!({"generatedAt":1,"epochs":[{"at":100,"end":1000,"phase":"night"}],"modes":[{"id":"touch-grass","name":"Touch grass","platforms":["mac"],"scheduled":true,"targets":[{"id":"yt","kind":"domain","value":"youtube.com"}]}],"manual":{},"grants":[]})
+    }
+    fn synced_doc() -> Value {
+        let mut d = fixture();
+        d["settings"] = json!({"wakeMinutes": 420});
+        d["accessQuiz"] = json!([]);
+        d["grants"] = json!([{"mode":"touch-grass","target":"","epoch":100,"until":5000}]);
+        d["revision"] = json!(7);
+        d["syncBase"] = shared_rules(&d);
+        d
+    }
+    #[test]
+    fn background_sync_adopts_remote_mode_changes() {
+        let doc = synced_doc();
+        let mut remote = doc["syncBase"].clone();
+        remote["manual"] = json!({"touch-grass": 200});
+        remote["grants"] = json!([
+            {"id":"touch-grass|","mode":"touch-grass","target":"","epoch":100,"until":5000},
+            {"id":"touch-grass|yt","mode":"touch-grass","target":"yt","epoch":100,"until":50}
+        ]);
+        let next = adopt_remote_rules(&doc, &remote, 100).unwrap();
+        assert_eq!(next["manual"], json!({"touch-grass": 200}));
+        assert_eq!(next["grants"], json!([{"mode":"touch-grass","target":"","epoch":100,"until":5000}]));
+        assert_eq!(next["syncBase"], remote);
+        assert_eq!(next["revision"], json!(8));
+        assert_eq!(next["epochs"], doc["epochs"]);
+    }
+    #[test]
+    fn background_sync_leaves_merges_and_schedules_to_the_window() {
+        let doc = synced_doc();
+        assert!(adopt_remote_rules(&doc, &doc["syncBase"], 100).is_none());
+        let mut remote = doc["syncBase"].clone();
+        remote["manual"] = json!({"touch-grass": 200});
+        let mut edited = doc.clone();
+        edited["manual"] = json!({"touch-grass": 300});
+        assert!(adopt_remote_rules(&edited, &remote, 100).is_none());
+        let mut unsynced = doc.clone();
+        unsynced.as_object_mut().unwrap().remove("syncBase");
+        assert!(adopt_remote_rules(&unsynced, &remote, 100).is_none());
+        let mut schedule = doc["syncBase"].clone();
+        schedule["settings"] = json!({"wakeMinutes": 480});
+        assert!(adopt_remote_rules(&doc, &schedule, 100).is_none());
+        let mut reminder = doc["syncBase"].clone();
+        reminder["modes"][0]["reminder"] = json!({"from": 60, "until": 120});
+        assert!(adopt_remote_rules(&doc, &reminder, 100).is_none());
     }
     #[test]
     fn grants_expire_and_never_expose_private_fields() {

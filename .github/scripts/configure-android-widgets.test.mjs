@@ -66,7 +66,8 @@ class MainActivity : TauriActivity() {
 
 class BalanceSyncWorker {
     fun doWork(): Result = try {
-        if (runNativeSync(applicationContext.applicationInfo.dataDir) == 0) {
+        val synced = runNativeSync(applicationContext.applicationInfo.dataDir, situateRules)
+        if (synced == 0 || synced == SITUATE_CHANGED) {
             scheduleNext(applicationContext)
             Result.success()
         } else Result.retry()

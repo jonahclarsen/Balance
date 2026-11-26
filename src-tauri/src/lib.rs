@@ -10325,21 +10325,29 @@ mod android_keystore {
         mut env: JNIEnv,
         _class: JClass,
         app_data_path: JString,
+        situate_rules_path: JString,
     ) -> jni::sys::jint {
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let path: String = env
                 .get_string(&app_data_path)
                 .map_err(|error| error.to_string())?
                 .into();
+            let situate_rules: String = env
+                .get_string(&situate_rules_path)
+                .map_err(|error| error.to_string())?
+                .into();
             let data_dir = Path::new(&path);
-            let result = super::run_android_background_sync_at(data_dir);
+            let result = super::run_android_background_sync_at(data_dir, Path::new(&situate_rules));
             if let Some(directory) = super::app_database_path_from_data_dir(data_dir).parent() {
-                super::background_sync_status::record(directory, super::current_timestamp_ms(), &result);
+                let recorded = result.as_ref().map(|_| ()).map_err(Clone::clone);
+                super::background_sync_status::record(directory, super::current_timestamp_ms(), &recorded);
             }
             result
         }));
+        // 2 tells the worker to refresh Situate's notices, alarm and widget.
         match result {
-            Ok(Ok(())) => 0,
+            Ok(Ok(true)) => 2,
+            Ok(Ok(false)) => 0,
             Ok(Err(error)) => {
                 log::warn!("Android background relay sync will retry: {error}");
                 1
@@ -10604,30 +10612,31 @@ mod android_keystore {
 }
 
 #[cfg(target_os = "android")]
-fn run_android_background_sync_at(data_dir: &Path) -> Result<(), String> {
+/// Returns whether the synced Situate rules changed what this device enforces.
+fn run_android_background_sync_at(data_dir: &Path, situate_rules: &Path) -> Result<bool, String> {
     let _diagnostic = freeze_diagnostics::Span::new(freeze_diagnostics::Operation::BackgroundRelay);
     // WorkManager cancellation cannot interrupt a JNI call already waiting on
     // HTTP. Reuse the foreground gate so resumed local saves stay available.
     let mut gate = RelayDatabaseGate::acquire(freeze_diagnostics::DatabaseUser::BackgroundRelay)?;
     let database_path = app_database_path_from_data_dir(data_dir);
     if !database_path.exists() {
-        return Ok(());
+        return Ok(false);
     }
     let recovery_key = database_recovery_key(&database_path)?;
     let connection = open_database_at(&database_path, &recovery_key)?;
     cache_android_recovery_key(recovery_key.clone());
     if !sync::is_sync_enabled(&connection).map_err(sync::Error::into_string)? {
-        return Ok(());
+        return Ok(false);
     }
     let Some(relay_url) =
         metadata_value(&connection, SYNC_RELAY_URL)?.filter(|value| !value.is_empty())
     else {
-        return Ok(());
+        return Ok(false);
     };
     let Some(pairing_code) =
         sync::read_pairing_code(&connection).map_err(sync::Error::into_string)?
     else {
-        return Ok(());
+        return Ok(false);
     };
     let key = sync::crypto::SyncKey::from_pairing_code(&pairing_code)
         .map_err(sync::Error::into_string)?;
@@ -10641,7 +10650,19 @@ fn run_android_background_sync_at(data_dir: &Path) -> Result<(), String> {
         &mut gate,
     )
     .map_err(sync::Error::into_string)?;
-    task_notifications::publish(&connection)
+    task_notifications::publish(&connection)?;
+    // Without the WebView, nothing else brings other devices' mode changes to
+    // blocking until Balance is opened. A failure here waits for the foreground.
+    let remote = read_entity_collection(&connection, "situateRules")?
+        .as_array()
+        .and_then(|rules| rules.first().cloned());
+    match situate::adopt_background_sync(data_dir, situate_rules, remote) {
+        Ok(changed) => Ok(changed),
+        Err(error) => {
+            log::warn!("Could not apply synced Situate rules in the background: {error}");
+            Ok(false)
+        }
+    }
 }
 
 fn missing_recovery_key_error() -> String {

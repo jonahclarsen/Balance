@@ -1598,7 +1598,7 @@ try {
   // success, while WorkManager still keeps the process alive.
   worker = worker.replaceAll('BalanceWidgets.refreshAllAsync(applicationContext)', 'BalanceWidgets.refreshAll(applicationContext)')
   if (!worker.includes('BalanceWidgets.refreshAll(applicationContext)')) {
-    const success = /if \(runNativeSync\(applicationContext\.applicationInfo\.dataDir\) == 0\) \{/
+    const success = /if \(synced == 0 \|\| synced == SITUATE_CHANGED\) \{/
     if (!success.test(worker)) {
       throw new Error(`Could not find the background sync success path in ${workerPath}`)
     }
