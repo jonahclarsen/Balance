@@ -1,15 +1,17 @@
 <script lang="ts">
   import { situate, situateNow, situatePlatform, requestQuiz } from './situate/store'
-  import { isActive, nextChange } from './situate/core'
+  import { CATEGORIES, isActive, nextChange, sitePasses } from './situate/core'
   import { browsersMissingExtension, extensionSetupOpen } from './situate/extension'
   $: pills = $situate.modes.flatMap(mode => {
     const on = isActive($situate, mode, situatePlatform, $situateNow)
     const change = nextChange($situate, mode, situatePlatform, $situateNow)
     return on || change ? [{ mode, on, change }] : []
   })
+  $: passes = sitePasses($situate, situatePlatform, $situateNow)
+  const passColor = CATEGORIES.find(c => c.id === 'entertainment')!.color
   const mins = (at: number, now: number) => { const n = Math.ceil((at - now) / 60000); return `${n} min${n === 1 ? '' : 's'}` }
 </script>
-{#if pills.length || $browsersMissingExtension.length}
+{#if pills.length || passes.length || $browsersMissingExtension.length}
   <div class="situate-pills" aria-label="Situate modes">
     {#each pills as { mode, on, change } (mode.id)}
       {#if on || mode.reminder}
@@ -17,6 +19,9 @@
       {:else}
         <span class="situate-pill upcoming" style:--mode={mode.color} title={mode.description}>{mode.name}{#if change}{' '}<span class="when">in {mins(change, $situateNow)}</span>{/if}</span>
       {/if}
+    {/each}
+    {#each passes as { target, until } (target.id)}
+      <span class="situate-pill" style:--mode={passColor} title={`${target.value} is unblocked`}>{target.value} <span class="when">for {mins(until, $situateNow)}</span></span>
     {/each}
     {#if $browsersMissingExtension.length}<button class="situate-pill warning" type="button" title="Websites aren’t blocked in this browser" on:click={() => extensionSetupOpen.set(true)}>! Extension</button>{/if}
   </div>

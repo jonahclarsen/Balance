@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { choosesLength, defaults, regenerate, reminderWindow, epoch, enableMode, grant, isActive, backOn, headsUp, nextChange, questions, quizProgress, validate, matches, sunset, upgradePresets, timeZoneLocation, type Reminder } from '../../src/lib/situate/core'
+import { choosesLength, defaults, regenerate, reminderWindow, epoch, enableMode, grant, isActive, backOn, headsUp, nextChange, sitePasses, questions, quizProgress, validate, matches, sunset, upgradePresets, timeZoneLocation, type Reminder } from '../../src/lib/situate/core'
 import { reconcileRules, sharedRules } from '../../src/lib/situate/sharing'
 const date = (day:number,hour:number,minute=0) => new Date(2026,9,17+day,hour,minute).getTime()
 // Clock times only: sunset would otherwise follow the machine's time zone.
@@ -105,6 +105,11 @@ test('entertainment branches allow work or permitted care only, scoped to one ta
   }
   expect(grant(d,'dolo',{visual:false},now,now,target,60).grants[0].until-now).toBe(60*60000)
   expect(() => questions(d,d.modes[0],now,'domain:reddit.com')).toThrow('mode quiz')
+  const passed=grant(d,'dolo',{visual:false},now,now,target,15)
+  expect(sitePasses(passed,'mac',now).map(p=>[p.target.id,p.until])).toEqual([[target,now+15*60000]])
+  expect(sitePasses(passed,'mac',now+15*60000)).toEqual([])
+  expect(sitePasses(grant(d,'dolo',{visual:false},now,now,target,60),'mac',now,30*60000)).toEqual([])
+  expect(sitePasses(passed,'windows',now)).toEqual([])
 })
 test('modes need a color and at least one device', () => {
   const d=fixture()

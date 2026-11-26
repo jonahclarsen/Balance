@@ -267,6 +267,18 @@ export function nextChange(doc: Document, mode: Mode, platform: Platform, now: n
   const soon = [...new Set(times.filter(t => t > now && t <= now + within))].sort((a, b) => a - b)
   return soon.find(t => isActive(doc, mode, platform, t) !== on) ?? null
 }
+/** Site passes in force on this platform that end within the next `within` milliseconds, soonest first. */
+export function sitePasses(doc: Document, platform: Platform, now: number, within = 60 * minute): { target: Target; until: number }[] {
+  const passes = new Map<string, { target: Target; until: number }>()
+  for (const g of doc.grants) {
+    const mode = doc.modes.find(m => m.id === g.mode)
+    const target = mode?.targets.find(t => t.id === g.target)
+    if (!mode || !target || g.until > now + within || !isActive(doc, mode, platform, now) || isActive(doc, mode, platform, now, g.target)) continue
+    const seen = passes.get(target.id)
+    if (!seen || g.until < seen.until) passes.set(target.id, { target, until: g.until })
+  }
+  return [...passes.values()].sort((a, b) => a.until - b.until)
+}
 /** The heads-up, in minutes, whose time before an off mode comes back on has been reached. */
 export function headsUp(doc: Document, mode: Mode, platform: Platform, now: number): number | null {
   if (!mode.headsUp?.length || isActive(doc, mode, platform, now)) return null
