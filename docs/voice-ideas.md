@@ -39,6 +39,21 @@ untranscribed recordings with their chip, but hide Add to day, Add to new note,
 Cut and Append to previous for them, since those take the idea out of the
 groups.
 
+## Recordings in notes
+
+Add to new note on a transcribed voice idea asks "Include the recording?"
+(Y/N). Yes re-encodes the clip to 64 kbps mono Opus in Ogg (`noteAudio.ts`:
+WebCodecs `AudioEncoder`, muxed by `oggOpus.ts`) and puts an inline audio chip
+after the idea's text in the note. The clip itself still leaves with its idea.
+
+Note audio lives in the `audio` collection, separate from `voiceClips` so older
+clients' voice-clip cleanup never touches it. Rich text stores only
+`<span data-balance-audio="id"></span>`; `audioChips.ts` renders the play
+button, waveform and duration wherever that markup appears. Every commit runs
+`reconcileAudio`, which drops audio no text references in the same operation
+(undo restores it) and restores audio seen this session when its reference
+comes back, as when pasting a cut chip.
+
 ## Transcription (macOS)
 
 The Mac app transcribes every untranscribed clip on its own once the workspace

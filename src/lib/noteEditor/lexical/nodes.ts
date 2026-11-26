@@ -33,6 +33,7 @@ import type { NoteItemKind } from '../../types'
 import type { ImageLayout } from '../../imageMarkup'
 import { formatMinutes } from '../../planner'
 import { noteTimeLabel } from '../../noteTimeMarkup'
+import { renderAudioChip } from '../../audioChips'
 
 export const LIST_KINDS: ReadonlySet<NoteItemKind> = new Set(['bullet', 'numbered', 'checklist'])
 
@@ -644,6 +645,72 @@ export function $isNoteTimeNode(node: LexicalNode | null | undefined): node is N
 }
 
 // ---------------------------------------------------------------------------
+// Audio (inline decorator): a play chip for an `audio` asset.
+// ---------------------------------------------------------------------------
+
+type SerializedNoteAudioNode = Spread<{ audioId: string }, SerializedLexicalNode>
+
+export class NoteAudioNode extends DecoratorNode<null> {
+  __audioId: string
+
+  static getType(): string {
+    return 'note-audio'
+  }
+
+  static clone(node: NoteAudioNode): NoteAudioNode {
+    return new NoteAudioNode(node.__audioId, node.__key)
+  }
+
+  constructor(audioId = '', key?: NodeKey) {
+    super(key)
+    this.__audioId = audioId
+  }
+
+  static importJSON(json: SerializedNoteAudioNode): NoteAudioNode {
+    return $createNoteAudioNode(json.audioId)
+  }
+
+  exportJSON(): SerializedNoteAudioNode {
+    return { ...super.exportJSON(), audioId: this.__audioId }
+  }
+
+  createDOM(): HTMLElement {
+    const element = document.createElement('span')
+    element.setAttribute('data-balance-audio', this.__audioId)
+    renderAudioChip(element)
+    return element
+  }
+
+  updateDOM(prevNode: NoteAudioNode): boolean {
+    return prevNode.__audioId !== this.__audioId
+  }
+
+  decorate(): null {
+    return null
+  }
+
+  isInline(): true {
+    return true
+  }
+
+  isKeyboardSelectable(): boolean {
+    return true
+  }
+
+  getTextContent(): string {
+    return ''
+  }
+}
+
+export function $createNoteAudioNode(audioId: string): NoteAudioNode {
+  return $applyNodeReplacement(new NoteAudioNode(audioId))
+}
+
+export function $isNoteAudioNode(node: LexicalNode | null | undefined): node is NoteAudioNode {
+  return node instanceof NoteAudioNode
+}
+
+// ---------------------------------------------------------------------------
 // Text: renders marks as real <strong>/<em>/<u>/<code> elements (the persisted
 // vocabulary) instead of Lexical's default span + theme class for underline.
 // ---------------------------------------------------------------------------
@@ -715,6 +782,7 @@ export const NOTE_NODES = [
   NoteChildrenNode,
   NoteLinkNode,
   NoteImageNode,
+  NoteAudioNode,
   NoteTimeNode,
   NoteTextNode,
   {

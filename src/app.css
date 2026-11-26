@@ -8007,3 +8007,58 @@ textarea.note-title {
 .paste-review-line .voice-clip-chip {
   margin-left: auto;
 }
+
+/* Inline audio (data-balance-audio), hydrated by audioChips.ts. */
+.audio-chip {
+  --audio-progress: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 .15em;
+  padding: 1px 8px 1px 2px;
+  border-radius: 999px;
+  vertical-align: middle;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  font-size: 12px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: pointer;
+}
+.audio-chip-play {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: white;
+  background: var(--accent);
+  cursor: pointer;
+}
+.audio-chip-play::before {
+  content: '';
+  margin-left: 2px;
+  border-style: solid;
+  border-width: 5px 0 5px 8px;
+  border-color: transparent transparent transparent currentColor;
+}
+.audio-chip.playing .audio-chip-play::before {
+  margin-left: 0;
+  width: 7px;
+  height: 10px;
+  border-width: 0 2.5px;
+  border-color: currentColor;
+}
+.audio-chip-play:disabled { opacity: .45; cursor: default; }
+.audio-chip-wave {
+  width: 64px;
+  height: 14px;
+  fill: currentColor;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(var(--audio-progress) * 100%), rgb(0 0 0 / .45) 0);
+  mask-image: linear-gradient(to right, #000 calc(var(--audio-progress) * 100%), rgb(0 0 0 / .45) 0);
+}
+.audio-chip-time { color: var(--muted); }

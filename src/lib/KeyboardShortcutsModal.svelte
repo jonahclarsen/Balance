@@ -148,6 +148,8 @@
         { keys: ['Space'], label: 'Voice idea: play or pause, outside the text' },
         { keys: ['X'], label: 'Sorting: after Yes, cut the idea to the clipboard' },
         { keys: ['D'], label: 'Sorting: after Yes, add the idea to the day being generated' },
+        { keys: ['N'], label: 'Sorting: after Yes, add the idea to a new note' },
+        { keys: ['Y / N'], label: 'Sorting: after Add to new note on a voice idea, include the recording or not' },
       ],
     },
     {

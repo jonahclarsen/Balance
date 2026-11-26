@@ -333,6 +333,18 @@ export type ImageAsset = {
   bytes: number
 }
 
+// Audio placed in rich text, such as a voice idea added to a note. Kept while
+// some text references it with data-balance-audio.
+export type AudioAsset = {
+  id: string
+  // data:audio/ogg;codecs=opus;base64,… (voice notes are 64 kbps mono).
+  dataURL: string
+  durationMs: number
+  // 0–255 loudness for every PEAKS_PER_SECOND slice.
+  peaks: number[]
+  bytes: number
+}
+
 export type Project = {
   id: Id
   name: string
@@ -459,6 +471,7 @@ export type AppState = {
   // Stored as the ideaBuckets collection, with bucket_<kind> record IDs.
   ideaBuckets: IdeaGroup[]
   voiceClips: VoiceClip[]
+  audio: AudioAsset[]
   notes: Note[]
   noteResurfacing: NoteResurfacing[]
   goals: Goal[]

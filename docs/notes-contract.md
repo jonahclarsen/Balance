@@ -24,7 +24,9 @@ Each note has a stable ID, title, items, creation/update timestamps, and optiona
 checklist completion, and children. The kinds are paragraph, heading, quote,
 bullet, numbered, and checklist. Any kind may have nested children. Shared
 planner timing fields remain null on note items. HTML carries inline formatting
-and image references; text is its searchable plain-text mirror.
+and image and audio references; text is its searchable plain-text mirror.
+Audio chips (`NoteAudioNode`) behave like inline images: one caret position, no
+text. See [voice ideas](voice-ideas.md#recordings-in-notes).
 
 A note can have versions, shown as tabs above the editor. Each version is its
 own note record; later versions set optional `versionOf` to the first version's

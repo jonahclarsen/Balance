@@ -503,3 +503,93 @@ for (const failure of ['on startup', 'mid-recording'] as const) {
     await expect.poll(async () => (await state(page)).voiceClips.length).toBe(1)
   })
 }
+
+// A second of synthetic tone, as a WAV the WebView decodes like a recording.
+async function addTranscribedVoiceIdea(page: Page) {
+  await page.evaluate(async () => {
+    const rate = 48_000
+    const pcm = new Int16Array(rate)
+    for (let index = 0; index < pcm.length; index += 1) pcm[index] = Math.round(8000 * Math.sin((2 * Math.PI * 330 * index) / rate))
+    const header = new DataView(new ArrayBuffer(44))
+    const text = (offset: number, value: string) => [...value].forEach((character, index) => header.setUint8(offset + index, character.charCodeAt(0)))
+    text(0, 'RIFF'); header.setUint32(4, 36 + pcm.byteLength, true); text(8, 'WAVEfmt ')
+    header.setUint32(16, 16, true); header.setUint16(20, 1, true); header.setUint16(22, 1, true)
+    header.setUint32(24, rate, true); header.setUint32(28, rate * 2, true); header.setUint16(32, 2, true); header.setUint16(34, 16, true)
+    text(36, 'data'); header.setUint32(40, pcm.byteLength, true)
+    const bytes = new Uint8Array([...new Uint8Array(header.buffer), ...new Uint8Array(pcm.buffer)])
+    let binary = ''
+    for (const byte of bytes) binary += String.fromCharCode(byte)
+    const path = '/src/lib/store.ts'
+    const { plannerStore } = await import(/* @vite-ignore */ path)
+    plannerStore.addVoiceIdea({ dataURL: `data:audio/wav;base64,${btoa(binary)}`, durationMs: 1000, peaks: Array.from({ length: 20 }, (_, index) => index * 12) })
+    let clipId = ''
+    plannerStore.subscribe((state: any) => { clipId = state.voiceClips[0].id })()
+    plannerStore.applyVoiceTranscript(clipId, { text: 'Synthetic spoken idea.', words: [], model: 'test', transcribedAt: '2026-10-27T00:00:00Z' })
+  })
+}
+
+async function notesAndAudio(page: Page): Promise<any> {
+  return page.evaluate(async () => {
+    const path = '/src/lib/store.ts'
+    const { plannerStore } = await import(/* @vite-ignore */ path)
+    let value: any
+    plannerStore.subscribe((current: any) => { value = current })()
+    return JSON.parse(JSON.stringify({ notes: value.notes, audio: value.audio, voiceClips: value.voiceClips }))
+  })
+}
+
+test('Add to new note asks whether the recording comes along, as 64 kbps Opus', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'WebCodecs encoding is covered on desktop Chromium')
+  await open(page)
+  await addTranscribedVoiceIdea(page)
+  await proposition(page).getByRole('button', { name: 'Sort', exact: true }).click()
+  const sorter = page.locator('.idea-sort[role="dialog"]')
+  await page.keyboard.press('y')
+  await page.keyboard.press('n')
+  await expect(sorter.getByText('Include the recording?')).toBeVisible()
+  // Back returns to the Yes choices.
+  await page.keyboard.press('b')
+  await expect(sorter.getByRole('button', { name: 'Add to new note (N)' })).toBeVisible()
+  await page.keyboard.press('n')
+  await page.keyboard.press('y')
+  await expect(sorter).toBeHidden()
+
+  const saved = await notesAndAudio(page)
+  expect(saved.voiceClips).toEqual([])
+  expect(saved.audio).toHaveLength(1)
+  const [asset] = saved.audio
+  expect(asset.dataURL).toMatch(/^data:audio\/ogg;codecs=opus;base64,/)
+  // About 8 KB for a second at 64 kbps, plus headers.
+  expect(asset.bytes).toBeGreaterThan(4_000)
+  expect(asset.bytes).toBeLessThan(12_000)
+  expect(saved.notes[0].items[0].html).toBe(`Synthetic spoken idea. <span data-balance-audio="${asset.id}"></span>`)
+
+  await openView(page, 'Notes')
+  const chip = page.locator('.lexical-note-editor .audio-chip')
+  await expect(chip.getByRole('button', { name: 'Play recording, 0:01' })).toBeVisible()
+  await chip.getByRole('button').click()
+  await expect(chip).toHaveClass(/playing/)
+  await expect(chip).not.toHaveClass(/playing/, { timeout: 5000 })
+
+  // Undo puts the idea and its recording back and removes the note's copy.
+  await storeCall(page, 'return plannerStore.undo()')
+  await expect.poll(async () => {
+    const current = await notesAndAudio(page)
+    return [current.audio.length, current.voiceClips.length]
+  }).toEqual([0, 1])
+})
+
+test('declining the recording adds only the text to the note', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'Store behavior is covered on desktop')
+  await open(page)
+  await addTranscribedVoiceIdea(page)
+  await proposition(page).getByRole('button', { name: 'Sort', exact: true }).click()
+  await page.keyboard.press('y')
+  await page.keyboard.press('n')
+  await page.keyboard.press('n')
+  await expect(page.locator('.idea-sort[role="dialog"]')).toBeHidden()
+  const saved = await notesAndAudio(page)
+  expect(saved.audio).toEqual([])
+  expect(saved.voiceClips).toEqual([])
+  expect(saved.notes[0].items[0].text).toBe('Synthetic spoken idea.')
+})

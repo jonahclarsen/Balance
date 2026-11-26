@@ -135,6 +135,7 @@ import type {
   IdeaGroupKind,
   IdeaItem,
   VoiceClip,
+  AudioAsset,
   IdeaSnapshot,
   ListInstance,
   ListTemplate,
@@ -169,6 +170,7 @@ import { scheduleResurfacing } from './noteResurfacing'
 import { findIdea, ideaGroupId, IDEA_GROUP_KINDS, isIdeaTrashExpired, parseIdeaReviewDays, type ScheduledIdeaReviewKind } from './ideas'
 import { reconcileTaskNotifications } from './taskNotifications'
 import { reconcileVoiceClips } from './voiceClips'
+import { audioHTML, reconcileAudio, rememberAudio } from './audioMarkup'
 import { withListCompletionTime } from './listTiming'
 
 const STORAGE_KEY = 'balance.appState.v1'
@@ -231,6 +233,7 @@ const ENTITY_COLLECTIONS = [
   'dayGenerations',
   'ideaBuckets',
   'voiceClips',
+  'audio',
   'uneditedPlanItems',
   'templateQuestions',
   'templateItemConditions',
@@ -993,6 +996,7 @@ function createPlannerStore() {
       next = reconcileUneditedPlanItems(state, next)
       next = reconcileTaskNotifications(state, next)
       next = reconcileVoiceClips(state, next)
+      next = reconcileAudio(next)
       // Persist the bytes and their first reference in the same operation. A
       // checkpoint can never observe a half-finished image insertion.
       const nextImageIds = pendingImages.size || next.images.length
@@ -2777,9 +2781,11 @@ function createPlannerStore() {
 
     // ---- Notes (reuse the plan-item tree and shared rich-text editor) ----
 
-    moveIdeaToNewNote(itemId: Id) {
+    // With audio, the recording follows the idea's text into the note.
+    moveIdeaToNewNote(itemId: Id, audio?: AudioAsset) {
       let noteId: Id | null = null
-      commitEntities('move_idea_to_note', { itemId }, (state) => {
+      if (audio) rememberAudio(audio)
+      commitEntities('move_idea_to_note', { itemId, ...(audio ? { audioId: audio.id } : {}) }, (state) => {
         const found = findIdea(state.ideaBuckets, itemId)
         if (!found) return state
         const toNoteItem = (item: PlanItem): NoteItem => ({
@@ -2788,7 +2794,8 @@ function createPlannerStore() {
           kind: 'checklist',
           children: item.children.map(toNoteItem),
         })
-        const { bucketedAt, ...item } = found.item
+        const { bucketedAt, ...idea } = found.item
+        const item = audio ? { ...idea, html: `${idea.html || escapeHTML(idea.text)}${idea.text.trim() ? ' ' : ''}${audioHTML(audio.id)}` } : idea
         // Proposition Party ideas keep their bucketedAt from when they were
         // written, so the note takes the default title for that moment.
         const writtenAt = found.group.kind === 'proposition' && bucketedAt ? new Date(bucketedAt) : new Date()
@@ -2797,7 +2804,7 @@ function createPlannerStore() {
         const removed = updateIdeaGroup(state, found.group.kind, (group) => ({
           ...group, items: group.items.filter((candidate) => candidate.id !== itemId),
         }))
-        return { ...removed, notes: [note, ...removed.notes] }
+        return { ...removed, notes: [note, ...removed.notes], ...(audio ? { audio: [...removed.audio, audio] } : {}) }
       })
       return noteId
     },
@@ -4577,6 +4584,7 @@ export async function inspectDatabase(): Promise<DatabaseInspection | null> {
       dayGenerations: [],
       ideaBuckets: [],
       voiceClips: [],
+      audio: [],
       notes: [],
       images: [],
       goals: [],
@@ -4724,6 +4732,7 @@ function* normalizeStateSteps(state: AppState): Generator<void, AppState, void> 
     dayGenerations: state.dayGenerations ?? [],
     ideaBuckets: state.ideaBuckets ?? [],
     voiceClips: state.voiceClips ?? [],
+    audio: state.audio ?? [],
     preferences: normalizeReplicatedPreferences(state.preferences),
     goals: yield* normalizeRecords(state.goals ?? [], normalize.goals),
     goalCompletions: yield* normalizeRecords(state.goalCompletions ?? [], normalize.goalCompletions),

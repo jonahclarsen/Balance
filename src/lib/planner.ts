@@ -1,6 +1,7 @@
 import { balanceURLMatches, parseNavigationURL, navigationURL } from './navigationLinks'
 import { IDEA_REVIEW_LABELS, ideasLinkFromURL, type IdeaReviewKind } from './ideaLinks'
 import { sanitizeImage } from './imageMarkup'
+import { sanitizeAudio } from './audioMarkup'
 import { noteTimeHTML, parseNoteTime } from './noteTimeMarkup'
 import { isUnboldedBold, textStyleTags } from './textStyleTags'
 import type {
@@ -192,6 +193,7 @@ export function createInitialState(): AppState {
     dayGenerations: [],
     ideaBuckets: [],
     voiceClips: [],
+    audio: [],
     notes: [],
     images: [],
     goals: [createDefaultTemplateReviewGoal(template)],
@@ -1894,7 +1896,7 @@ export function linkifyExternalURLs(value: string): string {
 function cleanTrailingLineBreaks(html: string): string {
   const template = document.createElement('template')
   template.innerHTML = html
-  const removeBreaks = !template.content.querySelector('img[data-balance-image]') && (template.content.textContent ?? '').trim() === ''
+  const removeBreaks = !template.content.querySelector('img[data-balance-image], [data-balance-audio]') && (template.content.textContent ?? '').trim() === ''
   if (!pruneTrailingLineBreaks(template.content, removeBreaks)) return html
   return Array.from(template.content.childNodes).map(sanitizeNode).join('')
 }
@@ -1916,7 +1918,7 @@ function pruneTrailingLineBreaks(parent: ParentNode, removeBreaks: boolean): boo
       return true
     }
 
-    if (last.nodeName === 'IMG') return pruned
+    if (last.nodeName === 'IMG' || (last instanceof Element && last.hasAttribute('data-balance-audio'))) return pruned
 
     if (last.nodeName === 'BR') {
       if (!removeBreaks) return pruned
@@ -2035,6 +2037,7 @@ function sanitizeNode(node: Node): string {
   }
 
   if (tag === 'img') return sanitizeImage(element)
+  if (tag === 'span' && element.hasAttribute('data-balance-audio')) return sanitizeAudio(element)
   if (tag === 'time') {
     const time = parseNoteTime(element)
     return time ? noteTimeHTML(time.startMinutes, time.endMinutes) : children

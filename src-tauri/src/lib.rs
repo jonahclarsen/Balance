@@ -177,7 +177,7 @@ const SYNC_LOG_DIRTY_SINCE_MS: &str = "sync_log_dirty_since_ms";
 const REPLICATED_PREFERENCES: &str = "replicated_preferences";
 const DEVICE_APPEARANCE: &str = "device_appearance";
 const DAY_THEME_PREFERENCE_PREFIX: &str = "dayTheme/";
-const ENTITY_COLLECTIONS: [&str; 24] = [
+const ENTITY_COLLECTIONS: [&str; 25] = [
     "images",
     "uneditedPlanItems",
     "templateQuestions",
@@ -202,6 +202,7 @@ const ENTITY_COLLECTIONS: [&str; 24] = [
     "dayGenerations",
     "ideaBuckets",
     "voiceClips",
+    "audio",
 ];
 const DEFAULT_DAILY_REMINDER: &str = "This shouldn't be aspirational";
 const GITHUB_LATEST_RELEASE_API: &str =
@@ -3294,6 +3295,7 @@ fn read_app_state_from_database_with_progress(
         "dayGenerations": read_entity_collection(connection, "dayGenerations")?,
         "ideaBuckets": read_entity_collection(connection, "ideaBuckets")?,
         "voiceClips": read_entity_collection(connection, "voiceClips")?,
+        "audio": read_entity_collection(connection, "audio")?,
         "goals": goal_data["goals"].clone(),
         "goalCompletions": goal_data["goalCompletions"].clone(),
         "operations": [],

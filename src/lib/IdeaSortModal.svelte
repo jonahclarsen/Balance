@@ -9,7 +9,8 @@
   import { IDEA_UNLOCK_MS, findIdea, ideaGroupMeta, IDEA_SORT_QUESTION } from './ideas'
   import { renderItemDisplayHTML, type ItemLink, type ItemTextSegment } from './planner'
   import { openClickedLink, openRenderedLinkFromShortcut } from './externalLinks'
-  import type { Id, IdeaGroup, IdeaGroupKind, IdeaItem, IdeaSnapshot, PlanItem, VoiceClip } from './types'
+  import type { AudioAsset, Id, IdeaGroup, IdeaGroupKind, IdeaItem, IdeaSnapshot, PlanItem, VoiceClip } from './types'
+  import { noteAudioFromClip } from './noteAudio'
 
   // Ideas are sorted one card at a time in queue order (bottom of the list first). Each card asks
   // the key question; Yes picks a keep group, No picks a discard group.
@@ -36,7 +37,8 @@
   export let onToggleDone: (ideaId: Id, itemId: Id, done: boolean) => void
   // Removes the idea and puts it on the clipboard to paste where it belongs.
   export let onCut: (itemId: Id) => void
-  export let onAddToNote: (itemId: Id) => Id | null
+  // With audio, the idea's recording goes into the note as well.
+  export let onAddToNote: (itemId: Id, audio?: AudioAsset) => Id | null
   // Only offered while generating a day: the idea joins that day's tasks.
   export let onAddToDay: ((itemId: Id) => void) | undefined = undefined
   // Back puts the ideas a decision touched back where they were and removes
@@ -49,11 +51,16 @@
   // after them stays locked until the card has been up this long.
   export let readDelayMs = 0
 
-  type Step = 'question' | 'yes' | 'no'
+  // 'audio' asks whether Add to new note brings the idea's recording along.
+  type Step = 'question' | 'yes' | 'no' | 'audio'
 
   let index = 0
   let introOpen = Boolean(intro)
   let step: Step = 'question'
+  // The note's 64 kbps copy, encoded while the audio question is up.
+  let noteAudio: { clipId: Id; asset: Promise<AudioAsset> } | null = null
+  let audioBusy = false
+  let audioError = ''
   let editing = false
   let editHTML = ''
   let editText = ''
@@ -152,6 +159,9 @@
 
   function resetCard(_index: number) {
     step = 'question'
+    noteAudio = null
+    audioBusy = false
+    audioError = ''
     shownAt = Date.now()
     openClipId = null
     editing = false
@@ -225,6 +235,10 @@
   }
 
   function goBack() {
+    if (step === 'audio') {
+      if (!audioBusy) step = 'yes'
+      return
+    }
     if (step !== 'question') {
       step = 'question'
       return
@@ -263,8 +277,42 @@
 
   function addToNote() {
     if (!current || untranscribed || refuse('note')) return
+    if (clip) {
+      step = 'audio'
+      audioError = ''
+      if (noteAudio?.clipId !== clip.id) {
+        const asset = noteAudioFromClip(clip)
+        asset.catch(() => {})
+        noteAudio = { clipId: clip.id, asset }
+      }
+      return
+    }
+    moveToNote()
+  }
+
+  async function answerAudio(include: boolean) {
+    if (!current || audioBusy) return
+    if (!include || !noteAudio) {
+      moveToNote()
+      return
+    }
+    const ideaId = current.id
+    audioBusy = true
+    try {
+      const asset = await noteAudio.asset
+      if (current?.id === ideaId && step === 'audio') moveToNote(asset)
+    } catch (error) {
+      audioError = error instanceof Error ? error.message : String(error)
+      noteAudio = null
+    } finally {
+      audioBusy = false
+    }
+  }
+
+  function moveToNote(audio?: AudioAsset) {
+    if (!current) return
     const snapshots = snapshot(current.id)
-    const noteId = onAddToNote(current.id)
+    const noteId = onAddToNote(current.id, audio)
     if (!noteId) return
     record(snapshots, noteId)
     dropCurrent()
@@ -359,6 +407,8 @@
     else if (step === 'yes' && key === 'p') choose('possible')
     else if (step === 'yes' && key === 'x') cut()
     else if (step === 'yes' && key === 'n') addToNote()
+    else if (step === 'audio' && key === 'y') void answerAudio(true)
+    else if (step === 'audio' && key === 'n') void answerAudio(false)
     else if (step === 'yes' && key === 'd' && onAddToDay) addToDay()
     else if (step === 'no' && key === 'a') choose('afterlife')
     else if (step === 'no' && key === 't') choose('trash')
@@ -424,7 +474,7 @@
   {:else}
   <div class="paste-review">
     <ProgressBar done={sorted} {total} label="Ideas sorted" />
-    <p class="idea-sort-question">{IDEA_SORT_QUESTION}</p>
+    <p class="idea-sort-question">{step === 'audio' ? 'Include the recording?' : IDEA_SORT_QUESTION}</p>
     <div class="paste-review-list" aria-label="Idea being sorted">
       {#if current}
         {#key current.id}
@@ -482,6 +532,10 @@
       {#if editing}
         <button class="primary" type="button" on:click={saveEdit}>Save (Enter)</button>
         <button type="button" on:click={() => (editing = false)}>Cancel (Esc)</button>
+      {:else if step === 'audio'}
+        <button type="button" disabled={audioBusy} on:click={() => void answerAudio(false)}>No (N)</button>
+        <button class="primary" type="button" disabled={audioBusy} on:click={() => void answerAudio(true)}>{audioBusy ? 'Compressing…' : 'Yes (Y)'}</button>
+        {#if audioError}<p class="idea-sort-audio-error" role="alert">{audioError}</p>{/if}
       {:else if step === 'question'}
         <button type="button" on:click={() => answer('no')}>No (N)</button>
         <button class="primary" type="button" on:click={() => answer('yes')}>Yes (Y)</button>
@@ -560,6 +614,7 @@
 {/if}
 
 <style>
+  .idea-sort-audio-error { flex-basis: 100%; margin: 0; color: var(--danger); font-size: 13px; }
   .idea-sort-warp {
     position: absolute;
     width: 0;

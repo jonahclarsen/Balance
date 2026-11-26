@@ -118,7 +118,7 @@ export function noteItemCaretLength(item: Pick<NoteItem, 'text' | 'html'>): numb
 }
 
 function hasImage(html: string): boolean {
-  return html.includes('data-balance-image')
+  return html.includes('data-balance-image') || html.includes('data-balance-audio')
 }
 
 // Turns the view's block tree into note items:

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { templateItemsToListTemplateItems, listTemplateItemsToTemplateItems, planItemsClipboardText, parsePlainTaskClipboard, planItemsToListTemplateItems, planItemsToTemplateItems } from './lib/taskClipboard'
   import ImageLayer from './lib/ImageLayer.svelte'
+  import { installAudioChips } from './lib/audioChips'
   import BackupBrowser from './lib/BackupBrowser.svelte'
   import ListStorageDiagnostics from './lib/ListStorageDiagnostics.svelte'
   import { blobDataURL, selectedImage } from './lib/imageService'
@@ -2461,6 +2462,8 @@ return rows`
     importError = ''
     importOverlayOpen = true
   }
+
+  onMount(() => installAudioChips((run) => plannerStore.subscribe((state) => run(state.audio))))
 
   onMount(() => {
     const wideQuery = matchMedia('(min-width: 761px)')

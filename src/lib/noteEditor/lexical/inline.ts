@@ -21,12 +21,15 @@ import {
 } from 'lexical'
 import { escapeHTML } from '../../planner'
 import { imageHTML, type ImageLayout } from '../../imageMarkup'
+import { audioHTML } from '../../audioMarkup'
 import { noteTimeHTML, parseNoteTime } from '../../noteTimeMarkup'
 import {
+  $createNoteAudioNode,
   $createNoteImageNode,
   $createNoteLinkNode,
   $createNoteTextNode,
   $createNoteTimeNode,
+  $isNoteAudioNode,
   $isNoteImageNode,
   $isNoteLinkNode,
   $isNoteTimeNode,
@@ -82,6 +85,8 @@ export function $nodesFromInlineHTML(html: string): LexicalNode[] {
       } else if (tag === 'TIME' && parseNoteTime(child)) {
         const time = parseNoteTime(child)!
         out.push($createNoteTimeNode(time.startMinutes, time.endMinutes))
+      } else if (child.hasAttribute('data-balance-audio')) {
+        out.push($createNoteAudioNode(child.getAttribute('data-balance-audio') ?? ''))
       } else walk(child, format, out)
     }
   }
@@ -154,6 +159,12 @@ function serializeChildren(element: ElementNode, state: { offset: number }, from
         setMarks(0)
         const { startMinutes, endMinutes } = child.getRange()
         html += noteTimeHTML(startMinutes, endMinutes)
+      }
+    } else if ($isNoteAudioNode(child)) {
+      const start = state.offset++
+      if (start >= from && start < to) {
+        setMarks(0)
+        html += audioHTML(child.__audioId)
       }
     } else if ($isNoteLinkNode(child)) {
       const inner = serializeChildren(child, state, from, to)
@@ -251,9 +262,9 @@ export function $textBefore(content: ElementNode, offset: number): string {
   return text
 }
 
-// An image or time pill: one caret character with no Lexical text.
+// An image, audio chip or time pill: one caret character with no Lexical text.
 export function $isEmbed(node: LexicalNode): boolean {
-  return $isNoteImageNode(node) || $isNoteTimeNode(node)
+  return $isNoteImageNode(node) || $isNoteAudioNode(node) || $isNoteTimeNode(node)
 }
 
 export function $hasEmbed(content: ElementNode): boolean {
@@ -269,7 +280,7 @@ export function $hasEmbed(content: ElementNode): boolean {
   return found
 }
 
-// Empty for Enter/Backspace purposes: no visible text, image or time.
+// Empty for Enter/Backspace purposes: no visible text, image, audio or time.
 export function $isContentEmpty(content: ElementNode): boolean {
   return $plainText(content).trim() === '' && !$hasEmbed(content)
 }
