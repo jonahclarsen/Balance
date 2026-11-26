@@ -650,17 +650,25 @@ class LexicalNoteEditorView implements NoteEditorView {
   // A selection spanning several rows changes every row it touches and keeps
   // the selection, so the rows can be switched again.
   setBlockKind(kind: NoteItemKind): void {
+    // A row typed as "- text" drops its now-redundant marker when it becomes
+    // a bullet (likewise "# ", "> ", "1. " and "[ ] ").
+    const convert = (block: NoteBlockNode) => {
+      if (block.getKind() === kind) return
+      block.setKind(kind)
+      const text = $textWithBreaks($contentOf(block))
+      const trigger = MARKDOWN_TRIGGERS.find((candidate) => candidate.kind === kind)
+      const match = trigger?.pattern.exec(text)
+      if (match) $removeLeadingCharacters($contentOf(block), text.length - match[1].length)
+    }
     this.runCommand(() => {
       const selection = $currentRange()
       const edges = selection ? $selectionEdges(selection) : null
       if (edges && !edges.start.block.is(edges.end.block)) {
-        for (const block of $blocksBetween(edges.start.block, edges.end.block)) {
-          if (block.getKind() !== kind) block.setKind(kind)
-        }
+        for (const block of $blocksBetween(edges.start.block, edges.end.block)) convert(block)
         return
       }
       const block = this.$targetBlock() ?? $ensureAtLeastOneBlock()
-      if (block.getKind() !== kind) block.setKind(kind)
+      convert(block)
       $selectEnd(block)
     })
   }
