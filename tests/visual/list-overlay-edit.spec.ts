@@ -1186,3 +1186,45 @@ test('completion focuses the visible copy of a list retained on another page', a
   await expect.poll(() => page.evaluate(() => document.activeElement?.closest('[role="dialog"]')?.getAttribute('aria-label'))).toBe('Groceries')
   await expect(dialog.locator('.plan-row.selected')).toContainText('Eggs')
 })
+
+test('a shuffled list keeps the setting and generates its items out of template order', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  await openView(page, 'Lists')
+  await page.getByRole('button', { name: '+ New list' }).click()
+  await page.getByLabel('List name').fill('Groceries')
+  const listItems = page.locator('[data-list-template-text-input]')
+  const names = ['Apples', 'Bread', 'Cheese', 'Dates', 'Eggs', 'Figs']
+  for (const [index, name] of names.entries()) {
+    if (index > 0) await page.getByRole('button', { name: '+ Add list item' }).click()
+    await listItems.nth(index).fill(name)
+  }
+  const shuffle = page.getByRole('checkbox', { name: 'Shuffle' })
+  await shuffle.check()
+
+  await page.reload()
+  await openView(page, 'Lists')
+  await expect(page.getByRole('checkbox', { name: 'Shuffle' })).toBeChecked()
+
+  // A seeded generator keeps the order reproducible while ids stay unique.
+  await page.evaluate(() => {
+    let seed = 7
+    Math.random = () => (seed = (seed * 16807) % 2147483647) / 2147483647
+  })
+  await openView(page, 'Today')
+  await generateDay(page)
+  const firstItem = page.locator('[data-plan-text-input]').first()
+  await firstItem.fill('Groceries')
+  await firstItem.blur()
+  await page.getByTitle('Open Groceries').first().click()
+
+  const dialog = page.getByRole('dialog', { name: 'Groceries' })
+  await expect(dialog.getByText('Apples')).toBeVisible()
+  const order = await dialog.getByRole('listitem').evaluateAll((items) =>
+    items.map((item) => item.getAttribute('aria-label')?.replace('Plan item: ', '')),
+  )
+  expect([...order].sort()).toEqual(names)
+  expect(order).not.toEqual(names)
+})

@@ -3035,6 +3035,14 @@ function createPlannerStore() {
       )
     },
 
+    setListTemplateShuffle(templateId: Id, shuffle: boolean) {
+      commitEntities('set_list_template_shuffle', { templateId, shuffle }, (state) =>
+        updateListTemplate(state, templateId, (template) =>
+          Boolean(template.shuffle) === shuffle ? template : { ...template, shuffle, updatedAt: nowISO() },
+        ),
+      )
+    },
+
     setListTemplateMaxWords(templateId: Id, maxExpectedWords: number) {
       const normalized = Math.max(0, Math.round(maxExpectedWords) || 0)
       commitEntities('set_list_template_max_words', { templateId, maxExpectedWords: normalized }, (state) =>

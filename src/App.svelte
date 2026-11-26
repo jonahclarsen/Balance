@@ -7922,6 +7922,14 @@ return rows`
               />
               min
             </label>
+            <label class="list-shuffle">
+              <input
+                type="checkbox"
+                checked={selectedListTemplate.shuffle ?? false}
+                on:change={(event) => plannerStore.setListTemplateShuffle(selectedListTemplate.id, event.currentTarget.checked)}
+              />
+              Shuffle
+            </label>
             {#if selectedListTiming?.expectedRunMs != null}
               <span
                 class="list-typical-time"

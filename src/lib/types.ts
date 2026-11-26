@@ -158,6 +158,8 @@ export type ListTemplate = {
   // Preferred time to get through the list, from the first check-off to the
   // last. Absent or 0 means no target.
   idealMinutes?: number
+  // Generate the top-level items in a random order. Absent means template order.
+  shuffle?: boolean
   items: ListTemplateItem[]
   archivedItems: ArchivedListTemplateItem[]
   // Set when the list is archived: hidden from Lists, still shown in List History.

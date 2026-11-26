@@ -2512,13 +2512,23 @@ export function generateListFromTemplate(
   quizAnswers: TemplateQuizAnswers = {},
 ): ListInstance {
   const id = createId('list')
+  const items = generateListItems(template.items, Math.random().toString(36).slice(2, 10), date, id, notifications, quizAnswers)
   return {
     id,
     date,
     listTemplateId: template.id,
     createdAt: nowISO(),
-    items: generateListItems(template.items, Math.random().toString(36).slice(2, 10), date, id, notifications, quizAnswers),
+    items: template.shuffle ? shuffled(items) : items,
   }
+}
+
+function shuffled<T>(items: T[]): T[] {
+  const result = [...items]
+  for (let index = result.length - 1; index > 0; index -= 1) {
+    const swap = Math.floor(Math.random() * (index + 1))
+    ;[result[index], result[swap]] = [result[swap], result[index]]
+  }
+  return result
 }
 
 // Generated row ids are the template item id plus a per-list suffix, so a row's
