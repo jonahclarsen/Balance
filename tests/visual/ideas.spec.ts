@@ -750,14 +750,14 @@ test('the Genuinely review button sorts every idea in the group', async ({ page 
   await page.keyboard.press('Escape')
   await expect(sorter(page).locator('.idea-sort-card')).toContainText('Synthetic later')
   await expect(sorter(page).locator('.idea-sort-card')).not.toContainText('!')
-  // Reviews keep the unlock delay, counted from the answer rather than the card.
+  // Reviews keep the unlock delay, counted from the card, plus a third of it after Yes.
   await page.clock.fastForward(5000)
   await page.keyboard.press('y')
   const genuinely = sorter(page).getByRole('button', { name: /Genuinely Worth Doing/ })
   await page.keyboard.press('g')
   await expect(genuinely).toHaveClass(/shaking/)
   await expectIdea(page, 1, 2)
-  await page.clock.fastForward(3000)
+  await page.clock.fastForward(1000)
   await page.keyboard.press('g')
   await expectIdea(page, 2, 2)
   await expect(sorter(page).locator('.idea-sort-card')).toContainText('Synthetic reviewed')
