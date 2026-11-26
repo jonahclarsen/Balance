@@ -4,7 +4,10 @@ Situate adds app boundaries to Balance on macOS and Android.
 Review the modes in **Situate**, then grant the device permissions.
 With sync on, rules, descriptions, schedules, on/off state and passes follow you across
 devices, so turning a mode off on one turns it off on the others. Blocking keeps working
-from each device's own copy, which updates while Balance's main window is running.
+from each device's own copy, which updates while Balance's main window is running
+(within 30 seconds while a Mac's window is hidden). On Android, background sync also
+updates it about every five minutes while Balance is closed; schedule changes, and
+mode edits not yet synced from the phone, wait until Balance is opened.
 A Mac starts the shared copy from its customized rules; a phone adopts it and never
 starts it. Planner data is never shared with integrations.
 

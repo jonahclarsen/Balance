@@ -15,6 +15,9 @@ const ACTIVE_CHANGE_POLL_MS = 2_000
 const ACTIVE_CHANGE_WINDOW_MS = 60_000
 const QUIET_VISIBLE_POLL_MS = 8_000
 const BACKGROUND_POLL_MS = 5 * 60 * 1_000
+// A hidden desktop window keeps serving Situate, whose mode changes must reach
+// this device's blocking soon. Phones leave hidden polls to native background sync.
+const DESKTOP_BACKGROUND_POLL_MS = 30_000
 const MAX_RETRY_MS = 5 * 60 * 1_000
 // Polls and edits wait for the retry, so an open app must not wait minutes
 // for a relay that has come back.
@@ -114,7 +117,7 @@ function syncLocalNetwork(): void {
 }
 
 function pollDelay(): number {
-  if (document.visibilityState !== 'visible') return BACKGROUND_POLL_MS
+  if (document.visibilityState !== 'visible') return isMobileDevice ? BACKGROUND_POLL_MS : DESKTOP_BACKGROUND_POLL_MS
   if (Date.now() - lastChangeAt < ACTIVE_CHANGE_WINDOW_MS) return ACTIVE_CHANGE_POLL_MS
   return QUIET_VISIBLE_POLL_MS
 }
@@ -398,6 +401,12 @@ export function startAutomaticSync(): () => void {
       void requestSync('edit')
       return
     }
+    // Leaving the app ends the debounce: Android suspends the WebView, and its
+    // native background sync would upload only minutes later.
+    if (document.visibilityState !== 'visible') {
+      void requestSync('edit')
+      return
+    }
     editTimer = setTimeout(() => {
       editTimer = null
       if (!backingOff()) void requestSync('edit')
@@ -415,7 +424,13 @@ export function startAutomaticSync(): () => void {
     } else {
       // Start the native write while Android still gives the WebView time to
       // finish its background transition instead of relying on a paused timer.
+      // An edit still waiting on its debounce uploads with it.
+      const editPending = editTimer !== null
+      if (editTimer) clearTimeout(editTimer)
+      editTimer = null
       void plannerStore.flushPendingOperations()
+        .then(() => { if (editPending && !backingOff()) return requestSync('edit') })
+        .catch((error) => console.error('Could not upload edits when the app was hidden', error))
     }
   }
   const onPageHide = () => void plannerStore.flushPendingOperations()
