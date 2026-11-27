@@ -978,6 +978,27 @@ test('I shows the idea being sorted on the Ideas page and the sort waits', async
   await expect(sorter(page).locator('.idea-sort-card')).toContainText('Synthetic viewed')
 })
 
+test('an idea indented under another while the sort waits leaves the queue', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
+  await open(page)
+  await storeCall(page, `
+    plannerStore.addIdea('Synthetic indented')
+    plannerStore.addIdea('Synthetic parent')
+  `)
+  await generateDay(page)
+  await expect(sorter(page).locator('.idea-sort-card')).toContainText('Synthetic indented')
+  await page.keyboard.press('i')
+  await expect(sorter(page)).toBeHidden()
+  const row = rows(page, 'proposition').filter({ hasText: 'Synthetic indented' })
+  await row.click()
+  await page.keyboard.press('Tab')
+  await expect.poll(() => groups(page)).toMatchObject({ proposition: ['Synthetic parent'] })
+
+  await openView(page, 'Today')
+  await expectIdea(page, 2, 2)
+  await expect(sorter(page).locator('.idea-sort-card').first()).toContainText('Synthetic parent')
+})
+
 test('idea deletion keeps content in Trash until it is deleted there', async ({ page }) => {
   await open(page)
   await storeCall(page, `

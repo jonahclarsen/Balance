@@ -91,7 +91,12 @@
   let warpReady = false
   let warpFilter: SVGFilterElement
 
-  $: sorted = sortedBefore + history.length
+  // Ideas that stopped being top-level ideas elsewhere, such as indented under
+  // another idea while the sort waited on the Ideas page.
+  let placedElsewhere = 0
+
+  $: sorted = sortedBefore + history.length + placedElsewhere
+  $: dropPlacedElsewhere(groups)
   $: queued = queue[index]
   $: current = queued ? findIdea(groups, queued.id)?.item ?? queued : undefined
   $: clip = current ? voiceClips.find((candidate) => candidate.ideaId === current.id) : undefined
@@ -101,6 +106,28 @@
   $: openClip = openClipId ? voiceClips.find((candidate) => candidate.id === openClipId) ?? null : null
   $: options = step === 'yes' ? (['possible', 'genuine'] as const) : step === 'no' ? (['trash', 'afterlife'] as const) : []
   $: resetCard(index)
+
+  function dropPlacedElsewhere(groups: IdeaGroup[]) {
+    if (groups.length === 0) return
+    const gone = new Set(queue.filter((item) => !findIdea(groups, item.id)).map((item) => item.id))
+    if (gone.size === 0) return
+    const without = (items: IdeaItem[], at: number) => ({
+      items: items.filter((item) => !gone.has(item.id)),
+      at: at - items.slice(0, at).filter((item) => gone.has(item.id)).length,
+    })
+    const currentGone = Boolean(queued && gone.has(queued.id))
+    const kept = without(queue, index)
+    queue = kept.items
+    index = kept.at
+    appended = appended.filter((item) => !gone.has(item.id))
+    history = history.map((entry) => {
+      const { items, at } = without(entry.queue, entry.index)
+      return { ...entry, queue: items, index: at }
+    })
+    placedElsewhere += gone.size
+    if (index >= queue.length) onFinish(true)
+    else if (currentGone) resetCard(index)
+  }
 
   export function append(item: IdeaItem) {
     if (queue.some(({ id }) => id === item.id)) return
