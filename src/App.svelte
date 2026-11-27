@@ -469,6 +469,8 @@
   let projectPick: { date: string; view: View; resolve: (picked: boolean) => void } | null = null
   // Asked first while generating a day; resolves whether to add the calendar task, or null when closed.
   let calendarCheck: { date: string; resolve: (addToDay: boolean | null) => void } | null = null
+  // Kept here so typed text survives the sort that a paste opens over the check.
+  let calendarCheckDraft = ''
   let dayQuiz: { title: string; steps: TemplateQuizStep[]; resolve: (answers: TemplateQuizAnswers | null) => void } | null = null
   let resurfacing: { noteId: Id; date: string; resolve: (read: boolean) => void } | null = null
   $: resurfacingNote = resurfacing && $plannerStore.notes.find(({ id }) => id === resurfacing?.noteId)
@@ -4072,14 +4074,30 @@ return rows`
     calendarCheck?.resolve(null)
     // Generating from the phone drawer would leave it covering the check.
     if (mobileDrawerOpen) closeMobileDrawer()
+    calendarCheckDraft = ''
     return new Promise((resolve) => {
       calendarCheck = { date, resolve }
     })
   }
 
-  function finishCalendarCheck(addToDay: boolean | null) {
+  // Pasted ideas are sorted at once; the check comes back once they are.
+  async function sortCalendarCheckIdeas(items: PlanItem[]) {
+    const date = calendarCheck?.date
+    if (!date) return
+    const ids = new Set(plannerStore.importIdeas(items))
+    const fresh = ideaGroupItems($plannerStore.ideaBuckets, 'proposition').filter((item) => ids.has(item.id))
+    if (fresh.length === 0) return
+    await askIdeaSort(fresh, 'Sort new ideas', {
+      addToDay: (itemId) => plannerStore.assignIdeaToDay(itemId, date),
+      sortedBefore: plannerStore.showDayGenerationIdeas(date, [...ids]),
+      onNewIdea: (itemId) => plannerStore.showDayGenerationIdeas(date, [itemId]),
+    })
+  }
+
+  function finishCalendarCheck(addToDay: boolean | null, typed: PlanItem[] = []) {
     const check = calendarCheck
     calendarCheck = null
+    if (check && addToDay !== null) plannerStore.importIdeas(typed)
     check?.resolve(addToDay)
   }
 
@@ -9150,11 +9168,12 @@ return rows`
       />
     {/if}
 
-    {#if calendarCheck}
+    {#if calendarCheck && !ideaSort}
       {#key calendarCheck}
         <CalendarCheckModal
           canAddToDay={!calendarTaskAddedYesterday($plannerStore.plans, calendarCheck.date)}
-          onImport={(items) => plannerStore.importIdeas(items)}
+          bind:draft={calendarCheckDraft}
+          onImport={(items) => { void sortCalendarCheckIdeas(items) }}
           onDone={finishCalendarCheck}
           onClose={() => finishCalendarCheck(null)}
           suspended={quickAddOpen || searchOpen || shortcutsHelpOpen}

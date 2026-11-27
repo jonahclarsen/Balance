@@ -19,27 +19,37 @@ test('the calendar check sorts pasted ideas and adds its task at most every othe
 
   await generateDay(page)
   await expect(check(page)).toBeVisible()
-  await pasteText(page, 'Dentist at 3\nCall the bank')
-  await expect(check(page).getByRole('status')).toHaveText('2 to sort')
-  await page.keyboard.press('d')
-
-  // Pasted lines go through the idea sort before the day is made.
   const sorter = page.getByRole('dialog', { name: 'Sort new ideas' })
-  await expect(sorter).toBeVisible()
-  await expect(sorter).toContainText('Call the bank')
-  await sorter.getByRole('button', { name: 'Close' }).first().click()
-  await expect(page.locator('[data-plan-text-input]').filter({ hasText: 'Wake up' })).toHaveCount(0)
 
-  // Closing cancels; generating again asks again.
-  await generateDay(page)
-  await expect(check(page)).toBeVisible()
-  await page.keyboard.press('d')
+  // Pasted lines are sorted at once, then the check comes back.
+  await pasteText(page, 'Dentist at 3\nCall the bank')
   await expect(sorter).toBeVisible()
-  for (const remaining of [2, 1]) {
-    await expect(sorter).toContainText(remaining === 2 ? 'Call the bank' : 'Dentist at 3')
+  await expect(check(page)).toBeHidden()
+  for (const text of ['Call the bank', 'Dentist at 3']) {
+    await expect(sorter).toContainText(text)
     await page.keyboard.press('y')
     await page.keyboard.press('d')
   }
+  await expect(sorter).toBeHidden()
+  await expect(check(page)).toBeVisible()
+
+  // Typed ideas are sorted on Enter too; closing that sort still returns to the check.
+  await check(page).getByRole('textbox', { name: 'Ideas to sort' }).fill('Renew passport')
+  await page.keyboard.press('Enter')
+  await expect(sorter).toContainText('Renew passport')
+  await sorter.getByRole('button', { name: 'Close' }).first().click()
+  await expect(check(page)).toBeVisible()
+
+  // Closing the check cancels; generating again asks again, and the unsorted
+  // idea waits in the idea sort that follows.
+  await check(page).getByRole('button', { name: 'Close' }).first().click()
+  await expect(page.locator('[data-plan-text-input]').filter({ hasText: 'Wake up' })).toHaveCount(0)
+  await generateDay(page)
+  await expect(check(page)).toBeVisible()
+  await page.keyboard.press('d')
+  await expect(sorter).toContainText('Renew passport')
+  await page.keyboard.press('n')
+  await page.keyboard.press('t')
   await expect(sorter).toBeHidden()
   await expect(page.locator('[data-plan-text-input]:visible').filter({ hasText: 'Wake up' })).toBeVisible()
   expect((await topTexts(page)).slice(0, 3)).toEqual(['Empty out your calendar', 'Dentist at 3', 'Call the bank'])

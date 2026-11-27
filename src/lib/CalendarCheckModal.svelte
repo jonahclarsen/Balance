@@ -2,25 +2,23 @@
   import OverlayModal from './OverlayModal.svelte'
   import { autoGrow } from './autoGrow'
   import { readExternalPasteContent } from './externalNotePaste'
-  import { countIdeas, parseIdeaImport, parseIdeaImportText } from './ideas'
+  import { parseIdeaImport, parseIdeaImportText } from './ideas'
   import type { PlanItem } from './types'
 
   // Asked before a day is planned. Pasted ideas and events join Proposition
-  // Party, so the idea sort that follows picks them up.
+  // Party and are sorted straight away; typed ones are sorted after Done.
   export let canAddToDay: boolean
+  export let draft = ''
+  // Sorts ideas now, then shows the check again.
   export let onImport: (items: PlanItem[]) => void
-  export let onDone: (addToDay: boolean) => void
+  // Typed ideas still in the box go to Proposition Party, sorted next.
+  export let onDone: (addToDay: boolean, typed: PlanItem[]) => void
   export let onClose: () => void
   // Search, Add idea or the shortcuts list is open on top and owns the keyboard.
   export let suspended = false
 
-  let draft = ''
-  let imported = 0
-
   function importItems(items: PlanItem[]) {
-    if (items.length === 0) return
-    onImport(items)
-    imported += countIdeas(items)
+    if (items.length > 0) onImport(items)
   }
 
   function handlePaste(event: ClipboardEvent) {
@@ -37,9 +35,15 @@
   }
 
   function finish(addToDay: boolean) {
-    importItems(parseIdeaImportText(draft))
+    const typed = parseIdeaImportText(draft)
     draft = ''
-    onDone(addToDay)
+    onDone(addToDay, typed)
+  }
+
+  function sortTyped() {
+    const typed = parseIdeaImportText(draft)
+    draft = ''
+    importItems(typed)
   }
 
   function handleKeydown(event: KeyboardEvent) {
@@ -47,6 +51,13 @@
     const target = event.target as HTMLElement | null
     if (target?.closest('textarea')) {
       if (event.key !== 'Enter' || event.shiftKey) return
+      // Enter sorts what was typed; once the box is empty it means Done.
+      if (draft.trim()) {
+        event.preventDefault()
+        event.stopPropagation()
+        sortTyped()
+        return
+      }
     } else if (target?.closest('input, [contenteditable="true"]')) return
     const key = event.key.toLowerCase()
     if (event.key === 'Enter') finish(false)
@@ -68,7 +79,6 @@
       bind:value={draft}
       use:autoGrow={draft}
     ></textarea>
-    {#if imported > 0}<p class="muted" role="status">{imported} to sort</p>{/if}
     <div class="calendar-check-actions">
       <button class="primary" type="button" on:click={() => finish(false)}>Done (Enter)</button>
       <button
@@ -93,7 +103,8 @@
     font: inherit;
     font-size: 14px;
     resize: none;
+    /* autoGrow fits the box to its text, so it never needs a scrollbar. */
+    overflow: hidden;
   }
-  p { margin: 0; font-size: 13px; }
   .calendar-check-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 </style>
