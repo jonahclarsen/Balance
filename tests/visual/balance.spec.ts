@@ -1,6 +1,8 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { todayISO } from '../../src/lib/planner'
-import { generateDay, openView, primaryNavigation, showPrimaryNavigation } from '../helpers/navigation'
+import { generateDay, openView, primaryNavigation, showPrimaryNavigation, skipCalendarCheck } from '../helpers/navigation'
+
+test.beforeEach(({ page }) => skipCalendarCheck(page))
 
 const playwrightOrigin = `http://127.0.0.1:${process.env.PLAYWRIGHT_PORT ?? '5123'}`
 const transparent = 'rgba(0, 0, 0, 0)'

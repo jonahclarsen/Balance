@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test'
 import { createDailyTemplate, createInitialState, createTemplateItem } from '../../src/lib/planner'
-import { generateDay, openView } from '../helpers/navigation'
+import { generateDay, openView, skipCalendarCheck } from '../helpers/navigation'
+
+test.beforeEach(({ page }) => skipCalendarCheck(page))
 
 test('generated sunset notification snapshots persist, regenerate, delete and undo with the day', async ({ page }) => {
   await page.clock.setFixedTime(new Date('2026-10-01T12:00:00'))

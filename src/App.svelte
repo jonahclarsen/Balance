@@ -60,6 +60,8 @@
   import IdeaSortModal from './lib/IdeaSortModal.svelte'
   import { dayTemplateShortcutLetters } from './lib/dayTemplateShortcuts'
   import IdeaImportModal from './lib/IdeaImportModal.svelte'
+  import CalendarCheckModal from './lib/CalendarCheckModal.svelte'
+  import { calendarTaskAddedYesterday, createCalendarTask } from './lib/calendarCheck'
   import { countIdeas, dueIdeaReviews, ideaGroupItems, findIdea, IDEA_GROUPS, readActiveIdeaGroup, saveActiveIdeaGroup, noteIdeasSeen, ideasSeenRecently } from './lib/ideas'
   import { canTranscribe, transcribeClips, transcriptionStatus } from './lib/voiceTranscription'
   import { IDEA_REVIEW_LABELS, type IdeaReviewKind } from './lib/ideaLinks'
@@ -465,6 +467,8 @@
   let goalDoabilityReviews: GoalDoabilityReview[] = []
   $: projectPickVisible = projectPick?.view === view
   let projectPick: { date: string; view: View; resolve: (picked: boolean) => void } | null = null
+  // Asked first while generating a day; resolves whether to add the calendar task, or null when closed.
+  let calendarCheck: { date: string; resolve: (addToDay: boolean | null) => void } | null = null
   let dayQuiz: { title: string; steps: TemplateQuizStep[]; resolve: (answers: TemplateQuizAnswers | null) => void } | null = null
   let resurfacing: { noteId: Id; date: string; resolve: (read: boolean) => void } | null = null
   $: resurfacingNote = resurfacing && $plannerStore.notes.find(({ id }) => id === resurfacing?.noteId)
@@ -3994,6 +3998,9 @@ return rows`
   }
 
   async function runDayGeneration(template: DailyTemplate, date: string, replaceExisting: boolean): Promise<boolean> {
+    // Ideas pasted here join Proposition Party and are sorted next.
+    const addCalendarTask = await askCalendarCheck(date)
+    if (addCalendarTask === null) return false
     // Every proposition must land in a group or the new day before it begins.
     // Keep day reservations on the ideas until generation succeeds, so closing
     // either the sorter or the quiz preserves choices for this specific date.
@@ -4041,6 +4048,7 @@ return rows`
     const dayIdeaIds = $plannerStore.ideaBuckets.filter((group) => group.kind !== 'trash')
       .flatMap((group) => group.items).filter((item) => item.dayAssignmentDate === date).map((item) => item.id)
     moveIdeasToDay(dayIdeaIds, date)
+    if (addCalendarTask) addCalendarTaskToDay(date)
     view = 'today'
     if (doabilityReviews.length > 0) goalDoabilityReviews = doabilityReviews
     return true
@@ -4058,6 +4066,28 @@ return rows`
     const last = plan.items.at(-1)
     plannerStore.pastePlanItems(plan.id, items, next?.id ?? last?.id ?? null, next ? 'before' : 'after')
     for (const { group, item } of found) plannerStore.removeIdeaAfterTransfer(group.id, item.id)
+  }
+
+  function askCalendarCheck(date: string): Promise<boolean | null> {
+    calendarCheck?.resolve(null)
+    return new Promise((resolve) => {
+      calendarCheck = { date, resolve }
+    })
+  }
+
+  function finishCalendarCheck(addToDay: boolean | null) {
+    const check = calendarCheck
+    calendarCheck = null
+    check?.resolve(addToDay)
+  }
+
+  // Goes above everything but the process-unchecked-tasks rows.
+  function addCalendarTaskToDay(date: string) {
+    const plan = $plannerStore.plans.find((candidate) => candidate.date === date)
+    if (!plan) return
+    const next = plan.items.find((item) => !processUncheckedTasksDate(item))
+    const last = plan.items.at(-1)
+    plannerStore.pastePlanItems(plan.id, [createCalendarTask()], next?.id ?? last?.id ?? null, next ? 'before' : 'after')
   }
 
   function askResurfacedNote(noteId: Id, date: string): Promise<boolean> {
@@ -9116,6 +9146,18 @@ return rows`
         onClose={() => finishResurfacedNote(undefined)}
         suspended={quickAddOpen || searchOpen || shortcutsHelpOpen}
       />
+    {/if}
+
+    {#if calendarCheck}
+      {#key calendarCheck}
+        <CalendarCheckModal
+          canAddToDay={!calendarTaskAddedYesterday($plannerStore.plans, calendarCheck.date)}
+          onImport={(items) => plannerStore.importIdeas(items)}
+          onDone={finishCalendarCheck}
+          onClose={() => finishCalendarCheck(null)}
+          suspended={quickAddOpen || searchOpen || shortcutsHelpOpen}
+        />
+      {/key}
     {/if}
 
     {#if projectPick}

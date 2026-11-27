@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test'
-import { openView } from '../helpers/navigation'
+import { openView, skipCalendarCheck } from '../helpers/navigation'
+
+test.beforeEach(({ page }) => skipCalendarCheck(page))
 
 test('past days can be generated once but existing past plans are kept', async ({ page }) => {
   await page.clock.setFixedTime(new Date('2026-09-17T12:00:00'))

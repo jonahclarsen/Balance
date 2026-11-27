@@ -1,5 +1,8 @@
 import { expect, test } from '@playwright/test'
 import { createInitialState, createNote, createNoteItem, createPlanItem } from '../../src/lib/planner'
+import { skipCalendarCheck } from '../helpers/navigation'
+
+test.beforeEach(({ page }) => skipCalendarCheck(page))
 
 test('search finds saved days, list history, and editable lists without Enter', async ({ page, isMobile }) => {
   await page.goto('/')

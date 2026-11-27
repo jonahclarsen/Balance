@@ -1,5 +1,7 @@
-import { generateDay, openView } from '../helpers/navigation'
+import { generateDay, openView, skipCalendarCheck } from '../helpers/navigation'
 import { expect, test } from '@playwright/test'
+
+test.beforeEach(({ page }) => skipCalendarCheck(page))
 
 // Seed a list template "Groceries" (one item) plus a plan whose task links to it,
 // then open the list overlay toast so its generated items are on screen.

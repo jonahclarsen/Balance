@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test'
-import { generateDay, openView } from '../helpers/navigation'
+import { generateDay, openView, skipCalendarCheck } from '../helpers/navigation'
+
+test.beforeEach(({ page }) => skipCalendarCheck(page))
 
 test.beforeEach(async ({ page }) => {
   await page.clock.setFixedTime(new Date('2026-10-02T12:00:00'))

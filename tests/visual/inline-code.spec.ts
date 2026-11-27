@@ -1,5 +1,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
-import { generateDay, openView } from '../helpers/navigation'
+import { generateDay, openView, skipCalendarCheck } from '../helpers/navigation'
+
+test.beforeEach(({ page }) => skipCalendarCheck(page))
 
 async function selectText(input: Locator, start: number, end: number) {
   await input.evaluate(async (element, [a, b]) => {

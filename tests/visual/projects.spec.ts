@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
-import { generateDay, hidePrimaryNavigation, openView, showPrimaryNavigation } from '../helpers/navigation'
+import { generateDay, hidePrimaryNavigation, openView, showPrimaryNavigation, skipCalendarCheck } from '../helpers/navigation'
+
+test.beforeEach(({ page }) => skipCalendarCheck(page))
 
 test.use({ timezoneId: 'America/Vancouver' })
 

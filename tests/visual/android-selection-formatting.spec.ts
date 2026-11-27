@@ -1,5 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { expect, test } from '@playwright/test'
+import { skipCalendarCheck } from '../helpers/navigation'
+
+test.beforeEach(({ page }) => skipCalendarCheck(page))
 
 const script = readFileSync('.github/android/selection-formatting.js', 'utf8')
 

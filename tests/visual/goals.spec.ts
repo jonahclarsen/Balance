@@ -1,7 +1,9 @@
 import { expect, test, type Page } from '@playwright/test'
 import { todayISO } from '../../src/lib/planner'
 import { createGoal as makeGoal } from '../../src/lib/goals'
-import { generateDay, openView, primaryNavigation } from '../helpers/navigation'
+import { generateDay, openView, primaryNavigation, skipCalendarCheck } from '../helpers/navigation'
+
+test.beforeEach(({ page }) => skipCalendarCheck(page))
 
 const playwrightOrigin = `http://127.0.0.1:${process.env.PLAYWRIGHT_PORT ?? '5123'}`
 

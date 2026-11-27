@@ -62,4 +62,24 @@ export async function generateDay(page: Page, name = 'Generate day') {
   }
   await button.click()
   if (openedDrawer) await hidePrimaryNavigation(page)
+  // Keyboard presses skip locator handlers, so pass the check before returning.
+  if (skippingCalendarCheck.has(page)) {
+    const check = calendarCheck(page)
+    if (await check.waitFor({ timeout: 1500 }).then(() => true, () => false)) {
+      await check.getByRole('button', { name: 'Done (Enter)' }).click()
+      await expect(check).toBeHidden()
+    }
+  }
+}
+
+// Day generation opens with the calendar check; tests not about it skip it.
+const skippingCalendarCheck = new WeakSet<Page>()
+const calendarCheck = (page: Page) => page.getByRole('dialog', { name: 'Emptied your whole calendar?' })
+
+export async function skipCalendarCheck(page: Page) {
+  skippingCalendarCheck.add(page)
+  const check = calendarCheck(page)
+  await page.addLocatorHandler(check, async () => {
+    await check.getByRole('button', { name: 'Done (Enter)' }).click()
+  })
 }

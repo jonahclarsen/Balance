@@ -153,6 +153,14 @@
       ],
     },
     {
+      title: 'Calendar check (generating a day)',
+      shortcuts: [
+        { keys: ['enter'], label: 'Done' },
+        { keys: ['D'], label: 'Add "Empty out your calendar" to the top of the day (not two days running)' },
+        { keys: ['meta', 'V'], label: 'Paste ideas or events to sort' },
+      ],
+    },
+    {
       title: 'Resurfaced note',
       shortcuts: [
         { keys: ['V'], label: 'View the note', alt: ['enter'] },
