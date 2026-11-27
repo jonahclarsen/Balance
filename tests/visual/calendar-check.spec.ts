@@ -21,17 +21,18 @@ test('the calendar check sorts pasted ideas and adds its task at most every othe
   await expect(check(page)).toBeVisible()
   const sorter = page.getByRole('dialog', { name: 'Sort new ideas' })
 
-  // Pasted lines are sorted at once, then the check comes back.
-  await pasteText(page, 'Dentist at 3\nCall the bank')
-  await expect(sorter).toBeVisible()
-  await expect(check(page)).toBeHidden()
-  for (const text of ['Call the bank', 'Dentist at 3']) {
-    await expect(sorter).toContainText(text)
+  // A paste is sorted at once as one idea, however many lines it has, then
+  // the check comes back.
+  for (const text of ['Dentist at 3\n- Bring insurance card', 'Call the bank']) {
+    await pasteText(page, text)
+    await expect(sorter).toBeVisible()
+    await expect(check(page)).toBeHidden()
+    await expect(sorter).toContainText(text.replace('\n- ', ' '))
     await page.keyboard.press('y')
     await page.keyboard.press('d')
+    await expect(sorter).toBeHidden()
+    await expect(check(page)).toBeVisible()
   }
-  await expect(sorter).toBeHidden()
-  await expect(check(page)).toBeVisible()
 
   // Typed ideas are sorted on Enter too; closing that sort still returns to the check.
   await check(page).getByRole('textbox', { name: 'Ideas to sort' }).fill('Renew passport')
@@ -52,7 +53,7 @@ test('the calendar check sorts pasted ideas and adds its task at most every othe
   await page.keyboard.press('t')
   await expect(sorter).toBeHidden()
   await expect(page.locator('[data-plan-text-input]:visible').filter({ hasText: 'Wake up' })).toBeVisible()
-  expect((await topTexts(page)).slice(0, 3)).toEqual(['Empty out your calendar', 'Dentist at 3', 'Call the bank'])
+  expect((await topTexts(page)).slice(0, 3)).toEqual(['Empty out your calendar', 'Call the bank', 'Dentist at 3 Bring insurance card'])
 
   // The next day it can only be passed with Done.
   await page.locator('.date-input').fill('2026-09-18')

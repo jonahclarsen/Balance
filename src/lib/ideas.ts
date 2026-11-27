@@ -203,6 +203,17 @@ export function parseIdeaImportText(text: string): PlanItem[] {
   return roots
 }
 
+// One idea from any text: its lines join into one, without list markers.
+export function parseSingleIdea(text: string): PlanItem[] {
+  const content = text.replace(/\r\n?/g, '\n').split('\n')
+    .map((line) => BULLET_LINE.exec(line)![2]!.trim())
+    .filter(Boolean)
+    .join(' ')
+  if (!content) return []
+  const html = linkifyExternalURLs(escapeHTML(content))
+  return [{ ...createPlanItem(content), ...(html.includes('<a ') ? { html } : {}) }]
+}
+
 // Balance task blocks and rich HTML go through the shared notes parser; bare
 // text keeps the bullet-aware line parser.
 export function parseIdeaImport(html: string, text: string): PlanItem[] {

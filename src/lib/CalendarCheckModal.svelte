@@ -2,11 +2,12 @@
   import OverlayModal from './OverlayModal.svelte'
   import { autoGrow } from './autoGrow'
   import { readExternalPasteContent } from './externalNotePaste'
-  import { parseIdeaImport, parseIdeaImportText } from './ideas'
+  import { parseIdeaImportText, parseSingleIdea } from './ideas'
+  import { htmlToPlainText } from './planner'
   import type { PlanItem } from './types'
 
-  // Asked before a day is planned. Pasted ideas and events join Proposition
-  // Party and are sorted straight away; typed ones are sorted after Done.
+  // Asked before a day is planned. A pasted idea or event joins Proposition
+  // Party and is sorted straight away; typed ones are sorted after Done.
   export let canAddToDay: boolean
   export let draft = ''
   // Sorts ideas now, then shows the check again.
@@ -28,9 +29,9 @@
     const data = event.clipboardData
     if (!data) return
     event.preventDefault()
+    // A paste is one idea at most, however many lines it has.
     void readExternalPasteContent(data).then(({ html, text }) => {
-      const parsed = parseIdeaImport(html, text)
-      importItems(parsed.length > 0 ? parsed : parseIdeaImportText(text))
+      importItems(parseSingleIdea(text.trim() ? text : htmlToPlainText(html)))
     })
   }
 
