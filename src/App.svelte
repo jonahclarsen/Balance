@@ -4070,6 +4070,8 @@ return rows`
 
   function askCalendarCheck(date: string): Promise<boolean | null> {
     calendarCheck?.resolve(null)
+    // Generating from the phone drawer would leave it covering the check.
+    if (mobileDrawerOpen) closeMobileDrawer()
     return new Promise((resolve) => {
       calendarCheck = { date, resolve }
     })
