@@ -63,19 +63,27 @@ object BalanceSituate {
             val pending = PendingIntent.getActivity(context, id.hashCode(), intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
             try { BalanceNotificationStack.post(context, null, id.hashCode(), Notification.Builder(context,"situate").setSmallIcon(android.R.drawable.ic_lock_idle_lock).setContentTitle(mode.getString("name") + " " + title).setContentText(mode.optString("description").ifBlank { "Tap to open Situate." }).setContentIntent(pending).setAutoCancel(true)) } catch (_: SecurityException) { }
         }
+        var cleared = false
         for (i in 0 until modes.length()) {
             val mode = modes.getJSONObject(i)
             val id = mode.getString("id")
+            val wasOn = previous.contains(id)
+            val wasSoon = previousSoon.firstOrNull { it.startsWith("$id:") }
+            // A notice outlives its news once the mode changes again without a new one.
+            fun clear() { manager.cancel(null, id.hashCode()); cleared = true }
             if (!mode.optBoolean("active")) {
                 // A heads-up is announced once per threshold before the mode comes back on.
-                if (mode.isNull("soon")) continue
+                if (mode.isNull("soon")) { if (wasOn || wasSoon != null) clear(); continue }
                 val minutes = mode.getInt("soon"); val key = "$id:$minutes"; soon.add(key)
-                if (announce && !previousSoon.contains(key)) notify(mode, "in $minutes min")
+                if (announce && wasSoon != key) notify(mode, "in $minutes min")
+                else if (wasOn || (wasSoon != null && wasSoon != key)) clear()
                 continue
             }
             active.add(id)
-            if (announce && !previous.contains(id)) notify(mode, "is on")
+            if (announce && !wasOn) notify(mode, "is on")
+            else if (!wasOn) clear()
         }
+        if (cleared) BalanceNotificationStack.update(context)
         prefs.edit().putStringSet("active", active).putStringSet("soon", soon).apply()
         val alarm = context.getSystemService(AlarmManager::class.java)
         val pending = PendingIntent.getBroadcast(context, 32741, Intent(context, SituateReceiver::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)

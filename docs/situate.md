@@ -64,7 +64,8 @@ it running in the background. App activation monitoring hides blocked apps.
 **Open quiz** brings the app back to the front once the quiz unblocks it. Quitting Balance stops native app
 monitoring. Add Balance to macOS Login Items if it should start after login.
 Activation notices use macOS notification permission and obey system Focus settings.
-They announce scheduled changes and expired passes, not modes you switch by hand.
+They announce scheduled changes and expired passes, not modes you switch by hand. A notice clears once
+its mode changes again, on Mac and Android.
 
 Balance checks Chrome and Brave for the extension (reading only its entry in each
 profile's preferences) and shows a warning until every installed browser has it.

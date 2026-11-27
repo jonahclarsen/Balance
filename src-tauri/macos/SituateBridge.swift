@@ -5,6 +5,8 @@ private var situateModes: [[String: Any]] = []
 private var situateObservers: [NSObjectProtocol] = []
 private var situatePrevious = Set<String>()
 private var situatePreviousSoon: [String: Int] = [:]
+/// False until the first update, whose "previous" state is unknown.
+private var situateStarted = false
 private var situatePrompt: SituatePrompt?
 /// The app whose quiz was opened; it comes back to the front once a pass unblocks it.
 private var situateReturn: (app: NSRunningApplication, until: Date)?
@@ -25,13 +27,20 @@ func balanceSituateUpdate(_ raw: UnsafePointer<CChar>, _ announce: Bool) {
         let soon = modes.reduce(into: [String: Int]()) { result, mode in
             if let id = mode["id"] as? String, let minutes = mode["soon"] as? Int { result[id] = minutes }
         }
-        for mode in modes where announce {
+        func clear(_ id: String) {
+            if let data = try? JSONSerialization.data(withJSONObject: ["situateClear": id]), let json = String(data: data, encoding: .utf8) { _ = json.withCString { situateNotice($0) } }
+        }
+        for mode in modes {
             let id = mode["id"] as? String ?? ""
-            if active.contains(id) && !situatePrevious.contains(id) { notify(mode, "is on") }
-            else if let minutes = soon[id], situatePreviousSoon[id] != minutes { notify(mode, "in \(minutes) min") }
+            let isOn = active.contains(id), wasOn = situatePrevious.contains(id)
+            if announce && isOn && !wasOn { notify(mode, "is on") }
+            else if announce, let minutes = soon[id], situatePreviousSoon[id] != minutes { notify(mode, "in \(minutes) min") }
+            // A notice outlives its news once the mode changes again without a new one.
+            else if situateStarted && (isOn != wasOn || soon[id] != situatePreviousSoon[id]) { clear(id) }
         }
         situatePrevious = active
         situatePreviousSoon = soon
+        situateStarted = true
         if situateObservers.isEmpty {
             let center = NSWorkspace.shared.notificationCenter
             func observe(_ name: Notification.Name, _ handle: @escaping (NSRunningApplication) -> Void) {
