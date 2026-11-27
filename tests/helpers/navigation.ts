@@ -15,12 +15,14 @@ export async function showPrimaryNavigation(page: Page) {
 }
 
 export async function hidePrimaryNavigation(page: Page) {
+  const menu = page.getByRole('button', { name: 'Open navigation', exact: true })
+  if (!await menu.isVisible()) return
   const drawer = page.getByRole('complementary', { name: 'Primary navigation drawer' })
-  const close = drawer.getByRole('button', { name: 'Close navigation', exact: true })
-  if (await close.isVisible()) {
-    await close.click()
-    await expect(drawer).toBeHidden()
+  // The app may already be closing it, as day generation does.
+  if (await menu.getAttribute('aria-expanded') === 'true') {
+    await drawer.getByRole('button', { name: 'Close navigation', exact: true }).click()
   }
+  await expect(drawer).toBeHidden()
 }
 
 export async function openView(page: Page, name: string) {
