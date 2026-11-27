@@ -1952,7 +1952,6 @@ return rows`
     goalStatsOpen = false
     clearItemSelection()
     let selector = ''
-    let linkedIdeaId: Id | undefined
     if (target.kind === 'page') {
       view = target.view
     } else if (target.kind === 'day') {
@@ -1972,12 +1971,8 @@ return rows`
         plannerStore.setActivePlanDate(list.date)
         listViewTemplateId = list.listTemplateId
         openListHistory()
-      } else if (idea) {
-        revealTaskParents(idea.items, target.id)
-        showIdeaGroup(idea.kind)
-        view = 'ideas'
-        linkedIdeaId = target.id
-      } else return unavailableLink()
+      } else if (idea) { revealTaskParents(idea.items, target.id); showIdeaGroup(idea.kind); view = 'ideas' }
+      else return unavailableLink()
       selector = `[data-plan-item-id="${CSS.escape(target.id)}"]`
     } else if (target.kind === 'note') {
       const note = allNotes.find(note => note.id === target.id)
@@ -2028,7 +2023,7 @@ return rows`
     }
     if (!selector) return
     await tick()
-    if (linkedIdeaId) await ideasPanel?.includeIdea(linkedIdeaId)
+    if (target.kind === 'task') await ideasPanel?.includeIdea(target.id)
     await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
     const row = workspaceEl?.querySelector<HTMLElement>(selector)
     if (!row) return unavailableLink()
@@ -3552,6 +3547,7 @@ return rows`
   }
 
   function showIdeaGroup(kind: IdeaGroupKind) {
+    if (kind !== activeIdeaGroup) ideasPanel?.releaseTextFocus()
     activeIdeaGroup = kind
     saveActiveIdeaGroup(kind)
     // A group chosen on the way into Ideas (a link, an import) is a fresh visit.

@@ -23,7 +23,7 @@ export default defineConfig({
     stderr: 'pipe',
   },
   projects: [
-    { name: 'webkit-days', testMatch: /(?:day(?:-generation|-editor-cache)|list-overlay-edit|sticky-parents(?:-wrapped)?|task-alt-move)\.spec\.ts/, use: { ...devices['Desktop Safari'], viewport: { width: 1280, height: 820 } } },
+    { name: 'webkit-days', testMatch: /(?:day(?:-generation|-editor-cache)|list-overlay-edit|ideas-trash|sticky-parents(?:-wrapped)?|task-alt-move)\.spec\.ts/, use: { ...devices['Desktop Safari'], viewport: { width: 1280, height: 820 } } },
     { name: 'webkit-notes', testMatch: /(?:notes(?:-paragraph-audit|-import)?|selection-quotes)\.spec\.ts/, use: { ...devices['Desktop Safari'], viewport: { width: 1280, height: 820 } } },
     { name: 'webkit-project-sort', testMatch: /project-sort-tabletop\.spec\.ts/, use: { ...devices['Desktop Safari'], viewport: { width: 1280, height: 820 } } },
     { name: 'webkit-images', testMatch: /images\.spec\.ts/, use: { ...devices['Desktop Safari'], viewport: { width: 1280, height: 820 } } },

@@ -144,7 +144,7 @@
     }
   }
 
-  function releaseTextFocus() {
+  export function releaseTextFocus() {
     const active = document.activeElement
     if (!(active instanceof HTMLElement) || !active.closest('.ideas-panel')) return
     if (!active.closest('input, textarea, [contenteditable="true"]')) return
@@ -663,7 +663,7 @@
         {#if activeGroup === 'proposition'}
           <button class="add-row add-row-top" type="button" on:click={() => { void addItem(groupsByKind[activeGroup].id) }}>+ Add item</button>
         {/if}
-        {#if activeGroup === 'trash'}
+        {#if activeGroup === 'trash' && activeItems.length}
           <IdeaTrashWindow bind:this={trashWindow} items={activeItems} {mobile} renderItem={ideaEditor} />
         {:else}
           {#each activeItems as item (item.id)}
