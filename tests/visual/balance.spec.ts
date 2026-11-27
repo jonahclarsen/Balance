@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { todayISO } from '../../src/lib/planner'
-import { generateDay, openView, primaryNavigation, showPrimaryNavigation, skipCalendarCheck } from '../helpers/navigation'
+import { generateDay, hidePrimaryNavigation, openView, primaryNavigation, showPrimaryNavigation, skipCalendarCheck } from '../helpers/navigation'
 
 test.beforeEach(({ page }) => skipCalendarCheck(page))
 
@@ -78,7 +78,7 @@ test('day rail points toward today and disappears on today', async ({ page }, te
   if (testInfo.project.name === 'mobile') await page.getByRole('button', { name: 'Open navigation' }).click()
   await generateDay(page)
   if (testInfo.project.name === 'mobile') {
-    await page.getByRole('complementary').getByRole('button', { name: 'Close navigation' }).click()
+    await hidePrimaryNavigation(page)
   }
   const primaryPane = page.getByRole('region', { name: 'Daily plan' })
   await expect(page.locator('.day-pane')).toHaveCount(1)
@@ -3984,7 +3984,7 @@ test('enter splits plan items and shift-enter inserts a line break', async ({ pa
   await page.reload()
   if (testInfo.project.name === 'mobile') await page.getByRole('button', { name: 'Open navigation' }).click()
   await generateDay(page)
-  if (testInfo.project.name === 'mobile') await page.getByRole('complementary').getByRole('button', { name: 'Close navigation' }).click()
+  if (testInfo.project.name === 'mobile') await hidePrimaryNavigation(page)
 
   await focusInputByValue(page, 'Wake up')
   await setFocusedEditorHTML(page, 'AlphaBeta')
@@ -4007,7 +4007,7 @@ test('a trailing soft line break restores its caret after tabbing away', async (
   if (testInfo.project.name === 'mobile') await page.getByRole('button', { name: 'Open navigation' }).click()
   await generateDay(page)
   if (testInfo.project.name === 'mobile') {
-    await page.getByRole('complementary').getByRole('button', { name: 'Close navigation' }).click()
+    await hidePrimaryNavigation(page)
   }
 
   await focusInputByValue(page, 'Wake up')
@@ -4049,7 +4049,7 @@ test('enter on an empty plan item focuses a new blank sibling below it', async (
   if (testInfo.project.name === 'mobile') await page.getByRole('button', { name: 'Open navigation' }).click()
   await generateDay(page)
   if (testInfo.project.name === 'mobile') {
-    await page.getByRole('complementary').getByRole('button', { name: 'Close navigation' }).click()
+    await hidePrimaryNavigation(page)
   }
   await page.getByRole('button', { name: 'Add item' }).click()
 
@@ -4126,7 +4126,7 @@ test('enter in the middle of a parent plan item moves children to the second spl
   await page.reload()
   if (testInfo.project.name === 'mobile') await page.getByRole('button', { name: 'Open navigation' }).click()
   await generateDay(page)
-  if (testInfo.project.name === 'mobile') await page.getByRole('complementary').getByRole('button', { name: 'Close navigation' }).click()
+  if (testInfo.project.name === 'mobile') await hidePrimaryNavigation(page)
 
   await focusInputByValue(page, 'Work block')
   await setCaretOffsetInFocusedEditor(page, 4)
@@ -4493,7 +4493,7 @@ test('adding an item focuses its editor at the caret', async ({ page }, testInfo
   if (testInfo.project.name === 'mobile') await page.getByRole('button', { name: 'Open navigation' }).click()
   await generateDay(page)
   if (testInfo.project.name === 'mobile') {
-    await page.getByRole('complementary').getByRole('button', { name: 'Close navigation' }).click()
+    await hidePrimaryNavigation(page)
   }
 
   await page.getByRole('button', { name: '+ Add item' }).click()
@@ -4639,7 +4639,7 @@ test('a page restores its selected task after visiting another page', async ({ p
   if (testInfo.project.name === 'mobile') await page.getByRole('button', { name: 'Open navigation' }).click()
   await generateDay(page)
   if (testInfo.project.name === 'mobile') {
-    await page.getByRole('complementary').getByRole('button', { name: 'Close navigation' }).click()
+    await hidePrimaryNavigation(page)
   }
 
   await focusInputByValue(page, 'Wake up')
@@ -4662,7 +4662,7 @@ test('a page restores its task caret after visiting another page', async ({ page
   if (testInfo.project.name === 'mobile') await page.getByRole('button', { name: 'Open navigation' }).click()
   await generateDay(page)
   if (testInfo.project.name === 'mobile') {
-    await page.getByRole('complementary').getByRole('button', { name: 'Close navigation' }).click()
+    await hidePrimaryNavigation(page)
   }
 
   await focusInputByValue(page, 'Wake up')

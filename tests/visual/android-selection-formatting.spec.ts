@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { expect, test } from '@playwright/test'
-import { skipCalendarCheck } from '../helpers/navigation'
+import { hidePrimaryNavigation, skipCalendarCheck } from '../helpers/navigation'
 
 test.beforeEach(({ page }) => skipCalendarCheck(page))
 
@@ -18,7 +18,7 @@ for (const [pageName, selector] of [
     if (info.project.name === 'mobile') await page.getByRole('button', { name: 'Open navigation' }).click()
     if (pageName === 'Today') {
       await page.getByRole('complementary').getByRole('button', { name: 'Generate day' }).click()
-      if (info.project.name === 'mobile') await page.getByRole('complementary').getByRole('button', { name: 'Close navigation' }).click()
+      if (info.project.name === 'mobile') await hidePrimaryNavigation(page)
     } else {
       await page.getByRole('button', { name: pageName, exact: true }).click()
       if (pageName === 'Lists') await page.getByRole('button', { name: 'New list' }).click()
