@@ -1262,3 +1262,48 @@ test('Option-F on the Ideas page opens the link at the mouse or caret', async ({
   await page.keyboard.press('Alt+f')
   await expect.poll(opened).toEqual(['https://example.com/beta', 'https://example.com/alpha', 'https://example.com/beta'])
 })
+
+test('ideas select by dragging or Shift+arrows, and move or delete together', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Pointer and keyboard selection are desktop flows')
+  await open(page)
+  await storeCall(page, `
+    for (const name of ['first', 'second', 'third', 'fourth']) plannerStore.addIdea('Synthetic ' + name, 'genuine')
+  `)
+  await openView(page, 'Ideas')
+  await card(page, 'genuine').click()
+  const ideaRows = pane(page, 'genuine').locator('[data-plan-item-id]')
+  const selectedTexts = () => pane(page, 'genuine').locator('[data-plan-item-id].selected [data-plan-text-input]').allTextContents()
+
+  // Dragging from one handle to another row selects the range.
+  const handle = ideaRows.nth(0).locator('.select-handle')
+  const handleBox = (await handle.boundingBox())!
+  const thirdBox = (await ideaRows.nth(2).boundingBox())!
+  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(thirdBox.x + thirdBox.width / 2, thirdBox.y + thirdBox.height / 2, { steps: 6 })
+  await page.mouse.up()
+  await expect.poll(selectedTexts).toEqual(['Synthetic first', 'Synthetic second', 'Synthetic third'])
+
+  // Shift+Up shrinks the range from its free end.
+  await page.keyboard.press('Shift+ArrowUp')
+  await expect.poll(selectedTexts).toEqual(['Synthetic first', 'Synthetic second'])
+
+  // Cmd+Shift+Up from an idea's text selects it and the idea above.
+  await rows(page, 'genuine').nth(3).click()
+  await expect.poll(selectedTexts).toEqual([])
+  await page.keyboard.press('Meta+Shift+ArrowUp')
+  await expect.poll(selectedTexts).toEqual(['Synthetic third', 'Synthetic fourth'])
+  await page.keyboard.press('Meta+Shift+ArrowUp')
+  await expect.poll(selectedTexts).toEqual(['Synthetic second', 'Synthetic third', 'Synthetic fourth'])
+
+  // The selection moves as one step, and one undo brings it back.
+  await page.keyboard.press('p')
+  await expect.poll(() => groups(page)).toMatchObject({ genuine: ['Synthetic first'], possible: ['Synthetic second', 'Synthetic third', 'Synthetic fourth'] })
+  await page.keyboard.press('ControlOrMeta+z')
+  await expect.poll(() => groups(page)).toMatchObject({ genuine: ['Synthetic first', 'Synthetic second', 'Synthetic third', 'Synthetic fourth'] })
+
+  await ideaRows.nth(0).locator('.select-handle').click()
+  await ideaRows.nth(1).locator('.select-handle').click({ modifiers: ['Shift'] })
+  await page.keyboard.press('Backspace')
+  await expect.poll(() => groups(page)).toMatchObject({ genuine: ['Synthetic third', 'Synthetic fourth'], trash: ['Synthetic first', 'Synthetic second'] })
+})

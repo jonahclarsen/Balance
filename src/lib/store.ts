@@ -2615,15 +2615,18 @@ function createPlannerStore() {
     moveIdeaToGroup(itemId: Id, kind: IdeaGroupKind) {
       let moved = false
       commitEntities('move_idea', { itemId, kind }, (state) => {
-        const found = findIdea(state.ideaBuckets, itemId)
-        if (!found) return state
-        moved = true
-        const { dayAssignmentDate: _dayAssignmentDate, ...unassigned } = found.item
-        const item: IdeaItem = { ...unassigned, bucketedAt: nowISO() }
-        const removed = updateIdeaGroup(state, found.group.kind, (group) => ({ ...group, items: group.items.filter((candidate) => candidate.id !== itemId) }))
-        return updateIdeaGroup(removed, kind, (group) => ({ ...group, items: [...group.items, item] }))
+        const next = moveIdeaInState(state, itemId, kind)
+        moved = next !== state
+        return next
       })
       return moved
+    },
+
+    // Moves several root-level ideas, in the given order, as one undo step.
+    moveIdeasToGroup(itemIds: Id[], kind: IdeaGroupKind) {
+      if (itemIds.length === 0) return
+      commitEntities('move_ideas', { itemIds, kind }, (state) =>
+        itemIds.reduce((next, itemId) => moveIdeaInState(next, itemId, kind), state))
     },
 
     // Undoes a sort decision: each idea returns to the group and position it
@@ -2737,6 +2740,21 @@ function createPlannerStore() {
     deleteIdeaItem(groupId: Id, itemId: Id) {
       commitEntities('delete_idea_item', { groupId, itemId }, (state) =>
         deleteOrTrashIdea(state, groupId, itemId, false))
+    },
+
+    deleteIdeaItems(groupId: Id, itemIds: Id[]) {
+      if (itemIds.length === 0) return
+      commitEntities('delete_idea_items', { groupId, itemIds }, (state) =>
+        itemIds.reduce((next, itemId) => deleteOrTrashIdea(next, groupId, itemId, false), state))
+    },
+
+    setIdeasDone(groupId: Id, itemIds: Id[], done: boolean) {
+      if (itemIds.length === 0) return
+      commitEntities('set_ideas_done', { groupId, itemIds, done }, (state) =>
+        updateIdeaGroupById(state, groupId, (group) => {
+          const items = itemIds.reduce((current, itemId) => updatePlanItem(current, itemId, (item) => applyPatch(item, { done })), group.items)
+          return items === group.items ? group : { ...group, items }
+        }))
     },
 
     deleteIdeaItemPreservingChildren(groupId: Id, itemId: Id) {
@@ -4230,6 +4248,17 @@ function updateNote(state: AppState, noteId: Id, updater: (note: Note) => Note):
     return nextNote
   })
   return changed ? { ...state, notes } : state
+}
+
+// Moves a root-level idea to the end of a group, clearing its day reservation.
+// The timestamp restarts the Trash countdown and records when the decision was made.
+function moveIdeaInState(state: AppState, itemId: Id, kind: IdeaGroupKind): AppState {
+  const found = findIdea(state.ideaBuckets, itemId)
+  if (!found) return state
+  const { dayAssignmentDate: _dayAssignmentDate, ...unassigned } = found.item
+  const item: IdeaItem = { ...unassigned, bucketedAt: nowISO() }
+  const removed = updateIdeaGroup(state, found.group.kind, (group) => ({ ...group, items: group.items.filter((candidate) => candidate.id !== itemId) }))
+  return updateIdeaGroup(removed, kind, (group) => ({ ...group, items: [...group.items, item] }))
 }
 
 // Only Trash can discard an idea. Row deletion elsewhere retains its content,

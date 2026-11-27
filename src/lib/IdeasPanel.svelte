@@ -34,9 +34,18 @@
 
   const noTimeWarnings: ReadonlyMap<Id, ItemTimeWarning> = new Map()
 
-  let selectedItemId: Id | null = null
+  // Root ideas in the showing group, in list order. The anchor is where a
+  // range starts; the focus is the end Shift+arrows move.
+  let selectedItemIds: Id[] = []
+  let selectionAnchorId: Id | null = null
+  let selectionFocusId: Id | null = null
+  // Dragging from a row's handle, or out of its text, selects a range.
+  let dragSelecting = false
+  let textDragOrigin: { itemId: Id; input: HTMLElement } | null = null
+  // Focus from the press that ended a drag must not drop the selection.
+  let keepSelectionUntil = 0
   // Leaving Proposition Party unlocks each destination on its own delay,
-  // counted from when the row was selected.
+  // counted from when the latest row was added to the selection.
   let selectedAt = 0
   let unlockTimers: number[] = []
   let unlockTick = 0
@@ -44,7 +53,8 @@
   let shakeTimer: number | null = null
   let openClipId: Id | null = null
 
-  $: selected = selectedItemId ? findIdea(groups, selectedItemId) : null
+  $: selectedIdeas = selectedItemIds.flatMap((id) => findIdea(groups, id) ?? [])
+  $: selected = selectedIdeas[0] ?? null
   $: clipForIdea = clipsByIdea(voiceClips)
   $: untranscribed = voiceClips.filter((clip) => !clip.transcript)
   $: openClip = openClipId ? voiceClips.find((clip) => clip.id === openClipId) ?? null : null
@@ -53,8 +63,8 @@
   // Drop the selection once its idea disappears (undo, sync, purge).
   $: dropMissingSelection(groups)
   // An idea stays selected only while its group is the one showing.
-  $: if (selected && selected.group.kind !== activeGroup) select(null)
-  $: selectedItemIdSet = new Set(selectedItemId ? [selectedItemId] : [])
+  $: if (selected && selected.group.kind !== activeGroup) clearSelection()
+  $: selectedItemIdSet = new Set(selectedItemIds)
   // Missing groups render empty; the map keeps the template reactive to `groups`.
   $: groupsByKind = Object.fromEntries(IDEA_GROUPS.map((meta) => [
     meta.kind, groups.find((group) => group.kind === meta.kind) ?? { id: ideaGroupId(meta.kind), kind: meta.kind, items: [] },
@@ -68,31 +78,190 @@
   $: activeItems = groupsByKind[activeGroup].items
 
   function dropMissingSelection(current: IdeaGroup[]) {
-    if (selectedItemId && !findIdea(current, selectedItemId)) selectedItemId = null
+    const kept = selectedItemIds.filter((id) => findIdea(current, id))
+    if (kept.length === selectedItemIds.length) return
+    selectedItemIds = kept
+    if (!kept.includes(selectionAnchorId ?? '')) selectionAnchorId = kept[0] ?? null
+    if (!kept.includes(selectionFocusId ?? '')) selectionFocusId = kept.at(-1) ?? null
+  }
+
+  function rootIds(): Id[] {
+    return activeItems.map((item) => item.id)
+  }
+
+  // Selections hold root ideas; a nested row stands for the idea it is in.
+  function rootIdOf(itemId: Id): Id | null {
+    const contains = (items: PlanItem[]): boolean => items.some((item) => item.id === itemId || contains(item.children))
+    return activeItems.find((item) => item.id === itemId || contains(item.children))?.id ?? null
+  }
+
+  function setSelection(ids: Id[], anchorId: Id | null = ids[0] ?? null, focusId: Id | null = ids.at(-1) ?? null) {
+    const wanted = new Set(ids)
+    const next = rootIds().filter((id) => wanted.has(id))
+    const added = next.some((id) => !selectedItemIds.includes(id))
+    selectedItemIds = next
+    selectionAnchorId = next.length ? anchorId : null
+    selectionFocusId = next.length ? focusId : null
+    if (added) restartUnlockTimers()
+    if (next.length) releaseTextFocus()
   }
 
   function select(itemId: Id | null) {
-    selectedItemId = itemId
+    setSelection(itemId ? [itemId] : [])
+  }
+
+  function clearSelection() {
+    setSelection([])
+    dragSelecting = false
+  }
+
+  function restartUnlockTimers() {
     selectedAt = Date.now()
     for (const timer of unlockTimers) window.clearTimeout(timer)
     unlockTimers = []
-    const origin = itemId ? findIdea(groups, itemId)?.group.kind ?? null : null
     for (const target of IDEA_GROUPS) {
-      const delay = ideaUnlockDelay(origin, target.kind)
+      const delay = ideaUnlockDelay(activeGroup, target.kind)
       if (delay > 0) unlockTimers.push(window.setTimeout(() => { unlockTick += 1 }, delay))
     }
+  }
+
+  function releaseTextFocus() {
+    const active = document.activeElement
+    if (!(active instanceof HTMLElement) || !active.closest('.ideas-panel')) return
+    if (!active.closest('input, textarea, [contenteditable="true"]')) return
+    document.getSelection()?.removeAllRanges()
+    active.blur()
+  }
+
+  function selectRange(fromId: Id, toId: Id, additive = false) {
+    const ids = rootIds()
+    const from = ids.indexOf(fromId)
+    const to = ids.indexOf(toId)
+    if (from === -1 || to === -1) return
+    const range = ids.slice(Math.min(from, to), Math.max(from, to) + 1)
+    setSelection(additive ? [...selectedItemIds, ...range] : range, fromId, toId)
+  }
+
+  function toggleSelected(itemId: Id) {
+    const next = selectedItemIds.includes(itemId)
+      ? selectedItemIds.filter((id) => id !== itemId)
+      : [...selectedItemIds, itemId]
+    setSelection(next, next.includes(itemId) ? itemId : next[0] ?? null, next.includes(itemId) ? itemId : next.at(-1) ?? null)
   }
 
   function locked(kind: IdeaGroupKind, _tick: number): boolean {
     return Date.now() < selectedAt + ideaUnlockDelay(selected?.group.kind ?? null, kind)
   }
 
-  function handleSelectionPointerDown(itemId: Id, event: PointerEvent) {
+  function handleSelectionPointerDown(rowId: Id, event: PointerEvent) {
     if (event.button !== 0) return
     event.preventDefault()
     event.stopPropagation()
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
-    select(selectedItemId === itemId ? null : itemId)
+    const itemId = rootIdOf(rowId)
+    if (!itemId) return
+    if (event.shiftKey && selectionAnchorId) selectRange(selectionAnchorId, itemId, event.metaKey || event.ctrlKey)
+    else if (event.metaKey || event.ctrlKey) toggleSelected(itemId)
+    else if (selectedItemIds.length === 1 && selectedItemIds[0] === itemId) {
+      clearSelection()
+      return
+    } else select(itemId)
+    dragSelecting = true
+  }
+
+  function rowIdAtPoint(x: number, y: number): Id | null {
+    for (const row of document.querySelectorAll<HTMLElement>('.ideas-panel .idea-group-list [data-plan-item-id]')) {
+      const rect = row.getBoundingClientRect()
+      if (y >= rect.top && y <= rect.bottom && x >= rect.left && x <= rect.right) return row.dataset.planItemId ?? null
+    }
+    return null
+  }
+
+  function leftElement(event: PointerEvent, element: HTMLElement) {
+    const rect = element.getBoundingClientRect()
+    return event.clientX < rect.left - 3 || event.clientX > rect.right + 3 ||
+      event.clientY < rect.top - 3 || event.clientY > rect.bottom + 3
+  }
+
+  function handleWindowPointerDown(event: PointerEvent) {
+    textDragOrigin = null
+    if (mobile || event.button !== 0) return
+    const target = event.target instanceof Element ? event.target : null
+    const input = target?.closest<HTMLElement>('.ideas-panel .idea-group-list [data-rich-text-input]')
+    const rowId = input?.closest<HTMLElement>('[data-plan-item-id]')?.dataset.planItemId
+    const itemId = rowId ? rootIdOf(rowId) : null
+    if (!input || !itemId) return
+    keepSelectionUntil = 0
+    // Shift-clicking another idea while editing one selects both and those between.
+    const editingId = focusedIdeaId()
+    const editingRoot = editingId ? rootIdOf(editingId) : null
+    if (event.shiftKey && editingRoot && editingRoot !== itemId) {
+      event.preventDefault()
+      event.stopPropagation()
+      selectRange(editingRoot, itemId)
+      return
+    }
+    textDragOrigin = { itemId, input }
+  }
+
+  function handleWindowPointerMove(event: PointerEvent) {
+    pointer = { x: event.clientX, y: event.clientY }
+    if (mobile) return
+    if (!dragSelecting && textDragOrigin && (event.buttons & 1) === 1 && leftElement(event, textDragOrigin.input)) {
+      event.preventDefault()
+      select(textDragOrigin.itemId)
+      dragSelecting = true
+    }
+    if (!dragSelecting || !selectionAnchorId) return
+    const rowId = rowIdAtPoint(event.clientX, event.clientY)
+    const itemId = rowId ? rootIdOf(rowId) : null
+    if (itemId && itemId !== selectionFocusId) selectRange(selectionAnchorId, itemId)
+  }
+
+  function handleWindowPointerUp() {
+    if (dragSelecting && selectedItemIds.length > 0) keepSelectionUntil = Date.now() + 250
+    dragSelecting = false
+    textDragOrigin = null
+  }
+
+  // Editing an idea's text ends the selection, as on Today.
+  function handleWindowFocusIn(event: FocusEvent) {
+    const target = event.target instanceof Element ? event.target : null
+    if (!selectedItemIds.length || !target?.closest('.ideas-panel [contenteditable="true"], .ideas-panel input, .ideas-panel textarea')) return
+    if (target.closest('input.check[type="checkbox"]')) return
+    if (dragSelecting || Date.now() < keepSelectionUntil) {
+      releaseTextFocus()
+      return
+    }
+    clearSelection()
+  }
+
+  // Shift+Up/Down from an idea's text selects it and its neighbour.
+  function selectWithAdjacent(rowId: Id, direction: 'up' | 'down') {
+    const itemId = rootIdOf(rowId)
+    if (!itemId) return
+    const ids = rootIds()
+    const index = ids.indexOf(itemId)
+    const target = ids[direction === 'up' ? Math.max(0, index - 1) : Math.min(ids.length - 1, index + 1)]!
+    selectRange(itemId, target)
+  }
+
+  // Shift+Up/Down moves the selection's free end; meeting the anchor returns to editing it.
+  async function extendSelection(direction: 'up' | 'down') {
+    const ids = rootIds()
+    const anchorId = selectionAnchorId ?? selectedItemIds[0]
+    const focusIndex = ids.indexOf(selectionFocusId ?? selectedItemIds.at(-1) ?? '')
+    if (!anchorId || focusIndex === -1) return
+    const target = ids[direction === 'up' ? Math.max(0, focusIndex - 1) : Math.min(ids.length - 1, focusIndex + 1)]!
+    if (target === anchorId && selectedItemIds.length > 1) {
+      clearSelection()
+      await tick()
+      document.querySelector<HTMLElement>(
+        `.ideas-panel [data-plan-text-focus-target-id="${CSS.escape(anchorId)}"]`,
+      )?.focus()
+      return
+    }
+    selectRange(anchorId, target)
   }
 
   function shake(kind: IdeaGroupKind) {
@@ -107,14 +276,14 @@
       shake(kind)
       return
     }
-    plannerStore.moveIdeaToGroup(selected.item.id, kind)
-    select(null)
+    plannerStore.moveIdeasToGroup(selectedIdeas.map(({ item }) => item.id), kind)
+    clearSelection()
   }
 
   function moveSelection(direction: -1 | 1) {
-    const ids = activeItems.map((item) => item.id)
+    const ids = rootIds()
     if (ids.length === 0) return
-    const index = selectedItemId ? ids.indexOf(selectedItemId) : -1
+    const index = selectionFocusId ? ids.indexOf(selectionFocusId) : -1
     const next = index === -1 ? (direction === 1 ? 0 : ids.length - 1) : Math.min(ids.length - 1, Math.max(0, index + direction))
     select(ids[next]!)
   }
@@ -131,10 +300,6 @@
   }
 
   let pointer: { x: number; y: number } | null = null
-
-  function rememberPointer(event: PointerEvent) {
-    pointer = { x: event.clientX, y: event.clientY }
-  }
 
   function caretAt(x: number, y: number): { node: Node; offset: number } | null {
     const doc = document as Document & { caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null }
@@ -208,7 +373,7 @@
     }
     const active = document.activeElement
     const itemId = focusedIdeaId() ??
-      (active === document.body || active?.closest('.ideas-panel') ? selectedItemId : null)
+      (active === document.body || active?.closest('.ideas-panel') ? selectionFocusId : null)
     const item = itemId ? findIdea(groups, itemId)?.item : null
     if (!item) return false
     return openRenderedLinkFromShortcut(
@@ -229,18 +394,25 @@
   // Cmd/Ctrl+D toggles done like on Today: the selected idea stays selected,
   // and completing the idea being edited moves the caret to the one below.
   function toggleDoneFromKeyboard(event: KeyboardEvent) {
-    const target = selectedItemId ?? focusedIdeaId()
+    if (selected) {
+      event.preventDefault()
+      if (event.repeat) return
+      const done = !selectedIdeas.every(({ item }) => item.done)
+      plannerStore.setIdeasDone(selected.group.id, selectedIdeas.map(({ item }) => item.id), done)
+      return
+    }
+    const target = focusedIdeaId()
     const found = target ? findIdea(groups, target) : null
     if (!found) return
     event.preventDefault()
     if (event.repeat) return
     const done = !found.item.done
     plannerStore.patchIdeaItem(found.group.id, found.item.id, { done })
-    if (done && !selectedItemId) void focusTaskBelow(found.group.id, [found.item.id])
+    if (done) void focusTaskBelow(found.group.id, [found.item.id])
   }
 
   async function toggleChildrenFromKeyboard() {
-    const itemId = focusedIdeaId() ?? selectedItemId
+    const itemId = focusedIdeaId() ?? selectionFocusId
     if (!itemId) return
     function targetIn(items: PlanItem[], parent: PlanItem | null = null): PlanItem | null {
       for (const item of items) {
@@ -284,24 +456,32 @@
       event.stopPropagation()
       return
     }
+    // Shift+Up/Down, with or without Cmd, grows or shrinks the selection.
+    if (selected && event.shiftKey && !event.ctrlKey && !event.altKey && !event.defaultPrevented &&
+        (event.key === 'ArrowUp' || event.key === 'ArrowDown') && !editingText()) {
+      event.preventDefault()
+      event.stopPropagation()
+      void extendSelection(event.key === 'ArrowUp' ? 'up' : 'down')
+      return
+    }
     if (event.ctrlKey || event.altKey || event.repeat || editingText()) return
-    // Backspace and Cmd+Backspace both delete a selected idea, to Trash unless it is already there.
+    // Backspace and Cmd+Backspace both delete selected ideas, to Trash unless already there.
     if (selected && (event.key === 'Backspace' || event.key === 'Delete')) {
       event.preventDefault()
-      plannerStore.deleteIdeaItem(selected.group.id, selected.item.id)
-      select(null)
+      plannerStore.deleteIdeaItems(selected.group.id, selectedIdeas.map(({ item }) => item.id))
+      clearSelection()
       return
     }
     if (event.metaKey) return
     if (event.key === 'Escape') {
-      if (selectedItemId) {
+      if (selected) {
         event.preventDefault()
-        select(null)
+        clearSelection()
       }
       return
     }
     if (!selected) return
-    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && !event.shiftKey) {
       event.preventDefault()
       moveSelection(event.key === 'ArrowDown' ? 1 : -1)
       return
@@ -345,7 +525,14 @@
   })
 </script>
 
-<svelte:window on:keydown={handleKeydown} on:pointermove|passive={rememberPointer} />
+<svelte:window
+  on:keydown={handleKeydown}
+  on:pointerdown|capture={handleWindowPointerDown}
+  on:pointermove={handleWindowPointerMove}
+  on:pointerup={handleWindowPointerUp}
+  on:pointercancel={handleWindowPointerUp}
+  on:focusin={handleWindowFocusIn}
+/>
 
 <section class="ideas-panel">
   <header class="page-header">
@@ -427,11 +614,13 @@
             outdentItem={plannerStore.outdentIdeaItem}
             historyRevision={$plannerStore.historyRevision}
             selectedItemIds={selectedItemIdSet}
+            selectionDragging={dragSelecting}
             onSelectionPointerDown={handleSelectionPointerDown}
-            onMobileSelectionStart={(itemId) => select(itemId)}
-            onMobileSelectionToggle={(itemId) => select(selectedItemId === itemId ? null : itemId)}
+            onTextShiftArrow={selectWithAdjacent}
+            onMobileSelectionStart={(itemId) => { const root = rootIdOf(itemId); if (root) select(root) }}
+            onMobileSelectionToggle={(itemId) => { const root = rootIdOf(itemId); if (root) toggleSelected(root) }}
             {mobile}
-            mobileSelectionMode={mobile && selectedItemId !== null}
+            mobileSelectionMode={mobile && selectedItemIds.length > 0}
             {listTemplates}
             {metrics}
             {notes}
@@ -455,7 +644,7 @@
         {/if}
       </div>
       {#if selected}
-        <div class="idea-move-strip" role="group" aria-label="Move idea to">
+        <div class="idea-move-strip" role="group" aria-label={selectedIdeas.length > 1 ? `Move ${selectedIdeas.length} ideas to` : 'Move idea to'}>
           {#each IDEA_GROUPS.filter((target) => target.kind !== activeGroup) as target (target.kind)}
             <button
               type="button"

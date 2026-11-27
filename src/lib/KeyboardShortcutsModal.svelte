@@ -134,10 +134,11 @@
       title: 'Ideas',
       shortcuts: [
         { keys: ['mod', 'V'], label: 'Paste copied items into the open bucket' },
-        { keys: ['G / P / A / T / U'], label: 'Move the selected idea to Genuinely / Possibly / Afterlife / Trash / Proposition Party' },
+        { keys: ['G / P / A / T / U'], label: 'Move the selected ideas to Genuinely / Possibly / Afterlife / Trash / Proposition Party' },
         { keys: ['mod', 'shift', 'A'], label: 'Select the focused idea' },
         { keys: ['up'], label: 'Select the previous / next idea', alt: ['down'] },
-        { keys: ['del'], label: 'Move the selected idea to Trash' },
+        { keys: ['shift', 'up'], label: 'Select the idea above / below too (also with mod, or from an idea\'s text)', alt: ['shift', 'down'] },
+        { keys: ['del'], label: 'Move the selected ideas to Trash' },
         { keys: ['Y / N'], label: 'Sorting: answer the key question' },
         { keys: ['B'], label: 'Sorting: back one idea', alt: ['left'] },
         { keys: ['M'], label: 'Sorting: append this idea to the previous one' },
@@ -157,7 +158,7 @@
       shortcuts: [
         { keys: ['enter'], label: 'Done' },
         { keys: ['D'], label: 'Add "Empty out your calendar" to the top of the day (not two days running)' },
-        { keys: ['meta', 'V'], label: 'Paste ideas or events to sort' },
+        { keys: ['meta', 'V'], label: 'Paste ideas or events and sort them' },
       ],
     },
     {
