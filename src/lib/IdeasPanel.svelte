@@ -23,6 +23,7 @@
   export let metrics: Metric[] = []
   export let notes: Note[] = []
   export let mobile = false
+  export let findOpen = false
   export let activeGroup: IdeaGroupKind = 'proposition'
   export let onSelectGroup: (kind: IdeaGroupKind) => void = () => {}
   export let onOpenLink: (link: ItemLink, itemId: Id) => void = () => {}
@@ -664,7 +665,7 @@
           <button class="add-row add-row-top" type="button" on:click={() => { void addItem(groupsByKind[activeGroup].id) }}>+ Add item</button>
         {/if}
         {#if activeGroup === 'trash' && activeItems.length}
-          <IdeaTrashWindow bind:this={trashWindow} items={activeItems} {mobile} renderItem={ideaEditor} />
+          <IdeaTrashWindow bind:this={trashWindow} items={activeItems} {mobile} renderAll={findOpen} renderItem={ideaEditor} />
         {:else}
           {#each activeItems as item (item.id)}
             {@render ideaEditor(item)}

@@ -8473,6 +8473,7 @@ return rows`
         {notes}
         mobile={phoneLayout}
         activeGroup={activeIdeaGroup}
+        findOpen={documentFindOpen}
         onSelectGroup={showIdeaGroup}
         onOpenLink={(link, itemId) => openLink(link, null)}
         onImport={() => (ideaImportOpen = true)}

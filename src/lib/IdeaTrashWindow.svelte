@@ -1,28 +1,47 @@
 <script lang="ts">
-  import { onMount, type Snippet } from 'svelte'
+  import { onMount, tick, type Snippet } from 'svelte'
   import type { Id, PlanItem } from './types'
 
   export let items: PlanItem[]
   export let mobile: boolean
+  // Find in current view searches and highlights live DOM ranges.
+  export let renderAll: boolean
   export let renderItem: Snippet<[PlanItem]>
 
-  const INITIAL_ROWS = 24
   const WINDOW_THRESHOLD = 60
+  const OVERSCAN = 420
 
   let list: HTMLDivElement
-  let mounted = false
-  let nearbyIds: Set<Id> | null = null
+  let start = 0
+  let end = 24
   let focusedId: Id | undefined
   let pressedId: Id | undefined
   let requestedId: Id | undefined
-  const rows = new Map<Id, HTMLElement>()
-  const measuredHeights = new WeakMap<Element, number>()
-  let intersectionObserver: IntersectionObserver | undefined
-  let resizeObserver: ResizeObserver | undefined
+  let frame: number | undefined
+  let wasRenderingAll = false
+  const measuredHeights = new Map<Id, number>()
 
-  $: windowed = items.length > WINDOW_THRESHOLD && typeof IntersectionObserver !== 'undefined' && typeof ResizeObserver !== 'undefined'
-  $: if (mounted) observeWindow(list, mobile, windowed)
+  $: windowed = items.length > WINDOW_THRESHOLD
   $: retainedIds = retainWithNeighbours(items, [focusedId, pressedId, requestedId])
+  $: if (list) rememberFindHeights(list, renderAll)
+
+  function measureRows(rows: HTMLCollection, first: number, last: number) {
+    for (let index = first; index < Math.min(last, rows.length); index += 1) {
+      const row = rows[index] as HTMLElement
+      if (row.firstElementChild) {
+        measuredHeights.set(row.dataset.ideaTrashRoot!, row.getBoundingClientRect().height / (row.currentCSSZoom || 1))
+      }
+    }
+  }
+
+  function rememberFindHeights(node: HTMLElement, all: boolean) {
+    if (wasRenderingAll && !all && windowed) {
+      // Keep the search result in view as its preceding rows become placeholders.
+      measureRows(node.children, 0, node.children.length)
+      void updateWindow()
+    }
+    wasRenderingAll = all
+  }
 
   function retainWithNeighbours(items: PlanItem[], ids: (Id | undefined)[]) {
     const retained = new Set<Id>()
@@ -57,82 +76,77 @@
     pressedId = undefined
   }
 
-  function trackRow(node: HTMLElement, id: Id) {
-    rows.set(id, node)
-    intersectionObserver?.observe(node)
-    resizeObserver?.observe(node)
-    return {
-      destroy() {
-        rows.delete(id)
-        intersectionObserver?.unobserve(node)
-        resizeObserver?.unobserve(node)
-        // Ignore any observer entries queued before this row was removed.
-        nearbyIds?.delete(id)
-      },
+  // Placeholders keep one layout box per root, in list order. Search their
+  // positions instead of observing each one or laying out thousands of editors.
+  function lowerBound(rows: HTMLCollection, y: number, edge: 'top' | 'bottom') {
+    let low = 0
+    let high = rows.length
+    while (low < high) {
+      const middle = Math.floor((low + high) / 2)
+      if (rows[middle]!.getBoundingClientRect()[edge] < y) low = middle + 1
+      else high = middle
     }
+    return low
   }
 
-  function observeWindow(node: HTMLElement, phone: boolean, enabled: boolean) {
-    intersectionObserver?.disconnect()
-    resizeObserver?.disconnect()
-    nearbyIds = null
-    if (!enabled) {
-      intersectionObserver = undefined
-      resizeObserver = undefined
-      return
-    }
-
-    // Desktop scrolls inside the workspace. On phones the document scrolls.
-    const intersection = new IntersectionObserver((entries) => {
-      if (intersectionObserver !== intersection) return
-      const next = new Set(nearbyIds)
-      for (const entry of entries) {
-        const id = (entry.target as HTMLElement).dataset.ideaTrashRoot!
-        if (rows.get(id) !== entry.target) continue
-        if (entry.isIntersecting) next.add(id)
-        else next.delete(id)
-      }
-      nearbyIds = next
-    }, { root: phone ? null : node.closest('.workspace'), rootMargin: '420px 0px' })
-    intersectionObserver = intersection
-
-    resizeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        if (entry.target.firstElementChild) measuredHeights.set(entry.target, entry.contentRect.height)
-      }
+  function scheduleWindow() {
+    if (!windowed || frame !== undefined) return
+    frame = requestAnimationFrame(() => {
+      frame = undefined
+      void updateWindow()
     })
-
-    for (const row of rows.values()) {
-      intersectionObserver.observe(row)
-      resizeObserver.observe(row)
-    }
   }
 
-  function placeholderHeight(id: Id) {
-    const row = rows.get(id)
-    return (row ? measuredHeights.get(row) : undefined) ?? 42
+  async function updateWindow() {
+    if (!windowed || !list?.isConnected) return
+    const scroller = mobile ? document.scrollingElement : list.closest('.workspace')
+    if (!scroller) return
+    const viewport = mobile ? null : scroller.getBoundingClientRect()
+    const top = viewport?.top ?? 0
+    const bottom = viewport?.bottom ?? window.innerHeight
+    const rows = list.children
+    const nextStart = lowerBound(rows, top - OVERSCAN, 'bottom')
+    const nextEnd = lowerBound(rows, bottom + OVERSCAN, 'top')
+    if (start === nextStart && end === nextEnd) return
+
+    measureRows(rows, start, end)
+
+    const atEnd = scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop <= 1
+    const anchor = rows[lowerBound(rows, top, 'bottom')]
+    const anchorTop = anchor?.getBoundingClientRect().top
+    start = nextStart
+    end = nextEnd
+    if (renderAll) return
+
+    await tick()
+    if (!list?.isConnected) return
+    // Mounting a group of wrapped or nested ideas changes the estimated list
+    // height. Keep the viewport stable, even in WebKit and at the very end.
+    if (atEnd) scroller.scrollTop = scroller.scrollHeight
+    else if (anchor?.isConnected && anchorTop !== undefined) {
+      const shift = anchor.getBoundingClientRect().top - anchorTop
+      if (shift) scroller.scrollTop += shift / (anchor.currentCSSZoom || 1)
+    }
   }
 
   onMount(() => {
-    mounted = true
+    const resizeObserver = new ResizeObserver(scheduleWindow)
+    resizeObserver.observe(list)
+    scheduleWindow()
     return () => {
-      intersectionObserver?.disconnect()
-      resizeObserver?.disconnect()
+      resizeObserver.disconnect()
+      if (frame !== undefined) cancelAnimationFrame(frame)
     }
   })
 </script>
 
-<svelte:window on:pointerup={releasePress} on:pointercancel={releasePress} />
+<svelte:window on:scroll|capture|passive={scheduleWindow} on:resize={scheduleWindow} on:pointerup={releasePress} on:pointercancel={releasePress} />
 
 <!-- svelte-ignore a11y_no_static_element_interactions (tracks presses on the descendant editors) -->
 <div bind:this={list} on:focusin={trackFocus} on:focusout={trackFocus} on:pointerdown|capture={trackPress}>
   {#each items as item, index (item.id)}
-    {@const visible = !windowed || (nearbyIds?.has(item.id) ?? index < INITIAL_ROWS) || retainedIds.has(item.id)}
-    <div
-      data-idea-trash-root={item.id}
-      style:min-height={visible ? undefined : `${placeholderHeight(item.id)}px`}
-      use:trackRow={item.id}
-    >
+    {@const visible = renderAll || !windowed || (index >= start && index < end) || retainedIds.has(item.id)}
+    <div data-idea-trash-root={item.id} style:min-height={visible ? undefined : `${measuredHeights.get(item.id) ?? 42}px`}>
       {#if visible}
         {@render renderItem(item)}
       {/if}

@@ -23,8 +23,12 @@ test('large Ideas Trash switches with only nearby editors mounted', async ({ pag
     const { plannerStore } = await import(/* @vite-ignore */ storePath) as typeof import('../../src/lib/store')
     const { createPlanItem } = await import(/* @vite-ignore */ plannerPath) as typeof import('../../src/lib/planner')
     const items = Array.from({ length: total }, (_, index) => {
-      const text = 'Discarded idea ' + (index + 1)
-      return { ...createPlanItem(text), html: '<strong>' + text + '</strong>' }
+      const title = 'Discarded idea ' + (index + 1)
+      const extra = index >= total - 48 ? 'An extra line for a taller row' : ''
+      return {
+        ...createPlanItem(extra ? title + '\n' + extra : title),
+        html: '<strong>' + title + '</strong>' + (extra ? '<br>' + extra : ''),
+      }
     })
     items[total - 1]!.children.push(createPlanItem('Nested discarded idea'))
     const ids = plannerStore.importIdeas(items, 'trash')
@@ -90,4 +94,17 @@ test('large Ideas Trash switches with only nearby editors mounted', async ({ pag
   await expect(child).toHaveClass(/search-result-target/)
   await expect(child).toBeInViewport()
   await expect(pane(page, 'trash').getByText('Discarded draft', { exact: true })).toBeVisible()
+
+  if (testInfo.project.name !== 'mobile') {
+    // Find in current view includes text beyond the mounted editors.
+    const middle = rows(page, 'trash').filter({ hasText: /^Discarded idea 600$/ })
+    await expect(middle).toHaveCount(0)
+    await page.keyboard.press('ControlOrMeta+f')
+    await page.getByRole('textbox', { name: 'Find text' }).fill('Discarded idea 600')
+    await expect(page.getByRole('search').getByRole('status')).toHaveText('1/1')
+    await expect(middle).toBeInViewport()
+    await page.keyboard.press('Escape')
+    await expect.poll(() => rows(page, 'trash').count()).toBeLessThan(total / 10)
+    await expect(middle).toBeInViewport()
+  }
 })
