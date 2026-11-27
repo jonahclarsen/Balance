@@ -1307,3 +1307,75 @@ test('ideas select by dragging or Shift+arrows, and move or delete together', as
   await page.keyboard.press('Backspace')
   await expect.poll(() => groups(page)).toMatchObject({ genuine: ['Synthetic third', 'Synthetic fourth'], trash: ['Synthetic first', 'Synthetic second'] })
 })
+
+test('large Ideas Trash switches with only nearby editors mounted', async ({ page }, testInfo) => {
+  // Freeze Date for Trash retention while keeping the frame timings real.
+  await page.clock.setFixedTime(NOW)
+  await page.goto('/')
+  await expect(page.getByRole('region', { name: 'Daily plan' })).toBeVisible()
+
+  const total = 1_200
+  const { lastId, childId } = await storeCall(page, `
+    const idea = (text, children = []) => ({
+      id: text, text, html: '<strong>' + text + '</strong>', done: false,
+      startMinutes: null, endMinutes: null, children,
+    })
+    const items = Array.from({ length: ${total} }, (_, index) => idea('Discarded idea ' + (index + 1)))
+    items.at(-1).children.push(idea('Nested discarded idea'))
+    const ids = plannerStore.importIdeas(items, 'trash')
+    let state
+    plannerStore.subscribe(value => { state = value })()
+    const last = state.ideaBuckets.find(group => group.kind === 'trash').items.at(-1)
+    plannerStore.addIdea('balance://task/' + last.children[0].id)
+    return { lastId: ids.at(-1), childId: last.children[0].id }
+  `)
+  await openView(page, 'Ideas')
+  await expect(card(page, 'trash').locator('.idea-group-count')).toHaveText(String(total))
+
+  const measurements = await page.evaluate(async () => {
+    const frame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    const samples = []
+    for (const kind of ['trash', 'proposition', 'trash', 'proposition', 'trash', 'proposition']) {
+      const tab = document.querySelector<HTMLButtonElement>(`.idea-group-card[data-idea-group="${kind}"]`)!
+      const start = performance.now()
+      tab.click()
+      await frame()
+      await frame()
+      samples.push({
+        kind,
+        ms: Math.round(performance.now() - start),
+        editors: document.querySelectorAll('.idea-group-list [data-plan-text-input]').length,
+      })
+    }
+    return samples
+  })
+  console.log('Large Ideas Trash switch timings:', JSON.stringify(measurements))
+  await testInfo.attach('ideas-trash-switches', { body: JSON.stringify(measurements), contentType: 'application/json' })
+  for (const sample of measurements) {
+    expect(sample.editors).toBeGreaterThan(0)
+    expect(sample.editors).toBeLessThan(sample.kind === 'trash' ? total / 10 : 2)
+  }
+
+  await card(page, 'trash').click()
+  await expect(rows(page, 'trash').first()).toHaveText('Discarded idea 1')
+  const last = pane(page, 'trash').locator(`[data-plan-item-id="${lastId}"]`)
+  await expect(last).toHaveCount(0)
+
+  // Jump to the end and use the normal Add item control there.
+  const add = pane(page, 'trash').getByRole('button', { name: '+ Add item' })
+  await add.scrollIntoViewIfNeeded()
+  await expect(last).toBeInViewport()
+  await expect(rows(page, 'trash').filter({ hasText: /^Discarded idea 1$/ })).toHaveCount(0)
+  await add.click()
+  const added = pane(page, 'trash').locator('[data-plan-text-input]:focus')
+  await expect(added).toHaveCount(1)
+  await added.fill('Discarded draft')
+
+  // An internal link can also reveal an offscreen idea's subtask.
+  await card(page, 'proposition').click()
+  await pane(page, 'proposition').getByRole('link', { name: `balance://task/${childId}` }).click()
+  const child = pane(page, 'trash').locator(`[data-plan-item-id="${childId}"]`)
+  await expect(child).toHaveClass(/search-result-target/)
+  await expect(child).toBeInViewport()
+  await expect(pane(page, 'trash').getByText('Discarded draft', { exact: true })).toBeVisible()
+})

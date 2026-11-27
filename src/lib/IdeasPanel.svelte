@@ -3,6 +3,7 @@
   import PlanItemEditor from './PlanItemEditor.svelte'
   import VoiceIdeaModal from './VoiceIdeaModal.svelte'
   import IdeaReviewCadence from './IdeaReviewCadence.svelte'
+  import IdeaTrashWindow from './IdeaTrashWindow.svelte'
   import VoiceRecordControls from './VoiceRecordControls.svelte'
   import VoiceClipChip from './VoiceClipChip.svelte'
   import { plannerStore } from './store'
@@ -52,6 +53,7 @@
   let shaking: IdeaGroupKind | null = null
   let shakeTimer: number | null = null
   let openClipId: Id | null = null
+  let trashWindow: IdeaTrashWindow | null = null
 
   $: selectedIdeas = selectedItemIds.flatMap((id) => findIdea(groups, id) ?? [])
   $: selected = selectedIdeas[0] ?? null
@@ -95,10 +97,27 @@
     return activeItems.find((item) => item.id === itemId || contains(item.children))?.id ?? null
   }
 
+  export async function includeIdea(itemId: Id) {
+    if (!trashWindow) return
+    const root = rootIdOf(itemId)
+    if (!root) return
+    trashWindow.include(root)
+    await tick()
+  }
+
+  async function revealTrashSelection(itemId: Id) {
+    if (!trashWindow) return
+    await includeIdea(itemId)
+    document.querySelector<HTMLElement>(
+      `.ideas-panel [data-plan-item-id="${CSS.escape(itemId)}"]`,
+    )?.scrollIntoView({ block: 'nearest' })
+  }
+
   function setSelection(ids: Id[], anchorId: Id | null = ids[0] ?? null, focusId: Id | null = ids.at(-1) ?? null) {
     const wanted = new Set(ids)
-    const next = rootIds().filter((id) => wanted.has(id))
-    const added = next.some((id) => !selectedItemIds.includes(id))
+    const next = ids.length ? rootIds().filter((id) => wanted.has(id)) : []
+    const previous = new Set(selectedItemIds)
+    const added = next.some((id) => !previous.has(id))
     selectedItemIds = next
     selectionAnchorId = next.length ? anchorId : null
     selectionFocusId = next.length ? focusId : null
@@ -255,6 +274,7 @@
     const target = ids[direction === 'up' ? Math.max(0, focusIndex - 1) : Math.min(ids.length - 1, focusIndex + 1)]!
     if (target === anchorId && selectedItemIds.length > 1) {
       clearSelection()
+      await includeIdea(anchorId)
       await tick()
       document.querySelector<HTMLElement>(
         `.ideas-panel [data-plan-text-focus-target-id="${CSS.escape(anchorId)}"]`,
@@ -262,6 +282,7 @@
       return
     }
     selectRange(anchorId, target)
+    void revealTrashSelection(target)
   }
 
   function shake(kind: IdeaGroupKind) {
@@ -286,6 +307,7 @@
     const index = selectionFocusId ? ids.indexOf(selectionFocusId) : -1
     const next = index === -1 ? (direction === 1 ? 0 : ids.length - 1) : Math.min(ids.length - 1, Math.max(0, index + direction))
     select(ids[next]!)
+    void revealTrashSelection(ids[next]!)
   }
 
   function editingText(): boolean {
@@ -514,6 +536,7 @@
   async function addItem(groupId: Id) {
     const itemId = plannerStore.addRootIdeaItem(groupId)
     await tick()
+    await includeIdea(itemId)
     document.querySelector<HTMLDivElement>(
       `[data-plan-item-scope="${CSS.escape(groupId)}"] [data-plan-item-id="${CSS.escape(itemId)}"] [data-plan-text-focus-target]`,
     )?.focus()
@@ -533,6 +556,49 @@
   on:pointercancel={handleWindowPointerUp}
   on:focusin={handleWindowFocusIn}
 />
+
+{#snippet ideaEditor(item: PlanItem)}
+  {@const clip = clipForIdea.get(item.id)}
+  <PlanItemEditor
+    {item}
+    allItems={activeItems}
+    timeWarnings={noTimeWarnings}
+    planId={groupsByKind[activeGroup].id}
+    patchItem={plannerStore.patchIdeaItem}
+    splitItem={plannerStore.splitIdeaItem}
+    backspaceItemAtStart={plannerStore.backspaceIdeaItemAtStart}
+    deleteItem={plannerStore.deleteIdeaItem}
+    deleteItemPreservingChildren={plannerStore.deleteIdeaItemPreservingChildren}
+    moveItem={plannerStore.moveIdeaItem}
+    moveItemWithinLevel={plannerStore.moveIdeaItemWithinLevel}
+    outdentItem={plannerStore.outdentIdeaItem}
+    historyRevision={$plannerStore.historyRevision}
+    selectedItemIds={selectedItemIdSet}
+    selectionDragging={dragSelecting}
+    onSelectionPointerDown={handleSelectionPointerDown}
+    onTextShiftArrow={selectWithAdjacent}
+    onMobileSelectionStart={(itemId) => { const root = rootIdOf(itemId); if (root) select(root) }}
+    onMobileSelectionToggle={(itemId) => { const root = rootIdOf(itemId); if (root) toggleSelected(root) }}
+    {mobile}
+    mobileSelectionMode={mobile && selectedItemIds.length > 0}
+    {listTemplates}
+    {metrics}
+    {notes}
+    {onOpenLink}
+    {onCopyItem}
+    {onCutItem}
+    {onPasteItem}
+    hideTime
+    collapsible
+    placeholder={clip ? 'Voice idea' : undefined}
+  >
+    <svelte:fragment slot="trailing">
+      {#if clip}
+        <VoiceClipChip {clip} onOpen={() => { openClipId = clip.id }} />
+      {/if}
+    </svelte:fragment>
+  </PlanItemEditor>
+{/snippet}
 
 <section class="ideas-panel">
   <header class="page-header">
@@ -597,48 +663,13 @@
         {#if activeGroup === 'proposition'}
           <button class="add-row add-row-top" type="button" on:click={() => { void addItem(groupsByKind[activeGroup].id) }}>+ Add item</button>
         {/if}
-        {#each activeItems as item (item.id)}
-          {@const clip = clipForIdea.get(item.id)}
-          <PlanItemEditor
-            {item}
-            allItems={activeItems}
-            timeWarnings={noTimeWarnings}
-            planId={groupsByKind[activeGroup].id}
-            patchItem={plannerStore.patchIdeaItem}
-            splitItem={plannerStore.splitIdeaItem}
-            backspaceItemAtStart={plannerStore.backspaceIdeaItemAtStart}
-            deleteItem={plannerStore.deleteIdeaItem}
-            deleteItemPreservingChildren={plannerStore.deleteIdeaItemPreservingChildren}
-            moveItem={plannerStore.moveIdeaItem}
-            moveItemWithinLevel={plannerStore.moveIdeaItemWithinLevel}
-            outdentItem={plannerStore.outdentIdeaItem}
-            historyRevision={$plannerStore.historyRevision}
-            selectedItemIds={selectedItemIdSet}
-            selectionDragging={dragSelecting}
-            onSelectionPointerDown={handleSelectionPointerDown}
-            onTextShiftArrow={selectWithAdjacent}
-            onMobileSelectionStart={(itemId) => { const root = rootIdOf(itemId); if (root) select(root) }}
-            onMobileSelectionToggle={(itemId) => { const root = rootIdOf(itemId); if (root) toggleSelected(root) }}
-            {mobile}
-            mobileSelectionMode={mobile && selectedItemIds.length > 0}
-            {listTemplates}
-            {metrics}
-            {notes}
-            {onOpenLink}
-            {onCopyItem}
-            {onCutItem}
-            {onPasteItem}
-            hideTime
-            collapsible
-            placeholder={clip ? 'Voice idea' : undefined}
-          >
-            <svelte:fragment slot="trailing">
-              {#if clip}
-                <VoiceClipChip {clip} onOpen={() => { openClipId = clip.id }} />
-              {/if}
-            </svelte:fragment>
-          </PlanItemEditor>
-        {/each}
+        {#if activeGroup === 'trash'}
+          <IdeaTrashWindow bind:this={trashWindow} items={activeItems} {mobile} renderItem={ideaEditor} />
+        {:else}
+          {#each activeItems as item (item.id)}
+            {@render ideaEditor(item)}
+          {/each}
+        {/if}
         {#if activeGroup !== 'proposition'}
           <button class="add-row" type="button" on:click={() => { void addItem(groupsByKind[activeGroup].id) }}>+ Add item</button>
         {/if}

@@ -721,6 +721,7 @@ return rows`
   let goalSearch = ''
   let goalSearchInput: HTMLInputElement | null = null
   let projectsPanel: ProjectsPanel | null = null
+  let ideasPanel: IdeasPanel | null = null
   let goalStatsOpen = false
   let highlightedGoalCardId: Id | null = null
   let lockedGoalOrder: Id[] | null = null
@@ -1951,6 +1952,7 @@ return rows`
     goalStatsOpen = false
     clearItemSelection()
     let selector = ''
+    let linkedIdeaId: Id | undefined
     if (target.kind === 'page') {
       view = target.view
     } else if (target.kind === 'day') {
@@ -1970,8 +1972,12 @@ return rows`
         plannerStore.setActivePlanDate(list.date)
         listViewTemplateId = list.listTemplateId
         openListHistory()
-      } else if (idea) { revealTaskParents(idea.items, target.id); showIdeaGroup(idea.kind); view = 'ideas' }
-      else return unavailableLink()
+      } else if (idea) {
+        revealTaskParents(idea.items, target.id)
+        showIdeaGroup(idea.kind)
+        view = 'ideas'
+        linkedIdeaId = target.id
+      } else return unavailableLink()
       selector = `[data-plan-item-id="${CSS.escape(target.id)}"]`
     } else if (target.kind === 'note') {
       const note = allNotes.find(note => note.id === target.id)
@@ -2022,6 +2028,7 @@ return rows`
     }
     if (!selector) return
     await tick()
+    if (linkedIdeaId) await ideasPanel?.includeIdea(linkedIdeaId)
     await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
     const row = workspaceEl?.querySelector<HTMLElement>(selector)
     if (!row) return unavailableLink()
@@ -8462,6 +8469,7 @@ return rows`
 
     {#if view === 'ideas'}
       <IdeasPanel
+        bind:this={ideasPanel}
         groups={$plannerStore.ideaBuckets}
         voiceClips={$plannerStore.voiceClips}
         {listTemplates}
