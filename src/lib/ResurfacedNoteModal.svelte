@@ -2,6 +2,8 @@
   import OverlayModal from './OverlayModal.svelte'
   import ReadOnlyNoteItem from './ReadOnlyNoteItem.svelte'
   import { navigationURL } from './navigationLinks'
+  import { openClickedLink } from './externalLinks'
+  import type { ItemLink } from './planner'
   import type { Note, NoteResurfacing } from './types'
 
   export let note: Note
@@ -11,6 +13,7 @@
   export let onDone: () => void
   export let onOpen: () => void
   export let onClose: () => void
+  export let onOpenLink: (link: ItemLink) => void
   // Search, Add idea or the shortcuts list is open on top and owns the keyboard.
   export let suspended = false
 
@@ -43,7 +46,8 @@
     </div>
   {:else}
     <div class="resurfaced-note">
-      <div class="note-blocks">
+      <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+      <div class="note-blocks" on:click={(event) => openClickedLink(event, onOpenLink)}>
         {#each note.items as item (item.id)}
           <ReadOnlyNoteItem {item} siblings={note.items} />
         {/each}

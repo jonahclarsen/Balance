@@ -49,6 +49,8 @@ test('a resurfacing note blocks day generation until it is read', async ({ page 
   await page.evaluate(() => {
     const state = JSON.parse(localStorage.getItem('balance.appState.v1')!)
     state.noteResurfacing[0] = { ...state.noteResurfacing[0], last: '2026-09-17', next: '2026-10-01' }
+    const note = state.notes.find((candidate: { title: string }) => candidate.title === 'Remember why')
+    note.items[0].html = 'Slow down. <a href="https://example.com/why">Why</a>'
     localStorage.setItem('balance.appState.v1', JSON.stringify(state))
   })
   await page.reload()
@@ -59,6 +61,12 @@ test('a resurfacing note blocks day generation until it is read', async ({ page 
   await page.keyboard.press('v')
   await expect(dialog).toContainText('Slow down.')
   await expect(dialog.getByRole('button', { name: /≈|Never/ })).toHaveCount(0)
+  await page.evaluate(() => {
+    window.open = ((url: string) => { (window as unknown as { openedURL: string }).openedURL = url; return null }) as typeof window.open
+  })
+  await dialog.getByRole('link', { name: 'Why' }).click()
+  await expect.poll(() => page.evaluate(() => (window as unknown as { openedURL?: string }).openedURL)).toBe('https://example.com/why')
+  await expect(dialog).toBeVisible()
   await page.keyboard.press('o')
   await expect(dialog).toBeHidden()
   await expect(page.getByRole('textbox', { name: 'Note title' })).toHaveValue('Remember why')

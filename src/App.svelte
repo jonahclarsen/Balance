@@ -9169,6 +9169,10 @@ return rows`
         onDone={() => finishResurfacedNote('done')}
         onOpen={() => finishResurfacedNote('open')}
         onClose={() => finishResurfacedNote(undefined)}
+        onOpenLink={(link) => {
+          finishResurfacedNote(undefined)
+          openLink(link, null)
+        }}
         suspended={quickAddOpen || searchOpen || shortcutsHelpOpen}
       />
     {/if}
